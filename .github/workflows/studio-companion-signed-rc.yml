@@ -133,7 +133,7 @@ jobs:
           tenant-id: ${{ env.STUDIO_AZURE_TENANT_ID }}
           subscription-id: ${{ env.STUDIO_AZURE_SUBSCRIPTION_ID }}
       - name: Apply the maintainer-approved Authenticode signature
-        uses: Azure/artifact-signing-action@208f8af4bf26cf2af8597424e3cb5582801523ba # v2.0.0
+        uses: Azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
         with:
           endpoint: ${{ env.STUDIO_AZURE_SIGNING_ENDPOINT }}
           signing-account-name: ${{ env.STUDIO_AZURE_SIGNING_ACCOUNT }}
