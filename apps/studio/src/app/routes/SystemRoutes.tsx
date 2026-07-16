@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { safeJsonExport } from "@dusk/core";
 import { JOURNEY_PROGRESS_STORAGE_KEY, type BuilderPath } from "../journeyProgress";
 import { expiryDate, sourceDate, sourceFreshness, sourceIsStale } from "../studioConfig";
@@ -21,6 +21,12 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
   const journey = useJourney();
   const { runtime: studioRuntime, release, companionBaseUrl } = useStudioRuntime();
   const [message, setMessage] = useState("No local browser action yet.");
+  const [confirmingReset, setConfirmingReset] = useState(false);
+  const resetButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmResetButtonRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (confirmingReset) confirmResetButtonRef.current?.focus();
+  }, [confirmingReset]);
   const diagnostics = {
     mode: studioRuntime.mode,
     release,
@@ -44,7 +50,18 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
     window.localStorage.removeItem(JOURNEY_PROGRESS_STORAGE_KEY);
     journey.reset();
     setBuilderPath(null);
+    setConfirmingReset(false);
     setMessage("Path choice and evidence-code progress reset. Wallet and file details were never stored.");
+    window.requestAnimationFrame(() => resetButtonRef.current?.focus());
   }
-  return <section className="reference-page narrow"><PageIntro kicker="Release & local data" title="Know exactly what this build knows." copy="The source receipt, runtime mode, release identity, and browser-local evidence state stay visible and resettable." />{sourceIsStale ? <AsyncNotice state="stale" message="The source receipt is expired. This release must not be promoted until its required sources are refreshed." /> : null}<div className="release-grid"><div><span>Release</span><strong>{`v${release.version} (${release.commit.slice(0, 8)})`}</strong><small>{studioRuntime.label} · {release.channel}</small></div><div><span>Source receipt</span><strong>{sourceFreshness.status}</strong><small>reviewed {sourceDate}</small></div><div><span>Receipt expiry</span><strong>{expiryDate}</strong><small>{sourceFreshness.policy} policy</small></div><div><span>Records</span><strong>{Object.values(sourceFreshness.provenance.record_counts).reduce((sum, count) => sum + count, 0)}</strong><small>capabilities, networks, resources, fixes</small></div></div><div className="focus-card wide"><h2>Public release gates</h2><ul><li>DuskEVM Mainnet and Devnet are reference-only.</li><li>Hedger remains educational and reference-only.</li><li>No bridge, faucet, deployment, or browser signing automation.</li><li>Local companion is loopback-only, paired, rate-limited, and capability-gated.</li><li>Progress stores evidence and blocker codes—not accounts, balances, identifiers, terminal output, or paths.</li></ul><div className="button-row"><button className="secondary-button" type="button" onClick={exportDiagnostics}>Export safe diagnostics</button><button className="secondary-button" type="button" onClick={clearData}>Reset local progress</button><ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio/issues">Project support</ExternalLink><ExternalLink href="https://docs.dusk.network/">Official Dusk docs</ExternalLink></div><p className="quiet-note" role="status" aria-live="polite">{message}</p></div></section>;
+  function beginReset() {
+    setConfirmingReset(true);
+    setMessage("Reset confirmation opened. Choose Reset all progress or Cancel.");
+  }
+  function cancelReset() {
+    setConfirmingReset(false);
+    setMessage("Reset canceled. Local progress was not changed.");
+    window.requestAnimationFrame(() => resetButtonRef.current?.focus());
+  }
+  return <section className="reference-page narrow"><PageIntro kicker="Release & local data" title="Know exactly what this build knows." copy="The source receipt, runtime mode, release identity, and browser-local evidence state stay visible and resettable." />{sourceIsStale ? <AsyncNotice state="stale" message="The source receipt is expired. This release must not be promoted until its required sources are refreshed." /> : null}<div className="release-grid"><div><span>Release</span><strong>{`v${release.version} (${release.commit.slice(0, 8)})`}</strong><small>{studioRuntime.label} · {release.channel}</small></div><div><span>Source receipt</span><strong>{sourceFreshness.status}</strong><small>reviewed {sourceDate}</small></div><div><span>Receipt expiry</span><strong>{expiryDate}</strong><small>{sourceFreshness.policy} policy</small></div><div><span>Records</span><strong>{Object.values(sourceFreshness.provenance.record_counts).reduce((sum, count) => sum + count, 0)}</strong><small>capabilities, networks, resources, fixes</small></div></div><div className="focus-card wide"><h2>Public release gates</h2><ul><li>DuskEVM Mainnet and Devnet are reference-only.</li><li>Hedger remains educational and reference-only.</li><li>No bridge, faucet, deployment, or browser signing automation.</li><li>Local companion is loopback-only, paired, rate-limited, and capability-gated.</li><li>Progress stores evidence and blocker codes—not accounts, balances, identifiers, terminal output, or paths.</li></ul><div className="button-row"><button className="secondary-button" type="button" onClick={exportDiagnostics}>Export safe diagnostics</button>{confirmingReset ? <div className="reset-confirmation" role="group" aria-labelledby="reset-confirmation-title"><strong id="reset-confirmation-title">Reset both journeys?</strong><span>This permanently clears the selected path, recorded evidence codes, blockers, and step status in this browser.</span><div className="button-row"><button ref={confirmResetButtonRef} className="danger-button" type="button" onClick={clearData}>Reset all progress</button><button className="secondary-button" type="button" onClick={cancelReset}>Cancel</button></div></div> : <button ref={resetButtonRef} className="secondary-button" type="button" onClick={beginReset}>Reset local progress</button>}<ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio/issues">Project support</ExternalLink><ExternalLink href="https://docs.dusk.network/">Official Dusk docs</ExternalLink></div><p className="quiet-note" role="status" aria-live="polite" aria-atomic="true">{message}</p></div></section>;
 }

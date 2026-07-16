@@ -20,6 +20,25 @@ const sessions = [
   ["p8", "native", "experienced", "macos", true, true]
 ].map(([id, pathName, experience, context, recoveryAttempted, recovered]) => ({ id, path: pathName, experience, context, completed: true, recovery_attempted: recoveryAttempted, recovered, trust_score: 5, blocking_confusion: false, duration_minutes: 20 }));
 const checks = Object.fromEntries(policy.required_synthetic_checks.map((check) => [check, { status: "passed", owner: "platform-owner" }]));
+checks.monitor_heartbeat = {
+  ...checks.monitor_heartbeat,
+  receipt_sha256: digest,
+  workflow_path: policy.monitoring_evidence.schedule_guard_workflow,
+  observed_at: "2026-07-14T12:00:00Z",
+  run_url: "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123456"
+};
+checks.external_dead_man = {
+  ...checks.external_dead_man,
+  outside_github: true,
+  success_endpoint_configured: true,
+  provider: "external-dead-man-provider",
+  check_id: "studio-public-staging",
+  alert_channel: "email",
+  alert_delivery_verified: true,
+  latest_success_at: "2026-07-14T18:00:00Z",
+  missed_ping_rehearsed_at: "2026-07-10T12:00:00Z",
+  rehearsal_reference: "external-rehearsal-2026-07-10"
+};
 const passedSteps = (steps) => Object.fromEntries(steps.map((step) => [step, "passed"]));
 const evidence = {
   schema_version: 1,
@@ -44,6 +63,18 @@ assert.match(evaluatePhase5Evidence(policy, { ...evidence, candidate: { ...evide
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { sessions: sessions.slice(0, 7) } }, { now }).blockers.join("\n"), /Pilot has 7\/8/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, live_smoke: { status: "not-authorized" } }, { now }).blockers.join("\n"), /explicit authority/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, companion_security: { ...reviews.companion_security, independent: false } } }, { now }).blockers.join("\n"), /not recorded as independent/);
+const missingDevelopmentPort = JSON.parse(JSON.stringify(evidence));
+delete missingDevelopmentPort.synthetics.checks.development_port_closed;
+assert.match(evaluatePhase5Evidence(policy, missingDevelopmentPort, { now }).blockers.join("\n"), /development_port_closed/);
+const unboundHeartbeat = JSON.parse(JSON.stringify(evidence));
+delete unboundHeartbeat.synthetics.checks.monitor_heartbeat.receipt_sha256;
+assert.match(evaluatePhase5Evidence(policy, unboundHeartbeat, { now }).blockers.join("\n"), /Monitor heartbeat evidence/);
+const githubBoundDeadMan = JSON.parse(JSON.stringify(evidence));
+githubBoundDeadMan.synthetics.checks.external_dead_man.outside_github = false;
+assert.match(evaluatePhase5Evidence(policy, githubBoundDeadMan, { now }).blockers.join("\n"), /External dead-man evidence/);
+const staleExternalSuccess = JSON.parse(JSON.stringify(evidence));
+staleExternalSuccess.synthetics.checks.external_dead_man.latest_success_at = "2026-07-13T00:00:00Z";
+assert.match(evaluatePhase5Evidence(policy, staleExternalSuccess, { now }).blockers.join("\n"), /External dead-man evidence/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "P1-1", severity: "P1", status: "open" }] }, { now }).blockers.join("\n"), /no complete exception/);
 const unsignedDistribution = { ...evidence, companion_distribution: { hosted_mode: "docs-only", availability: "unsigned-downloads", targets: {} } };
 assert.match(evaluatePhase5Evidence(policy, unsignedDistribution, { now }).blockers.join("\n"), /availability is not allowed/);

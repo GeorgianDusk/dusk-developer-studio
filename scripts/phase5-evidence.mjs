@@ -13,6 +13,23 @@ function validDate(value) {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
 
+function freshDate(value, now, maxAgeMilliseconds) {
+  if (!validDate(value) || !Number.isFinite(maxAgeMilliseconds) || maxAgeMilliseconds <= 0) return false;
+  const observed = Date.parse(value);
+  return observed <= now.getTime() && observed >= now.getTime() - maxAgeMilliseconds;
+}
+
+function expectedActionsRunUrl(value, repository) {
+  if (!present(value) || !present(repository)) return false;
+  try {
+    const url = new URL(value);
+    const prefix = `/${repository}/actions/runs/`;
+    return url.protocol === "https:" && url.hostname === "github.com" && url.pathname.startsWith(prefix) && /^\d+\/?$/.test(url.pathname.slice(prefix.length));
+  } catch {
+    return false;
+  }
+}
+
 function checkForSecretFields(value, path = "evidence", findings = []) {
   if (Array.isArray(value)) value.forEach((item, index) => checkForSecretFields(item, `${path}[${index}]`, findings));
   else if (value && typeof value === "object") {
@@ -133,9 +150,33 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
   checkSteps(blockers, "Native live smoke", liveSmoke.native_steps, policy.required_native_smoke_steps);
 
   const synthetics = evidence.synthetics ?? {};
+  const checks = synthetics.checks ?? {};
   for (const check of policy.required_synthetic_checks) {
-    const result = synthetics.checks?.[check];
+    const result = checks[check];
     if (!result || result.status !== "passed" || !present(result.owner)) blockers.push(`Synthetic check ${check} is not passed with an owner.`);
+  }
+  const monitoringPolicy = policy.monitoring_evidence ?? {};
+  const heartbeat = checks.monitor_heartbeat ?? {};
+  const heartbeatMaxAge = monitoringPolicy.monitor_heartbeat_max_age_hours * 60 * 60 * 1_000;
+  if (!SHA256_RE.test(heartbeat.receipt_sha256 ?? "")
+      || heartbeat.workflow_path !== monitoringPolicy.schedule_guard_workflow
+      || !freshDate(heartbeat.observed_at, now, heartbeatMaxAge)
+      || !expectedActionsRunUrl(heartbeat.run_url, monitoringPolicy.canonical_repository)) {
+    blockers.push("Monitor heartbeat evidence lacks a fresh bound receipt, exact schedule-guard workflow, or canonical Actions run.");
+  }
+  const external = checks.external_dead_man ?? {};
+  const externalSuccessMaxAge = monitoringPolicy.external_success_max_age_hours * 60 * 60 * 1_000;
+  const externalRehearsalMaxAge = monitoringPolicy.external_rehearsal_max_age_days * 24 * 60 * 60 * 1_000;
+  if (external.outside_github !== true
+      || external.success_endpoint_configured !== true
+      || !present(external.provider) || /github/i.test(external.provider)
+      || !present(external.check_id)
+      || !present(external.alert_channel) || /github/i.test(external.alert_channel)
+      || external.alert_delivery_verified !== true
+      || !freshDate(external.latest_success_at, now, externalSuccessMaxAge)
+      || !freshDate(external.missed_ping_rehearsed_at, now, externalRehearsalMaxAge)
+      || !present(external.rehearsal_reference)) {
+    blockers.push("External dead-man evidence lacks an outside-GitHub provider/check, fresh success, verified out-of-band alert, or recent missed-ping rehearsal.");
   }
   if (synthetics.alert_delivery_verified !== true || !validDate(synthetics.checked_at)) blockers.push("Synthetic alert delivery is not verified with a timestamp.");
 

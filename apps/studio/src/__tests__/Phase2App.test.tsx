@@ -16,6 +16,7 @@ describe("Phase 2 evidence journeys", () => {
   });
 
   it("verifies wallet evidence without persisting the account or balance", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     const account = `0x${"a".repeat(40)}`;
     const provider = {
@@ -38,6 +39,7 @@ describe("Phase 2 evidence journeys", () => {
   });
 
   it("classifies and records a read-only contract-code inspection", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#inspect";
     const address = `0x${"b".repeat(40)}`;
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ jsonrpc: "2.0", id: 1, result: "0x60016000" }) })));
@@ -50,12 +52,25 @@ describe("Phase 2 evidence journeys", () => {
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).not.toContain(address);
   });
 
+  it("exposes invalid Inspect input through the field description", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#inspect";
+    render(<App />);
+
+    const input = screen.getByLabelText("Testnet identifier");
+    fireEvent.change(input, { target: { value: "not-an-identifier" } });
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription(/Identifier not recognized/);
+    expect(screen.getByRole("button", { name: "Inspect read-only" })).toBeDisabled();
+  });
+
   it("keeps native completion explicit when the browser cannot observe the terminal", async () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#access";
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Record observed height + hash" }));
     await waitFor(() => expect(screen.getByText("verified", { selector: ".done-panel .status-pill" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("DuskDS Access verified. 1 of 4 journey steps verified.")).toBeInTheDocument());
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).toContain("duskds-node-read-attestation");
   });
 });

@@ -25,9 +25,11 @@ test("public candidate exposes the exact release across key routes", async ({ pa
     expect(rootHeaders["cache-control"]).toMatch(/no-cache/i);
   }
 
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start Solidity path/i }).click();
   for (const [route, heading] of routes) {
     await page.goto(`/#${route}`);
-    await expect(page).toHaveTitle("Dusk Developer Studio");
+    await expect(page).toHaveTitle(`${heading} | Dusk Developer Studio`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
 
@@ -54,7 +56,8 @@ test("public candidate exposes the exact release across key routes", async ({ pa
 });
 
 test("public candidate presents a controlled offline RPC recovery", async ({ page, context }) => {
-  await page.goto("/#setup");
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start Solidity path/i }).click();
   await context.setOffline(true);
   await page.getByRole("button", { name: "Run RPC check" }).click();
   await expect(page.getByRole("alert")).toContainText(/browser could not reach|RPC request failed|timed out/i);

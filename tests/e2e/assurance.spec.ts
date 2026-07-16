@@ -18,6 +18,8 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("every deep link renders a stable route", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start Solidity path/i }).click();
   for (const [route, heading] of routes) {
     await page.goto(`/#${route}`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -25,9 +27,30 @@ test("every deep link renders a stable route", async ({ page }) => {
   }
 });
 
-test("keyboard and reduced-motion modes preserve the primary flow", async ({ page }) => {
+test("a pathless guide deep link preserves the requested step until path choice", async ({ page }) => {
+  await page.goto("/#build");
+  await expect(page).toHaveURL(/#build$/);
+  await expect(page.getByRole("heading", { name: "Choose a path to continue to Build." })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start Solidity path/i })).toHaveAccessibleName("DuskEVM. Start Solidity path");
+  await page.getByRole("button", { name: /Start native path/i }).click();
+  await expect(page).toHaveURL(/#build$/);
+  await expect(page.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeVisible();
+});
+
+test("keyboard and reduced-motion modes preserve the primary flow", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
+  const skipLink = page.getByRole("link", { name: "Skip to main content" });
+  if (testInfo.project.name.includes("webkit") || testInfo.project.name.includes("safari")) {
+    // Safari's default macOS preference omits links from Tab order. Focus still
+    // proves the bypass control can receive focus and activate in this engine.
+    await skipLink.focus();
+  } else {
+    await page.keyboard.press("Tab");
+  }
+  await expect(skipLink).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("main#studio-main")).toBeFocused();
   const homeButton = page.getByRole("button", { name: "Dusk Developer Studio home", exact: true });
   const duskEvmPath = page.getByRole("button", { name: /Start Solidity path/i });
   await homeButton.focus();
@@ -39,13 +62,24 @@ test("keyboard and reduced-motion modes preserve the primary flow", async ({ pag
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#setup$/);
-  await expect(page.getByRole("heading", { name: "Prove your RPC, wallet network, account, and balance read." })).toBeVisible();
+  const setupHeading = page.getByRole("heading", { name: "Prove your RPC, wallet network, account, and balance read." });
+  await expect(setupHeading).toBeFocused();
+  await expect(page).toHaveTitle(/Prove your RPC, wallet network, account, and balance read\. \| Dusk Developer Studio/);
+  const nextStep = page.getByRole("button", { name: "Next: Access" });
+  await nextStep.focus();
+  await page.keyboard.press("Enter");
+  const accessHeading = page.getByRole("heading", { name: "Confirm testnet DUSK is available for gas." });
+  await expect(accessHeading).toBeFocused();
 });
 
 test("narrow and zoom-equivalent layouts reflow without page overflow", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "One deterministic reflow pass covers the shared responsive layout.");
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start Solidity path/i }).click();
   for (const viewport of [
     { width: 320, height: 800, route: "overview" },
+    { width: 320, height: 800, route: "setup" },
+    { width: 390, height: 844, route: "setup" },
     { width: 640, height: 900, route: "setup" }
   ] as const) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -54,15 +88,23 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
       innerWidth: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
       clippedTextCount: Array.from(document.querySelectorAll("main p, main h1, main h2, main h3, main strong, main em"))
-        .filter((element) => element.scrollWidth > element.clientWidth + 1).length
+        .filter((element) => element.scrollWidth > element.clientWidth + 1).length,
+      smallTargetCount: Array.from(document.querySelectorAll<HTMLElement>("button, a[href], input, select"))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden" && (rect.width < 40 || rect.height < 40);
+        }).length
     }));
     expect(layout.scrollWidth).toBeLessThanOrEqual(layout.innerWidth);
     expect(layout.clippedTextCount).toBe(0);
+    expect(layout.smallTargetCount).toBe(0);
   }
 });
 
 test("offline RPC failure stays controlled and retryable", async ({ page, context }) => {
-  await page.goto("/#setup");
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start Solidity path/i }).click();
   await context.setOffline(true);
   await page.getByRole("button", { name: "Run RPC check" }).click();
   await expect(page.getByRole("alert")).toContainText(/browser could not reach|RPC request failed|timed out/i);
@@ -84,6 +126,8 @@ test("built release exposes matching release and assurance receipts", async ({ r
 
 test("critical routes have no automated WCAG A/AA violations", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "One deterministic axe pass covers shared markup; browser projects cover rendering parity.");
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start Solidity path/i }).click();
   for (const route of ["overview", "setup", "reference"] as const) {
     await page.goto(`/#${route}`);
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

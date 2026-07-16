@@ -25,6 +25,16 @@ Evidence: browser/AT versions, tasks, results, critical findings, remediation/ex
 
 Implementation agents may prepare evidence but must not record these reviews as accepted on behalf of the independent reviewers.
 
+## External Monitoring Gate
+
+The in-repository heartbeat watchdog must have a recent passing receipt, and an
+external dead-man or uptime service outside GitHub must observe the public
+Studio origin and alert an assigned owner. Record provider/check identity,
+owner, latest successful observation, and an alert-delivery rehearsal without
+committing credentials. The Phase 5 decision remains no-go until both
+`monitor_heartbeat` and `external_dead_man` satisfy their receipt, identity,
+freshness, outside-GitHub, alert-channel, and missed-ping rehearsal fields.
+
 ## Pilot Cohort
 
 Minimum eight observed sessions:

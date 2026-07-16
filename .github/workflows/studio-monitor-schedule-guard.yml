@@ -1,0 +1,74 @@
+name: Studio same-platform monitor schedule guard
+
+"on":
+  schedule:
+    - cron: "47 4,16 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: studio-monitor-schedule-guard
+  cancel-in-progress: false
+
+jobs:
+  heartbeat:
+    name: Detect a stale or disabled public monitor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - name: Check out the exact watchdog source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: "false"
+      - name: Verify the exact checkout
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Evaluate the public monitor heartbeat
+        id: heartbeat
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/monitor-heartbeat.mjs --max-age-hours=15 --out=output/monitor-heartbeat-receipt.json
+      - name: Upload the bounded heartbeat receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-monitor-heartbeat-${{ github.run_id }}
+          path: output/monitor-heartbeat-receipt.json
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+      - name: Open or update the assigned heartbeat alert
+        if: always() && steps.heartbeat.outcome != 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Studio monitoring heartbeat is stale"
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
+          body="The public assurance workflow is missing, disabled, or has no scheduled run within 15 hours. Watchdog run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" --assignee GeorgianDusk
+          fi
+      - name: Close the heartbeat alert after recovery
+        if: always() && steps.heartbeat.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Studio monitoring heartbeat is stale"
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
+          if [ -n "$issue" ]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "The scheduled public monitor heartbeat recovered in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
+      - name: Enforce heartbeat freshness
+        if: always()
+        run: test "${{ steps.heartbeat.outcome }}" = "success"

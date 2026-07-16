@@ -10,10 +10,29 @@ assert.match(workflow, /^"on":\n {2}workflow_dispatch:/m);
 assert.doesNotMatch(workflow, /^ {2}(?:push|pull_request|schedule):/m);
 assert.match(workflow, /release_tag:[\s\S]*approval_reference:/);
 assert.match(workflow, /test "\$GITHUB_REF" = "refs\/tags\/\$RELEASE_TAG"/);
+assert.equal((workflow.match(/ref: \$\{\{ github\.sha \}\}/g) ?? []).length, 8);
+assert.equal((workflow.match(/git rev-parse HEAD/g) ?? []).length, 8);
+assert.doesNotMatch(workflow, /ref: \$\{\{ inputs\.release_tag \}\}/);
 assert.equal((workflow.match(/environment: studio-companion-signing/g) ?? []).length, 3);
 assert.equal((workflow.match(/id-token: write/g) ?? []).length, 2);
 assert.doesNotMatch(workflow, /contents: write|packages: write|actions: write/);
 assert.doesNotMatch(workflow, /gh release|create-release|softprops\/action-gh-release|release-action/i);
+assert.doesNotMatch(workflow, /name:\s*studio-signed-rc-(?:windows-x64|linux-x64|darwin-arm64)/);
+const uploadedPaths = [];
+for (const step of workflow.split(/\n(?= {6}- )/)) {
+  if (!step.includes("uses: actions/upload-artifact@")) continue;
+  const match = step.match(/path:\s*([^\n]+\.json)/);
+  assert.ok(match, "Signed-RC Actions artifacts must contain bounded JSON evidence only.");
+  uploadedPaths.push(match[1].trim());
+}
+assert.deepEqual(uploadedPaths.sort(), [
+  "${{ runner.temp }}/darwin-arm64.json",
+  "${{ runner.temp }}/linux-x64.json",
+  "${{ runner.temp }}/standalone-signing-evidence.json",
+  "${{ runner.temp }}/windows-x64.json"
+]);
+assert.equal((workflow.match(/name: Stop before candidate transport/g) ?? []).length, 3);
+assert.equal((workflow.match(/name: Stop because private candidate transport is unavailable/g) ?? []).length, 3);
 assert.doesNotMatch(workflow, /products\/developer-testnet-studio|dusk-network\/marketing/);
 assert.match(workflow, /GeorgianDusk\/dusk-developer-studio/);
 
@@ -48,7 +67,7 @@ assert.equal((workflow.match(/--signed-rc-self-test/g) ?? []).length, 3);
 assert.equal((workflow.match(/standalone-target-evidence\.mjs/g) ?? []).length, 3);
 assert.match(workflow, /needs: \[smoke-windows, smoke-linux, smoke-macos\]/);
 assert.match(workflow, /assemble-standalone-signing-evidence\.mjs/);
-assert.match(workflow, /--report-only/);
+assert.doesNotMatch(workflow, /--report-only/);
 assert.match(workflow, /if: always\(\)[\s\S]*security delete-keychain/);
 
 console.log("Standalone signed-RC workflow static security contract passed.");

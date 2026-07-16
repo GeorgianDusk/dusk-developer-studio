@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
 import { setImmediate } from "node:timers";
-import { fetchAvailability, validatePublicHeaders, validateReleaseDocuments } from "./staging-smoke.mjs";
+import { checkPublicPortClosed, fetchAvailability, validatePublicHeaders, validateReleaseDocuments } from "./staging-smoke.mjs";
 
 const headers = new globalThis.Headers({
   "cache-control": "no-cache",
@@ -50,4 +50,22 @@ const fakeGet = (_url, options, callback) => {
 };
 assert.equal(await fetchAvailability("https://docs.dusk.network/developer/overview/", 1_000, fakeGet), 200);
 assert.match(syntheticHeaders.get("user-agent"), /^DuskStudioSynthetic\/1\.0/);
+
+const closedConnect = () => {
+  const socket = new EventEmitter();
+  socket.setTimeout = () => socket;
+  socket.destroy = () => undefined;
+  setImmediate(() => socket.emit("error", Object.assign(new Error("closed"), { code: "ECONNREFUSED" })));
+  return socket;
+};
+assert.deepEqual(await checkPublicPortClosed("studio.example", 5173, closedConnect), { status: "passed", observed: "econnrefused" });
+
+const openConnect = () => {
+  const socket = new EventEmitter();
+  socket.setTimeout = () => socket;
+  socket.destroy = () => undefined;
+  setImmediate(() => socket.emit("connect"));
+  return socket;
+};
+await assert.rejects(checkPublicPortClosed("studio.example", 8788, openConnect), /8788 accepted/);
 console.log("Phase 5 staging smoke fixtures passed.");

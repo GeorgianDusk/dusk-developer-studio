@@ -17,9 +17,9 @@ The Linux identity is supplied by GitHub OIDC and Sigstore. Windows and Apple id
 
 ## Current workflow boundary
 
-The manual signed-RC workflow builds only from the selected protected tag, uses immutable action SHAs, verifies platform trust on fresh hosted runners, and uploads private workflow artifacts plus evidence. It has no push trigger, package publication, GitHub Release creation, deployment, or public-download step.
+The manual signed-RC workflow is intentionally blocked at readiness. It resolves the selected protected tag to one immutable workflow commit and every checkout uses that commit, but no private signed-candidate transport has been implemented. Candidate binaries must never use GitHub Actions artifacts or draft releases; the workflow leaves any locally produced candidate on its signing runner and fails before transport. Only bounded JSON evidence may use Actions artifacts after a future reviewed transport makes fresh-runner checks possible.
 
-`config/companion-standalone-signing-policy.json` remains fail-closed: `publication_enabled` is `false`, and Windows/Apple identity fields remain blank until real identities are configured and reviewed.
+`config/companion-standalone-signing-policy.json` remains fail-closed: `publication_enabled` and `candidate_transport.enabled` are `false`, the transport provider is `none`, and Windows/Apple identity fields remain blank until real identities and a separately reviewed private transport are configured.
 
 ## Publication gates
 
@@ -27,9 +27,10 @@ A public binary release requires all of the following for the exact final hashes
 
 1. A clean tagged commit and passing source, secret, dependency, unit, build, browser, and platform gates.
 2. Valid Windows publisher identity and timestamp, Linux Sigstore bundle and transparency evidence, and Apple Developer ID/notarization/stapling evidence.
-3. Fresh-machine installation, self-test, closed-port, cleanup, uninstall, quarantine, and reputation checks on supported operating systems.
-4. Independent companion security review and resolution of every release-blocking finding.
-5. Documented support owner, incident route, rollback procedure, and compatibility statement.
-6. Explicit maintainer approval to change `publication_enabled` and a separately reviewed publication workflow.
+3. A separately reviewed private candidate transport that prevents public access and binds every transfer to the exact candidate digest. GitHub Actions artifacts and draft releases are not approved candidate transports.
+4. Fresh-machine installation, self-test, closed-port, cleanup, uninstall, quarantine, and reputation checks on supported operating systems.
+5. Independent companion security review and resolution of every release-blocking finding.
+6. Documented support owner, incident route, rollback procedure, and compatibility statement.
+7. Explicit maintainer approval to change `publication_enabled` and a separately reviewed publication workflow.
 
 Until those gates pass, GitHub source is the canonical distribution. Developers may run a reviewed source checkout, but no unsigned executable should be promoted as a trusted download.

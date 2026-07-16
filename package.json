@@ -20,7 +20,7 @@
     "preview": "pnpm --filter @dusk/studio preview",
     "lint": "eslint apps packages scripts tests --ext .ts,.tsx,.mjs",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
-    "test": "vitest run && node scripts/test-public-repository.mjs && node scripts/test-source-freshness.mjs && node scripts/test-source-boundary.mjs && node scripts/test-release-manifest.mjs && node scripts/test-assurance.mjs && node scripts/test-phase5-evidence.mjs && node scripts/test-staging-smoke.mjs && node scripts/test-companion-release.mjs && node scripts/test-companion-archive.mjs && node scripts/test-companion-distribution-prototypes.mjs && node scripts/test-standalone-signing-evidence.mjs && node scripts/test-standalone-rc-tooling.mjs && node scripts/test-standalone-release-workflow.mjs",
+    "test": "vitest run && node scripts/test-public-repository.mjs && node scripts/test-source-freshness.mjs && node scripts/test-source-boundary.mjs && node scripts/test-release-manifest.mjs && node scripts/test-assurance.mjs && node scripts/test-phase5-evidence.mjs && node scripts/test-staging-smoke.mjs && node scripts/test-monitor-heartbeat.mjs && node scripts/test-companion-release.mjs && node scripts/test-companion-archive.mjs && node scripts/test-companion-distribution-prototypes.mjs && node scripts/test-standalone-signing-evidence.mjs && node scripts/test-standalone-rc-tooling.mjs && node scripts/test-standalone-release-workflow.mjs",
     "e2e": "playwright test",
     "e2e:public": "playwright test tests/e2e/public-release.spec.ts --project=chromium-desktop --project=mobile-chrome",
     "verify:local": "pnpm check:boundary && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:release && pnpm check:assurance",

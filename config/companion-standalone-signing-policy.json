@@ -8,6 +8,11 @@
   "release_tag_pattern": "^studio-companion-v\\d+\\.\\d+\\.\\d+-rc\\.\\d+$",
   "publication_enabled": false,
   "publication_blocker": "The independent maintainer's Windows and Apple signing identities are not configured, and no signed clean-machine release candidate has passed.",
+  "candidate_transport": {
+    "enabled": false,
+    "provider": "none",
+    "blocker": "No private signed-candidate transport has been implemented and independently reviewed; candidate binaries must not use GitHub Actions artifacts or draft releases."
+  },
   "runner_labels": {
     "windows-x64": "windows-2025",
     "linux-x64": "ubuntu-24.04",

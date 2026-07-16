@@ -50,6 +50,12 @@ export function evaluateStandaloneSigningReadiness(policy, options = {}) {
   const tagRegex = releaseTagRegex(policy);
   if (!tagRegex) blockers.push("Release tag policy is invalid.");
   else if (!tagRegex.test(options.releaseTag ?? "")) blockers.push("Release tag does not match the signed-RC policy.");
+  const transport = policy?.candidate_transport;
+  if (transport?.enabled !== false || transport?.provider !== "none" || typeof transport?.blocker !== "string" || !transport.blocker.trim()) {
+    blockers.push("Candidate transport policy must remain fail-closed until a private transport is implemented and reviewed.");
+  } else {
+    blockers.push(transport.blocker);
+  }
   const requiredTargets = Object.keys(TARGET_CONTRACT).sort();
   const policyTargets = Object.keys(policy?.targets ?? {}).sort();
   if (JSON.stringify(requiredTargets) !== JSON.stringify(policyTargets)) blockers.push("Signing policy must cover the exact supported target set.");

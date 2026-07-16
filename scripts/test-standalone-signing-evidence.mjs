@@ -25,10 +25,16 @@ readyPolicy.publication_enabled = true;
 readyPolicy.publication_blocker = "";
 readyPolicy.targets["windows-x64"].approved_identity = "CN=Dusk Network B.V., O=Dusk Network B.V., C=NL";
 readyPolicy.targets["darwin-arm64"].approved_identity = "DUSKTEAM01";
-assert.equal(evaluateStandaloneSigningReadiness(readyPolicy, { releaseTag }).decision, "ready");
+const identityReady = evaluateStandaloneSigningReadiness(readyPolicy, { releaseTag });
+assert.equal(identityReady.decision, "blocked");
+assert.ok(identityReady.blockers.includes(policy.candidate_transport.blocker));
 const weakenedPolicy = clone(readyPolicy);
 weakenedPolicy.targets["windows-x64"].required_checks.pop();
 assert.match(evaluateStandaloneSigningReadiness(weakenedPolicy, { releaseTag }).blockers.join("\n"), /windows-x64 required checks are invalid/);
+const transportBypass = clone(readyPolicy);
+transportBypass.candidate_transport.enabled = true;
+transportBypass.candidate_transport.provider = "draft-release";
+assert.match(evaluateStandaloneSigningReadiness(transportBypass, { releaseTag }).blockers.join("\n"), /must remain fail-closed/);
 
 const targets = Object.fromEntries(Object.entries(readyPolicy.targets).map(([target, targetPolicy]) => [target, {
   schema_version: 1,
@@ -63,7 +69,9 @@ assert.equal(blockedEvidence.decision, "no-go");
 assert.ok(blockedEvidence.blockers.includes(policy.publication_blocker));
 assert.ok(blockedEvidence.blockers.includes("windows-x64 platform identity is not configured."));
 assert.ok(blockedEvidence.blockers.includes("darwin-arm64 platform identity is not configured."));
-assert.equal(evaluateStandaloneSigningEvidence(readyPolicy, evidence).decision, "go");
+const identityReadyEvidence = evaluateStandaloneSigningEvidence(readyPolicy, evidence);
+assert.equal(identityReadyEvidence.decision, "no-go");
+assert.ok(identityReadyEvidence.blockers.includes(policy.candidate_transport.blocker));
 
 const missingNotarization = clone(evidence);
 missingNotarization.targets["darwin-arm64"].checks.notarized = false;
