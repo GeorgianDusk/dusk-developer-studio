@@ -10,7 +10,8 @@ for (const file of [
   ".github/CODEOWNERS", ".github/dependabot.yml",
   ".github/workflows/studio-linux-security.yml",
   ".github/workflows/platform-caddy-security.yml",
-  ".github/workflows/studio-companion-signed-rc.yml"
+  ".github/workflows/studio-companion-signed-rc.yml",
+  ".github/workflows/studio-public-staging.yml"
 ]) assert.ok(fs.existsSync(path.join(root, file)), `Missing public repository contract: ${file}`);
 
 const packageJson = JSON.parse(read("package.json"));
@@ -33,7 +34,8 @@ assert.match(policy.targets["linux-x64"].identity_template, /GeorgianDusk\/dusk-
 const workflows = [
   ".github/workflows/studio-linux-security.yml",
   ".github/workflows/platform-caddy-security.yml",
-  ".github/workflows/studio-companion-signed-rc.yml"
+  ".github/workflows/studio-companion-signed-rc.yml",
+  ".github/workflows/studio-public-staging.yml"
 ].map((file) => [file, read(file)]);
 for (const [file, workflow] of workflows) {
   assert.doesNotMatch(workflow, /dusk-network\/marketing|products\/developer-testnet-studio/);
@@ -44,6 +46,11 @@ for (const [file, workflow] of workflows) {
 const signedWorkflow = read(".github/workflows/studio-companion-signed-rc.yml");
 assert.doesNotMatch(signedWorkflow, /^\s+(?:push|pull_request|schedule):/m);
 assert.doesNotMatch(signedWorkflow, /gh release|create-release|softprops\/action-gh-release|release-action/i);
+
+const publicStagingWorkflow = read(".github/workflows/studio-public-staging.yml");
+assert.match(publicStagingWorkflow, /^"on":\n {2}workflow_dispatch:/m);
+assert.doesNotMatch(publicStagingWorkflow, /^ {2}(?:push|pull_request|schedule):/m);
+assert.match(publicStagingWorkflow, /--commit="\$GITHUB_SHA"/);
 
 const caddy = read("deploy/caddy/studio.caddy");
 assert.doesNotMatch(caddy, /reverse_proxy|127\.0\.0\.1|localhost|8788|basic_auth|basicauth|\/login/i);

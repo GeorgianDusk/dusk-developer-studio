@@ -92,6 +92,7 @@ export function validateReleaseDocuments(manifest, assurance, options = {}) {
   const blockers = [];
   if (!manifest || manifest.schema_version !== 2 || manifest.product !== "Dusk Developer Studio") blockers.push("Release manifest identity/schema is invalid.");
   if (!COMMIT_RE.test(manifest?.commit ?? "")) blockers.push("Release candidate does not identify one clean full Git commit.");
+  if (options.expectedCommit && manifest?.commit !== options.expectedCommit) blockers.push(`Release commit is ${manifest?.commit ?? "missing"}, expected ${options.expectedCommit}.`);
   if (manifest?.environment !== (options.expectedEnvironment ?? "staging")) blockers.push(`Release environment is ${manifest?.environment ?? "missing"}, expected ${options.expectedEnvironment ?? "staging"}.`);
   for (const gate of REQUIRED_PREDEPLOY_ASSURANCE) if (manifest?.assurance?.[gate] !== "passed") blockers.push(`Predeployment assurance ${gate} has not passed.`);
   if (!assurance || assurance.schema_version !== 1 || assurance.assets?.status !== "passed" || assurance.deployment_headers?.status !== "passed" || assurance.source_links_and_schema?.status !== "passed") blockers.push("Assurance receipt is incomplete.");
@@ -188,7 +189,10 @@ export async function runStagingSmoke(options) {
     if (!/application\/json/i.test(manifestResult.response.headers.get("content-type") ?? "") || !/application\/json/i.test(assuranceResult.response.headers.get("content-type") ?? "")) throw new Error("Release receipts are not served as JSON.");
     manifest = JSON.parse(manifestResult.body.toString("utf8"));
     assurance = JSON.parse(assuranceResult.body.toString("utf8"));
-    const blockers = [...headerBlockers, ...validateReleaseDocuments(manifest, assurance, { expectedEnvironment: options.expectedEnvironment })];
+    const blockers = [...headerBlockers, ...validateReleaseDocuments(manifest, assurance, {
+      expectedEnvironment: options.expectedEnvironment,
+      expectedCommit: options.expectedCommit
+    })];
     if (blockers.length) throw new Error(blockers.join(" "));
     for (const artifact of manifest.artifacts) {
       const artifactResult = await fetchBounded(new URL(`/${artifact.path}`, baseUrl), { maxBytes: Math.max(artifact.bytes + 1, 64_000) });
