@@ -1,0 +1,74 @@
+name: Studio public staging assurance
+
+"on":
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: Approved Studio staging or production origin
+        required: true
+        default: https://studio.134-122-59-217.sslip.io
+        type: string
+      expected_environment:
+        description: Expected release-manifest environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-public-staging-assurance
+  cancel-in-progress: true
+
+jobs:
+  public-release:
+    name: Exact public release, routes, TLS, and degradation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      TARGET_URL: ${{ github.event.inputs.target_url }}
+      EXPECTED_ENVIRONMENT: ${{ github.event.inputs.expected_environment }}
+      DUSK_STUDIO_PUBLIC_URL: ${{ github.event.inputs.target_url }}
+      DUSK_STUDIO_EXPECTED_ENVIRONMENT: ${{ github.event.inputs.expected_environment }}
+      CI: "true"
+    steps:
+      - name: Check out the exact source under test
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+      - name: Use the verified Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.11.0
+          package-manager-cache: "false"
+      - name: Enable repository-pinned pnpm
+        run: |
+          corepack enable
+          corepack install --global pnpm@11.7.0
+      - name: Restore frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run receipt, exact-commit, TLS, source, RPC, and closed-port checks
+        id: synthetic
+        continue-on-error: true
+        run: node scripts/check-staging.mjs --url="$TARGET_URL" --environment="$EXPECTED_ENVIRONMENT" --commit="$GITHUB_SHA" --out=output/public-synthetic-receipt.json
+      - name: Install Chromium for hosted desktop and mobile checks
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Run public routes and controlled RPC degradation checks
+        run: pnpm e2e:public
+      - name: Upload the bounded synthetic receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-public-synthetic-receipt-${{ github.run_id }}
+          path: output/public-synthetic-receipt.json
+          if-no-files-found: ignore
+          retention-days: 14
+          compression-level: 0
+      - name: Enforce synthetic assurance result
+        if: always()
+        run: test "${{ steps.synthetic.outcome }}" = "success"

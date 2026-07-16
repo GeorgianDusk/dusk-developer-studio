@@ -31,6 +31,7 @@ const manifest = {
   assurance_receipt_sha256: assuranceDigest,
   artifacts: [{ path: "index.html", sha256: "b".repeat(64), bytes: 5 }]
 };
+assert.match(validateReleaseDocuments(manifest, assurance, { expectedEnvironment: "staging", expectedCommit: "c".repeat(40) }).join("\n"), /Release commit is/);
 assert.deepEqual(validateReleaseDocuments(manifest, assurance, { expectedEnvironment: "staging" }), []);
 assert.match(validateReleaseDocuments({ ...manifest, commit: `${"a".repeat(40)}-dirty` }, assurance, { expectedEnvironment: "staging" }).join("\n"), /clean full Git commit/);
 assert.match(validateReleaseDocuments({ ...manifest, assurance: { ...manifest.assurance, source_access: "not-run" } }, assurance, { expectedEnvironment: "staging" }).join("\n"), /source_access/);
