@@ -30,6 +30,25 @@ function expectedActionsRunUrl(value, repository) {
   }
 }
 
+function expectedDirectHealthTarget(value, manifestUrl) {
+  try {
+    const target = new URL(value);
+    const manifest = new URL(manifestUrl);
+    return target.protocol === "https:"
+      && !target.username
+      && !target.password
+      && !target.port
+      && target.href === `${target.origin}/healthz`
+      && manifest.protocol === "https:"
+      && !manifest.username
+      && !manifest.password
+      && !manifest.port
+      && target.origin === manifest.origin;
+  } catch {
+    return false;
+  }
+}
+
 function checkForSecretFields(value, path = "evidence", findings = []) {
   if (Array.isArray(value)) value.forEach((item, index) => checkForSecretFields(item, `${path}[${index}]`, findings));
   else if (value && typeof value === "object") {
@@ -177,6 +196,33 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
       || !freshDate(external.missed_ping_rehearsed_at, now, externalRehearsalMaxAge)
       || !present(external.rehearsal_reference)) {
     blockers.push("External dead-man evidence lacks an outside-GitHub provider/check, fresh success, verified out-of-band alert, or recent missed-ping rehearsal.");
+  }
+  const directHealth = checks.external_direct_health ?? {};
+  const directHealthMaxAge = monitoringPolicy.direct_health_max_age_hours * 60 * 60 * 1_000;
+  const directAlertAt = Date.parse(directHealth.alert_rehearsed_at);
+  const directRecoveredAt = Date.parse(directHealth.recovered_at);
+  const directSuccessAt = Date.parse(directHealth.latest_success_at);
+  const directRecoveryChronology = Number.isFinite(directAlertAt)
+    && Number.isFinite(directRecoveredAt)
+    && Number.isFinite(directSuccessAt)
+    && directAlertAt < directRecoveredAt
+    && directRecoveredAt < directSuccessAt;
+  if (directHealth.outside_github !== true
+      || !present(directHealth.provider) || /github/i.test(directHealth.provider)
+      || !present(directHealth.check_id) || directHealth.check_id === external.check_id
+      || !expectedDirectHealthTarget(directHealth.target_url, candidate.manifest_url)
+      || directHealth.response_status !== 200
+      || directHealth.body_match !== "ok"
+      || directHealth.tls_verified !== true
+      || !present(directHealth.alert_channel) || /github/i.test(directHealth.alert_channel)
+      || directHealth.alert_delivery_verified !== true
+      || !freshDate(directHealth.latest_success_at, now, directHealthMaxAge)
+      || !freshDate(directHealth.alert_rehearsed_at, now, externalRehearsalMaxAge)
+      || directHealth.recovery_verified !== true
+      || !freshDate(directHealth.recovered_at, now, externalRehearsalMaxAge)
+      || !directRecoveryChronology
+      || !present(directHealth.rehearsal_reference)) {
+    blockers.push("External direct health evidence lacks a separate outside-GitHub /healthz check, exact target, fresh 200/ok/TLS success, or chronological verified alert-to-recovery proof.");
   }
   if (synthetics.alert_delivery_verified !== true || !validDate(synthetics.checked_at)) blockers.push("Synthetic alert delivery is not verified with a timestamp.");
 

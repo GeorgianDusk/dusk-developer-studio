@@ -10,6 +10,19 @@ const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
 const REQUIRED_PREDEPLOY_ASSURANCE = ["dependency_audit", "secret_scan", "browser_matrix", "source_access"];
 const SYNTHETIC_USER_AGENT = "DuskStudioSynthetic/1.0 (+https://github.com/GeorgianDusk/dusk-developer-studio)";
+export const ASSURANCE_CHECK_OWNERSHIP = Object.freeze({
+  public_health: "studio",
+  key_routes: "studio",
+  release_parity: "studio",
+  source_links: "upstream",
+  rpc_chain_id: "upstream",
+  rpc_degradation: "studio",
+  tls_expiry: "studio",
+  development_port_closed: "studio",
+  companion_port_closed: "studio"
+});
+export const STUDIO_ASSURANCE_INCIDENT_TITLE = "Studio public deployment assurance failed";
+export const UPSTREAM_ASSURANCE_INCIDENT_TITLE = "Studio upstream dependency unavailable";
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -19,7 +32,7 @@ async function fetchBounded(url, options = {}) {
   const controller = new globalThis.AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
   try {
-    const response = await globalThis.fetch(url, { ...options, signal: controller.signal, redirect: "follow" });
+    const response = await globalThis.fetch(url, { ...options, signal: controller.signal, redirect: options.redirect ?? "error" });
     const limit = options.maxBytes ?? 2_000_000;
     const declared = Number(response.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > limit) throw new Error(`${url} exceeds the ${limit}-byte response limit.`);
@@ -143,6 +156,78 @@ export function checkPublicPortClosed(hostname, port, connect = net.connect) {
   });
 }
 
+export function validateAssuranceTargetOrigin(value, policy) {
+  let target;
+  try {
+    target = new URL(value);
+  } catch {
+    throw new Error("Public assurance target must be one valid URL.");
+  }
+  if (target.protocol !== "https:") throw new Error("Public assurance target must use HTTPS.");
+  if (target.username || target.password) throw new Error("Public assurance target must not contain user information.");
+  if (target.port) throw new Error("Public assurance target must use the default HTTPS port.");
+  if (target.href !== `${target.origin}/`) throw new Error("Public assurance target must be an exact origin with no path, query, or fragment.");
+  if (!Array.isArray(policy?.candidate_hosts) || !policy.candidate_hosts.includes(target.hostname)) {
+    throw new Error(`Target host ${target.hostname} is not approved by Phase 5 policy.`);
+  }
+  return target;
+}
+
+export function validateStudioEvidenceResponse(requestedUrl, expectedOrigin, response) {
+  const requested = new URL(requestedUrl);
+  let finalUrl;
+  try {
+    finalUrl = new URL(response?.url);
+  } catch {
+    throw new Error(`Studio evidence for ${requested.pathname} has no valid final URL.`);
+  }
+  if (response.redirected === true || (response.status >= 300 && response.status < 400)) {
+    throw new Error(`Studio evidence for ${requested.pathname} must not follow or accept redirects.`);
+  }
+  if (requested.origin !== expectedOrigin || finalUrl.origin !== expectedOrigin || finalUrl.href !== requested.href) {
+    throw new Error(`Studio evidence for ${requested.pathname} did not finish at the exact requested origin and URL.`);
+  }
+}
+
+export async function fetchStudioEvidence(baseUrl, pathname, options = {}, boundedFetch = fetchBounded) {
+  const target = new URL(pathname, baseUrl);
+  if (target.origin !== baseUrl.origin) throw new Error(`Studio evidence path ${pathname} escapes the approved origin.`);
+  const result = await boundedFetch(target, { ...options, redirect: "manual" });
+  validateStudioEvidenceResponse(target, baseUrl.origin, result.response);
+  return result;
+}
+
+export function classifyAssuranceChecks(checks) {
+  const observedChecks = checks && typeof checks === "object" && !Array.isArray(checks) ? checks : {};
+  const ownedChecks = Object.entries(ASSURANCE_CHECK_OWNERSHIP);
+  const studioChecks = ownedChecks.filter(([, owner]) => owner === "studio").map(([name]) => name);
+  const upstreamChecks = ownedChecks.filter(([, owner]) => owner === "upstream").map(([name]) => name);
+  const unclassifiedChecks = Object.keys(observedChecks).filter((name) => !Object.hasOwn(ASSURANCE_CHECK_OWNERSHIP, name));
+  const groupStatus = (names) => names.every((name) => observedChecks[name]?.status === "passed") ? "passed" : "failed";
+  return {
+    studio_status: groupStatus([...studioChecks, ...unclassifiedChecks]),
+    upstream_dependency_status: groupStatus(upstreamChecks)
+  };
+}
+
+export function selectAssuranceIncidentTitle(browserOutcome, syntheticOutcome, classification = {}) {
+  return browserOutcome === "success"
+    && syntheticOutcome === "failure"
+    && classification.studio_status === "passed"
+    && classification.upstream_dependency_status === "failed"
+    ? UPSTREAM_ASSURANCE_INCIDENT_TITLE
+    : STUDIO_ASSURANCE_INCIDENT_TITLE;
+}
+
+export function selectScheduledHeartbeatSignal(browserOutcome, syntheticOutcome, classification = {}) {
+  return browserOutcome === "success"
+    && syntheticOutcome === "success"
+    && classification.studio_status === "passed"
+    && classification.upstream_dependency_status === "passed"
+    ? "success"
+    : "failure";
+}
+
 async function checkRpc(rpcUrl, expectedChainId) {
   const { response, body } = await fetchBounded(rpcUrl, {
     method: "POST",
@@ -157,9 +242,7 @@ async function checkRpc(rpcUrl, expectedChainId) {
 }
 
 export async function runStagingSmoke(options) {
-  const baseUrl = new URL(options.baseUrl);
-  if (baseUrl.protocol !== "https:") throw new Error("Staging smoke requires HTTPS.");
-  if (!options.policy.candidate_hosts.includes(baseUrl.hostname)) throw new Error(`Target host ${baseUrl.hostname} is not approved by Phase 5 policy.`);
+  const baseUrl = validateAssuranceTargetOrigin(options.baseUrl, options.policy);
   const checks = {};
   const errors = [];
   const record = async (name, operation) => {
@@ -170,14 +253,14 @@ export async function runStagingSmoke(options) {
   let manifest;
   let assurance;
   await record("public_health", async () => {
-    const { response, body } = await fetchBounded(new URL("/healthz", baseUrl), { maxBytes: 64 });
+    const { response, body } = await fetchStudioEvidence(baseUrl, "/healthz", { maxBytes: 64 });
     const blockers = validatePublicHeaders(response.headers, "health");
     if (!response.ok || body.toString("utf8").trim() !== "ok" || blockers.length) throw new Error(blockers.join(" ") || `Health returned ${response.status}.`);
     return { status: "passed" };
   });
   await record("key_routes", async () => {
-    const { response, body } = await fetchBounded(new URL("/", baseUrl), { maxBytes: 64_000 });
-    const fallback = await fetchBounded(new URL("/not-a-real-studio-file", baseUrl), { maxBytes: 64_000 });
+    const { response, body } = await fetchStudioEvidence(baseUrl, "/", { maxBytes: 64_000 });
+    const fallback = await fetchStudioEvidence(baseUrl, "/not-a-real-studio-file", { maxBytes: 64_000 });
     const blockers = [...validatePublicHeaders(response.headers, "html"), ...validatePublicHeaders(fallback.response.headers, "html")];
     const html = body.toString("utf8");
     const fallbackHtml = fallback.body.toString("utf8");
@@ -185,8 +268,8 @@ export async function runStagingSmoke(options) {
     return { status: "passed", spa_fallback_cache: "no-cache" };
   });
   await record("release_parity", async () => {
-    const manifestResult = await fetchBounded(new URL("/release-manifest.json", baseUrl), { maxBytes: 256_000 });
-    const assuranceResult = await fetchBounded(new URL("/assurance-receipt.json", baseUrl), { maxBytes: 256_000 });
+    const manifestResult = await fetchStudioEvidence(baseUrl, "/release-manifest.json", { maxBytes: 256_000 });
+    const assuranceResult = await fetchStudioEvidence(baseUrl, "/assurance-receipt.json", { maxBytes: 256_000 });
     const headerBlockers = [...validatePublicHeaders(manifestResult.response.headers, "receipt"), ...validatePublicHeaders(assuranceResult.response.headers, "receipt")];
     if (!/application\/json/i.test(manifestResult.response.headers.get("content-type") ?? "") || !/application\/json/i.test(assuranceResult.response.headers.get("content-type") ?? "")) throw new Error("Release receipts are not served as JSON.");
     manifest = JSON.parse(manifestResult.body.toString("utf8"));
@@ -197,7 +280,7 @@ export async function runStagingSmoke(options) {
     })];
     if (blockers.length) throw new Error(blockers.join(" "));
     for (const artifact of manifest.artifacts) {
-      const artifactResult = await fetchBounded(new URL(`/${artifact.path}`, baseUrl), { maxBytes: Math.max(artifact.bytes + 1, 64_000) });
+      const artifactResult = await fetchStudioEvidence(baseUrl, `/${artifact.path}`, { maxBytes: Math.max(artifact.bytes + 1, 64_000) });
       if (!artifactResult.response.ok || artifactResult.body.byteLength !== artifact.bytes || sha256(artifactResult.body) !== artifact.sha256) throw new Error(`Artifact parity failed for ${artifact.path}.`);
       if (artifact.path.startsWith("assets/")) {
         const cacheBlockers = validatePublicHeaders(artifactResult.response.headers, "asset");
@@ -220,12 +303,14 @@ export async function runStagingSmoke(options) {
   await record("development_port_closed", () => checkPublicPortClosed(baseUrl.hostname, 5173));
   await record("companion_port_closed", () => checkPublicPortClosed(baseUrl.hostname, 8788));
 
+  const classification = classifyAssuranceChecks(checks);
   return {
     schema_version: 1,
     checked_at: new Date().toISOString(),
     target: baseUrl.origin,
     expected_environment: options.expectedEnvironment,
     status: errors.length ? "failed" : "passed",
+    ...classification,
     checks,
     errors
   };

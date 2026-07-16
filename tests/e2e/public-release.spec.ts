@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import type { APIRequestContext, APIResponse, BrowserContext, Page } from "@playwright/test";
 
 const expectedEnvironment = process.env.DUSK_STUDIO_EXPECTED_ENVIRONMENT ?? "staging";
 const requiresPublicCandidate = expectedEnvironment === "staging" || expectedEnvironment === "production";
+const publicOrigin = new URL(process.env.DUSK_STUDIO_PUBLIC_URL ?? "http://127.0.0.1:5173").origin;
+const allowedRpcOrigin = new URL("https://rpc.testnet.evm.dusk.network").origin;
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
   ["setup", "Prove your RPC, wallet network, account, and balance read."],
@@ -15,8 +18,44 @@ const routes = [
   ["settings", "Know exactly what this build knows."]
 ] as const;
 
-test("public candidate exposes the exact release across key routes", async ({ page, request }) => {
-  const rootResponse = await request.get("/");
+async function getExact(request: APIRequestContext, pathname: string): Promise<APIResponse> {
+  const expected = new URL(pathname, `${publicOrigin}/`);
+  expect(expected.origin, pathname).toBe(publicOrigin);
+  const response = await request.get(expected.href, { maxRedirects: 0 });
+  expect(response.status(), pathname).not.toBeGreaterThanOrEqual(300);
+  expect(response.url(), pathname).toBe(expected.href);
+  expect(new URL(response.url()).origin, pathname).toBe(publicOrigin);
+  return response;
+}
+
+async function installPublicRequestBoundary(context: BrowserContext): Promise<void> {
+  await context.route("**/*", async (route) => {
+    const request = route.request();
+    const requestUrl = new URL(request.url());
+    const isAllowedRpcRead = (request.resourceType() === "fetch" || request.resourceType() === "xhr") && requestUrl.origin === allowedRpcOrigin;
+    if (requestUrl.origin !== publicOrigin && !isAllowedRpcRead) {
+      await route.abort("blockedbyclient");
+      return;
+    }
+    await route.continue();
+  });
+}
+
+async function gotoExact(page: Page, pathname: string): Promise<void> {
+  const expected = new URL(pathname, `${publicOrigin}/`);
+  const expectedRequest = new URL(expected);
+  expectedRequest.hash = "";
+  const response = await page.goto(expected.href);
+  if (response) {
+    expect(response.request().redirectedFrom(), pathname).toBeNull();
+    expect(response.url(), pathname).toBe(expectedRequest.href);
+    expect(new URL(response.url()).origin, pathname).toBe(publicOrigin);
+  }
+  expect(page.url(), pathname).toBe(expected.href);
+}
+
+test("public candidate exposes the exact release across key routes", async ({ page, request, context }) => {
+  const rootResponse = await getExact(request, "/");
   expect(rootResponse.ok()).toBeTruthy();
   if (requiresPublicCandidate) {
     const rootHeaders = rootResponse.headers();
@@ -25,16 +64,17 @@ test("public candidate exposes the exact release across key routes", async ({ pa
     expect(rootHeaders["cache-control"]).toMatch(/no-cache/i);
   }
 
-  await page.goto("/");
+  await installPublicRequestBoundary(context);
+  await gotoExact(page, "/");
   await page.getByRole("button", { name: /Start Solidity path/i }).click();
   for (const [route, heading] of routes) {
-    await page.goto(`/#${route}`);
+    await gotoExact(page, `/#${route}`);
     await expect(page).toHaveTitle(`${heading} | Dusk Developer Studio`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
 
-  const manifestResponse = await request.get("/release-manifest.json");
-  const assuranceResponse = await request.get("/assurance-receipt.json");
+  const manifestResponse = await getExact(request, "/release-manifest.json");
+  const assuranceResponse = await getExact(request, "/assurance-receipt.json");
   expect(manifestResponse.headers()["content-type"]).toMatch(/application\/json/i);
   expect(assuranceResponse.headers()["content-type"]).toMatch(/application\/json/i);
   if (requiresPublicCandidate) {
@@ -47,7 +87,7 @@ test("public candidate exposes the exact release across key routes", async ({ pa
   expect(manifest.commit).toMatch(requiresPublicCandidate ? /^[a-f0-9]{40}$/ : /^[a-f0-9]{40}(?:-dirty)?$/);
   expect(createHash("sha256").update(assuranceBody).digest("hex")).toBe(manifest.assurance_receipt_sha256);
   for (const artifact of manifest.artifacts as Array<{ path: string; sha256: string; bytes: number }>) {
-    const response = await request.get(`/${artifact.path}`);
+    const response = await getExact(request, `/${artifact.path}`);
     const body = await response.body();
     expect(response.ok(), artifact.path).toBeTruthy();
     expect(body.byteLength, artifact.path).toBe(artifact.bytes);
@@ -56,7 +96,8 @@ test("public candidate exposes the exact release across key routes", async ({ pa
 });
 
 test("public candidate presents a controlled offline RPC recovery", async ({ page, context }) => {
-  await page.goto("/");
+  await installPublicRequestBoundary(context);
+  await gotoExact(page, "/");
   await page.getByRole("button", { name: /Start Solidity path/i }).click();
   await context.setOffline(true);
   await page.getByRole("button", { name: "Run RPC check" }).click();

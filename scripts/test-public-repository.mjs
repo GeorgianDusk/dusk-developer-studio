@@ -13,7 +13,8 @@ for (const file of [
   ".github/workflows/studio-companion-signed-rc.yml",
   ".github/workflows/studio-public-staging.yml",
   ".github/workflows/studio-monitor-schedule-guard.yml",
-  "docs/operations/public-monitoring.md"
+  "docs/operations/public-monitoring.md",
+  "docs/deployment/project-domain-migration.md"
 ]) assert.ok(fs.existsSync(path.join(root, file)), `Missing public repository contract: ${file}`);
 
 const packageJson = JSON.parse(read("package.json"));
@@ -68,7 +69,50 @@ assert.match(publicStagingWorkflow, /issues: write/);
 assert.match(publicStagingWorkflow, /gh issue create[\s\S]*--assignee GeorgianDusk/);
 assert.match(publicStagingWorkflow, /gh issue close/);
 assert.match(publicStagingWorkflow, /secrets\.STUDIO_MONITOR_HEARTBEAT_URL/);
+assert.match(publicStagingWorkflow, /secrets\.STUDIO_MONITOR_HEARTBEAT_FAIL_URL/);
 assert.match(publicStagingWorkflow, /curl --proto '=https'[\s\S]*EXTERNAL_HEARTBEAT_URL/);
+assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_URL/);
+assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_ENVIRONMENT/);
+assert.doesNotMatch(publicStagingWorkflow, /default:\s*https:\/\/studio\.134-122-59-217\.sslip\.io/);
+assert.match(publicStagingWorkflow, /expected_environment:[\s\S]*default: repository-default[\s\S]*- repository-default/);
+assert.match(publicStagingWorkflow, /case "\$EXPECTED_ENVIRONMENT" in staging\|production/);
+assert.match(publicStagingWorkflow, /validateAssuranceTargetOrigin\(process\.env\.TARGET_URL, policy\)/);
+assert.ok(publicStagingWorkflow.indexOf("validateAssuranceTargetOrigin(process.env.TARGET_URL, policy)") < publicStagingWorkflow.indexOf("run: pnpm e2e:public"), "Target policy must be validated before Playwright makes network requests.");
+assert.match(publicStagingWorkflow, /Studio upstream dependency unavailable/);
+assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.studio_status/);
+assert.match(publicStagingWorkflow, /selectAssuranceIncidentTitle/);
+assert.match(publicStagingWorkflow, /selectAssuranceIncidentTitle\(process\.env\.BROWSER_OUTCOME, process\.env\.SYNTHETIC_OUTCOME, classification\)/);
+assert.match(publicStagingWorkflow, /selectScheduledHeartbeatSignal/);
+assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.heartbeat_signal == 'success'/);
+assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.heartbeat_signal != 'success'/);
+assert.match(publicStagingWorkflow, /for other_title in "Studio public deployment assurance failed" "Studio upstream dependency unavailable"/);
+assert.match(publicStagingWorkflow, /Reclassified into #\$issue by failed scheduled assurance/);
+assert.ok(publicStagingWorkflow.indexOf('issue_url="$(gh issue create') < publicStagingWorkflow.indexOf('for other_title in "Studio public deployment assurance failed"'), "The selected incident must be open before other component titles are reclassified.");
+const publicReleaseSpec = read("tests/e2e/public-release.spec.ts");
+assert.match(publicReleaseSpec, /request\.get\(expected\.href, \{ maxRedirects: 0 \}\)/);
+assert.match(publicReleaseSpec, /context\.route\("\*\*\/\*"/);
+assert.match(publicReleaseSpec, /route\.abort\("blockedbyclient"\)/);
+assert.match(publicReleaseSpec, /requestUrl\.origin !== publicOrigin/);
+assert.match(publicReleaseSpec, /rpc\.testnet\.evm\.dusk\.network/);
+assert.match(publicReleaseSpec, /redirectedFrom\(\)/);
+assert.match(publicReleaseSpec, /expect\(page\.url\(\), pathname\)\.toBe\(expected\.href\)/);
+assert.match(read("docs/operations/public-monitoring.md"), /STUDIO_MONITOR_HEARTBEAT_FAIL_URL/);
+assert.match(read("docs/operations/public-monitoring.md"), /external_direct_health/);
+const domainMigration = read("docs/deployment/project-domain-migration.md");
+assert.match(domainMigration, /blocked on one exact George-controlled FQDN/);
+assert.match(domainMigration, /Stage 1: prepare source and the exact candidate/);
+assert.match(domainMigration, /Stage 4: activate scheduled and external monitoring/);
+const caddyDryRunIndex = domainMigration.indexOf("non-mutating dry run of candidate configuration **B**");
+const caddyDrillIndex = domainMigration.indexOf('Before the real deployment, run `-RehearseRollback`');
+const caddyLiveIndex = domainMigration.indexOf("Only after that rehearsal passes, deploy B once");
+assert.ok(caddyDryRunIndex >= 0 && caddyDrillIndex >= 0 && caddyLiveIndex >= 0, "All exact Stage 2 Caddy release-control steps must be documented.");
+assert.ok(caddyDryRunIndex < caddyDrillIndex && caddyDrillIndex < caddyLiveIndex, "Caddy dry run and A-to-B-to-A rehearsal must precede the one real B deployment.");
+assert.match(domainMigration, /finish with A's release id, hashes, Studio routes, and\s+authenticated Analytics routes reverified/);
+assert.ok(domainMigration.indexOf("one real deployment of B") < domainMigration.indexOf("Immediately dispatch public assurance"), "The one real candidate deployment must precede manual assurance.");
+assert.match(domainMigration, /new versioned\s+rollback release from the retained exact A artifact/);
+assert.match(domainMigration, /-ExpectedCurrentReleaseId '<B-release-id>'/);
+assert.match(domainMigration, /project hostname and the\s+preview alias/);
+assert.ok(domainMigration.indexOf("Immediately dispatch public assurance") < domainMigration.indexOf("Set `DUSK_STUDIO_PUBLIC_URL=https://<fqdn>`"), "Manual production assurance must precede the scheduled-monitor target cutover.");
 
 const caddyWorkflow = read(".github/workflows/platform-caddy-security.yml");
 assert.match(caddyWorkflow, /sudo install -d -m 0755[\s\S]*\/var\/log\/caddy/);
@@ -85,6 +129,11 @@ assert.match(watchdogWorkflow, /ref: \$\{\{ github\.sha \}\}[\s\S]*git rev-parse
 const phase5Policy = JSON.parse(read("config/phase5-policy.json"));
 assert.ok(phase5Policy.required_synthetic_checks.includes("monitor_heartbeat"));
 assert.ok(phase5Policy.required_synthetic_checks.includes("external_dead_man"));
+assert.ok(phase5Policy.required_synthetic_checks.includes("external_direct_health"));
+assert.ok(phase5Policy.monitoring_evidence.direct_health_max_age_hours > 0);
+const phase5Template = JSON.parse(read("config/phase5-evidence.template.json"));
+assert.equal(phase5Template.synthetics.checks.external_direct_health.recovery_verified, false);
+assert.equal(phase5Template.synthetics.checks.external_direct_health.recovered_at, "pending");
 
 const caddy = read("deploy/caddy/studio.caddy");
 assert.doesNotMatch(caddy, /reverse_proxy|127\.0\.0\.1|localhost|8788|basic_auth|basicauth|\/login/i);

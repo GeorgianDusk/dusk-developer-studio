@@ -50,13 +50,15 @@
     "companion_port_closed",
     "development_port_closed",
     "monitor_heartbeat",
-    "external_dead_man"
+    "external_dead_man",
+    "external_direct_health"
   ],
   "monitoring_evidence": {
     "canonical_repository": "GeorgianDusk/dusk-developer-studio",
     "schedule_guard_workflow": ".github/workflows/studio-monitor-schedule-guard.yml",
     "monitor_heartbeat_max_age_hours": 18,
     "external_success_max_age_hours": 15,
+    "direct_health_max_age_hours": 15,
     "external_rehearsal_max_age_days": 30
   },
   "required_evm_smoke_steps": [

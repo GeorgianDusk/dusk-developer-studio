@@ -27,13 +27,25 @@ Implementation agents may prepare evidence but must not record these reviews as 
 
 ## External Monitoring Gate
 
-The in-repository heartbeat watchdog must have a recent passing receipt, and an
-external dead-man or uptime service outside GitHub must observe the public
-Studio origin and alert an assigned owner. Record provider/check identity,
-owner, latest successful observation, and an alert-delivery rehearsal without
-committing credentials. The Phase 5 decision remains no-go until both
-`monitor_heartbeat` and `external_dead_man` satisfy their receipt, identity,
-freshness, outside-GitHub, alert-channel, and missed-ping rehearsal fields.
+Three independently evaluated records are required:
+
+- `monitor_heartbeat` proves the same-platform schedule guard observed a recent
+  scheduled assurance run and binds its receipt to the canonical workflow and
+  Actions run.
+- `external_dead_man` proves an outside-GitHub heartbeat check has a fresh
+  success, a verified out-of-band alert, and a recent real missed-ping
+  rehearsal.
+- `external_direct_health` proves a separate outside-GitHub monitor recently
+  observed the exact candidate origin's `/healthz` response as HTTPS with valid
+  TLS, status `200`, and body `ok`, with a recent alert-and-recovery rehearsal
+  bound to a durable reference. Its timestamps must prove alert -> verified
+  recovery -> later successful observation.
+
+The two external records may use one provider account but must use distinct
+check ids. Record provider/check identity, owner, exact public target, latest
+successful observation, and alert evidence without committing credentials.
+The Phase 5 decision remains no-go if any record is missing, stale, bound to
+GitHub as its external channel, or incomplete.
 
 ## Pilot Cohort
 

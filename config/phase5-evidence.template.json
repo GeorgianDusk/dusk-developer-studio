@@ -69,6 +69,24 @@
         "latest_success_at": "pending",
         "missed_ping_rehearsed_at": "pending",
         "rehearsal_reference": "pending"
+      },
+      "external_direct_health": {
+        "status": "pending",
+        "owner": "pending",
+        "outside_github": false,
+        "provider": "pending",
+        "check_id": "pending",
+        "target_url": "https://approved-host/healthz",
+        "response_status": 0,
+        "body_match": "pending",
+        "tls_verified": false,
+        "alert_channel": "pending",
+        "alert_delivery_verified": false,
+        "latest_success_at": "pending",
+        "alert_rehearsed_at": "pending",
+        "recovery_verified": false,
+        "recovered_at": "pending",
+        "rehearsal_reference": "pending"
       }
     },
     "alert_delivery_verified": false,
