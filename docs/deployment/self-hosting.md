@@ -23,10 +23,10 @@ The fragment deliberately contains no `reverse_proxy`, loopback address, authent
 
 ## Deployment boundary
 
-- Label every non-official deployment as an independent community preview.
+- Label every deployment with its actual maintainer and source repository.
 - Link to official Dusk documentation for canonical protocol instructions.
 - Keep mainnet reference-only unless a separately reviewed product decision changes that status.
 - Do not copy development `.env` files, local receipts, diagnostics, test artifacts, or signing material into the web root.
 - Verify TLS, headers, cache behavior, key routes, source links, RPC degradation behavior, and that ports 5173 and 8788 are not publicly reachable.
 
-A self-hosted copy is not an official Dusk service merely because it uses Dusk protocol data or names.
+A self-hosted copy should link back to its exact source commit and maintainer.
