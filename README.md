@@ -1,16 +1,14 @@
 # Dusk Developer Studio
 
-> Independent open-source community project maintained by [GeorgianDusk](https://github.com/GeorgianDusk). It is not created, maintained, sponsored, endorsed, or distributed by Dusk Network or the Dusk Foundation. Official Dusk documentation remains the canonical protocol source.
+> Independent open-source project maintained by [GeorgianDusk](https://github.com/GeorgianDusk). Official Dusk documentation remains the canonical protocol source.
 
 Dusk Developer Studio is a developer cockpit for choosing and following the right Dusk builder path: DuskEVM for Solidity/EVM tooling, or DuskDS for native Rust/WASM/DuskVM work.
 
-## Project status
+## Use it today
 
-- The source repository is open for review and local development.
-- The hosted Studio is intentionally docs-only for machine actions: guidance and read-only public RPC checks are available, but the server never proxies the local companion.
-- Public companion binaries are not published yet. Windows and macOS signing identities, clean-machine validation, independent security review, and an explicit release decision remain required.
-
-`private: true` in the workspace package files prevents accidental npm publication; it does not make this repository closed source. The source is licensed under Apache-2.0.
+- Choose DuskEVM or DuskDS and follow one focused Setup → Access → Build → Inspect journey.
+- Use source-backed references, troubleshooting guidance, and read-only DuskEVM Testnet checks.
+- Clone the repository and run the Studio locally with the commands below.
 
 ## What it provides
 
@@ -57,15 +55,15 @@ The main CI workflow repeats the product, security, browser, Linux, and Windows 
 
 ## Repository map
 
-- `apps/studio` ? React/Vite Studio UI.
-- `packages/core` ? validated Dusk data models and safe command generation.
-- `packages/local-agent` ? paired loopback companion.
-- `packages/local-runtime` ? portable runtime supervisor.
-- `packages/templates` ? constrained starter templates.
-- `data/dusk` ? source-labelled Dusk capability and network records.
-- `docs/security` ? threat model and security boundaries.
-- `docs/deployment` ? self-hosting and companion release policy.
-- `.github/workflows` ? pinned CI and protected signed-RC automation.
+- `apps/studio` — React/Vite Studio UI.
+- `packages/core` — validated Dusk data models and safe command generation.
+- `packages/local-agent` — paired loopback companion.
+- `packages/local-runtime` — portable runtime supervisor.
+- `packages/templates` — constrained starter templates.
+- `data/dusk` — source-labelled Dusk capability and network records.
+- `docs/security` — threat model and security boundaries.
+- `docs/deployment` — self-hosting and companion release policy.
+- `.github/workflows` — pinned CI and protected signed-RC automation.
 
 ## Contributing
 
@@ -73,4 +71,4 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change. Security report
 
 ## License and names
 
-Code and repository documentation are licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). Dusk, Dusk Network, DuskEVM, DuskDS, and related marks belong to their respective owners. See [DISCLAIMER.md](DISCLAIMER.md).
+Code and repository documentation are licensed under Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
