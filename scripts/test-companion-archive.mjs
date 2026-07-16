@@ -37,9 +37,18 @@ function inspect(target, extension) {
   const release = fixture(target); const first = path.join(root, target + "-one" + extension); const second = path.join(root, target + "-two" + extension);
   const one = createDeterministicArchive({ releaseDir: release, outFile: first }); const two = createDeterministicArchive({ releaseDir: release, outFile: second });
   assert.equal(one.sha256, two.sha256); assert.deepEqual(fs.readFileSync(first), fs.readFileSync(second));
-  const listing = spawnSync("tar", ["-tf", first], { encoding: "utf8", shell: false, windowsHide: true });
+  const isZip = extension === ".zip";
+  const listingCommand = isZip && process.platform !== "win32" ? "unzip" : "tar";
+  const listingArgs = listingCommand === "unzip" ? ["-Z1", first] : [isZip ? "-tf" : "-tzf", first];
+  const listing = spawnSync(listingCommand, listingArgs, { encoding: "utf8", shell: false, windowsHide: true });
   assert.equal(listing.status, 0, listing.stderr); assert.ok(listing.stdout.includes(`${one.rootName}/studio/index.html`)); assert.ok(!listing.stdout.includes(`${one.rootName}/payload/`));
-  const extracted = path.join(root, "extracted-" + target); fs.mkdirSync(extracted); const unpack = spawnSync("tar", ["-xf", first, "-C", extracted], { encoding: "utf8", shell: false, windowsHide: true }); assert.equal(unpack.status, 0, unpack.stderr);
+  const extracted = path.join(root, "extracted-" + target); fs.mkdirSync(extracted);
+  const unpackCommand = isZip && process.platform !== "win32" ? "unzip" : "tar";
+  const unpackArgs = unpackCommand === "unzip"
+    ? ["-q", first, "-d", extracted]
+    : [isZip ? "-xf" : "-xzf", first, "-C", extracted];
+  const unpack = spawnSync(unpackCommand, unpackArgs, { encoding: "utf8", shell: false, windowsHide: true });
+  assert.equal(unpack.status, 0, unpack.stderr);
   assert.equal(fs.readFileSync(path.join(extracted, one.rootName, "studio", "index.html"), "utf8"), "<!doctype html>\n");
   if (target === "linux-x64" || target === "darwin-arm64") {
     const modes = tarModes(first);

@@ -57,5 +57,11 @@ jobs:
           grep -F 'Content-Security-Policy' "$fragment"
           grep -F 'Strict-Transport-Security' "$fragment"
           grep -F 'respond /healthz' "$fragment"
-          test -z "$(/tmp/caddy fmt --diff "$fragment")"
+          formatted="$RUNNER_TEMP/studio.caddy.formatted"
+          /tmp/caddy fmt "$fragment" > "$formatted"
+          if ! cmp --silent "$fragment" "$formatted"; then
+            echo "The Studio Caddy fragment is not canonically formatted." >&2
+            diff --unified "$fragment" "$formatted" || true
+            exit 1
+          fi
           /tmp/caddy validate --config "$fragment" --adapter caddyfile

@@ -6,7 +6,7 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 
 for (const file of [
-  "LICENSE", "NOTICE", "DISCLAIMER.md", "SECURITY.md", "CONTRIBUTING.md",
+  "LICENSE", "NOTICE", "SECURITY.md", "CONTRIBUTING.md",
   ".github/CODEOWNERS", ".github/dependabot.yml",
   ".github/workflows/studio-linux-security.yml",
   ".github/workflows/platform-caddy-security.yml",
@@ -18,10 +18,10 @@ assert.equal(packageJson.private, true, "The workspace must remain protected fro
 assert.equal(packageJson.license, "Apache-2.0");
 assert.equal(packageJson.repository.url, "git+https://github.com/GeorgianDusk/dusk-developer-studio.git");
 assert.match(read("LICENSE"), /Apache License[\s\S]*Version 2\.0/);
-assert.match(read("README.md"), /Independent open-source community project/);
-assert.match(read("README.md"), /private: true[\s\S]*prevents accidental npm publication/);
-assert.match(read("DISCLAIMER.md"), /not created, maintained, sponsored, endorsed, audited, or distributed by Dusk Network/i);
+assert.match(read("README.md"), /Independent open-source project maintained by/);
+assert.doesNotMatch(read("README.md"), /private: true|Project status/);
 assert.match(read("SECURITY.md"), /private vulnerability reporting/i);
+assert.doesNotMatch(read("README.md"), /`[^`]+` \? /, "README repository map contains a lossy text-export separator.");
 
 const policy = JSON.parse(read("config/companion-standalone-signing-policy.json"));
 assert.equal(policy.canonical_repository, "GeorgianDusk/dusk-developer-studio");
@@ -57,7 +57,7 @@ const systemRoutes = read("apps/studio/src/app/routes/SystemRoutes.tsx");
 assert.doesNotMatch(systemRoutes, /Pairing token|Set-Clipboard|DUSK_STUDIO_PAIRING_TOKEN/);
 assert.match(systemRoutes, /there is no manual token-copy workflow/);
 
-const forbidden = /dusk-network\/marketing|studio\.dusk\.network|Dusk-controlled|UNLICENSED|docs\/planning/i;
+const forbidden = /dusk-network\/marketing|studio\.dusk\.network|Dusk-controlled|Dusk Foundation|not affiliated|not an official Dusk|UNLICENSED|docs\/planning/i;
 const ignored = new Set(["node_modules", ".git", "output", "dist", "coverage", "playwright-report", "test-results"]);
 const textExtensions = new Set([".cjs", ".cmd", ".css", ".html", ".js", ".json", ".md", ".mjs", ".ps1", ".sol", ".toml", ".ts", ".tsx", ".txt", ".yml", ".yaml"]);
 function walk(directory) {
