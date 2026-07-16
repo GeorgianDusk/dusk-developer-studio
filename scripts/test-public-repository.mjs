@@ -21,6 +21,7 @@ assert.match(read("LICENSE"), /Apache License[\s\S]*Version 2\.0/);
 assert.match(read("README.md"), /Independent open-source project maintained by/);
 assert.doesNotMatch(read("README.md"), /private: true|Project status/);
 assert.match(read("SECURITY.md"), /private vulnerability reporting/i);
+assert.doesNotMatch(read("README.md"), /`[^`]+` \? /, "README repository map contains a lossy text-export separator.");
 
 const policy = JSON.parse(read("config/companion-standalone-signing-policy.json"));
 assert.equal(policy.canonical_repository, "GeorgianDusk/dusk-developer-studio");
