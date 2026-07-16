@@ -58,8 +58,11 @@ const evidence = {
   targets
 };
 
-assert.equal(evaluateStandaloneSigningEvidence(policy, evidence).decision, "no-go");
-assert.match(evaluateStandaloneSigningEvidence(policy, evidence).blockers.join("\n"), /publication is disabled|not approved or configured/);
+const blockedEvidence = evaluateStandaloneSigningEvidence(policy, evidence);
+assert.equal(blockedEvidence.decision, "no-go");
+assert.ok(blockedEvidence.blockers.includes(policy.publication_blocker));
+assert.ok(blockedEvidence.blockers.includes("windows-x64 platform identity is not configured."));
+assert.ok(blockedEvidence.blockers.includes("darwin-arm64 platform identity is not configured."));
 assert.equal(evaluateStandaloneSigningEvidence(readyPolicy, evidence).decision, "go");
 
 const missingNotarization = clone(evidence);

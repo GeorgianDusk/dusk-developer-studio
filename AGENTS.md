@@ -7,7 +7,7 @@ Maintain an independent open-source Dusk Developer Studio that helps developers 
 ## Non-negotiables
 
 - Do not publish, push, create a release, or deploy to a live domain unless the user explicitly authorizes that external action.
-- Never imply this repository is an official Dusk Network or Dusk Foundation product.
+- Represent ownership accurately: this project is maintained through the `GeorgianDusk` account.
 - Never expose `packages/local-agent` from a VPS or bind it to anything other than loopback.
 - Do not request, store, transmit, or log private keys, mnemonics, seeders, profile entropy, API keys, wallet passwords, or wallet secrets.
 - Do not implement faucet dispensing, browser-based signing, arbitrary command execution, or mainnet deployment automation.
