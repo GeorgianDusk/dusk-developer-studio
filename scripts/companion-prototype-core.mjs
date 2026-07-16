@@ -121,8 +121,13 @@ function runNode(args, options = {}) {
 }
 
 function npmCli() {
-  const candidate = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
-  if (!fs.existsSync(candidate)) throw new Error("The npm prototype builder requires the npm CLI installed beside Node.js.");
+  const executableDirectory = path.dirname(process.execPath);
+  const candidates = [
+    path.join(executableDirectory, "node_modules", "npm", "bin", "npm-cli.js"),
+    path.resolve(executableDirectory, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js")
+  ];
+  const candidate = candidates.find((value) => fs.existsSync(value));
+  if (!candidate) throw new Error("The npm prototype builder requires the npm CLI from the pinned Node.js installation.");
   return candidate;
 }
 
