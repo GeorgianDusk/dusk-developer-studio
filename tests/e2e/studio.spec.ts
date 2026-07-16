@@ -22,7 +22,7 @@ test("guided builder flow stays clear", async ({ page }) => {
 
   await evmGuide.getByRole("button", { name: /3 Build/i }).click();
   await expect(page.getByRole("heading", { name: "Create, build, and test the Counter starter." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Set up local companion|Create and verify Counter starter/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Available in local Studio|Set up local companion|Create and verify Counter starter/i })).toBeVisible();
 
   await page.getByRole("button", { name: "Reference" }).click();
   await expect(page.getByRole("heading", { name: "Deeper context, with source receipts." })).toBeVisible();
@@ -31,7 +31,7 @@ test("guided builder flow stays clear", async ({ page }) => {
   await page.getByRole("button", { name: "Paths" }).click();
   await page.getByRole("button", { name: /Start native path/i }).click();
   await expect(page.getByRole("heading", { name: "Prove the native Dusk toolchain is ready." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Set up local companion|Run native preflight/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Available in local Studio|Set up local companion|Run native preflight/i })).toBeVisible();
 
   const duskDsGuide = page.getByLabel("DuskDS guide sequence");
   await duskDsGuide.getByRole("button", { name: /2 Access/i }).click();
@@ -41,7 +41,7 @@ test("guided builder flow stays clear", async ({ page }) => {
   await page.getByRole("button", { name: "Troubleshoot" }).click();
   await expect(page.getByRole("heading", { name: "Fix the blocker in front of you." })).toBeVisible();
 
-  await page.getByRole("button", { name: /Local tools/i }).click();
+  await page.getByRole("button", { name: /Local runtime/i }).click();
   await expect(page.getByRole("heading", { name: "Machine actions are unavailable in this build." })).toBeVisible();
   await expect(page.getByLabel("Pairing token")).toHaveCount(0);
   await expect(page.getByText("there is no manual token-copy workflow", { exact: false })).toBeVisible();
