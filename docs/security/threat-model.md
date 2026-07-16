@@ -1,0 +1,66 @@
+# Threat Model
+
+## Scope
+
+Dusk Developer Studio is an independent community preview: a static public Studio plus an optional local companion running on each developer's own machine. Product, self-hosting, and release boundaries are documented in `../../README.md` and `../deployment/`.
+
+## Assets To Protect
+
+- Wallet private keys, mnemonics, seeders, profile entropy, wallet passwords, and API secrets.
+- User filesystem outside the selected project/template destination.
+- Local wallet approval boundaries.
+- Local diagnostics that may include wallet addresses or host paths.
+- Dusk-specific product status claims.
+- The public VPS host, which must not become a command-execution surface.
+
+## Primary Risks
+
+1. UI asks for or stores private keys.
+2. Local companion runs arbitrary commands or writes outside allowed paths.
+3. Local companion is accidentally exposed on a public interface.
+4. Malicious RPC/network metadata tricks users into wrong-chain actions.
+5. Remote docs/content injection causes XSS.
+6. Mainnet flow is mistaken for a testnet flow.
+7. Example contracts are misread as audited or production-ready.
+8. Diagnostics leak secrets or personal local paths.
+9. Public copy overclaims Hedger, native deployment, faucet, or production status.
+10. A malicious browser origin or DNS-rebinding request reaches the loopback companion.
+11. An unauthenticated request triggers body parsing, process execution, or filesystem writes.
+12. Request floods exhaust local CPU, memory, subprocess, or filesystem capacity.
+
+## Public Preview Controls
+
+- Public VPS serves only the static Studio.
+- Local companion binds to `127.0.0.1` only, validates the exact loopback Host and Origin, and rejects missing origins.
+- Hosted origins are never trusted. Pairing is available only from a locally opened Studio.
+- A 32+ character startup token creates a short-lived, origin-bound HttpOnly session; the token is never returned or logged.
+- Health, preflight, and scaffold routes require the paired session. Authentication happens before request-body parsing.
+- Process and filesystem capabilities are disabled by default and require a separate environment flag.
+- Request bodies, time, rate, and concurrency are bounded; errors and diagnostics omit workspace paths and raw process output.
+- CORS preflight and Private Network Access are validated explicitly. Private Network Access is denied by default.
+- Filesystem parents are materialized beneath canonical approved roots, checked for symlinks/junctions/reparse points, and revalidated by real path and directory identity immediately before promotion.
+- Scaffolds populate a private sibling stage and become visible only through one atomic rename; existing targets are rejected and failed stages are removed only while their parent identity remains trusted.
+- External tool execution uses exact commands, bounded output/time, and process-tree termination; the request server no longer runs blocking `spawnSync` paths.
+- Source freshness and tracked-source boundary checks fail the product gate when provenance is stale/unverified or generated/provider/sensitive paths enter the release scope.
+- No private key fields anywhere.
+- No browser-based transaction signing.
+- Mainnet disabled by default.
+- Network metadata is schema-validated and source-labeled.
+- Template generation uses safe path checks.
+- Remote Markdown/MDX rendering is not supported.
+- Docs/resources are curated local data.
+- Diagnostics are redacted before export.
+- Example templates are labeled unaudited and not production-ready.
+- Security headers, CSP, `/healthz`, and cache controls are included for static hosting.
+
+The portable supervisor verifies its exact payload before binding, keeps the pairing secret in memory only, bootstraps one same-origin browser session without URLs or environment variables, requires exact frontend/runtime release parity, defaults to safe mode, strips secret-shaped child environments, and terminates active process trees on shutdown.
+
+Release packaging rejects unsafe paths, reparse entries, undeclared files, secret-like material, and absolute build-host paths; binds a pinned Node binary, SBOM, provenance, and checksums; and produces deterministic engineering inputs. Unsigned RCs are internal-only. The standalone channel requires post-injection Dusk platform trust: Authenticode with timestamp on Windows, tag-bound keyless Sigstore on Linux, and Developer ID with hardened runtime, notarization, stapling, and Gatekeeper on macOS. Separate fresh runners verify lifecycle cleanup and rollback, while independent download/quarantine, reputation, compatibility, and security review remain external publication gates. The hosted artifact remains docs-only and never becomes a loopback client.
+
+The precise boundary and configuration contract is documented in local-companion-boundary.md.
+
+## Release Gate
+
+Before a production announcement: production domain confirmation; exact release-manifest parity; supported companion distribution or enforced docs-only mode; Dusk source freshness; dependency and secret gates; browser, accessibility, and representative developer QA; independent companion security review; separate platform/Caddy review; approved copy and visible release identity; assigned support/monitoring owners; rehearsed Studio/platform rollback; and explicit confirmation that no VPS-exposed companion exists.
+
+No P0 may remain. A P1 is no-go unless George explicitly accepts a time-limited exception containing the owner, rationale, compensating control, residual risk, monitoring, expiry, and revalidation trigger.

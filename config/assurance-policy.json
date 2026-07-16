@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "asset_budgets": {
+    "javascript_bytes": 450000,
+    "css_bytes": 60000,
+    "html_bytes": 12000,
+    "total_bytes": 600000
+  },
+  "lab_performance_budgets": {
+    "largest_contentful_paint_ms": 2500,
+    "cumulative_layout_shift": 0.1,
+    "interaction_to_next_paint_ms": 200
+  },
+  "required_browser_projects": [
+    "chromium-desktop",
+    "firefox-desktop",
+    "webkit-desktop",
+    "mobile-chrome",
+    "mobile-safari"
+  ],
+  "required_security_headers": [
+    "Content-Security-Policy",
+    "Strict-Transport-Security",
+    "X-Content-Type-Options",
+    "X-Frame-Options",
+    "Referrer-Policy",
+    "Permissions-Policy"
+  ],
+  "allowed_source_hosts": [
+    "docs.blockscout.com",
+    "docs.dusk.network",
+    "docs.rs",
+    "dusk.network",
+    "www.dusk.network",
+    "github.com",
+    "raw.githubusercontent.com",
+    "jsr.io",
+    "explorer.dusk.network",
+    "explorer.testnet.dusk.network",
+    "explorer.devnet.evm.dusk.network",
+    "explorer.evm.dusk.network",
+    "explorer.testnet.evm.dusk.network",
+    "testnet.nodes.dusk.network",
+    "nodes.dusk.network",
+    "rpc.devnet.evm.dusk.network",
+    "rpc.testnet.evm.dusk.network",
+    "rpc.evm.dusk.network"
+  ]
+}

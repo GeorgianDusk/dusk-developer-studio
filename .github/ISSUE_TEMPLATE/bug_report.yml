@@ -1,0 +1,57 @@
+name: Bug report
+description: Report reproducible incorrect or unsafe behavior
+title: "[Bug]: "
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include wallet secrets, credentials, private incident details, or unredacted diagnostics. Report exploitable vulnerabilities through the private path in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.0 or 40-character commit
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Hosted static Studio
+        - Source-checkout Studio
+        - Local companion
+        - DuskEVM journey
+        - DuskDS journey
+        - Build or CI
+        - Documentation or source data
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, browser, Node/pnpm versions, and runtime mode. Remove usernames, paths, addresses, balances, and tokens.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed secrets, wallet data, personal paths, addresses, balances, and unredacted diagnostics.
+          required: true
+        - label: This is not an undisclosed exploitable security vulnerability.
+          required: true

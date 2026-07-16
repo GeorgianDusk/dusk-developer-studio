@@ -1,0 +1,835 @@
+[
+    {
+        "id":  "build-on-dusk",
+        "title":  "Build on Dusk",
+        "category":  "Docs",
+        "summary":  "Choose between DuskEVM for Solidity/EVM tooling and native Dusk for Rust/WASM, privacy, and zero-knowledge capabilities.",
+        "url":  "https://docs.dusk.network/developer/overview/",
+        "maturity":  "official",
+        "tags":  [
+                     "overview",
+                     "dusk-evm",
+                     "duskds",
+                     "duskvm",
+                     "setup",
+                     "evm"
+                 ]
+    },
+    {
+        "id":  "duskevm-deep-dive",
+        "title":  "DuskEVM Deep Dive",
+        "category":  "Docs",
+        "summary":  "Network metadata, OP Stack notes, fees, runtime differences, and Blockscout verification routes.",
+        "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+        "maturity":  "official",
+        "tags":  [
+                     "network",
+                     "rpc",
+                     "blockscout",
+                     "op-stack",
+                     "setup",
+                     "inspect",
+                     "evm",
+                     "duskevm"
+                 ]
+    },
+    {
+        "id":  "duskevm-bridge",
+        "title":  "Bridge DUSK from DuskDS to DuskEVM Testnet",
+        "category":  "Funding",
+        "summary":  "Official route for funding an EVM wallet on DuskEVM Testnet. Public preview treats faucet availability as unconfirmed.",
+        "url":  "https://docs.dusk.network/learn/guides/duskevm-bridge/",
+        "maturity":  "official",
+        "tags":  [
+                     "funding",
+                     "bridge",
+                     "testnet",
+                     "access",
+                     "evm",
+                     "duskevm"
+                 ]
+    },
+    {
+        "id":  "deploy-on-duskevm",
+        "title":  "Deploy on DuskEVM",
+        "category":  "Deploy",
+        "summary":  "Official deployment guide for Hardhat and Foundry with DuskEVM RPC and chain IDs.",
+        "url":  "https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/",
+        "maturity":  "official",
+        "tags":  [
+                     "foundry",
+                     "hardhat",
+                     "deploy",
+                     "setup",
+                     "build",
+                     "evm",
+                     "duskevm"
+                 ]
+    },
+    {
+        "id":  "blockscout-verification",
+        "title":  "Blockscout Verification Docs",
+        "category":  "Verify",
+        "summary":  "Blockscout verification workflows for UI, Foundry, Hardhat, and API. Public preview links out rather than auto-submitting verification.",
+        "url":  "https://docs.blockscout.com/devs/verification",
+        "maturity":  "external-official",
+        "tags":  [
+                     "verification",
+                     "contracts",
+                     "blockscout",
+                     "inspect",
+                     "evm",
+                     "duskevm"
+                 ]
+    },
+    {
+        "id":  "duskevm-faucet-archived",
+        "title":  "Archived DuskEVM Faucet Repository",
+        "category":  "Funding",
+        "summary":  "Archived/read-only public faucet implementation. Public preview should not assume an active faucet exists.",
+        "url":  "https://github.com/dusk-network/duskevm-faucet",
+        "maturity":  "archived",
+        "tags":  [
+                     "faucet",
+                     "unconfirmed",
+                     "archive",
+                     "access",
+                     "troubleshooting",
+                     "evm",
+                     "duskevm"
+                 ]
+    },
+    {
+        "id":  "duskds-smart-contracts",
+        "title":  "Smart Contracts on DuskDS",
+        "category":  "Native",
+        "summary":  "Official native Dusk smart contract path covering Rust, WASM, DuskVM, data drivers, build commands, and Rusk Wallet deployment shape.",
+        "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "duskvm",
+                     "rust",
+                     "wasm",
+                     "data-driver",
+                     "native",
+                     "setup",
+                     "build",
+                     "inspect"
+                 ]
+    },
+    {
+        "id":  "my-first-contract",
+        "title":  "my-first-contract Template",
+        "category":  "Native template",
+        "summary":  "Dusk docs currently reference this repository as the DuskDS template route. The Studio keeps it as source context while using the Dusk Forge CLI path that was locally scaffolded, built, and tested.",
+        "url":  "https://github.com/dusk-network/my-first-contract",
+        "maturity":  "official-docs-referenced",
+        "tags":  [
+                     "duskds",
+                     "native",
+                     "template",
+                     "my-first-contract",
+                     "setup",
+                     "build",
+                     "source-gap"
+                 ]
+    },
+    {
+        "id":  "w3sper-integration",
+        "title":  "W3sper Integration",
+        "category":  "Native",
+        "summary":  "Official client library guidance for connecting applications to DuskDS nodes, querying network state, and managing native profiles.",
+        "url":  "https://docs.dusk.network/developer/integrations/w3sper/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "w3sper",
+                     "node-api",
+                     "profiles",
+                     "access",
+                     "build",
+                     "inspect"
+                 ]
+    },
+    {
+        "id":  "duskds-tx-lifecycle",
+        "title":  "DuskDS Transaction Lifecycle",
+        "category":  "Native",
+        "summary":  "Explains native transaction states from creation through validation, block inclusion, acceptance, and finality.",
+        "url":  "https://docs.dusk.network/developer/integrations/tx-lifecycle/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "transactions",
+                     "finality",
+                     "lifecycle",
+                     "inspect",
+                     "troubleshooting"
+                 ]
+    },
+    {
+        "id":  "duskds-http-api",
+        "title":  "DuskDS HTTP API",
+        "category":  "Native",
+        "summary":  "Official HTTP/RUES API reference for low-level DuskDS node interaction when W3sper is not enough.",
+        "url":  "https://docs.dusk.network/developer/integrations/http-api/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "http-api",
+                     "rues",
+                     "node-api",
+                     "access",
+                     "inspect",
+                     "troubleshooting"
+                 ]
+    },
+    {
+        "id":  "dusk-forge",
+        "title":  "Dusk Forge",
+        "category":  "Native framework",
+        "summary":  "Official Dusk smart contract development framework and CLI for scaffolding, checking, building, testing, schema, call, and verification workflows.",
+        "url":  "https://github.com/dusk-network/forge",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "duskvm",
+                     "rust",
+                     "wasm",
+                     "forge",
+                     "dusk-forge",
+                     "contract-template",
+                     "setup",
+                     "build",
+                     "test",
+                     "data-driver"
+                 ]
+    },
+    {
+        "id":  "rusk-repository",
+        "title":  "Rusk Protocol Node and Smart Contract Platform",
+        "category":  "Native",
+        "summary":  "Official Dusk node/client repository covering Rusk, DuskVM, dusk-core, data drivers, w3sper.js, wallet-core, and local development node flows.",
+        "url":  "https://github.com/dusk-network/rusk",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "setup",
+                     "inspect",
+                     "rusk",
+                     "duskvm",
+                     "node",
+                     "localnet",
+                     "data-driver"
+                 ]
+    },
+    {
+        "id":  "rusk-wallet-cli",
+        "title":  "Rusk Wallet CLI",
+        "category":  "Native wallet",
+        "summary":  "Official CLI wallet reference for profiles, balances, transfers, contract-call, contract-deploy, custom node URLs, and manual signing workflows.",
+        "url":  "https://github.com/dusk-network/rusk/tree/master/rusk-wallet",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "access",
+                     "build",
+                     "deploy",
+                     "wallet",
+                     "rusk-wallet"
+                 ]
+    },
+    {
+        "id":  "dusk-core-docsrs",
+        "title":  "dusk-core Rust API Reference",
+        "category":  "Native",
+        "summary":  "Rust API reference for core Dusk types used when writing and integrating native Dusk smart contracts.",
+        "url":  "https://docs.rs/dusk-core/latest/dusk_core/",
+        "maturity":  "external-official",
+        "tags":  [
+                     "duskds",
+                     "build",
+                     "rust",
+                     "abi",
+                     "dusk-core"
+                 ]
+    },
+    {
+        "id":  "w3sper-jsr-package",
+        "title":  "W3sper JSR Package",
+        "category":  "Native SDK",
+        "summary":  "Package page for the official W3sper SDK used by DuskDS applications and tooling.",
+        "url":  "https://jsr.io/@dusk/w3sper",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "access",
+                     "sdk",
+                     "w3sper",
+                     "deno"
+                 ]
+    },
+    {
+        "id":  "dusk-connect-docs",
+        "title":  "Dusk Connect Docs",
+        "category":  "Wallets",
+        "summary":  "Official wallet integration layer for Dusk dApps: provider discovery, account requests, shielded addresses, network switching, signing, and transaction submission.",
+        "url":  "https://docs.dusk.network/developer/integrations/dusk-connect/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "dusk-connect",
+                     "wallet",
+                     "provider",
+                     "frontend",
+                     "access",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "dusk-connect-repo",
+        "title":  "Dusk Connect Repository",
+        "category":  "Wallet SDK",
+        "summary":  "Source repo for the framework-agnostic Dusk wallet discovery and dApp integration SDK, including app helpers for wallet plus node/data-driver flows.",
+        "url":  "https://github.com/dusk-network/connect",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "dusk-connect",
+                     "sdk",
+                     "wallet",
+                     "frontend",
+                     "data-driver",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "wallet-extension-docs",
+        "title":  "Dusk Wallet Extension Docs",
+        "category":  "Wallets",
+        "summary":  "Official browser-wallet integration reference for provider discovery, public and shielded account flows, and testing first-party Dusk wallet behavior.",
+        "url":  "https://docs.dusk.network/developer/integrations/wallet-extension/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "wallet-extension",
+                     "provider",
+                     "dusk-connect",
+                     "access",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "wallet-repository",
+        "title":  "Dusk Wallet Repository",
+        "category":  "Wallets",
+        "summary":  "Source repo for the multi-platform Dusk wallet, including extension, desktop/mobile context, public and shielded flows, and dApp provider support.",
+        "url":  "https://github.com/dusk-network/wallet",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "wallet",
+                     "extension",
+                     "provider",
+                     "mainnet",
+                     "testnet",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "citadel-protocol-docs",
+        "title":  "Citadel 2 Protocol Docs",
+        "category":  "Identity",
+        "summary":  "Privacy-preserving identity and access protocol where users prove a valid encrypted license exists without revealing personal attributes or the exact license used.",
+        "url":  "https://docs.dusk.network/developer/digital-identity/protocol/",
+        "maturity":  "official-experimental",
+        "tags":  [
+                     "duskds",
+                     "citadel",
+                     "identity",
+                     "zk",
+                     "privacy",
+                     "license",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "citadel-repository",
+        "title":  "Citadel 2 Repository",
+        "category":  "Identity",
+        "summary":  "Source repo for Citadel core, license contract, wallet CLI/TUI, specs, and threat model. Treat as specialized and review caveats before production use.",
+        "url":  "https://github.com/dusk-network/citadel",
+        "maturity":  "official-source-caveated",
+        "tags":  [
+                     "duskds",
+                     "citadel",
+                     "identity",
+                     "zk",
+                     "wallet",
+                     "contract",
+                     "experimental",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "moat-citadel-sdk",
+        "title":  "Moat Citadel SDK",
+        "category":  "Identity SDK",
+        "summary":  "Citadel SDK and CLI utilities for User, License Provider, and Service Provider roles, with API examples for integrating Citadel flows.",
+        "url":  "https://github.com/dusk-network/moat",
+        "maturity":  "official-source-caveated",
+        "tags":  [
+                     "duskds",
+                     "citadel",
+                     "moat",
+                     "sdk",
+                     "identity",
+                     "api",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "exchange-integrations",
+        "title":  "Exchange Integration Docs",
+        "category":  "Exchange",
+        "summary":  "Official checklist for Moonlight deposits/withdrawals, archive history, memos, finality, W3sper transaction construction, and cold-storage patterns.",
+        "url":  "https://docs.dusk.network/developer/integrations/exchanges/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "exchange",
+                     "moonlight",
+                     "archive",
+                     "memo",
+                     "cold-storage",
+                     "backend",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "historical-events",
+        "title":  "Historical Events and Archive Queries",
+        "category":  "Archive",
+        "summary":  "Archive-only GraphQL queries for Moonlight public transfer history, including moonlightHistory and fullMoonlightHistory filtering patterns.",
+        "url":  "https://docs.dusk.network/developer/integrations/historical_events/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "archive",
+                     "graphql",
+                     "moonlight",
+                     "history",
+                     "exchange",
+                     "inspect",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "encoding-reference",
+        "title":  "Dusk Encoding and Hashing Reference",
+        "category":  "Reference",
+        "summary":  "Address, encoding, and hashing reference for Moonlight public addresses, Phoenix shielded addresses, and low-level integration boundaries.",
+        "url":  "https://docs.dusk.network/developer/integrations/reference/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "moonlight",
+                     "phoenix",
+                     "encoding",
+                     "hashing",
+                     "reference",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "dusk-verifiable-builds",
+        "title":  "Dusk Verifiable Builds",
+        "category":  "Production",
+        "summary":  "Dockerized deterministic build environments for Dusk smart contracts so developers and auditors can reproduce WASM artifacts from the same source.",
+        "url":  "https://github.com/dusk-network/dusk-verifiable-builds",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "verifiable-builds",
+                     "deterministic",
+                     "docker",
+                     "audit",
+                     "release",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "dev-tools-deterministic-build",
+        "title":  "Developer Tools Deterministic Build Path",
+        "category":  "Production",
+        "summary":  "Dusk developer tooling area referenced by current DuskDS docs for deterministic/verifiable smart contract build flows.",
+        "url":  "https://github.com/dusk-network/dev-tools/tree/main/deterministic-build",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "dev-tools",
+                     "deterministic",
+                     "verifiable-builds",
+                     "production",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "transparent-token",
+        "title":  "Transparent Token Example",
+        "category":  "Examples",
+        "summary":  "Unstable source example for transparent fungible token patterns on Dusk: transfers, total supply, allowances, balances, events, and nonces.",
+        "url":  "https://github.com/dusk-network/transparent-token",
+        "maturity":  "unstable-source",
+        "tags":  [
+                     "duskds",
+                     "token",
+                     "transparent-token",
+                     "events",
+                     "nonces",
+                     "examples",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "electronic-money-token",
+        "title":  "Electronic Money Token Example",
+        "category":  "Examples",
+        "summary":  "Unstable source example for e-money style transparent token-contract patterns using Dusk native contract capabilities.",
+        "url":  "https://github.com/dusk-network/electronic-money-token",
+        "maturity":  "unstable-source",
+        "tags":  [
+                     "duskds",
+                     "e-money",
+                     "token",
+                     "allowance",
+                     "balances",
+                     "examples",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "multisig-contract",
+        "title":  "Multisig Contract Example",
+        "category":  "Examples",
+        "summary":  "Native Dusk multisig contract example using BLS multisig verification for N-of-M account control, deposits, transfers, and account changes.",
+        "url":  "https://github.com/dusk-network/multisig-contract",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "multisig",
+                     "bls",
+                     "cold-storage",
+                     "exchange",
+                     "examples",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "duskit-repository",
+        "title":  "Duskit Web App Utilities",
+        "category":  "Frontend",
+        "summary":  "Dusk-maintained Svelte components, CSS, icons, HTTP helpers, encoding utilities, stores, actions, and test helpers for Dusk web apps.",
+        "url":  "https://github.com/dusk-network/duskit",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "duskit",
+                     "frontend",
+                     "components",
+                     "utilities",
+                     "web-app",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "node-installer",
+        "title":  "Dusk Node Installer",
+        "category":  "Infrastructure",
+        "summary":  "Official node installation repository for teams that need their own Dusk node instead of relying on public endpoints.",
+        "url":  "https://github.com/dusk-network/node-installer",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "node",
+                     "infrastructure",
+                     "operator",
+                     "archive",
+                     "prover",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "phoenix-repository",
+        "title":  "Phoenix Transaction Model",
+        "category":  "Privacy",
+        "summary":  "Source repository for Dusk\u0027s privacy-preserving Phoenix transaction model and shielded account primitives.",
+        "url":  "https://github.com/dusk-network/phoenix",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "phoenix",
+                     "shielded",
+                     "privacy",
+                     "transactions",
+                     "zk",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "piecrust-repository",
+        "title":  "Piecrust WASM VM",
+        "category":  "DuskVM",
+        "summary":  "Source repository for the WASM smart contract VM and lower-level contract execution examples used by native Dusk contracts.",
+        "url":  "https://github.com/dusk-network/piecrust",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "duskvm",
+                     "piecrust",
+                     "wasm",
+                     "contracts",
+                     "advanced",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "dips-docs",
+        "title":  "Dusk Improvement Proposals",
+        "category":  "Ecosystem",
+        "summary":  "Official process for proposing substantive Dusk protocol changes, standards, and ecosystem-level design decisions.",
+        "url":  "https://docs.dusk.network/developer/contribute/dips/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "dips",
+                     "protocol",
+                     "governance",
+                     "standards",
+                     "ecosystem",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "grants-docs",
+        "title":  "Dusk Grants",
+        "category":  "Ecosystem",
+        "summary":  "Official grants information for projects that need ecosystem funding or support while building on Dusk.",
+        "url":  "https://docs.dusk.network/developer/contribute/grants/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "grants",
+                     "ecosystem",
+                     "funding",
+                     "builders",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "audits-repository",
+        "title":  "Dusk Audit Reports",
+        "category":  "Security",
+        "summary":  "Dusk audit report repository for production-readiness and security-history review before making strong safety claims.",
+        "url":  "https://github.com/dusk-network/audits",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "security",
+                     "audits",
+                     "production",
+                     "review",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "hedger-docs-mention",
+        "title":  "Hedger Confidential EVM Route Mention",
+        "category":  "Privacy",
+        "summary":  "Dusk developer overview mentions Hedger as the route toward confidential EVM flows, but current audited public sources are not enough for guided Studio templates.",
+        "url":  "https://docs.dusk.network/developer/overview/",
+        "maturity":  "source-gap",
+        "tags":  [
+                     "evm",
+                     "duskevm",
+                     "hedger",
+                     "privacy",
+                     "confidential",
+                     "source-gap",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "stake-abstraction-docs",
+        "title":  "Stake Abstraction / Hyperstaking",
+        "category":  "Staking",
+        "summary":  "Official technical guide for smart contracts that own or manage stake and rewards through the genesis Stake and Transfer contracts.",
+        "url":  "https://docs.dusk.network/learn/hyperstaking/",
+        "maturity":  "official-advanced",
+        "tags":  [
+                     "duskds",
+                     "stake-abstraction",
+                     "hyperstaking",
+                     "staking",
+                     "contracts",
+                     "advanced",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "contract-standards-source",
+        "title":  "Dusk Native Contract Standards",
+        "category":  "Standards",
+        "summary":  "Source for Dusk-native access control, pausable, nonce/replay, multisig, reentrancy guard, DRC20 primitives, and reference contracts.",
+        "url":  "https://github.com/dusk-network/contracts/tree/main/standards",
+        "maturity":  "official-source-evolving",
+        "tags":  [
+                     "duskds",
+                     "standards",
+                     "drc20",
+                     "access-control",
+                     "multisig",
+                     "reentrancy",
+                     "governance",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "wallet-provider-api",
+        "title":  "Dusk Wallet Provider API",
+        "category":  "Wallets",
+        "summary":  "Provider API reference for dApp discovery, profiles, public and shielded flows, chain switching, gas estimation, transactions, watchAsset, and signing.",
+        "url":  "https://github.com/dusk-network/wallet/blob/main/docs/provider-api.md",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "wallet",
+                     "provider",
+                     "dusk-connect",
+                     "signing",
+                     "watchAsset",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "wallet-roadmap-source",
+        "title":  "Dusk Wallet Roadmap",
+        "category":  "Wallets",
+        "summary":  "Current wallet feature/readiness source for provider parity, DRC20/DRC721 watch/import flows, signing APIs, and platform status.",
+        "url":  "https://github.com/dusk-network/wallet/blob/main/docs/ROADMAP.md",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "wallet",
+                     "roadmap",
+                     "drc20",
+                     "drc721",
+                     "provider",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "rusk-state-snapshot",
+        "title":  "Rusk State Snapshot Tooling",
+        "category":  "Infrastructure",
+        "summary":  "Standalone CLI for signed Rusk state snapshot pack, verify, publish, promote, list, restore, garbage-collect, watch, and capture flows.",
+        "url":  "https://github.com/dusk-network/rusk-state-snapshot",
+        "maturity":  "official-source",
+        "tags":  [
+                     "duskds",
+                     "rusk",
+                     "snapshot",
+                     "node",
+                     "operator",
+                     "restore",
+                     "infrastructure",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "dusk-networks-testnet-tokens",
+        "title":  "Dusk Network Environments and Testnet Tokens",
+        "category":  "Access",
+        "summary":  "Official network table for DuskDS mainnet, Nocturne testnet, internal devnet, public endpoints, explorers, and the Discord nDUSK testnet token route.",
+        "url":  "https://docs.dusk.network/operator/networks/",
+        "maturity":  "official",
+        "tags":  [
+                     "duskds",
+                     "testnet",
+                     "network",
+                     "ndusk",
+                     "faucet",
+                     "discord",
+                     "access",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "dusk-migration-contract",
+        "title":  "DUSK Migration Contract",
+        "category":  "Migration",
+        "summary":  "Archived ERC20/BEP20 to native DUSK migration and mainnet onramp contract source. Useful context, not a new Studio starter path.",
+        "url":  "https://github.com/dusk-network/dusk-migration",
+        "maturity":  "archived-source-context",
+        "tags":  [
+                     "dusk",
+                     "migration",
+                     "erc20",
+                     "bep20",
+                     "onramp",
+                     "legacy",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "hyperlane-source-context",
+        "title":  "Hyperlane Monorepo Fork",
+        "category":  "Interchain",
+        "summary":  "Public Dusk fork of Hyperlane v3 interchain messaging. No Dusk-specific Studio-ready implementation guide was found in the audit.",
+        "url":  "https://github.com/dusk-network/hyperlane-monorepo",
+        "maturity":  "source-gap",
+        "tags":  [
+                     "hyperlane",
+                     "interchain",
+                     "evm",
+                     "source-gap",
+                     "advanced",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "trex-regulated-assets",
+        "title":  "T-REX Regulated Asset Contracts",
+        "category":  "EVM source context",
+        "summary":  "Dusk-network fork of the ERC-3643 T-REX Solidity suite for regulated tokens, identity registries, claim issuers, and compliance contracts.",
+        "url":  "https://github.com/dusk-network/T-REX",
+        "maturity":  "source-context",
+        "tags":  [
+                     "evm",
+                     "duskevm",
+                     "regulated-assets",
+                     "erc3643",
+                     "identity",
+                     "compliance",
+                     "capabilities"
+                 ]
+    },
+    {
+        "id":  "onchainid-solidity",
+        "title":  "OnchainID Solidity Contracts",
+        "category":  "EVM source context",
+        "summary":  "Dusk-network fork of OnchainID Solidity contracts implementing ERC734/ERC735-style identity contracts and interfaces.",
+        "url":  "https://github.com/dusk-network/onchainid-solidity",
+        "maturity":  "source-context",
+        "tags":  [
+                     "evm",
+                     "identity",
+                     "erc734",
+                     "erc735",
+                     "onchainid",
+                     "regulated-assets",
+                     "capabilities"
+                 ]
+    }
+]

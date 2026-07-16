@@ -1,0 +1,64 @@
+{
+  "schema_version": 2,
+  "product": "Dusk Developer Studio Local Standalone",
+  "channel": "node-sea-in-process",
+  "canonical_repository": "GeorgianDusk/dusk-developer-studio",
+  "workflow_path": ".github/workflows/studio-companion-signed-rc.yml",
+  "protected_environment": "studio-companion-signing",
+  "release_tag_pattern": "^studio-companion-v\\d+\\.\\d+\\.\\d+-rc\\.\\d+$",
+  "publication_enabled": false,
+  "publication_blocker": "The independent maintainer's Windows and Apple signing identities are not configured, and no signed clean-machine release candidate has passed.",
+  "runner_labels": {
+    "windows-x64": "windows-2025",
+    "linux-x64": "ubuntu-24.04",
+    "darwin-arm64": "macos-14"
+  },
+  "targets": {
+    "windows-x64": {
+      "distribution_format": "pe-executable",
+      "signing_provider": "azure-artifact-signing",
+      "approved_identity": "",
+      "identity_field": "publisher_subject",
+      "required_checks": [
+        "authenticode_valid",
+        "timestamp_valid",
+        "publisher_identity_verified",
+        "fresh_runner_smoke_passed",
+        "cleanup_verified",
+        "malware_scan_passed",
+        "rollback_verified"
+      ]
+    },
+    "linux-x64": {
+      "distribution_format": "elf-executable-with-sigstore-bundle",
+      "signing_provider": "sigstore-keyless",
+      "identity_field": "certificate_identity",
+      "identity_template": "https://github.com/GeorgianDusk/dusk-developer-studio/.github/workflows/studio-companion-signed-rc.yml@refs/tags/{release_tag}",
+      "approved_oidc_issuer": "https://token.actions.githubusercontent.com",
+      "required_checks": [
+        "cosign_bundle_verified",
+        "rekor_inclusion_verified",
+        "workflow_identity_verified",
+        "fresh_runner_smoke_passed",
+        "cleanup_verified",
+        "rollback_verified"
+      ]
+    },
+    "darwin-arm64": {
+      "distribution_format": "zip-with-stapled-app-bundle",
+      "signing_provider": "apple-developer-id-notary",
+      "approved_identity": "",
+      "identity_field": "apple_team_id",
+      "required_checks": [
+        "developer_id_valid",
+        "hardened_runtime",
+        "notarized",
+        "ticket_stapled",
+        "gatekeeper_assessed",
+        "fresh_runner_smoke_passed",
+        "cleanup_verified",
+        "rollback_verified"
+      ]
+    }
+  }
+}

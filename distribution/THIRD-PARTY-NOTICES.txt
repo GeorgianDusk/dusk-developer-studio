@@ -1,0 +1,6 @@
+This package includes a separately checksummed Node.js runtime. Its upstream
+license is copied into licenses/NODE-LICENSE.txt in every built payload.
+
+JavaScript dependency inventory is recorded in companion-sbom.cdx.json.
+The Dusk Foundry Counter template is a learning example and is not audited or
+production-ready.

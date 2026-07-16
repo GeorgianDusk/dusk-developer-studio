@@ -1,0 +1,50 @@
+[
+  {
+    "id": "dusk-evm-testnet",
+    "name": "DuskEVM Testnet",
+    "chainId": 745,
+    "chainIdHex": "0x2e9",
+    "nativeCurrency": { "name": "DUSK", "symbol": "DUSK", "decimals": 18 },
+    "rpcUrls": ["https://rpc.testnet.evm.dusk.network"],
+    "wssUrls": ["wss://wss.testnet.evm.dusk.network"],
+    "explorerUrl": "https://explorer.testnet.evm.dusk.network",
+    "blockTimeSeconds": 2,
+    "enabledByDefault": true,
+    "maturity": "testnet",
+    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
+    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "warning": "Testnet-first developer onboarding network. Tokens have no monetary value."
+  },
+  {
+    "id": "dusk-evm-mainnet",
+    "name": "DuskEVM Mainnet",
+    "chainId": 744,
+    "chainIdHex": "0x2e8",
+    "nativeCurrency": { "name": "DUSK", "symbol": "DUSK", "decimals": 18 },
+    "rpcUrls": ["https://rpc.evm.dusk.network"],
+    "wssUrls": ["wss://wss.evm.dusk.network"],
+    "explorerUrl": "https://explorer.evm.dusk.network",
+    "blockTimeSeconds": 2,
+    "enabledByDefault": false,
+    "maturity": "mainnet-reference",
+    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
+    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "warning": "Reference metadata only. Public preview does not support mainnet deployment UX."
+  },
+  {
+    "id": "dusk-evm-devnet",
+    "name": "DuskEVM Devnet",
+    "chainId": 310,
+    "chainIdHex": "0x136",
+    "nativeCurrency": { "name": "DUSK", "symbol": "DUSK", "decimals": 18 },
+    "rpcUrls": ["https://rpc.devnet.evm.dusk.network"],
+    "wssUrls": ["wss://wss.devnet.evm.dusk.network"],
+    "explorerUrl": "https://explorer.devnet.evm.dusk.network",
+    "blockTimeSeconds": 2,
+    "enabledByDefault": false,
+    "maturity": "devnet-reference",
+    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
+    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "warning": "Reference metadata only. Devnet should be enabled only for explicit local testing."
+  }
+]

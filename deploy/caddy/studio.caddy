@@ -1,0 +1,31 @@
+# Public static Studio. This service fragment intentionally has no authentication or reverse proxy.
+studio.134-122-59-217.sslip.io {
+	root * /var/www/dusk-studio/current
+	encode zstd gzip
+
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://rpc.testnet.evm.dusk.network https://rpc.evm.dusk.network https://testnet.nodes.dusk.network https://nodes.dusk.network; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=()"
+	}
+
+	respond /healthz "ok" 200
+
+	@health path /healthz
+	header @health Cache-Control "no-store"
+
+	@receipts path /release-manifest.json /assurance-receipt.json
+	header @receipts Cache-Control "no-store"
+
+	@assets path /assets/*
+	header @assets Cache-Control "public, max-age=31536000, immutable"
+
+	@html path / /index.html
+	header @html Cache-Control "no-cache"
+
+	try_files {path} /index.html
+	file_server
+}

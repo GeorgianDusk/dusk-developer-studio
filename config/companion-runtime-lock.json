@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "runtime": {
+    "name": "node",
+    "version": "24.11.0",
+    "checksum_url": "https://nodejs.org/dist/v24.11.0/SHASUMS256.txt",
+    "targets": {
+      "windows-x64": {
+        "archive_url": "https://nodejs.org/dist/v24.11.0/node-v24.11.0-win-x64.zip",
+        "archive_sha256": "1054540bce22b54ec7e50ebc078ec5d090700a77657607a58f6a64df21f49fdd",
+        "archive_root": "node-v24.11.0-win-x64",
+        "source_binary_path": "node.exe",
+        "payload_binary_path": "runtime/node.exe"
+      },
+      "linux-x64": {
+        "archive_url": "https://nodejs.org/dist/v24.11.0/node-v24.11.0-linux-x64.tar.xz",
+        "archive_sha256": "46da9a098973ab7ba4fca76945581ecb2eaf468de347173897044382f10e0a0a",
+        "archive_root": "node-v24.11.0-linux-x64",
+        "source_binary_path": "bin/node",
+        "payload_binary_path": "runtime/node"
+      },
+      "darwin-arm64": {
+        "archive_url": "https://nodejs.org/dist/v24.11.0/node-v24.11.0-darwin-arm64.tar.xz",
+        "archive_sha256": "30bbe12b71f5b89ba44e15dc0cfaf3c733538d46ee375691534b7bbe622225cc",
+        "archive_root": "node-v24.11.0-darwin-arm64",
+        "source_binary_path": "bin/node",
+        "payload_binary_path": "runtime/node"
+      }
+    }
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "product": "Dusk Developer Studio Local",
+  "channel": "portable",
+  "supported_targets": [
+    "windows-x64",
+    "linux-x64",
+    "darwin-arm64"
+  ],
+  "entrypoints": {
+    "windows-x64": "bin/dusk-studio.cmd",
+    "linux-x64": "bin/dusk-studio",
+    "darwin-arm64": "bin/dusk-studio"
+  },
+  "action_entrypoints": {
+    "windows-x64": "bin/dusk-studio-local-actions.cmd",
+    "linux-x64": "bin/dusk-studio-local-actions",
+    "darwin-arm64": "bin/dusk-studio-local-actions"
+  },
+  "launcher_entry": "app/companion.mjs",
+  "internal_rc": {
+    "unsigned_allowed": true,
+    "signing_status": "unsigned-rc"
+  },
+  "publication": {
+    "signature_required": true,
+    "algorithm": "ed25519",
+    "signing_status": "signed"
+  },
+  "payload": {
+    "maximum_files": 10000,
+    "maximum_bytes": 536870912,
+    "forbidden_segments": [
+      ".git",
+      ".agents",
+      ".codex",
+      ".env",
+      "node_modules",
+      "coverage",
+      "playwright-report",
+      "test-results",
+      "tmp",
+      "cache"
+    ]
+  }
+}

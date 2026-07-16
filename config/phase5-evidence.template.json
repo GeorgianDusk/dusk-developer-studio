@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "candidate": {
+    "artifact_fingerprint_sha256": "replace-with-64-character-digest",
+    "public_fingerprint_sha256": "replace-with-64-character-digest",
+    "commit": "replace-with-clean-40-character-commit",
+    "manifest_url": "https://approved-host/release-manifest.json",
+    "built_at": "replace-with-ISO-8601",
+    "source_checked_at": "replace-with-ISO-8601",
+    "source_expires_at": "replace-with-ISO-8601"
+  },
+  "owners": {
+    "product": "George",
+    "engineering": "pending",
+    "protocol_docs": "pending",
+    "security": "pending",
+    "platform": "pending",
+    "brand": "pending",
+    "accessibility": "pending",
+    "devrel_support": "pending"
+  },
+  "reviews": {
+    "companion_security": {
+      "status": "pending",
+      "reviewer": "pending",
+      "reviewed_at": "pending",
+      "independent": false
+    },
+    "platform": {
+      "status": "pending",
+      "reviewer": "pending",
+      "reviewed_at": "pending"
+    },
+    "accessibility": {
+      "status": "pending",
+      "reviewer": "pending",
+      "reviewed_at": "pending"
+    }
+  },
+  "pilot": {
+    "sessions": []
+  },
+  "live_smoke": {
+    "status": "not-authorized",
+    "authority_reference": "pending",
+    "redacted": false,
+    "evm_steps": {},
+    "native_steps": {}
+  },
+  "synthetics": {
+    "checks": {},
+    "alert_delivery_verified": false,
+    "checked_at": "pending"
+  },
+  "rollback": {
+    "product": {
+      "status": "pending"
+    },
+    "platform": {
+      "status": "pending"
+    }
+  },
+  "issues": [],
+  "support": {
+    "on_call_owner": "pending",
+    "support_channel_confirmed": true,
+    "launch_message_owner": "pending",
+    "incident_message_owner": "pending"
+  },
+  "product_signoff": {
+    "decision": "pending",
+    "owner": "George",
+    "signed_at": "pending",
+    "artifact_fingerprint_sha256": "pending"
+  },
+  "companion_distribution": {
+    "hosted_mode": "docs-only",
+    "availability": "not-published",
+    "targets": {}
+  }
+}

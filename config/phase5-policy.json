@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "candidate_hosts": [
+    "studio.134-122-59-217.sslip.io"
+  ],
+  "expected_testnet_chain_id": "0x2e9",
+  "minimum_tls_days_remaining": 14,
+  "required_owners": [
+    "product",
+    "engineering",
+    "protocol_docs",
+    "security",
+    "platform",
+    "brand",
+    "accessibility",
+    "devrel_support"
+  ],
+  "required_reviews": [
+    "companion_security",
+    "platform",
+    "accessibility"
+  ],
+  "pilot": {
+    "minimum_total": 8,
+    "minimum_evm": 3,
+    "minimum_native": 3,
+    "required_experience": [
+      "novice",
+      "experienced"
+    ],
+    "required_contexts": [
+      "windows",
+      "wsl",
+      "linux",
+      "macos"
+    ],
+    "minimum_completion_rate": 0.83,
+    "minimum_recovery_rate": 0.8,
+    "minimum_average_trust_score": 4,
+    "maximum_blocking_confusion": 0
+  },
+  "required_synthetic_checks": [
+    "public_health",
+    "release_parity",
+    "key_routes",
+    "source_links",
+    "rpc_chain_id",
+    "rpc_degradation",
+    "tls_expiry",
+    "companion_port_closed"
+  ],
+  "required_evm_smoke_steps": [
+    "provider",
+    "account",
+    "balance",
+    "build",
+    "deploy",
+    "receipt",
+    "explorer"
+  ],
+  "required_native_smoke_steps": [
+    "scaffold",
+    "build",
+    "inspect"
+  ],
+  "rollback_targets_seconds": {
+    "product": 300,
+    "platform": 600
+  },
+  "key_source_urls": [
+    "https://docs.dusk.network/developer/overview/",
+    "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "https://docs.dusk.network/developer/integrations/w3sper",
+    "https://github.com/dusk-network/forge"
+  ],
+  "companion_distribution": {
+    "hosted_mode": "docs-only",
+    "allowed_availability": [
+      "not-published",
+      "signed-downloads"
+    ],
+    "required_targets": [
+      "windows-x64",
+      "linux-x64",
+      "darwin-arm64"
+    ],
+    "required_signatures": {
+      "windows-x64": "authenticode",
+      "linux-x64": "sigstore-keyless",
+      "darwin-arm64": "developer-id-notarized"
+    },
+    "clean_machine_smoke_status": "passed"
+  }
+}

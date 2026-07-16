@@ -1,0 +1,24 @@
+{
+    "name":  "@dusk/studio",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "dev":  "vite",
+                    "build":  "tsc -p tsconfig.json --noEmit \u0026\u0026 vite build \u0026\u0026 node ../../scripts/write-assurance-receipt.mjs \u0026\u0026 node ../../scripts/write-release-manifest.mjs",
+                    "preview":  "vite preview --host 127.0.0.1 --port 5173"
+                },
+    "dependencies":  {
+                         "@dusk/core":  "workspace:*",
+                         "lucide-react":  "^0.548.0",
+                         "react":  "^19.2.0",
+                         "react-dom":  "^19.2.0",
+                         "viem":  "^2.38.2",
+                         "zod":  "^4.1.12"
+                     },
+    "devDependencies":  {
+                            "@vitejs/plugin-react":  "^5.0.4",
+                            "typescript":  "^5.9.3",
+                            "vite":  "^7.3.6"
+                        }
+}

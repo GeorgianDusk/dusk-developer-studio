@@ -1,0 +1,63 @@
+{
+  "schema_version": 3,
+  "status": "verified",
+  "reviewed_at": "2026-07-03",
+  "expires_at": "2026-08-03",
+  "policy": "fail-build",
+  "covered_files": [
+    {
+      "path": "data/dusk/capabilities.json",
+      "sha256": "340a4af917bf20e3035868fdd19b5b5431d75f8fb8037a244c8cd192b545f8f6"
+    },
+    {
+      "path": "data/dusk/networks.evm.json",
+      "sha256": "1711892622247bc388cf4eecc20f62ccae1ed024c81cb392dee8fee289f9dd79"
+    },
+    {
+      "path": "data/dusk/resources.json",
+      "sha256": "7c9463a45280759b5747566831a594284cf1768884dad7419d0d7909b814b78d"
+    },
+    {
+      "path": "data/dusk/troubleshooting.json",
+      "sha256": "512942ae9c50774e6ecf5becc2dc86d85e9cc58dc359fa93a22d8dd94d02a570"
+    }
+  ],
+  "sources": [
+    {
+      "id": "dusk-docs",
+      "url": "https://docs.dusk.network/",
+      "checked_at": "2026-07-03",
+      "status": "verified"
+    },
+    {
+      "id": "dusk-forge",
+      "url": "https://github.com/dusk-network/forge",
+      "checked_at": "2026-07-03",
+      "status": "verified"
+    }
+  ],
+  "provenance": {
+    "approved_hosts": [
+      "docs.blockscout.com",
+      "docs.dusk.network",
+      "docs.rs",
+      "explorer.devnet.evm.dusk.network",
+      "explorer.evm.dusk.network",
+      "explorer.testnet.evm.dusk.network",
+      "github.com",
+      "jsr.io",
+      "rpc.devnet.evm.dusk.network",
+      "rpc.evm.dusk.network",
+      "rpc.testnet.evm.dusk.network",
+      "wss.devnet.evm.dusk.network",
+      "wss.evm.dusk.network",
+      "wss.testnet.evm.dusk.network"
+    ],
+    "record_counts": {
+      "capabilities": 22,
+      "networks": 3,
+      "resources": 49,
+      "troubleshooting": 42
+    }
+  }
+}

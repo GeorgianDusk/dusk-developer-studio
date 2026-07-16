@@ -1,0 +1,653 @@
+[
+    {
+        "id":  "wrong-chain",
+        "title":  "Wallet is on the wrong chain",
+        "symptoms":  [
+                         "chain mismatch",
+                         "wrong chain",
+                         "expected 0x2e9",
+                         "network error",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "medium",
+        "fix":  "Switch to DuskEVM Testnet and confirm chain ID 745 / 0x2e9 before funding or deploying.",
+        "safeNextStep":  "Use DuskEVM Setup to add or switch the wallet network, then re-run the RPC health check."
+    },
+    {
+        "id":  "no-wallet",
+        "title":  "No injected wallet found",
+        "symptoms":  [
+                         "no wallet",
+                         "provider missing",
+                         "metamask not found",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "low",
+        "fix":  "Install or unlock an EIP-1193 compatible wallet such as MetaMask or Rabby, then refresh the Studio.",
+        "safeNextStep":  "You can still create local starters without connecting a wallet."
+    },
+    {
+        "id":  "user-rejected",
+        "title":  "Wallet request rejected",
+        "symptoms":  [
+                         "4001",
+                         "user rejected",
+                         "request rejected",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "low",
+        "fix":  "The wallet declined the request. Retry only if you understand the requested network action.",
+        "safeNextStep":  "Review the network details before approving wallet_addEthereumChain or wallet_switchEthereumChain."
+    },
+    {
+        "id":  "insufficient-gas",
+        "title":  "Insufficient DUSK for gas",
+        "symptoms":  [
+                         "insufficient funds",
+                         "gas",
+                         "balance too low",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "medium",
+        "fix":  "Fund the EVM wallet with testnet DUSK. Public preview routes to the official DuskEVM bridge guide and does not dispense faucet tokens.",
+        "safeNextStep":  "Open Access and follow the official bridge route."
+    },
+    {
+        "id":  "rpc-unavailable",
+        "title":  "RPC unavailable or slow",
+        "symptoms":  [
+                         "rpc",
+                         "timeout",
+                         "429",
+                         "500",
+                         "failed to fetch",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "medium",
+        "fix":  "Retry the RPC health check. If the browser says Failed to fetch, it can be RPC availability, firewall/proxy, DNS, TLS, or CORS behavior rather than a wallet issue.",
+        "safeNextStep":  "Check the official explorer and avoid repeated transaction attempts. If shell and browser requests both fail, treat it as endpoint/network availability before debugging wallet code."
+    },
+    {
+        "id":  "blockscout-unavailable",
+        "title":  "Blockscout unavailable",
+        "symptoms":  [
+                         "explorer",
+                         "blockscout",
+                         "verification page",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "low",
+        "fix":  "A contract may still be deployed even if the explorer is lagging or unavailable.",
+        "safeNextStep":  "Keep the tx hash and contract address, then retry the explorer later."
+    },
+    {
+        "id":  "foundry-missing",
+        "title":  "Foundry is not installed",
+        "symptoms":  [
+                         "forge not found",
+                         "cast not found",
+                         "foundry missing",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "medium",
+        "fix":  "Install Foundry so forge and cast are available before running build, test, or deploy commands.",
+        "safeNextStep":  "Install Foundry, then return to Build before using deploy commands."
+    },
+    {
+        "id":  "bridge-pending",
+        "title":  "Bridge or funding step is pending",
+        "symptoms":  [
+                         "bridge pending",
+                         "deposit pending",
+                         "no funds after bridge",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "medium",
+        "fix":  "Bridge timing can vary. Keep source and destination transaction details and avoid sending duplicate bridge attempts without checking status.",
+        "safeNextStep":  "Use official Dusk support paths if funds remain unavailable after the documented wait."
+    },
+    {
+        "id":  "verification-failed",
+        "title":  "Contract verification failed",
+        "symptoms":  [
+                         "verification failed",
+                         "compiler mismatch",
+                         "metadata mismatch",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "low",
+        "fix":  "Confirm compiler version, optimizer settings, constructor args, and exact contract path match the deployed bytecode.",
+        "safeNextStep":  "Use Blockscout UI first; API automation is not enabled in the public preview."
+    },
+    {
+        "id":  "dusk-forge-windows-wasm-opt-shim",
+        "title":  "Forge found a Windows wasm-opt shim",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "dusk-forge build",
+                         "wasm-opt",
+                         "%1 is not a valid Win32 application",
+                         "not a valid Win32 application",
+                         "binaryen npm",
+                         "optimizer failed"
+                     ],
+        "severity":  "medium",
+        "fix":  "On Windows, npm Binaryen can put an extensionless wasm-opt shim first on PATH. Install a native Binaryen wasm-opt.exe or remove that shim from PATH for Forge runs. Forge can skip optional optimization and still build contract plus data-driver WASM.",
+        "safeNextStep":  "Run DuskDS preflight. If only wasm-opt is warning, continue with dusk-forge build all or fix the optimizer later."
+    },
+    {
+        "id":  "dusk-forge-windows-long-path-linker",
+        "title":  "Forge build fails under a deep Windows path",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "dusk-forge build",
+                         "link.exe",
+                         "LNK1104",
+                         "LNK1181",
+                         "cannot open file",
+                         "cannot open input file",
+                         "deep path",
+                         "long path"
+                     ],
+        "severity":  "medium",
+        "fix":  "On Windows, native Rust build scripts can fail when a Forge project is nested under a deep workspace path. Scaffold DuskDS projects under a short parent such as C:\\tmp\\dusk-studio-projects, then re-run dusk-forge check and dusk-forge build all.",
+        "safeNextStep":  "Use the DuskDS build page default parent path or set DUSK_STUDIO_DUSKDS_PROJECT_ROOT to another short local folder."
+    },
+    {
+        "id":  "rust-wasm-target-missing",
+        "title":  "Rust 1.94.0 WASM target or rust-src is missing",
+        "symptoms":  [
+                         "wasm32 missing",
+                         "rust target missing",
+                         "rust-src missing",
+                         "dusk-forge check failed",
+                         "cargo build wasm failed",
+                         "duskds",
+                         "native",
+                         "1.94.0 missing",
+                         "toolchain 1.94.0"
+                     ],
+        "severity":  "medium",
+        "fix":  "The Studio pins generated Dusk Forge projects to Rust 1.94.0. Install that toolchain with the wasm32-unknown-unknown target and rust-src component before building native Dusk contracts.",
+        "safeNextStep":  "Run rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown, then re-run DuskDS preflight."
+    },
+    {
+        "id":  "dusk-forge-rust-stable-drift",
+        "title":  "Forge build fails on newer Rust stable",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "dusk-forge build",
+                         "rust-lld",
+                         "undefined symbol: emit",
+                         "undefined symbol: panic",
+                         "Rust 1.96",
+                         "latest stable",
+                         "toolchain drift"
+                     ],
+        "severity":  "medium",
+        "fix":  "A WSL Ubuntu build failed with Rust stable 1.96.1 at the WASM link step, while the same Forge starter built and tested with Rust 1.94.0. Keep generated starters pinned to Rust 1.94.0 until Dusk Forge and its dependencies are re-verified on newer stable Rust.",
+        "safeNextStep":  "Install Rust 1.94.0 with rust-src and the wasm32 target, then confirm rust-toolchain.toml says channel = \"1.94.0\" before rebuilding."
+    },
+    {
+        "id":  "data-driver-build-missing",
+        "title":  "Native data-driver WASM was not built",
+        "symptoms":  [
+                         "wasm-dd missing",
+                         "data driver missing",
+                         "contract query failed",
+                         "duskds",
+                         "native"
+                     ],
+        "severity":  "medium",
+        "fix":  "Use dusk-forge build all so Forge builds both contract WASM and data-driver WASM from the same source.",
+        "safeNextStep":  "Use DuskDS Build and keep contract and data-driver outputs from the same source revision."
+    },
+    {
+        "id":  "rusk-wallet-missing",
+        "title":  "Rusk Wallet is missing for native deployment",
+        "symptoms":  [
+                         "rusk-wallet not found",
+                         "contract-deploy unavailable",
+                         "native deploy failed",
+                         "duskds",
+                         "native"
+                     ],
+        "severity":  "medium",
+        "fix":  "Native Dusk contract deployment is currently a manual Rusk Wallet path in the public preview. Install and review wallet commands before signing.",
+        "safeNextStep":  "Do not automate signing until wallet setup, fee estimation, and deploy policy are reviewed."
+    },
+    {
+        "id":  "native-make-missing",
+        "title":  "Make is missing for optional shortcuts",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "make not found",
+                         "make missing",
+                         "starter build failed"
+                     ],
+        "severity":  "low",
+        "fix":  "Make is useful for template shortcuts, but the Studio uses Dusk Forge CLI directly. Use dusk-forge check and dusk-forge build all when Make is unavailable.",
+        "safeNextStep":  "Run DuskDS preflight and continue if all required Forge and Rust checks pass."
+    },
+    {
+        "id":  "native-wasm-tools-missing",
+        "title":  "Optional WASM packaging tools are missing",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "wasm-pack missing",
+                         "wasm-tools missing",
+                         "wasm-opt missing"
+                     ],
+        "severity":  "low",
+        "fix":  "wasm-pack and wasm-tools are useful for advanced packaging and inspection, but the basic Forge build does not require them. Treat wasm-opt as optional optimization.",
+        "safeNextStep":  "Run dusk-forge check and build the unchanged starter before adding optional packaging steps."
+    },
+    {
+        "id":  "native-data-driver-mismatch",
+        "title":  "Data driver does not match the contract WASM",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "schema mismatch",
+                         "json rkyv mismatch",
+                         "event decode failed",
+                         "data driver mismatch"
+                     ],
+        "severity":  "high",
+        "fix":  "Rebuild contract WASM and data-driver WASM from the same source revision and confirm exported functions, events, and schema expectations match.",
+        "safeNextStep":  "Use DuskDS Build to rebuild both artifacts before connecting frontend or indexer code."
+    },
+    {
+        "id":  "native-lux-unit-confusion",
+        "title":  "DUSK and LUX units are mixed up",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "lux",
+                         "unit mismatch",
+                         "balance wrong",
+                         "amount wrong"
+                     ],
+        "severity":  "medium",
+        "fix":  "Native integration docs use LUX for base units. Convert deliberately: 1 DUSK equals 1,000,000,000 LUX.",
+        "safeNextStep":  "Keep unit conversion near the call site and add tests around any displayed amount or transaction amount."
+    },
+    {
+        "id":  "native-not-finalized",
+        "title":  "Transaction is executed but not finalized",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "not finalized",
+                         "pending finality",
+                         "transaction pending",
+                         "finality"
+                     ],
+        "severity":  "medium",
+        "fix":  "Do not treat inclusion or execution as the end of the lifecycle. Wait for finality before considering the transaction irreversible.",
+        "safeNextStep":  "Use DuskDS Inspect and the transaction lifecycle docs before reporting success to users."
+    },
+    {
+        "id":  "native-wallet-node-config",
+        "title":  "Rusk Wallet is pointed at the wrong node",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "rusk wallet config",
+                         "wrong node",
+                         "state url",
+                         "prover url"
+                     ],
+        "severity":  "medium",
+        "fix":  "Align Rusk Wallet state, prover, and optional archiver URLs with the node you are testing against. Use CLI overrides or a wallet config file deliberately.",
+        "safeNextStep":  "Check wallet settings before contract-call or contract-deploy, and keep signing manual in the public preview."
+    },
+    {
+        "id":  "evm-no-public-mempool-assumption",
+        "title":  "DuskEVM mempool assumption is wrong",
+        "symptoms":  [
+                         "evm",
+                         "duskevm",
+                         "mempool",
+                         "pending transaction",
+                         "transaction ordering"
+                     ],
+        "severity":  "low",
+        "fix":  "DuskEVM runtime behavior differs from generic public-mempool assumptions. Avoid product logic that depends on observing a public pending transaction pool.",
+        "safeNextStep":  "Inspect confirmed transactions through Blockscout and design app states around submitted, confirmed, and failed outcomes."
+    },
+    {
+        "id":  "dusk-forge-test-linux-required",
+        "title":  "dusk-forge test needs a Linux environment",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "dusk-forge test",
+                         "crumbles",
+                         "LocateFile",
+                         "Mmap",
+                         "piecrust",
+                         "unix only",
+                         "windows test failed"
+                     ],
+        "severity":  "medium",
+        "fix":  "Contract and data-driver builds can pass on Windows, but the VM-backed test stack currently depends on Unix-only memory mapping. Run dusk-forge test in Linux, WSL Ubuntu, or Docker.",
+        "safeNextStep":  "Use dusk-forge build all on Windows for artifacts, then run DuskDS preflight and check the WSL Ubuntu DuskDS test runner row before treating VM tests as ready."
+    },
+    {
+        "id":  "foundry-signature-cache-access-denied",
+        "title":  "Foundry build passes but signature cache warning appears",
+        "symptoms":  [
+                         "foundry",
+                         "forge test",
+                         "forge build",
+                         "failed to flush signature cache",
+                         "Access is denied",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "low",
+        "fix":  "Foundry can pass build/test while failing to write its local signature cache. Create or unlock %USERPROFILE%\\.foundry\\cache, run from a normal terminal, or ignore the warning when the compile/test result already passed.",
+        "safeNextStep":  "Do not rerun deploys because of this warning alone. Confirm whether forge build and forge test passed, then fix cache permissions later."
+    },
+    {
+        "id":  "duskds-template-source-split",
+        "title":  "DuskDS docs and Forge CLI show different starter routes",
+        "symptoms":  [
+                         "duskds",
+                         "native",
+                         "my-first-contract",
+                         "forge template",
+                         "starter confusion",
+                         "docs mismatch",
+                         "source gap"
+                     ],
+        "severity":  "low",
+        "fix":  "Current Dusk docs reference my-first-contract as the template route, while Dusk Forge provides the CLI scaffold that this Studio uses for the tested Forge path. Treat my-first-contract as official source context and use the Studio Forge path for this public preview unless Dusk updates the canonical recommendation.",
+        "safeNextStep":  "Use DuskDS Build for the tested Forge scaffold, then open Smart Contracts on DuskDS and Dusk Forge if you need to compare source guidance."
+    },
+    {
+        "id":  "hedger-source-gap",
+        "title":  "Hedger is mentioned but not ready for Studio automation",
+        "symptoms":  [
+                         "hedger",
+                         "confidential evm",
+                         "private evm",
+                         "privacy on duskevm",
+                         "source gap",
+                         "evm",
+                         "duskevm"
+                     ],
+        "severity":  "medium",
+        "fix":  "Dusk docs mention Hedger as the route toward confidential EVM flows, but the audited public docs and repositories do not yet give enough implementation detail for a guided template or deploy flow.",
+        "safeNextStep":  "Build and inspect the public DuskEVM path first; do not create Hedger templates until source-backed implementation docs are available."
+    },
+    {
+        "id":  "citadel-production-review-required",
+        "title":  "Citadel flow is being treated as production-ready too early",
+        "symptoms":  [
+                         "citadel",
+                         "identity",
+                         "license",
+                         "zk access",
+                         "private identity",
+                         "production",
+                         "duskds"
+                     ],
+        "severity":  "high",
+        "fix":  "Citadel 2 is source-backed and important, but it is a specialized identity/access protocol with security and policy boundaries. Treat it as experimental/review-required before using it for compliance or user access decisions.",
+        "safeNextStep":  "Read the Citadel protocol docs, repository README, specs, and threat model before designing a production flow."
+    },
+    {
+        "id":  "dusk-connect-wallet-unavailable",
+        "title":  "Dusk Connect cannot find a wallet provider",
+        "symptoms":  [
+                         "dusk connect",
+                         "wallet provider",
+                         "provider not found",
+                         "request provider",
+                         "wallet extension",
+                         "duskds"
+                     ],
+        "severity":  "low",
+        "fix":  "Dusk Connect discovers compatible wallet providers. If no provider is announced, the first-party wallet extension may be missing, locked, disabled for the site, or on the wrong network.",
+        "safeNextStep":  "Install or unlock the Dusk Wallet Extension, then test provider discovery before building transaction UI."
+    },
+    {
+        "id":  "dusk-connect-network-vs-wallet-confusion",
+        "title":  "Wallet integration is being mixed with node integration",
+        "symptoms":  [
+                         "dusk connect",
+                         "w3sper",
+                         "node api",
+                         "wallet api",
+                         "graphql",
+                         "provider",
+                         "duskds"
+                     ],
+        "severity":  "medium",
+        "fix":  "Dusk Connect is for wallet discovery and wallet/provider requests. W3sper and node HTTP/GraphQL/RUES APIs are for network reads, transaction lifecycle, contract calls, and infrastructure behavior.",
+        "safeNextStep":  "Use Dusk Connect for account access and W3sper for node access, then join them only at the app-flow layer."
+    },
+    {
+        "id":  "archive-query-on-non-archive-node",
+        "title":  "Archive history query is sent to a non-archive node",
+        "symptoms":  [
+                         "archive",
+                         "moonlightHistory",
+                         "fullMoonlightHistory",
+                         "historical events",
+                         "field unavailable",
+                         "exchange",
+                         "duskds"
+                     ],
+        "severity":  "medium",
+        "fix":  "Historical Moonlight transfer queries such as moonlightHistory and fullMoonlightHistory require an archive-enabled node or public archive endpoint.",
+        "safeNextStep":  "Use an archive endpoint for historical deposit/accounting workflows and keep realtime event handling separate."
+    },
+    {
+        "id":  "moonlight-phoenix-mixup",
+        "title":  "Moonlight and Phoenix addresses are being mixed up",
+        "symptoms":  [
+                         "moonlight",
+                         "phoenix",
+                         "shielded",
+                         "public address",
+                         "exchange deposit",
+                         "address invalid",
+                         "duskds"
+                     ],
+        "severity":  "high",
+        "fix":  "Moonlight is the public account model used for exchange-style deposits and withdrawals. Phoenix is shielded and incompatible with Moonlight-only transfer expectations.",
+        "safeNextStep":  "Check the encoding reference and choose one address model deliberately before accepting deposits or displaying addresses."
+    },
+    {
+        "id":  "verifiable-builds-docker-missing",
+        "title":  "Verifiable build cannot run because Docker or the build image is missing",
+        "symptoms":  [
+                         "verifiable builds",
+                         "deterministic build",
+                         "docker",
+                         "image not found",
+                         "audit artifact",
+                         "duskds"
+                     ],
+        "severity":  "low",
+        "fix":  "Verifiable builds are a production/audit gate, not the first local build. They require Docker and the matching locked Dusk verifiable build image.",
+        "safeNextStep":  "First pass dusk-forge check, build all, and tests; then add verifiable builds as a release gate with the documented image."
+    },
+    {
+        "id":  "unstable-token-example-copied-to-production",
+        "title":  "Unstable token example is being copied into production",
+        "symptoms":  [
+                         "transparent-token",
+                         "electronic-money-token",
+                         "token standard",
+                         "allowance",
+                         "unstable",
+                         "production",
+                         "duskds"
+                     ],
+        "severity":  "high",
+        "fix":  "The transparent-token and electronic-money-token repositories describe useful patterns but explicitly warn that function signatures are unstable and the projects are in development.",
+        "safeNextStep":  "Study them as examples, then design and review a production contract separately with tests, audits, and verifiable builds."
+    },
+    {
+        "id":  "dusk-decimals-integration-mismatch",
+        "title":  "DUSK decimals are wrong for an integration",
+        "symptoms":  [
+                         "decimals",
+                         "9 decimals",
+                         "18 decimals",
+                         "exchange",
+                         "erc20",
+                         "amount mismatch",
+                         "duskds"
+                     ],
+        "severity":  "medium",
+        "fix":  "Native DUSK uses 9 decimals. ERC20/BEP20 environments commonly use 18 decimals, so migrations, exchange systems, and displays must convert deliberately.",
+        "safeNextStep":  "Add unit conversion tests around every balance, deposit, withdrawal, and migration display."
+    },
+    {
+        "id":  "native-fnargs-too-large",
+        "title":  "Contract call arguments exceed the wallet/provider limit",
+        "symptoms":  [
+                         "duskds",
+                         "fnArgs",
+                         "maxFnArgsBytes",
+                         "payload too large",
+                         "contract_call",
+                         "wallet provider"
+                     ],
+        "severity":  "medium",
+        "fix":  "The wallet provider API documents a bounded contract-call argument size. Reduce or split call arguments instead of bypassing wallet/provider checks.",
+        "safeNextStep":  "Check dusk_getCapabilities, inspect maxFnArgsBytes, and redesign large payloads before asking users to sign."
+    },
+    {
+        "id":  "drc-watch-asset-verification-failed",
+        "title":  "DRC20 or DRC721 watchAsset verification failed",
+        "symptoms":  [
+                         "duskds",
+                         "drc20",
+                         "drc721",
+                         "watchAsset",
+                         "token import",
+                         "metadata",
+                         "owner_of"
+                     ],
+        "severity":  "medium",
+        "fix":  "The Dusk Wallet provider verifies token metadata and DRC721 ownership before persisting watched assets. A failed watchAsset request can mean the contract ID, token ID, metadata, current ownership, or data-driver expectations do not match.",
+        "safeNextStep":  "Read the contract with the canonical data driver and verify metadata/ownership before prompting the user again."
+    },
+    {
+        "id":  "stake-abstraction-direct-call",
+        "title":  "Stake Abstraction is calling stake_from_contract directly",
+        "symptoms":  [
+                         "duskds",
+                         "stake abstraction",
+                         "hyperstaking",
+                         "stake_from_contract",
+                         "contract_to_contract",
+                         "ReceiveFromContract"
+                     ],
+        "severity":  "high",
+        "fix":  "Contracts cannot call stake_from_contract directly. The official Stake Abstraction flow triggers it through a Transfer Contract contract_to_contract transfer into the Stake Contract.",
+        "safeNextStep":  "Follow the Stake Abstraction guide sequence: move funds into the contract, call contract_to_contract with fn_name stake_from_contract, then implement receive_unstake and receive_reward callbacks."
+    },
+    {
+        "id":  "rusk-wallet-secret-handling",
+        "title":  "Rusk Wallet secrets are being routed through the Studio",
+        "symptoms":  [
+                         "duskds",
+                         "rusk-wallet",
+                         "password",
+                         "mnemonic",
+                         "seed",
+                         "profile entropy",
+                         "private key",
+                         "deploy automation"
+                     ],
+        "severity":  "high",
+        "fix":  "The public Studio must not request, store, transmit, or log wallet secrets. Rusk Wallet signing, deploy, and staking actions stay manual unless a reviewed loopback-only policy is approved.",
+        "safeNextStep":  "Run Rusk Wallet commands in your own terminal and use Studio only for checklists, docs, and local companion scaffolding."
+    },
+    {
+        "id":  "citadel-session-cookie-exposure",
+        "title":  "Citadel session cookie is treated like harmless metadata",
+        "symptoms":  [
+                         "citadel",
+                         "session cookie",
+                         "license",
+                         "service provider",
+                         "identity",
+                         "zk access",
+                         "duskds"
+                     ],
+        "severity":  "high",
+        "fix":  "Citadel session cookies are bearer credentials in the protocol flow. They should be handled as sensitive access material, not logged, pasted into public tools, or stored by the Studio.",
+        "safeNextStep":  "Review the Citadel specs and security docs before building any service-provider flow. Keep Citadel in docs-only mode until security review is complete."
+    },
+    {
+        "id":  "native-standards-production-overclaim",
+        "title":  "Native standards are being presented as audited production templates",
+        "symptoms":  [
+                         "duskds",
+                         "standards",
+                         "drc20",
+                         "access control",
+                         "pausable",
+                         "multisig",
+                         "production",
+                         "audit"
+                     ],
+        "severity":  "medium",
+        "fix":  "The contracts standards source is useful and important, but the Studio should present it as evolving source-backed building blocks, not as audited production templates.",
+        "safeNextStep":  "Use the standards as implementation reference, then add VM tests, data-driver tests, verifiable builds, and audit review for production use."
+    },
+    {
+        "id":  "hyperlane-no-dusk-guide",
+        "title":  "Hyperlane is assumed to be a ready Dusk app path",
+        "symptoms":  [
+                         "hyperlane",
+                         "interchain",
+                         "bridge",
+                         "messaging",
+                         "source gap",
+                         "evm",
+                         "duskds"
+                     ],
+        "severity":  "medium",
+        "fix":  "A public dusk-network Hyperlane fork exists, but the audit did not find a Dusk-specific implementation guide suitable for a Studio flow.",
+        "safeNextStep":  "Treat Hyperlane as source context until Dusk publishes integration docs, deployed addresses, chain configs, and safety guidance."
+    },
+    {
+        "id":  "trex-onchainid-overpositioned",
+        "title":  "T-REX or OnchainID is being positioned as an official DuskEVM starter",
+        "symptoms":  [
+                         "trex",
+                         "onchainid",
+                         "erc3643",
+                         "regulated asset",
+                         "identity registry",
+                         "duskevm",
+                         "source context"
+                     ],
+        "severity":  "medium",
+        "fix":  "The Dusk-network forks expose useful regulated Solidity patterns, but the audit did not find a Dusk-specific guided deployment path or production recommendation.",
+        "safeNextStep":  "Keep these as advanced source-context links and build the normal DuskEVM deploy/verify loop first."
+    }
+]
