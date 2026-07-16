@@ -55,15 +55,15 @@ The main CI workflow repeats the product, security, browser, Linux, and Windows 
 
 ## Repository map
 
-- `apps/studio` ? React/Vite Studio UI.
-- `packages/core` ? validated Dusk data models and safe command generation.
-- `packages/local-agent` ? paired loopback companion.
-- `packages/local-runtime` ? portable runtime supervisor.
-- `packages/templates` ? constrained starter templates.
-- `data/dusk` ? source-labelled Dusk capability and network records.
-- `docs/security` ? threat model and security boundaries.
-- `docs/deployment` ? self-hosting and companion release policy.
-- `.github/workflows` ? pinned CI and protected signed-RC automation.
+- `apps/studio` — React/Vite Studio UI.
+- `packages/core` — validated Dusk data models and safe command generation.
+- `packages/local-agent` — paired loopback companion.
+- `packages/local-runtime` — portable runtime supervisor.
+- `packages/templates` — constrained starter templates.
+- `data/dusk` — source-labelled Dusk capability and network records.
+- `docs/security` — threat model and security boundaries.
+- `docs/deployment` — self-hosting and companion release policy.
+- `.github/workflows` — pinned CI and protected signed-RC automation.
 
 ## Contributing
 
