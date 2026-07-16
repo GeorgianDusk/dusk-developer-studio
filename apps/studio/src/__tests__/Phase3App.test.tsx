@@ -22,6 +22,9 @@ describe("Phase 3 interaction semantics", () => {
 
     const evmPath = screen.getByRole("button", { name: /Start Solidity path/i });
     const nativePath = screen.getByRole("button", { name: /Start native path/i });
+    expect(evmPath).toHaveAccessibleName("DuskEVM. Start Solidity path");
+    expect(evmPath).toHaveAccessibleDescription(/Choose this for Solidity/);
+    expect(nativePath).toHaveAccessibleName("DuskDS. Start native path");
     expect(evmPath).not.toHaveAttribute("aria-pressed");
     expect(nativePath).not.toHaveAttribute("aria-pressed");
     expect(screen.getByRole("table", { name: "Quick comparison of the two Dusk builder paths" })).toBeInTheDocument();
@@ -35,7 +38,12 @@ describe("Phase 3 interaction semantics", () => {
     expect(within(guideNavigation).getByRole("button", { name: /2 Access/i })).toBeInTheDocument();
 
     fireEvent.click(within(globalNavigation).getByRole("button", { name: "Reference" }));
-    expect(screen.getByRole("button", { name: "DuskDS only" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "All references" })).toBeInTheDocument();
+    const pathFilter = screen.getByRole("button", { name: "DuskDS only" });
+    const allFilter = screen.getByRole("button", { name: "All references" });
+    expect(pathFilter).toHaveAttribute("aria-pressed", "true");
+    expect(allFilter).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(allFilter);
+    expect(pathFilter).toHaveAttribute("aria-pressed", "false");
+    expect(allFilter).toHaveAttribute("aria-pressed", "true");
   });
 });

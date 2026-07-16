@@ -27,7 +27,7 @@ export interface LocalStaticServerOptions {
 function securityHeaders(companionPort: number): Record<string, string> {
   return {
     "cache-control": "no-store",
-    "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://${HOST}:${companionPort}; frame-ancestors 'none'; base-uri 'self'; form-action 'none'`,
+    "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://${HOST}:${companionPort} http://localhost:${companionPort}; frame-ancestors 'none'; base-uri 'self'; form-action 'none'`,
     "cross-origin-opener-policy": "same-origin",
     "cross-origin-resource-policy": "same-origin",
     "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=()",
@@ -136,7 +136,7 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
   if (!indexPath) throw new Error("Portable Studio index is missing or unsafe.");
   const now = options.now ?? Date.now;
   const bootstrapExpiresAt = now() + (options.bootstrapTtlMs ?? 5 * 60 * 1000);
-  let bootstrapAvailable = true;
+  let bootstrapState: "available" | "in-flight" | "burned" = "available";
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -153,20 +153,29 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
         if (!validBootstrapOrigin(origin, listeningPort) || contentType !== "application/json" || request.headers["sec-fetch-site"] === "cross-site") {
           sendJson(response, 403, { ok: false, code: "bootstrap_denied" }, options.companionPort); return;
         }
-        if (!bootstrapAvailable || now() > bootstrapExpiresAt) {
-          bootstrapAvailable = false;
+        if (now() > bootstrapExpiresAt) bootstrapState = "burned";
+        if (bootstrapState === "in-flight") {
+          sendJson(response, 409, { ok: false, code: "bootstrap_in_progress" }, options.companionPort); return;
+        }
+        if (bootstrapState === "burned") {
           sendJson(response, 410, { ok: false, code: "bootstrap_expired" }, options.companionPort); return;
         }
-        await readBootstrapBody(request);
-        const paired = await proxyPair(options.companionPort, origin!, options.pairingToken);
-        if (paired.status === 200) bootstrapAvailable = false;
-        const setCookie = paired.headers["set-cookie"];
-        response.writeHead(paired.status, {
-          ...securityHeaders(options.companionPort),
-          "content-type": "application/json; charset=utf-8",
-          ...(setCookie ? { "set-cookie": setCookie } : {})
-        });
-        response.end(paired.body); return;
+        bootstrapState = "in-flight";
+        try {
+          await readBootstrapBody(request);
+          const paired = await proxyPair(options.companionPort, origin!, options.pairingToken);
+          bootstrapState = paired.status === 200 || now() > bootstrapExpiresAt ? "burned" : "available";
+          const setCookie = paired.headers["set-cookie"];
+          response.writeHead(paired.status, {
+            ...securityHeaders(options.companionPort),
+            "content-type": "application/json; charset=utf-8",
+            ...(setCookie ? { "set-cookie": setCookie } : {})
+          });
+          response.end(paired.body); return;
+        } catch (error) {
+          if (bootstrapState === "in-flight") bootstrapState = now() > bootstrapExpiresAt ? "burned" : "available";
+          throw error;
+        }
       }
       if (url.pathname === "/healthz") {
         if (request.method !== "GET" && request.method !== "HEAD") { sendJson(response, 405, { ok: false, code: "method_denied" }, options.companionPort, { allow: "GET, HEAD" }); return; }

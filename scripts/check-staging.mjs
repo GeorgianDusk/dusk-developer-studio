@@ -8,15 +8,16 @@ const baseUrl = readArgument("url");
 const expectedEnvironment = readArgument("environment", "staging");
 const expectedCommit = readArgument("commit");
 const rpcUrl = readArgument("rpc-url", "https://rpc.testnet.evm.dusk.network");
+const rpcDegradationStatus = readArgument("rpc-degradation", "not-run");
 const output = readArgument("out");
 if (!baseUrl) {
-  console.error("Usage: node scripts/check-staging.mjs --url=https://approved-host --environment=staging [--commit=40-character-sha] [--out=output/receipt.json]");
+  console.error("Usage: node scripts/check-staging.mjs --url=https://approved-host --environment=staging --rpc-degradation=success [--commit=40-character-sha] [--out=output/receipt.json]");
   process.exit(2);
 }
 
 try {
   const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "phase5-policy.json"), "utf8"));
-  const receipt = await runStagingSmoke({ baseUrl, expectedEnvironment, expectedCommit, rpcUrl, policy });
+  const receipt = await runStagingSmoke({ baseUrl, expectedEnvironment, expectedCommit, rpcUrl, rpcDegradationStatus, policy });
   const serialized = JSON.stringify(receipt, null, 2) + "\n";
   if (output) {
     const destination = path.resolve(root, output);

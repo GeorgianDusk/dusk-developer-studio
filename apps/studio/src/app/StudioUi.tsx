@@ -27,7 +27,7 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
       setCopied(false);
     }
   }
-  return <span className="copy-control"><button className="copy-button" type="button" onClick={copy} aria-label={label}>{copied ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}<span>{copied ? "Copied" : "Copy"}</span></button>{failed ? <span className="sr-only" role="alert">Clipboard access failed. Select and copy the text manually.</span> : null}</span>;
+  return <span className="copy-control"><button className="copy-button" type="button" onClick={copy} aria-label={label}>{copied ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}<span>{copied ? "Copied" : "Copy"}</span></button><span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{copied ? `${label} copied to clipboard.` : ""}</span>{failed ? <span className="sr-only" role="alert">Clipboard access failed. Select and copy the text manually.</span> : null}</span>;
 }
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
@@ -56,5 +56,5 @@ export function CommandPair({ firstTitle, first, secondTitle, second }: { firstT
 }
 
 export function PageIntro({ kicker, title, copy }: { kicker: string; title: string; copy: string }) {
-  return <div className="page-intro"><span className="section-kicker">{kicker}</span><h1>{title}</h1><p>{copy}</p></div>;
+  return <div className="page-intro"><span className="section-kicker">{kicker}</span><h1 data-route-heading tabIndex={-1}>{title}</h1><p>{copy}</p></div>;
 }

@@ -48,7 +48,29 @@
     "native_steps": {}
   },
   "synthetics": {
-    "checks": {},
+    "checks": {
+      "monitor_heartbeat": {
+        "status": "pending",
+        "owner": "pending",
+        "receipt_sha256": "pending",
+        "workflow_path": ".github/workflows/studio-monitor-schedule-guard.yml",
+        "observed_at": "pending",
+        "run_url": "pending"
+      },
+      "external_dead_man": {
+        "status": "pending",
+        "owner": "pending",
+        "outside_github": false,
+        "success_endpoint_configured": false,
+        "provider": "pending",
+        "check_id": "pending",
+        "alert_channel": "pending",
+        "alert_delivery_verified": false,
+        "latest_success_at": "pending",
+        "missed_ping_rehearsed_at": "pending",
+        "rehearsal_reference": "pending"
+      }
+    },
     "alert_delivery_verified": false,
     "checked_at": "pending"
   },

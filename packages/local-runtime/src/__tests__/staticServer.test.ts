@@ -45,7 +45,10 @@ describe("portable local static server", () => {
     const server = await createLocalStudioServer({ studioRoot: root, port: 5173, companionPort, pairingToken: "p".repeat(43) });
     const port = await listen(server);
     const page = await request(port);
-    expect(page.status).toBe(200); expect(page.headers["content-security-policy"]).toContain(`http://127.0.0.1:${companionPort}`); expect(page.headers["cache-control"]).toBe("no-store");
+    expect(page.status).toBe(200);
+    expect(page.headers["content-security-policy"]).toContain(`http://127.0.0.1:${companionPort}`);
+    expect(page.headers["content-security-policy"]).toContain(`http://localhost:${companionPort}`);
+    expect(page.headers["cache-control"]).toBe("no-store");
     const denied = await request(port, { method: "POST", path: "/__dusk/bootstrap", origin: "https://attacker.example", contentType: "application/json" });
     expect(denied.status).toBe(403); expect(observedToken).toBe("");
     const origin = `http://127.0.0.1:${port}`;
@@ -67,5 +70,61 @@ describe("portable local static server", () => {
     const origin = `http://127.0.0.1:${port}`;
     expect((await request(port, { method: "POST", path: "/__dusk/bootstrap", origin, contentType: "application/json", body: "x".repeat(1_025) })).status).toBe(413);
     expect((await request(port, { method: "POST", path: "/__dusk/bootstrap", origin, contentType: "application/json", body: "not-json" })).status).toBe(400);
+  });
+
+  it("supports the localhost browser origin consistently with its CSP", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-localhost-")); roots.push(root);
+    await fs.writeFile(path.join(root, "index.html"), "ok");
+    const companion = http.createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json", "set-cookie": "dusk_studio_session=test; HttpOnly; SameSite=Strict; Path=/" });
+      res.end('{"ok":true,"paired":true,"expiresInSeconds":1800}');
+    });
+    const companionPort = await listen(companion);
+    const server = await createLocalStudioServer({ studioRoot: root, port: 5173, companionPort, pairingToken: "p".repeat(43) });
+    const port = await listen(server);
+    const host = `localhost:${port}`;
+    const origin = `http://${host}`;
+
+    const page = await request(port, { host });
+    expect(page.status).toBe(200);
+    expect(page.headers["content-security-policy"]).toContain(`http://localhost:${companionPort}`);
+    const paired = await request(port, { method: "POST", path: "/__dusk/bootstrap", host, origin, contentType: "application/json" });
+    expect(paired.status).toBe(200);
+    expect(paired.headers["set-cookie"]?.[0]).toContain("HttpOnly");
+  });
+
+  it("allows only one bootstrap request to pair at a time", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-race-")); roots.push(root);
+    await fs.writeFile(path.join(root, "index.html"), "ok");
+    let pairRequests = 0;
+    let signalPairStarted!: () => void;
+    let releasePair!: () => void;
+    const pairStarted = new Promise<void>((resolve) => { signalPairStarted = resolve; });
+    const pairGate = new Promise<void>((resolve) => { releasePair = resolve; });
+    const companion = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        pairRequests += 1;
+        signalPairStarted();
+        void pairGate.then(() => {
+          res.writeHead(200, { "content-type": "application/json", "set-cookie": "dusk_studio_session=test; HttpOnly; SameSite=Strict; Path=/" });
+          res.end('{"ok":true,"paired":true,"expiresInSeconds":1800}');
+        });
+      });
+    });
+    const companionPort = await listen(companion);
+    const server = await createLocalStudioServer({ studioRoot: root, port: 5173, companionPort, pairingToken: "p".repeat(43) });
+    const port = await listen(server);
+    const origin = `http://127.0.0.1:${port}`;
+
+    const first = request(port, { method: "POST", path: "/__dusk/bootstrap", origin, contentType: "application/json" });
+    await pairStarted;
+    const concurrent = await request(port, { method: "POST", path: "/__dusk/bootstrap", origin, contentType: "application/json" });
+    expect(concurrent.status).toBe(409);
+    expect(concurrent.body).toContain("bootstrap_in_progress");
+    expect(pairRequests).toBe(1);
+    releasePair();
+    expect((await first).status).toBe(200);
+    expect((await request(port, { method: "POST", path: "/__dusk/bootstrap", origin, contentType: "application/json" })).status).toBe(410);
   });
 });

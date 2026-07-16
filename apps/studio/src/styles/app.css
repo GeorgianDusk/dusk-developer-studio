@@ -66,6 +66,27 @@ a { color: inherit; }
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+[data-route-heading]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 40;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 13px;
+  border: 1px solid var(--focus);
+  background: var(--inset);
+  color: var(--text);
+  font-weight: 800;
+  text-decoration: none;
+  transform: translateY(calc(-100% - 20px));
+}
+.skip-link:focus-visible { transform: none; }
 .sr-only {
   position: absolute;
   width: 1px;
@@ -204,7 +225,7 @@ a { color: inherit; }
   font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   font-size: 48px;
   line-height: 1.04;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.04em;
   text-wrap: balance;
 }
 .hero-copy p, .page-intro p, .step-heading p, .focus-card p, .done-panel li, .quiet-note, .reference-row small, .trouble-row p, .trouble-row small {
@@ -382,19 +403,19 @@ a { color: inherit; }
 .guide-page > .flow-rail { position: sticky; top: 85px; grid-template-columns: 1fr; }
 .guide-page > .flow-rail button { min-height: 100px; }
 .step-sheet, .done-panel, .focus-card, .command-pair > div, .reference-row, .trouble-row { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-.step-sheet { display: grid; gap: 0; padding: 28px; box-shadow: 4px 4px 0 #000; }
+.step-sheet { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 28px; box-shadow: 4px 4px 0 #000; }
 .step-heading { padding-bottom: 24px; border-bottom: 1px solid var(--border-strong); }
 .step-heading h1 { font-size: 40px; }
 .step-heading p { max-width: 740px; margin: 0; font-size: 16px; }
-.action-stack { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 0.44fr); gap: 0 24px; }
-.focus-card { display: grid; gap: 13px; padding: 20px; }
+.action-stack { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 0.44fr); gap: 0 24px; }
+.focus-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 13px; padding: 20px; }
 .focus-card.wide { grid-column: 1 / -1; }
 .focus-card.secondary { background: var(--inset); }
 .step-sheet > .focus-card, .step-sheet .action-stack > .focus-card { padding: 22px 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; }
 .step-sheet > .focus-card:last-child, .step-sheet .action-stack > .focus-card:last-child { border-bottom-color: transparent; }
 .step-sheet .action-stack > .focus-card + .focus-card { padding-left: 24px; border-left: 1px solid var(--border); }
 .focus-card h2, .command-pair h3, .reference-columns h2, .trouble-row h2 { margin: 0; font-size: 21px; line-height: 1.2; }
-.focus-card p, .quiet-note { margin: 0; }
+.focus-card p, .quiet-note { margin: 0; overflow-wrap: anywhere; }
 .focus-card ul { margin: 0; padding-left: 20px; color: var(--muted); line-height: 1.55; }
 label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 700; }
 input, select {
@@ -408,9 +429,10 @@ input, select {
 }
 input::placeholder { color: var(--quiet); opacity: 1; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.button-row, .step-actions, .small-links { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
-.primary-button, .secondary-button, .copy-button, .text-link, .done-panel button, .helper-slot button {
+.button-row, .step-actions, .small-links { min-width: 0; display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+.primary-button, .secondary-button, .danger-button, .copy-button, .text-link, .done-panel button, .helper-slot button {
   min-height: 44px;
+  max-width: 100%;
   width: fit-content;
   display: inline-flex;
   align-items: center;
@@ -423,12 +445,17 @@ input::placeholder { color: var(--quiet); opacity: 1; }
   color: var(--text);
   font-weight: 800;
   text-decoration: none;
+  overflow-wrap: anywhere;
   transition: color var(--state-time) ease, background-color var(--state-time) ease, border-color var(--state-time) ease, transform var(--state-time) ease;
 }
 .primary-button { border-color: #3e8f6b; color: var(--success); }
 .secondary-button, .text-link { border-color: #476f98; color: var(--info); }
+.danger-button { border-color: #9a4f5c; color: var(--danger); }
 .copy-button { color: var(--muted); }
-.primary-button:hover, .secondary-button:hover, .copy-button:hover, .text-link:hover, .done-panel button:hover { background: var(--surface-raised); border-color: var(--focus); color: var(--text); transform: translateY(-1px); }
+.primary-button:hover, .secondary-button:hover, .danger-button:hover, .copy-button:hover, .text-link:hover, .done-panel button:hover { background: var(--surface-raised); border-color: var(--focus); color: var(--text); transform: translateY(-1px); }
+.validation-message { margin: 0; color: var(--danger); line-height: 1.5; }
+.reset-confirmation { flex: 1 1 100%; display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid #9a4f5c; background: var(--inset); }
+.reset-confirmation > span { color: var(--muted); line-height: 1.5; }
 .result-card, .tool-list, .mini-steps { display: grid; gap: 9px; }
 .network-lock, .command-context { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; padding: 10px 0; }
 .network-lock small, .command-context { color: var(--muted); }
@@ -554,7 +581,7 @@ input::placeholder { color: var(--quiet); opacity: 1; }
   .guide-page > .flow-rail button { min-height: 82px; }
   .guide-page > .flow-rail small { display: none; }
   .step-sheet { padding: 21px 18px; }
-  .action-stack { grid-template-columns: 1fr; }
+  .action-stack { grid-template-columns: minmax(0, 1fr); }
   .step-sheet .action-stack > .focus-card + .focus-card { padding-left: 0; border-left: 0; }
   .mini-steps { grid-template-columns: 1fr; }
   .mini-steps div { border-right: 0; border-bottom: 1px solid var(--border); }
@@ -582,7 +609,8 @@ input::placeholder { color: var(--quiet); opacity: 1; }
   .step-sheet { padding-inline: 15px; }
   .done-panel { padding: 15px; }
   .button-row, .step-actions { align-items: stretch; }
-  .button-row > button, .step-actions > button { width: 100%; }
+  .button-row > button, .button-row > .copy-control, .step-actions > button { flex: 1 1 100%; width: 100%; min-width: 0; }
+  .copy-control > .copy-button { width: 100%; }
   .tool-row { grid-template-columns: 20px minmax(0, 1fr); }
   .tool-row span:last-child { grid-column: 2; }
 }

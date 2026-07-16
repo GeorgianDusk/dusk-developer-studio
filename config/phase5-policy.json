@@ -47,8 +47,18 @@
     "rpc_chain_id",
     "rpc_degradation",
     "tls_expiry",
-    "companion_port_closed"
+    "companion_port_closed",
+    "development_port_closed",
+    "monitor_heartbeat",
+    "external_dead_man"
   ],
+  "monitoring_evidence": {
+    "canonical_repository": "GeorgianDusk/dusk-developer-studio",
+    "schedule_guard_workflow": ".github/workflows/studio-monitor-schedule-guard.yml",
+    "monitor_heartbeat_max_age_hours": 18,
+    "external_success_max_age_hours": 15,
+    "external_rehearsal_max_age_days": 30
+  },
   "required_evm_smoke_steps": [
     "provider",
     "account",

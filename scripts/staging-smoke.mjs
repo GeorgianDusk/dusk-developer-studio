@@ -120,9 +120,9 @@ function checkTls(hostname, minimumDays) {
   });
 }
 
-function checkCompanionPortClosed(hostname) {
+export function checkPublicPortClosed(hostname, port, connect = net.connect) {
   return new Promise((resolve, reject) => {
-    const socket = net.connect({ host: hostname, port: 8788 });
+    const socket = connect({ host: hostname, port });
     let settled = false;
     const pass = (observed) => {
       if (settled) return;
@@ -134,7 +134,7 @@ function checkCompanionPortClosed(hostname) {
     socket.once("connect", () => {
       settled = true;
       socket.destroy();
-      reject(new Error("Public companion port 8788 accepted a connection."));
+      reject(new Error(`Public port ${port} accepted a connection.`));
     });
     socket.once("error", (error) => {
       if (["ECONNREFUSED", "ETIMEDOUT", "EHOSTUNREACH", "ENETUNREACH"].includes(error.code)) pass(error.code.toLowerCase());
@@ -177,10 +177,12 @@ export async function runStagingSmoke(options) {
   });
   await record("key_routes", async () => {
     const { response, body } = await fetchBounded(new URL("/", baseUrl), { maxBytes: 64_000 });
-    const blockers = validatePublicHeaders(response.headers, "html");
+    const fallback = await fetchBounded(new URL("/not-a-real-studio-file", baseUrl), { maxBytes: 64_000 });
+    const blockers = [...validatePublicHeaders(response.headers, "html"), ...validatePublicHeaders(fallback.response.headers, "html")];
     const html = body.toString("utf8");
-    if (!response.ok || !html.includes("<title>Dusk Developer Studio</title>") || blockers.length) throw new Error(blockers.join(" ") || "Public HTML identity is stale.");
-    return { status: "passed" };
+    const fallbackHtml = fallback.body.toString("utf8");
+    if (!response.ok || !fallback.response.ok || !html.includes("<title>Dusk Developer Studio</title>") || !fallbackHtml.includes("<title>Dusk Developer Studio</title>") || blockers.length) throw new Error(blockers.join(" ") || "Public HTML identity or SPA fallback is stale.");
+    return { status: "passed", spa_fallback_cache: "no-cache" };
   });
   await record("release_parity", async () => {
     const manifestResult = await fetchBounded(new URL("/release-manifest.json", baseUrl), { maxBytes: 256_000 });
@@ -210,8 +212,13 @@ export async function runStagingSmoke(options) {
     return { status: "passed", urls: statuses };
   });
   await record("rpc_chain_id", () => checkRpc(options.rpcUrl, options.policy.expected_testnet_chain_id));
+  await record("rpc_degradation", async () => {
+    if (options.rpcDegradationStatus !== "success" && options.rpcDegradationStatus !== "passed") throw new Error("Hosted browser RPC degradation test did not pass in this run.");
+    return { status: "passed", evidence: "hosted-browser-offline-recovery" };
+  });
   await record("tls_expiry", () => checkTls(baseUrl.hostname, options.policy.minimum_tls_days_remaining));
-  await record("companion_port_closed", () => checkCompanionPortClosed(baseUrl.hostname));
+  await record("development_port_closed", () => checkPublicPortClosed(baseUrl.hostname, 5173));
+  await record("companion_port_closed", () => checkPublicPortClosed(baseUrl.hostname, 8788));
 
   return {
     schema_version: 1,

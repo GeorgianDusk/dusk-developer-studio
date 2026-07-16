@@ -35,16 +35,19 @@ jobs:
           persist-credentials: "false"
       - name: Install checksum-pinned Caddy
         env:
-          CADDY_VERSION: 2.6.2
-          CADDY_ARCHIVE_SHA512: ae18c0facae7c8ee872492a1ba63a4c7608915d6d9fe267aef4f869cf65ebd4b7f9ff57f609aff2bd52db98c761d877b574aea2c0c9ddc2ec53d0d5e174cb542
+          CADDY_VERSION: 2.11.4
+          CADDY_ARCHIVE_SHA256: 527fbf917c39189a1e3b31d34fa955601680b2d5c8055d2a87b8b9588dec7bb9
         run: |
           set -euo pipefail
           archive="caddy_${CADDY_VERSION}_linux_amd64.tar.gz"
           curl --proto '=https' --tlsv1.2 --location --fail --silent --show-error --output "/tmp/${archive}" "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/${archive}"
-          printf '%s  %s\n' "$CADDY_ARCHIVE_SHA512" "/tmp/${archive}" | sha512sum --check --strict
+          printf '%s  %s\n' "$CADDY_ARCHIVE_SHA256" "/tmp/${archive}" | sha256sum --check --strict
           tar -xzf "/tmp/${archive}" -C /tmp caddy
           chmod 0755 /tmp/caddy
-          /tmp/caddy version
+          sudo install -d -m 0755 -o "$(id -u)" -g "$(id -g)" /var/log/caddy
+          actual_version="$(/tmp/caddy version)"
+          case "$actual_version" in "v${CADDY_VERSION} "*|"${CADDY_VERSION} "*|"v${CADDY_VERSION}"|"${CADDY_VERSION}") ;; *) exit 1 ;; esac
+          printf '%s\n' "$actual_version"
       - name: Enforce the static-hosting boundary
         run: |
           set -euo pipefail
@@ -56,7 +59,11 @@ jobs:
           fi
           grep -F 'Content-Security-Policy' "$fragment"
           grep -F 'Strict-Transport-Security' "$fragment"
-          grep -F 'respond /healthz' "$fragment"
+          grep -F '@health path /healthz' "$fragment"
+          grep -F 'dusk-studio-access.log' "$fragment"
+          grep -F 'roll_keep_for 168h' "$fragment"
+          grep -F 'request>uri regexp \?.*$ ""' "$fragment"
+          grep -F 'request>headers>Referer delete' "$fragment"
           formatted="$RUNNER_TEMP/studio.caddy.formatted"
           /tmp/caddy fmt "$fragment" > "$formatted"
           if ! cmp --silent "$fragment" "$formatted"; then

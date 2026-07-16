@@ -16,6 +16,7 @@ describe("App", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
 
   it("renders the guided studio path chooser", () => {
@@ -30,6 +31,7 @@ describe("App", () => {
   });
 
   it("locks interactive EVM actions to Testnet and shows release identity", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
     expect(screen.getByText("Check the DuskEVM Testnet RPC")).toBeInTheDocument();
@@ -38,10 +40,23 @@ describe("App", () => {
   });
 
   it("uses the actual Counter starter contract in deploy guidance", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#build";
     render(<App />);
     expect(screen.getByText(/src\/Counter\.sol:Counter/)).toBeInTheDocument();
     expect(screen.queryByText(/YourContract/)).not.toBeInTheDocument();
+  });
+
+  it("guards a pathless guide deep link and preserves its destination after path choice", () => {
+    window.location.hash = "#build";
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Choose a path to continue to Build." })).toBeInTheDocument();
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
+    expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
+    expect(window.location.hash).toBe("#build");
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
   });
 
   it("shows maturity, source status, and freshness in references", () => {
@@ -52,18 +67,37 @@ describe("App", () => {
     expect(screen.getAllByText("read-only reference")).toHaveLength(2);
   });
 
-  it("resets the chosen path with browser-local progress", () => {
+  it("requires an inline confirmation before resetting browser-local progress", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
 
     fireEvent.click(screen.getByRole("button", { name: "Release & local data" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset local progress" }));
+    expect(screen.getByRole("button", { name: "Reset all progress" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reset local progress" })).toHaveFocus());
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset local progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset all progress" }));
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
     expect(screen.getByRole("button", { name: "All references" })).toHaveClass("active");
     expect(screen.queryByRole("button", { name: "DuskDS only" })).not.toBeInTheDocument();
+  });
+
+  it("announces successful copy feedback without changing the button name", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Start Solidity path/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy RPC URL" }));
+
+    await waitFor(() => expect(screen.getByText("Copy RPC URL copied to clipboard.")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Copy RPC URL" })).toBeInTheDocument();
+    expect(writeText).toHaveBeenCalledOnce();
   });
 
   it("keeps source-development builds docs-only without a manual token path", async () => {

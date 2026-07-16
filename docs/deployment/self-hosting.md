@@ -30,3 +30,7 @@ The fragment deliberately contains no `reverse_proxy`, loopback address, authent
 - Verify TLS, headers, cache behavior, key routes, source links, RPC degradation behavior, and that ports 5173 and 8788 are not publicly reachable.
 
 A self-hosted copy should link back to its exact source commit and maintainer.
+
+The GeorgianDusk preview's scheduled checks, assigned issue-alert channel,
+rehearsal input, and response expectations are documented in
+[public staging monitoring](../operations/public-monitoring.md).
