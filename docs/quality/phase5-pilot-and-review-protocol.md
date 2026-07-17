@@ -62,27 +62,19 @@ Evidence: browser/AT versions, tasks, results, critical findings, remediation/ex
 
 Implementation agents may prepare evidence but must not record these reviews as accepted on behalf of the independent reviewers.
 
-## External Monitoring Gate
+## GitHub-Only Monitoring Gate
 
-Three independently evaluated records are required:
+`monitor_heartbeat` proves the separately scheduled same-platform guard
+observed a recent public-assurance schedule and binds its receipt to the
+canonical workflow and Actions run. The assigned-issue alert-delivery rehearsal
+must also be current and successful.
 
-- `monitor_heartbeat` proves the same-platform schedule guard observed a recent
-  scheduled assurance run and binds its receipt to the canonical workflow and
-  Actions run.
-- `external_dead_man` proves an outside-GitHub heartbeat check has a fresh
-  success, a verified out-of-band alert, and a recent real missed-ping
-  rehearsal.
-- `external_direct_health` proves a separate outside-GitHub monitor recently
-  observed the exact candidate origin's `/healthz` response as HTTPS with valid
-  TLS, status `200`, and body `ok`, with a recent alert-and-recovery rehearsal
-  bound to a durable reference. Its timestamps must prove alert -> verified
-  recovery -> later successful observation.
-
-The two external records may use one provider account but must use distinct
-check ids. Record provider/check identity, owner, exact public target, latest
-successful observation, and alert evidence without committing credentials.
-The Phase 5 decision remains no-go if any record is missing, stale, bound to
-GitHub as its external channel, or incomplete.
+No third-party dead-man or direct-health record is required. George accepted
+the resulting lack of platform independence in
+`docs/operations/github-only-monitoring-decision.md`. The Phase 5 decision
+remains no-go if the schedule guard is disabled, its receipt is missing or
+stale, GitHub issue alert delivery is unverified, or the evidence is not bound
+to the reviewed `github-only` monitoring mode.
 
 ## Pilot Cohort
 
@@ -134,3 +126,5 @@ For every session record:
 - zero unresolved P0 or unexcepted P1.
 
 The machine-readable thresholds live in `config/phase5-policy.json`. Summarise redacted sessions in the Phase 5 evidence JSON and validate it with `scripts/check-phase5-evidence.mjs`.
+
+Use evidence schema version 2 for new or refreshed decisions. Version 1 records are historical only: they predate the explicit monitoring-mode binding and must be migrated through the current template before evaluation.

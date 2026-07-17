@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "candidate": {
     "artifact_fingerprint_sha256": "replace-with-64-character-digest",
     "public_fingerprint_sha256": "replace-with-64-character-digest",
@@ -75,38 +75,12 @@
         "workflow_path": ".github/workflows/studio-monitor-schedule-guard.yml",
         "observed_at": "pending",
         "run_url": "pending"
-      },
-      "external_dead_man": {
-        "status": "pending",
-        "owner": "pending",
-        "outside_github": false,
-        "success_endpoint_configured": false,
-        "provider": "pending",
-        "check_id": "pending",
-        "alert_channel": "pending",
-        "alert_delivery_verified": false,
-        "latest_success_at": "pending",
-        "missed_ping_rehearsed_at": "pending",
-        "rehearsal_reference": "pending"
-      },
-      "external_direct_health": {
-        "status": "pending",
-        "owner": "pending",
-        "outside_github": false,
-        "provider": "pending",
-        "check_id": "pending",
-        "target_url": "https://approved-host/healthz",
-        "response_status": 0,
-        "body_match": "pending",
-        "tls_verified": false,
-        "alert_channel": "pending",
-        "alert_delivery_verified": false,
-        "latest_success_at": "pending",
-        "alert_rehearsed_at": "pending",
-        "recovery_verified": false,
-        "recovered_at": "pending",
-        "rehearsal_reference": "pending"
       }
+    },
+    "monitoring": {
+      "mode": "github-only",
+      "owner": "George",
+      "authority_reference": "docs/operations/github-only-monitoring-decision.md"
     },
     "alert_delivery_verified": false,
     "checked_at": "pending"

@@ -114,31 +114,29 @@ After the FQDN is selected:
    health, routes, and cache behavior through both the project hostname and the
    current production alias. Verify the active symlink names the new rollback release; do
    not claim that A's original release id was reactivated. Leave repository
-   variables and external monitors unchanged. An unverified or ad-hoc file copy
+   variables and scheduled monitoring unchanged. An unverified or ad-hoc file copy
    is not an acceptable rollback.
 
-## Stage 4: activate scheduled and external monitoring
+## Stage 4: activate scheduled GitHub monitoring
 
 Only after Stage 3 passes:
 
 1. Set `DUSK_STUDIO_PUBLIC_URL=https://<fqdn>` and
    `DUSK_STUDIO_PUBLIC_ENVIRONMENT=production` in the same controlled cutover.
-2. Activate the separate direct monitor for `https://<fqdn>/healthz`; require
-   valid TLS, status `200`, and body `ok`.
-3. Observe a fully successful scheduled assurance run and its external success
-   heartbeat. Confirm the same-platform schedule guard records the canonical
-   workflow run.
-4. Verify the direct health monitor's out-of-band alert and recovery, record
-   `recovery_verified=true` and `recovered_at`, then observe a later successful
-   `/healthz` check so the record proves alert -> recovery -> latest success.
-   Separately perform and recover from the real dead-man missed-ping rehearsal.
-5. Record three distinct, fresh Phase 5 entries: `monitor_heartbeat`,
-   `external_dead_man`, and `external_direct_health`. The two external checks
-   may share a provider account but must have distinct check ids.
-6. If scheduled or external monitoring fails, the promotion remains no-go.
+2. Observe a fully successful scheduled assurance run against the exact new
+   origin.
+3. Confirm the separately scheduled same-platform guard records the canonical
+   workflow run and produces a fresh bounded `monitor_heartbeat` receipt.
+4. Rehearse assigned GitHub issue alert delivery and retain the exact run and
+   receipt.
+5. If scheduled assurance or its guard fails, the promotion remains no-go.
    Restore the prior repository variables, and roll back the static artifact
-   when the failure concerns the candidate rather than only an external
-   provider.
+   when the failure concerns the candidate.
+
+The accepted GitHub-only residual risk and its revisit triggers are recorded in
+`docs/operations/github-only-monitoring-decision.md`. A future move back to
+external monitoring requires a reviewed policy change and new provider
+evidence; it is not an implicit part of a hostname migration.
 
 ## Stage 5: final sign-off and compatibility period
 
