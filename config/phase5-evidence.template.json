@@ -44,11 +44,30 @@
     "status": "not-authorized",
     "authority_reference": "pending",
     "redacted": false,
-    "evm_steps": {},
-    "native_steps": {}
+    "native_steps": {
+      "preflight": "pending",
+      "node_read": "pending",
+      "scaffold": "pending",
+      "build_artifacts": "pending",
+      "vm_test": "pending",
+      "inspect": "pending"
+    }
   },
   "synthetics": {
     "checks": {
+      "duskds_node_read": {
+        "status": "pending",
+        "owner": "pending",
+        "endpoint": "https://testnet.nodes.dusk.network/on/graphql/query",
+        "height": 0,
+        "hash": "pending",
+        "observed_at": "pending"
+      },
+      "rpc_chain_id": {
+        "status": "deferred",
+        "path": "evm",
+        "reason": "DuskEVM Testnet is not live; the EVM journey is an educational pre-launch preview and does not gate DuskDS production."
+      },
       "monitor_heartbeat": {
         "status": "pending",
         "owner": "pending",
@@ -68,6 +87,24 @@
         "alert_delivery_verified": false,
         "latest_success_at": "pending",
         "missed_ping_rehearsed_at": "pending",
+        "rehearsal_reference": "pending"
+      },
+      "external_direct_health": {
+        "status": "pending",
+        "owner": "pending",
+        "outside_github": false,
+        "provider": "pending",
+        "check_id": "pending",
+        "target_url": "https://approved-host/healthz",
+        "response_status": 0,
+        "body_match": "pending",
+        "tls_verified": false,
+        "alert_channel": "pending",
+        "alert_delivery_verified": false,
+        "latest_success_at": "pending",
+        "alert_rehearsed_at": "pending",
+        "recovery_verified": false,
+        "recovered_at": "pending",
         "rehearsal_reference": "pending"
       }
     },

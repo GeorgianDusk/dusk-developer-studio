@@ -4,27 +4,18 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-  addOrSwitchNetwork,
   buildDuskDsCommandSet,
   checkRpcHealth,
   classifyEvmIdentifier,
-  getInjectedProvider,
-  getWalletAccounts,
-  getWalletBalance,
-  getWalletChainId,
-  inspectEvmIdentifier,
-  normalizeWalletError,
   parseHexBlockNumber,
-  quotePosixArg,
   type CommandPlatform,
-  type EvmReadResult,
   type RpcHealthResult
 } from "@dusk/core";
 import { isPreflightResult, isScaffoldEvidence, type PreflightResult } from "../responseSchemas";
 import { requestJson, SafeRequestError, safeRequestMessage } from "../safeRequest";
 import { CompanionActionButton, StepFrame } from "../StudioShell";
 import { AsyncNotice, CommandPair, CopyButton, ExternalLink, MiniSteps, StatusPill, type AsyncState } from "../StudioUi";
-import { defaultNetwork, initialCommandPlatform, joinPath, sourceDate } from "../studioConfig";
+import { defaultNetwork, initialCommandPlatform } from "../studioConfig";
 import { useJourney, useStudioRuntime } from "../studioState";
 import type { CompanionStatus, RouteId, Tone } from "../types";
 import type { BuilderPath } from "../journeyProgress";
@@ -45,7 +36,6 @@ function EvmSetup({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const journey = useJourney();
   const [rpcResult, setRpcResult] = useState<RpcHealthResult | null>(null);
   const [rpcBusy, setRpcBusy] = useState(false);
-  const [walletMessage, setWalletMessage] = useState("Wallet not checked yet.");
   const network = defaultNetwork;
   async function runRpcCheck() {
     journey.invalidate("evm", "setup");
@@ -57,22 +47,37 @@ function EvmSetup({ setRoute }: { setRoute: (route: RouteId) => void }) {
     if (result.status === "healthy") journey.record("evm", "setup", ["evm-rpc-chain"]);
     else journey.block("evm", "setup", result.status === "wrong-chain" ? "wrong-chain" : "rpc-unavailable");
   }
-  async function connectNetwork() {
-    journey.invalidate("evm", "setup");
-    const provider = getInjectedProvider();
-    if (!provider) { setWalletMessage("No EVM wallet was detected in this browser."); journey.block("evm", "setup", "no-wallet"); return; }
-    try {
-      await addOrSwitchNetwork(provider, network);
-      const chainId = await getWalletChainId(provider);
-      if (chainId !== network.chainIdHex.toLowerCase()) { setWalletMessage("Wallet is on " + chainId + "; expected " + network.chainIdHex + "."); journey.block("evm", "setup", "wrong-chain"); return; }
-      const accounts = await getWalletAccounts(provider, true);
-      if (!accounts[0]) { setWalletMessage("Wallet is on Testnet, but no account was selected."); journey.block("evm", "setup", "no-account"); return; }
-      const balance = await getWalletBalance(provider, accounts[0]);
-      setWalletMessage(`Testnet account ${accounts[0].slice(0, 6)}…${accounts[0].slice(-4)} selected; read-only balance ${balance.formatted} DUSK.`);
-      journey.record("evm", "setup", ["evm-wallet-chain", "evm-wallet-account", "evm-balance-read"]);
-    } catch (error) { setWalletMessage(normalizeWalletError(error).message); journey.block("evm", "setup", "no-account"); }
-  }
-  return <StepFrame builderPath="evm" route="setup" setRoute={setRoute} helper={<ExternalLink href={network.sourceUrl}>{network.sourceLabel}</ExternalLink>}><div className="action-stack"><div className="focus-card"><span className="section-kicker">Testnet action</span><h2>Check the DuskEVM Testnet RPC</h2><p>The check reads chain ID and latest block. Mainnet and Devnet remain read-only references.</p><div className="network-lock"><StatusPill tone="good">Testnet</StatusPill><strong>{network.name}</strong><small>Chain {network.chainId} / {network.chainIdHex}</small></div><div className="button-row"><button className="primary-button" type="button" onClick={runRpcCheck} disabled={rpcBusy}>{rpcBusy ? "Checking" : rpcResult?.retryable ? "Retry RPC check" : "Run RPC check"}</button><CopyButton value={network.rpcUrls[0]} label="Copy RPC URL" /></div>{rpcBusy ? <AsyncNotice state="loading" message="Reading chain ID and latest block from the allowlisted Testnet RPC." /> : rpcResult ? <RpcResultCard result={rpcResult} onRetry={rpcResult.retryable ? runRpcCheck : undefined} /> : <p className="quiet-note">Expected chain ID: {network.chainIdHex}. Explorer: {network.explorerUrl}</p>}</div><div className="focus-card secondary"><span className="section-kicker">Then</span><h2>Verify wallet, account, and balance</h2><p>This may request account access, then performs only chain and balance reads. Nothing is persisted.</p><button className="secondary-button" type="button" onClick={connectNetwork}>Verify Testnet wallet</button><div role="status" aria-live="polite" aria-atomic="true"><p className="quiet-note">{walletMessage}</p></div></div></div></StepFrame>;
+  return (
+    <StepFrame builderPath="evm" route="setup" setRoute={setRoute} helper={<ExternalLink href={network.sourceUrl}>{network.sourceLabel}</ExternalLink>}>
+      <div className="action-stack">
+        <div className="focus-card">
+          <span className="section-kicker">Pre-launch probe</span>
+          <h2>Check the DuskEVM Testnet RPC</h2>
+          <p>DuskEVM Testnet is not live yet, so an unavailable result is expected. This bounded probe reads only chain ID and latest block once the endpoint responds.</p>
+          <div className="network-lock">
+            <StatusPill tone="warn">Pre-launch</StatusPill>
+            <strong>{network.name}</strong>
+            <small>Chain {network.chainId} / {network.chainIdHex}</small>
+          </div>
+          <div className="button-row">
+            <button className="primary-button" type="button" onClick={runRpcCheck} disabled={rpcBusy}>{rpcBusy ? "Checking pre-launch endpoint" : rpcResult?.retryable ? "Retry pre-launch endpoint" : "Probe pre-launch endpoint"}</button>
+            <CopyButton value={network.rpcUrls[0]} label="Copy RPC URL" />
+          </div>
+          {rpcBusy
+            ? <AsyncNotice state="loading" message="Reading chain ID and latest block from the allowlisted Testnet RPC." />
+            : rpcResult
+              ? <RpcResultCard result={rpcResult} onRetry={rpcResult.retryable ? runRpcCheck : undefined} />
+              : <p className="quiet-note">Live proof deferred. Expected chain ID: {network.chainIdHex}. Explorer: {network.explorerUrl}</p>}
+        </div>
+        <div className="focus-card secondary">
+          <span className="section-kicker">After launch</span>
+          <h2>Verify wallet, account, and balance</h2>
+          <p>Wallet, account, and balance checks stay disabled until Testnet launches. The future flow will remain read-only after account selection and will not persist wallet details.</p>
+          <button className="secondary-button" type="button" disabled>Available after Testnet launch</button>
+        </div>
+      </div>
+    </StepFrame>
+  );
 }
 
 function DuskDsSetup({ companionStatus, setRoute }: { companionStatus: CompanionStatus; setRoute: (route: RouteId) => void }) {
@@ -119,23 +124,7 @@ export function AccessPage({ builderPath, setRoute }: { builderPath: BuilderPath
 }
 
 function EvmAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
-  const journey = useJourney();
-  const [message, setMessage] = useState("Balance not checked in this step yet.");
-  async function checkBalance() {
-    journey.invalidate("evm", "access");
-    const provider = getInjectedProvider();
-    if (!provider) { setMessage("No EVM wallet was detected."); journey.block("evm", "access", "no-wallet"); return; }
-    try {
-      const chainId = await getWalletChainId(provider);
-      if (chainId !== defaultNetwork.chainIdHex.toLowerCase()) { setMessage(`Wrong chain ${chainId}; switch to ${defaultNetwork.chainIdHex}.`); journey.block("evm", "access", "wrong-chain"); return; }
-      const accounts = await getWalletAccounts(provider);
-      if (!accounts[0]) { setMessage("No selected account is available. Return to Setup."); journey.block("evm", "access", "no-account"); return; }
-      const balance = await getWalletBalance(provider, accounts[0]);
-      setMessage(`Read-only balance: ${balance.formatted} DUSK for ${accounts[0].slice(0, 6)}…${accounts[0].slice(-4)}.`);
-      if (balance.wei > 0n) journey.record("evm", "access", ["evm-positive-balance"]); else journey.block("evm", "access", "insufficient-gas");
-    } catch (error) { setMessage(normalizeWalletError(error).message); journey.block("evm", "access", "no-account"); }
-  }
-  return <StepFrame builderPath="evm" route="access" setRoute={setRoute} helper={<button type="button" onClick={() => setRoute("troubleshooting")}>Funding help</button>}><div className="focus-card wide"><span className="section-kicker">Read before bridge</span><h2>Check the selected Testnet balance</h2><p>The Studio reads only the current chain, account list, and balance. It never initiates a bridge, faucet, transfer, or signature.</p><button className="primary-button" type="button" onClick={checkBalance}>Check read-only Testnet balance</button><div role="status" aria-live="polite" aria-atomic="true"><p className="quiet-note">{message}</p></div></div><div className="focus-card wide"><span className="section-kicker">Official recovery route</span><h2>Use the bridge guide only if the balance is zero</h2><ExternalLink href="https://docs.dusk.network/learn/guides/duskevm-bridge/">Open DuskEVM bridge guide</ExternalLink></div><MiniSteps items={["Confirm DuskEVM Testnet in the wallet.", "Move only a small test amount through the official route.", "Return and repeat the read-only balance check."]} /></StepFrame>;
+  return <StepFrame builderPath="evm" route="access" setRoute={setRoute} helper={<button type="button" onClick={() => setRoute("troubleshooting")}>Funding help</button>}><div className="focus-card wide"><span className="section-kicker">After launch</span><h2>Check the selected Testnet balance</h2><p>The future check will read only the current chain, account list, and balance. It will never initiate a bridge, faucet, transfer, or signature.</p><button className="primary-button" type="button" disabled>Balance check available after Testnet launch</button></div><div className="focus-card wide"><span className="section-kicker">Educational reference</span><h2>Review the bridge flow before Testnet launch</h2><ExternalLink href="https://docs.dusk.network/learn/guides/duskevm-bridge/">Open DuskEVM bridge guide</ExternalLink></div><MiniSteps items={["Review the planned DuskEVM Testnet wallet configuration.", "Understand the official bridge route without moving funds.", "Return after launch for the read-only balance check."]} /></StepFrame>;
 }
 
 function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
@@ -145,37 +134,30 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
 }
 
 export function BuildPage({ builderPath, companionStatus, setRoute }: { builderPath: BuilderPath; companionStatus: CompanionStatus; setRoute: (route: RouteId) => void }) {
-  return builderPath === "evm" ? <EvmBuild companionStatus={companionStatus} setRoute={setRoute} /> : <DuskDsBuild companionStatus={companionStatus} setRoute={setRoute} />;
+  return builderPath === "evm" ? <EvmBuild setRoute={setRoute} /> : <DuskDsBuild companionStatus={companionStatus} setRoute={setRoute} />;
 }
 
-function EvmBuild({ companionStatus, setRoute }: { companionStatus: CompanionStatus; setRoute: (route: RouteId) => void }) {
-  const journey = useJourney();
-  const { companionBaseUrl } = useStudioRuntime();
-  const [projectName, setProjectName] = useState("dusk-evm-starter");
-  const [parentDir, setParentDir] = useState("");
-  const [message, setMessage] = useState("Starter not created yet.");
-  const [files, setFiles] = useState<string[]>([]);
-  const [state, setState] = useState<AsyncState>("idle");
-  const projectPath = joinPath(parentDir.trim() || ".generated", projectName);
-  const buildCommands = ["cd " + quotePosixArg(projectPath), "forge build", "forge test"].join("\n");
-  const deployCommands = ["cast wallet import dusk-testnet-deployer --interactive", "forge create src/Counter.sol:Counter --rpc-url dusk_evm_testnet --account dusk-testnet-deployer"].join("\n");
-  async function scaffold() {
-    journey.invalidate("evm", "build");
-    setFiles([]);
-    setState("loading");
-    setMessage("Creating the bounded Counter starter.");
-    try {
-      if (!companionBaseUrl) throw new Error("Local companion URL is unavailable.");
-      const data = await requestJson(companionBaseUrl + "/scaffold-template", { init: { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ projectName, parentDir: parentDir.trim() || undefined }) }, validate: isScaffoldEvidence, maxBytes: 64 * 1024 });
-      if (!data.ok || !data.structureVerified) throw new Error("Starter structure could not be verified.");
-      setFiles(data.files);
-      setState("success");
-      setMessage("Counter source and test structure verified. Run the build and test commands next.");
-      journey.record("evm", "build", ["evm-starter-structure"]);
-    } catch (error) { setState(stateForError(error)); setMessage(safeRequestMessage(error)); journey.block("evm", "build", "companion-unavailable"); }
-  }
-  const structureReady = journey.progress.paths.evm.build.evidence.includes("evm-starter-structure");
-  return <StepFrame builderPath="evm" route="build" setRoute={setRoute} helper={<ExternalLink href="https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/">Deploy docs</ExternalLink>}><ProjectForm projectName={projectName} setProjectName={setProjectName} parentDir={parentDir} setParentDir={setParentDir} placeholder="Defaults to .generated" onCreate={scaffold} companionStatus={companionStatus} setRoute={setRoute} action="Create and verify Counter starter" message={message} state={state} />{files.length ? <FileEvidence files={files} /> : null}<CommandPair firstTitle="Build and test" first={buildCommands} secondTitle="Manual deploy after tests" second={deployCommands} /><div className="focus-card wide"><span className="section-kicker">Manual result boundary</span><h2>Record the command outcome</h2><p>Click only after both <code>forge build</code> and <code>forge test</code> exit successfully. Deployment uses an encrypted local account and stays outside Studio automation.</p><button className="primary-button" type="button" disabled={!structureReady} onClick={() => journey.record("evm", "build", ["evm-build-test-attestation"])}>Record build + tests passed</button></div></StepFrame>;
+function EvmBuild({ setRoute }: { setRoute: (route: RouteId) => void }) {
+  return (
+    <StepFrame builderPath="evm" route="build" setRoute={setRoute} helper={<ExternalLink href="https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/">Read the planned deployment guide</ExternalLink>}>
+      <div className="focus-card wide">
+        <span className="section-kicker">Pre-launch learning path</span>
+        <h2>Review the planned local Foundry workflow</h2>
+        <p>The eventual flow will scaffold a Counter starter, run local build and test commands, and keep signing outside the Studio. This preview deliberately creates no files and displays no runnable deployment command.</p>
+        <MiniSteps items={[
+          "Review the expected Solidity source and test structure.",
+          "Understand that build and unit tests remain local and unsigned.",
+          "Wait for reviewed Testnet activation before scaffolding or deployment guidance is enabled."
+        ]} />
+        <button className="primary-button" type="button" disabled>Starter actions available after Testnet activation</button>
+      </div>
+      <div className="focus-card wide">
+        <span className="section-kicker">Activation boundary</span>
+        <h2>No deploy command before the network is live</h2>
+        <p>DuskEVM must pass its reviewed RPC, smoke, pilot, and source gates before this step can expose companion actions or a network-targeting command.</p>
+      </div>
+    </StepFrame>
+  );
 }
 
 function DuskDsBuild({ companionStatus, setRoute }: { companionStatus: CompanionStatus; setRoute: (route: RouteId) => void }) {
@@ -221,29 +203,31 @@ export function InspectPage({ builderPath, setRoute }: { builderPath: BuilderPat
 }
 
 function EvmInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
-  const journey = useJourney();
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<EvmReadResult | null>(null);
   const classification = useMemo(() => classifyEvmIdentifier(input), [input]);
   const invalidInput = input.trim().length > 0 && !classification;
-  async function inspect() {
-    journey.invalidate("evm", "inspect");
-    const identifier = classifyEvmIdentifier(input);
-    if (!identifier) { setResult(null); journey.block("evm", "inspect", "invalid-identifier"); return; }
-    setResult(null);
-    setBusy(true);
-    const next = await inspectEvmIdentifier(defaultNetwork, identifier);
-    setResult(next);
-    setBusy(false);
-    if (next.ok) journey.record("evm", "inspect", ["evm-read-inspection"]); else journey.block("evm", "inspect", next.failureKind === "not-found" ? "result-not-found" : "rpc-unavailable");
-  }
-  return <StepFrame builderPath="evm" route="inspect" setRoute={setRoute} helper={<ExternalLink href={defaultNetwork.explorerUrl}>Open Blockscout</ExternalLink>}><div className="focus-card wide"><span className="section-kicker">One read-only input</span><h2>Inspect an address, transaction hash, or block</h2><label>Testnet identifier<input value={input} onChange={(event) => setInput(event.target.value)} placeholder="0x address, 0x transaction hash, or block number" aria-invalid={invalidInput || undefined} aria-describedby="evm-identifier-help evm-identifier-validation" /></label><p className="quiet-note" id="evm-identifier-help">Use a 40-hex-character address, a 64-hex-character transaction hash, or a decimal or hexadecimal block number.</p><p className={invalidInput ? "validation-message" : "sr-only"} id="evm-identifier-validation" role="status" aria-live="polite" aria-atomic="true">{invalidInput ? "Identifier not recognized. Check the required address, transaction hash, or block number format." : ""}</p><div className="button-row"><StatusPill tone={classification ? "good" : invalidInput ? "danger" : "neutral"}>{classification?.type ?? (invalidInput ? "invalid" : "waiting")}</StatusPill><button className="primary-button" type="button" onClick={inspect} disabled={!classification || busy}>{busy ? "Inspecting" : "Inspect read-only"}</button></div>{busy ? <AsyncNotice state="loading" message="Reading this identifier from the allowlisted Testnet RPC." /> : result ? <div className="inspection-result"><AsyncNotice state={result.ok ? "success" : result.failureKind === "timeout" ? "timeout" : result.failureKind === "not-found" ? "empty" : "error"} message={result.summary} onRetry={!result.ok ? inspect : undefined} />{result.details.map((detail) => <p key={detail}>{detail}</p>)}<div className="provenance-line"><em>Testnet RPC</em><em>checked {new Date(result.checkedAt).toLocaleString()}</em><em>source reviewed {sourceDate}</em></div><div className="button-row"><ExternalLink href={result.explorerUrl}>Open in Blockscout</ExternalLink><ExternalLink href={result.sourceUrl}>Official source</ExternalLink></div></div> : null}</div></StepFrame>;
+  return <StepFrame builderPath="evm" route="inspect" setRoute={setRoute} helper={<ExternalLink href={defaultNetwork.explorerUrl}>Open Blockscout</ExternalLink>}><div className="focus-card wide"><span className="section-kicker">Local classification preview</span><h2>Classify an address, transaction hash, or block</h2><label>Future Testnet identifier<input value={input} onChange={(event) => setInput(event.target.value)} placeholder="0x address, 0x transaction hash, or block number" aria-invalid={invalidInput || undefined} aria-describedby="evm-identifier-help evm-identifier-validation" /></label><p className="quiet-note" id="evm-identifier-help">Classification stays in this browser. Network inspection remains disabled until Testnet launches.</p><p className={invalidInput ? "validation-message" : "sr-only"} id="evm-identifier-validation" role="status" aria-live="polite" aria-atomic="true">{invalidInput ? "Identifier not recognized. Check the required address, transaction hash, or block number format." : ""}</p><div className="button-row"><StatusPill tone={classification ? "good" : invalidInput ? "danger" : "neutral"}>{classification?.type ?? (invalidInput ? "invalid" : "waiting")}</StatusPill><button className="primary-button" type="button" disabled>Network inspection available after Testnet launch</button></div></div></StepFrame>;
 }
 
 function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const journey = useJourney();
   const querySnippet = ["const tip = await network.query(\"block(height: -1) { header { height hash } }\");", "console.log(tip.block.header);"].join("\n");
-  const driverSnippet = ["GET /rues/contract/{contract_id}/data-driver/schema", "POST /rues/contract/{contract_id}/data-driver/call"].join("\n");
-  return <StepFrame builderPath="duskds" route="inspect" setRoute={setRoute} helper={<button type="button" onClick={() => setRoute("reference")}>Open native references</button>}><div className="focus-card wide"><span className="section-kicker">Manual observation boundary</span><h2>Confirm state finality and data-driver fit</h2><p>Run both read-only checks. Record completion only after a recent block header is returned and the data driver produces the schema/call behavior your frontend expects.</p><MiniSteps items={["Query a recent finalized header.", "Check contract and data-driver artifacts come from the same commit.", "Exercise schema/call reads without deploying or signing."]} /><button className="primary-button" type="button" onClick={() => journey.record("duskds", "inspect", ["duskds-read-inspection-attestation"])}>Record both native read checks observed</button></div><CommandPair firstTitle="Query latest block" first={querySnippet} secondTitle="Data-driver endpoints" second={driverSnippet} /></StepFrame>;
+  const driverSnippet = [
+    "POST /on/driver:<contract_id>/get_schema",
+    "POST /on/driver:<contract_id>/encode_input_fn:<fn_name>",
+    "POST /on/driver:<contract_id>/decode_input_fn:<fn_name>",
+    "POST /on/driver:<contract_id>/decode_output_fn:<fn_name>"
+  ].join("\n");
+  return (
+    <StepFrame builderPath="duskds" route="inspect" setRoute={setRoute} helper={<ExternalLink href="https://docs.dusk.network/developer/integrations/http-api/">DuskDS HTTP API</ExternalLink>}>
+      <div className="focus-card wide">
+        <span className="section-kicker">Manual observation boundary</span>
+        <h2>Confirm state finality and data-driver fit</h2>
+        <p>Run both read-only checks. Record completion only after a recent block header is returned and the data driver produces the schema and encode/decode behavior your frontend expects.</p>
+        <MiniSteps items={["Query a recent finalized header.", "Check contract and data-driver artifacts come from the same commit.", "Exercise schema, input encoding, and output decoding without deploying or signing."]} />
+        <button className="primary-button" type="button" onClick={() => journey.record("duskds", "inspect", ["duskds-read-inspection-attestation"])}>Record both native read checks observed</button>
+      </div>
+      <CommandPair firstTitle="Query latest block" first={querySnippet} secondTitle="Data-driver encode/decode endpoints" second={driverSnippet} />
+    </StepFrame>
+  );
 }

@@ -24,27 +24,43 @@ describe("App", () => {
     expect(screen.getByText("Developer Studio")).toBeInTheDocument();
     expect(screen.getByText("Choose your path")).toBeInTheDocument();
     expect(screen.getByText("Pick the execution model your app actually needs.")).toBeInTheDocument();
+    expect(screen.getByText("Active guide")).toBeInTheDocument();
+    expect(screen.getByText("Pre-launch preview")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Start Solidity path/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Start native path/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reference" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Troubleshoot" })).toBeInTheDocument();
   });
 
-  it("locks interactive EVM actions to Testnet and shows release identity", () => {
+  it("keeps the explicit EVM probe pre-launch and shows release identity", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
     expect(screen.getByText("Check the DuskEVM Testnet RPC")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Probe pre-launch endpoint" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Available after Testnet launch" })).toBeDisabled();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByText(/v0\.1\.0-test/)).toBeInTheDocument();
   });
 
-  it("uses the actual Counter starter contract in deploy guidance", () => {
+  it("does not expose EVM scaffold or deployment actions during pre-launch", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#build";
     render(<App />);
-    expect(screen.getByText(/src\/Counter\.sol:Counter/)).toBeInTheDocument();
-    expect(screen.queryByText(/YourContract/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Review the planned local Foundry workflow." })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Starter actions available after Testnet activation" })).toBeDisabled();
+    expect(screen.queryByText(/forge create|cast wallet import|Create and verify Counter starter/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the current DuskDS data-driver HTTP surface", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#inspect";
+    render(<App />);
+
+    expect(screen.getByText(/POST \/on\/driver:<contract_id>\/get_schema/)).toBeInTheDocument();
+    expect(screen.getByText(/POST \/on\/driver:<contract_id>\/encode_input_fn:<fn_name>/)).toBeInTheDocument();
+    expect(screen.getByText(/POST \/on\/driver:<contract_id>\/decode_output_fn:<fn_name>/)).toBeInTheDocument();
+    expect(screen.queryByText(/\/rues\/contract/)).not.toBeInTheDocument();
   });
 
   it("guards a pathless guide deep link and preserves its destination after path choice", () => {
@@ -64,6 +80,7 @@ describe("App", () => {
     render(<App />);
     expect(screen.getAllByText(/checked July 3, 2026/).length).toBeGreaterThan(2);
     expect(screen.getAllByText("ready-testnet").length).toBeGreaterThan(0);
+    expect(screen.getByText("pre-launch Testnet")).toBeInTheDocument();
     expect(screen.getAllByText("read-only reference")).toHaveLength(2);
   });
 
@@ -163,7 +180,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /Local runtime/i }));
     expect(screen.getByText(/release identities do not match/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
-    fireEvent.click(screen.getByRole("button", { name: /Start Solidity path/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
     fireEvent.click(screen.getByRole("button", { name: /3 Build/i }));
     expect(screen.getByRole("button", { name: "Resolve local release mismatch" })).toBeInTheDocument();
   });

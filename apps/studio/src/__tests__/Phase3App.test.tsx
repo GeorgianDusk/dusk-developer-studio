@@ -23,8 +23,10 @@ describe("Phase 3 interaction semantics", () => {
     const evmPath = screen.getByRole("button", { name: /Start Solidity path/i });
     const nativePath = screen.getByRole("button", { name: /Start native path/i });
     expect(evmPath).toHaveAccessibleName("DuskEVM. Start Solidity path");
-    expect(evmPath).toHaveAccessibleDescription(/Choose this for Solidity/);
+    expect(evmPath).toHaveAccessibleDescription(/Choose this to learn the planned Solidity/);
+    expect(evmPath).toHaveAccessibleDescription(/Live Testnet evidence remains deferred/);
     expect(nativePath).toHaveAccessibleName("DuskDS. Start native path");
+    expect(nativePath).toHaveAccessibleDescription(/Local machine actions require the portable companion/);
     expect(evmPath).not.toHaveAttribute("aria-pressed");
     expect(nativePath).not.toHaveAttribute("aria-pressed");
     expect(screen.getByRole("table", { name: "Quick comparison of the two Dusk builder paths" })).toBeInTheDocument();

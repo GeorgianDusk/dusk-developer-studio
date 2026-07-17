@@ -2,6 +2,7 @@ import { URL } from "node:url";
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
+const DUSKDS_BLOCK_HASH_RE = /^[a-f0-9]{64}$/i;
 const UNASSIGNED_RE = /^(?:tbd|todo|unknown|unassigned|pending)$/i;
 const SECRET_KEY_RE = /(?:private[_-]?key|mnemonic|seed(?:er|phrase)?|profile[_-]?entropy|wallet[_-]?password|pairing[_-]?token|api[_-]?key|secret)/i;
 
@@ -25,6 +26,25 @@ function expectedActionsRunUrl(value, repository) {
     const url = new URL(value);
     const prefix = `/${repository}/actions/runs/`;
     return url.protocol === "https:" && url.hostname === "github.com" && url.pathname.startsWith(prefix) && /^\d+\/?$/.test(url.pathname.slice(prefix.length));
+  } catch {
+    return false;
+  }
+}
+
+function expectedDirectHealthTarget(value, manifestUrl) {
+  try {
+    const target = new URL(value);
+    const manifest = new URL(manifestUrl);
+    return target.protocol === "https:"
+      && !target.username
+      && !target.password
+      && !target.port
+      && target.href === `${target.origin}/healthz`
+      && manifest.protocol === "https:"
+      && !manifest.username
+      && !manifest.password
+      && !manifest.port
+      && target.origin === manifest.origin;
   } catch {
     return false;
   }
@@ -72,6 +92,31 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
   if (!policy || policy.schema_version !== 1) blockers.push("Phase 5 policy schema is unsupported.");
   if (!evidence || evidence.schema_version !== 1) blockers.push("Phase 5 evidence schema is unsupported.");
   if (blockers.length) return { decision: "no-go", blockers };
+
+  const productionPaths = Array.isArray(policy.production_paths) ? policy.production_paths : [];
+  const previewPaths = Array.isArray(policy.preview_paths) ? policy.preview_paths : [];
+  if (!productionPaths.length || productionPaths.some((pathName) => !present(pathName))) blockers.push("Phase 5 production paths are missing or invalid.");
+  if (previewPaths.some((pathName) => !present(pathName)) || previewPaths.some((pathName) => productionPaths.includes(pathName))) blockers.push("Phase 5 preview paths are invalid or overlap production paths.");
+  const rpcDeferralPolicy = policy.deferred_synthetic_checks?.rpc_chain_id;
+  if (previewPaths.includes("evm")) {
+    if (rpcDeferralPolicy?.path !== "evm" || !present(rpcDeferralPolicy.reason)
+        || !Array.isArray(rpcDeferralPolicy.activation_requirements) || rpcDeferralPolicy.activation_requirements.length < 2) {
+      blockers.push("DuskEVM preview lacks a complete RPC deferral and activation policy.");
+    }
+    if (policy.required_synthetic_checks?.includes("rpc_chain_id")) blockers.push("Deferred DuskEVM RPC cannot remain a required synthetic check.");
+  }
+  if (productionPaths.includes("evm")) {
+    if (!policy.required_synthetic_checks?.includes("rpc_chain_id") || rpcDeferralPolicy) {
+      blockers.push("DuskEVM production activation requires a reviewed policy with real RPC verification and no active deferral.");
+    }
+    if (!Array.isArray(policy.required_evm_smoke_steps) || !policy.required_evm_smoke_steps.length
+        || !Number.isInteger(policy.pilot?.minimum_evm) || policy.pilot.minimum_evm <= 0) {
+      blockers.push("DuskEVM production activation requires explicit EVM smoke steps and pilot coverage in the reviewed policy.");
+    }
+  }
+  if (productionPaths.includes("duskds") && !policy.required_synthetic_checks?.includes("duskds_node_read")) {
+    blockers.push("DuskDS production requires the native Testnet node-read synthetic check.");
+  }
 
   const secretFields = checkForSecretFields(evidence);
   if (secretFields.length) blockers.push(`Evidence contains forbidden secret-shaped fields: ${secretFields.join(", ")}.`);
@@ -126,10 +171,13 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
 
   const sessions = Array.isArray(evidence.pilot?.sessions) ? evidence.pilot.sessions : [];
   if (sessions.length < policy.pilot.minimum_total) blockers.push(`Pilot has ${sessions.length}/${policy.pilot.minimum_total} required sessions.`);
-  const evm = sessions.filter((session) => session.path === "evm");
-  const native = sessions.filter((session) => session.path === "native");
-  if (evm.length < policy.pilot.minimum_evm) blockers.push(`Pilot has ${evm.length}/${policy.pilot.minimum_evm} required EVM sessions.`);
-  if (native.length < policy.pilot.minimum_native) blockers.push(`Pilot has ${native.length}/${policy.pilot.minimum_native} required native sessions.`);
+  const duskds = sessions.filter((session) => session.path === "duskds");
+  if (duskds.length < policy.pilot.minimum_duskds) blockers.push(`Pilot has ${duskds.length}/${policy.pilot.minimum_duskds} required DuskDS sessions.`);
+  if (productionPaths.includes("evm")) {
+    const evm = sessions.filter((session) => session.path === "evm");
+    if (evm.length < policy.pilot.minimum_evm) blockers.push(`Pilot has ${evm.length}/${policy.pilot.minimum_evm} required EVM sessions.`);
+  }
+  if (sessions.some((session) => !productionPaths.includes(session.path))) blockers.push("Pilot evidence includes a non-production path.");
   for (const experience of policy.pilot.required_experience) if (!sessions.some((session) => session.experience === experience)) blockers.push(`Pilot lacks ${experience} experience coverage.`);
   for (const context of policy.pilot.required_contexts) if (!sessions.some((session) => session.context === context)) blockers.push(`Pilot lacks ${context} context coverage.`);
   const completionRate = sessions.length ? sessions.filter((session) => session.completed === true).length / sessions.length : 0;
@@ -145,15 +193,39 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
   if (sessions.some((session) => !present(session.id) || !Number.isFinite(session.duration_minutes) || session.duration_minutes <= 0)) blockers.push("Every pilot session needs a pseudonymous id and positive duration.");
 
   const liveSmoke = evidence.live_smoke ?? {};
-  if (liveSmoke.status !== "passed" || !present(liveSmoke.authority_reference) || liveSmoke.redacted !== true) blockers.push("Funded Testnet smoke lacks passed status, explicit authority reference, or redaction evidence.");
-  checkSteps(blockers, "EVM live smoke", liveSmoke.evm_steps, policy.required_evm_smoke_steps);
-  checkSteps(blockers, "Native live smoke", liveSmoke.native_steps, policy.required_native_smoke_steps);
+  if (liveSmoke.status !== "passed" || !present(liveSmoke.authority_reference) || liveSmoke.redacted !== true) blockers.push("DuskDS production smoke lacks passed status, explicit authority reference, or redaction evidence.");
+  checkSteps(blockers, "DuskDS production smoke", liveSmoke.native_steps, policy.required_native_smoke_steps);
+  if (productionPaths.includes("evm")) checkSteps(blockers, "EVM production smoke", liveSmoke.evm_steps, policy.required_evm_smoke_steps);
 
   const synthetics = evidence.synthetics ?? {};
   const checks = synthetics.checks ?? {};
   for (const check of policy.required_synthetic_checks) {
     const result = checks[check];
     if (!result || result.status !== "passed" || !present(result.owner)) blockers.push(`Synthetic check ${check} is not passed with an owner.`);
+  }
+  const duskDsNodeRead = checks.duskds_node_read ?? {};
+  const nodeReadEvidencePolicy = policy.duskds_node_read_evidence ?? {};
+  const nodeReadMaxAge = nodeReadEvidencePolicy.max_age_hours * 60 * 60 * 1_000;
+  const nodeReadReceiptSkew = nodeReadEvidencePolicy.max_receipt_skew_minutes * 60 * 1_000;
+  const nodeReadObservedAt = Date.parse(duskDsNodeRead.observed_at);
+  const syntheticCheckedAt = Date.parse(synthetics.checked_at);
+  const nodeReadBoundToReceipt = Number.isFinite(nodeReadObservedAt)
+    && Number.isFinite(syntheticCheckedAt)
+    && nodeReadObservedAt <= syntheticCheckedAt
+    && syntheticCheckedAt - nodeReadObservedAt <= nodeReadReceiptSkew;
+  if (duskDsNodeRead.endpoint !== policy.duskds_testnet_graphql_url
+      || !Number.isSafeInteger(duskDsNodeRead.height) || duskDsNodeRead.height <= 0
+      || !DUSKDS_BLOCK_HASH_RE.test(duskDsNodeRead.hash ?? "")
+      || !freshDate(duskDsNodeRead.observed_at, now, nodeReadMaxAge)
+      || !freshDate(synthetics.checked_at, now, nodeReadMaxAge)
+      || !nodeReadBoundToReceipt) {
+    blockers.push("DuskDS node-read evidence lacks the exact Testnet endpoint, positive bounded height, 64-hex hash, fresh observation, or binding to the synthetic receipt.");
+  }
+  if (previewPaths.includes("evm")) {
+    const deferredRpc = checks.rpc_chain_id;
+    if (deferredRpc?.status !== "deferred" || deferredRpc.path !== "evm" || deferredRpc.reason !== rpcDeferralPolicy?.reason) {
+      blockers.push("DuskEVM RPC is not recorded as the exact reviewed pre-launch deferral.");
+    }
   }
   const monitoringPolicy = policy.monitoring_evidence ?? {};
   const heartbeat = checks.monitor_heartbeat ?? {};
@@ -178,7 +250,34 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
       || !present(external.rehearsal_reference)) {
     blockers.push("External dead-man evidence lacks an outside-GitHub provider/check, fresh success, verified out-of-band alert, or recent missed-ping rehearsal.");
   }
-  if (synthetics.alert_delivery_verified !== true || !validDate(synthetics.checked_at)) blockers.push("Synthetic alert delivery is not verified with a timestamp.");
+  const directHealth = checks.external_direct_health ?? {};
+  const directHealthMaxAge = monitoringPolicy.direct_health_max_age_hours * 60 * 60 * 1_000;
+  const directAlertAt = Date.parse(directHealth.alert_rehearsed_at);
+  const directRecoveredAt = Date.parse(directHealth.recovered_at);
+  const directSuccessAt = Date.parse(directHealth.latest_success_at);
+  const directRecoveryChronology = Number.isFinite(directAlertAt)
+    && Number.isFinite(directRecoveredAt)
+    && Number.isFinite(directSuccessAt)
+    && directAlertAt < directRecoveredAt
+    && directRecoveredAt < directSuccessAt;
+  if (directHealth.outside_github !== true
+      || !present(directHealth.provider) || /github/i.test(directHealth.provider)
+      || !present(directHealth.check_id) || directHealth.check_id === external.check_id
+      || !expectedDirectHealthTarget(directHealth.target_url, candidate.manifest_url)
+      || directHealth.response_status !== 200
+      || directHealth.body_match !== "ok"
+      || directHealth.tls_verified !== true
+      || !present(directHealth.alert_channel) || /github/i.test(directHealth.alert_channel)
+      || directHealth.alert_delivery_verified !== true
+      || !freshDate(directHealth.latest_success_at, now, directHealthMaxAge)
+      || !freshDate(directHealth.alert_rehearsed_at, now, externalRehearsalMaxAge)
+      || directHealth.recovery_verified !== true
+      || !freshDate(directHealth.recovered_at, now, externalRehearsalMaxAge)
+      || !directRecoveryChronology
+      || !present(directHealth.rehearsal_reference)) {
+    blockers.push("External direct health evidence lacks a separate outside-GitHub /healthz check, exact target, fresh 200/ok/TLS success, or chronological verified alert-to-recovery proof.");
+  }
+  if (synthetics.alert_delivery_verified !== true || !freshDate(synthetics.checked_at, now, nodeReadMaxAge)) blockers.push("Synthetic alert delivery is not verified with a fresh timestamp.");
 
   for (const kind of ["product", "platform"]) {
     const rollback = evidence.rollback?.[kind];
@@ -207,6 +306,7 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
     blockers,
     metrics: {
       pilot_sessions: sessions.length,
+      duskds_pilot_sessions: duskds.length,
       completion_rate: completionRate,
       recovery_rate: recoveryRate,
       average_trust_score: averageTrust,

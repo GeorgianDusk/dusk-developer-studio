@@ -8,8 +8,23 @@ import { URL } from "node:url";
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
+const DUSKDS_BLOCK_HASH_RE = /^[a-f0-9]{64}$/i;
+const DUSKDS_GRAPHQL_QUERY = "query { block(height: -1) { header { height hash } } }";
 const REQUIRED_PREDEPLOY_ASSURANCE = ["dependency_audit", "secret_scan", "browser_matrix", "source_access"];
 const SYNTHETIC_USER_AGENT = "DuskStudioSynthetic/1.0 (+https://github.com/GeorgianDusk/dusk-developer-studio)";
+export const ASSURANCE_CHECK_OWNERSHIP = Object.freeze({
+  public_health: "studio",
+  key_routes: "studio",
+  release_parity: "studio",
+  source_links: "upstream",
+  duskds_node_read: "upstream",
+  rpc_degradation: "studio",
+  tls_expiry: "studio",
+  development_port_closed: "studio",
+  companion_port_closed: "studio"
+});
+export const STUDIO_ASSURANCE_INCIDENT_TITLE = "Studio public deployment assurance failed";
+export const UPSTREAM_ASSURANCE_INCIDENT_TITLE = "Studio upstream dependency unavailable";
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -19,7 +34,7 @@ async function fetchBounded(url, options = {}) {
   const controller = new globalThis.AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
   try {
-    const response = await globalThis.fetch(url, { ...options, signal: controller.signal, redirect: "follow" });
+    const response = await globalThis.fetch(url, { ...options, signal: controller.signal, redirect: options.redirect ?? "error" });
     const limit = options.maxBytes ?? 2_000_000;
     const declared = Number(response.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > limit) throw new Error(`${url} exceeds the ${limit}-byte response limit.`);
@@ -143,23 +158,139 @@ export function checkPublicPortClosed(hostname, port, connect = net.connect) {
   });
 }
 
-async function checkRpc(rpcUrl, expectedChainId) {
-  const { response, body } = await fetchBounded(rpcUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
-    maxBytes: 64_000
+export function validateAssuranceTargetOrigin(value, policy) {
+  let target;
+  try {
+    target = new URL(value);
+  } catch {
+    throw new Error("Public assurance target must be one valid URL.");
+  }
+  if (target.protocol !== "https:") throw new Error("Public assurance target must use HTTPS.");
+  if (target.username || target.password) throw new Error("Public assurance target must not contain user information.");
+  if (target.port) throw new Error("Public assurance target must use the default HTTPS port.");
+  if (target.href !== `${target.origin}/`) throw new Error("Public assurance target must be an exact origin with no path, query, or fragment.");
+  if (!Array.isArray(policy?.candidate_hosts) || !policy.candidate_hosts.includes(target.hostname)) {
+    throw new Error(`Target host ${target.hostname} is not approved by Phase 5 policy.`);
+  }
+  return target;
+}
+
+export function validateStudioEvidenceResponse(requestedUrl, expectedOrigin, response) {
+  const requested = new URL(requestedUrl);
+  let finalUrl;
+  try {
+    finalUrl = new URL(response?.url);
+  } catch {
+    throw new Error(`Studio evidence for ${requested.pathname} has no valid final URL.`);
+  }
+  if (response.redirected === true || (response.status >= 300 && response.status < 400)) {
+    throw new Error(`Studio evidence for ${requested.pathname} must not follow or accept redirects.`);
+  }
+  if (requested.origin !== expectedOrigin || finalUrl.origin !== expectedOrigin || finalUrl.href !== requested.href) {
+    throw new Error(`Studio evidence for ${requested.pathname} did not finish at the exact requested origin and URL.`);
+  }
+}
+
+export async function fetchStudioEvidence(baseUrl, pathname, options = {}, boundedFetch = fetchBounded) {
+  const target = new URL(pathname, baseUrl);
+  if (target.origin !== baseUrl.origin) throw new Error(`Studio evidence path ${pathname} escapes the approved origin.`);
+  const result = await boundedFetch(target, { ...options, redirect: "manual" });
+  validateStudioEvidenceResponse(target, baseUrl.origin, result.response);
+  return result;
+}
+
+export function classifyAssuranceChecks(checks) {
+  const observedChecks = checks && typeof checks === "object" && !Array.isArray(checks) ? checks : {};
+  const ownedChecks = Object.entries(ASSURANCE_CHECK_OWNERSHIP);
+  const studioChecks = ownedChecks.filter(([, owner]) => owner === "studio").map(([name]) => name);
+  const upstreamChecks = ownedChecks.filter(([, owner]) => owner === "upstream").map(([name]) => name);
+  const unclassifiedChecks = Object.keys(observedChecks).filter((name) => {
+    if (Object.hasOwn(ASSURANCE_CHECK_OWNERSHIP, name)) return false;
+    return !(name === "rpc_chain_id" && observedChecks[name]?.status === "deferred");
   });
-  if (!response.ok) throw new Error(`Testnet RPC returned ${response.status}.`);
+  const groupStatus = (names) => names.every((name) => observedChecks[name]?.status === "passed") ? "passed" : "failed";
+  return {
+    studio_status: groupStatus([...studioChecks, ...unclassifiedChecks]),
+    upstream_dependency_status: groupStatus(upstreamChecks)
+  };
+}
+
+export function selectAssuranceIncidentTitle(browserOutcome, syntheticOutcome, classification = {}) {
+  return browserOutcome === "success"
+    && syntheticOutcome === "failure"
+    && classification.studio_status === "passed"
+    && classification.upstream_dependency_status === "failed"
+    ? UPSTREAM_ASSURANCE_INCIDENT_TITLE
+    : STUDIO_ASSURANCE_INCIDENT_TITLE;
+}
+
+export function selectScheduledHeartbeatSignal(browserOutcome, syntheticOutcome, classification = {}) {
+  return browserOutcome === "success"
+    && syntheticOutcome === "success"
+    && classification.studio_status === "passed"
+    && classification.upstream_dependency_status === "passed"
+    ? "success"
+    : "failure";
+}
+
+function normalizeDuskDsHeight(value) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d{1,16}$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+  }
+  throw new Error("DuskDS Testnet GraphQL returned an invalid or unbounded block height.");
+}
+
+export async function checkDuskDsNodeRead(graphqlUrl, boundedFetch = fetchBounded, now = () => new Date()) {
+  let target;
+  try {
+    target = new URL(graphqlUrl);
+  } catch {
+    throw new Error("DuskDS Testnet GraphQL policy URL is invalid.");
+  }
+  if (target.protocol !== "https:" || target.hostname !== "testnet.nodes.dusk.network"
+      || target.username || target.password || target.port
+      || target.pathname !== "/on/graphql/query" || target.search || target.hash) {
+    throw new Error("DuskDS Testnet GraphQL policy URL must be the exact official HTTPS endpoint.");
+  }
+  const { response, body } = await boundedFetch(target, {
+    method: "POST",
+    headers: { "content-type": "text/plain; charset=utf-8" },
+    body: DUSKDS_GRAPHQL_QUERY,
+    maxBytes: 64_000,
+    redirect: "error"
+  });
+  if (response.redirected === true || (response.status >= 300 && response.status < 400) || response.url !== target.href) {
+    throw new Error("DuskDS Testnet GraphQL must not redirect or change its exact URL.");
+  }
+  if (!response.ok) throw new Error(`DuskDS Testnet GraphQL returned ${response.status}.`);
   const payload = JSON.parse(body.toString("utf8"));
-  if (payload.result !== expectedChainId) throw new Error(`Testnet RPC returned chain ${payload.result ?? "missing"}, expected ${expectedChainId}.`);
-  return { status: "passed", chain_id: payload.result };
+  if (Array.isArray(payload?.errors) && payload.errors.length) throw new Error("DuskDS Testnet GraphQL returned query errors.");
+  const height = normalizeDuskDsHeight(payload?.block?.header?.height);
+  const hash = payload?.block?.header?.hash;
+  if (typeof hash !== "string" || !DUSKDS_BLOCK_HASH_RE.test(hash)) {
+    throw new Error("DuskDS Testnet GraphQL returned an invalid 64-hex block hash.");
+  }
+  return {
+    status: "passed",
+    endpoint: target.href,
+    height,
+    hash: hash.toLowerCase(),
+    observed_at: now().toISOString()
+  };
+}
+
+function deferredRpcChainId(policy) {
+  const deferral = policy?.deferred_synthetic_checks?.rpc_chain_id;
+  if (deferral?.path !== "evm" || typeof deferral.reason !== "string" || !deferral.reason.trim() || deferral.reason.length > 300) {
+    throw new Error("DuskEVM RPC deferral policy is missing or invalid.");
+  }
+  return { status: "deferred", path: "evm", reason: deferral.reason };
 }
 
 export async function runStagingSmoke(options) {
-  const baseUrl = new URL(options.baseUrl);
-  if (baseUrl.protocol !== "https:") throw new Error("Staging smoke requires HTTPS.");
-  if (!options.policy.candidate_hosts.includes(baseUrl.hostname)) throw new Error(`Target host ${baseUrl.hostname} is not approved by Phase 5 policy.`);
+  const baseUrl = validateAssuranceTargetOrigin(options.baseUrl, options.policy);
   const checks = {};
   const errors = [];
   const record = async (name, operation) => {
@@ -170,14 +301,14 @@ export async function runStagingSmoke(options) {
   let manifest;
   let assurance;
   await record("public_health", async () => {
-    const { response, body } = await fetchBounded(new URL("/healthz", baseUrl), { maxBytes: 64 });
+    const { response, body } = await fetchStudioEvidence(baseUrl, "/healthz", { maxBytes: 64 });
     const blockers = validatePublicHeaders(response.headers, "health");
     if (!response.ok || body.toString("utf8").trim() !== "ok" || blockers.length) throw new Error(blockers.join(" ") || `Health returned ${response.status}.`);
     return { status: "passed" };
   });
   await record("key_routes", async () => {
-    const { response, body } = await fetchBounded(new URL("/", baseUrl), { maxBytes: 64_000 });
-    const fallback = await fetchBounded(new URL("/not-a-real-studio-file", baseUrl), { maxBytes: 64_000 });
+    const { response, body } = await fetchStudioEvidence(baseUrl, "/", { maxBytes: 64_000 });
+    const fallback = await fetchStudioEvidence(baseUrl, "/not-a-real-studio-file", { maxBytes: 64_000 });
     const blockers = [...validatePublicHeaders(response.headers, "html"), ...validatePublicHeaders(fallback.response.headers, "html")];
     const html = body.toString("utf8");
     const fallbackHtml = fallback.body.toString("utf8");
@@ -185,8 +316,8 @@ export async function runStagingSmoke(options) {
     return { status: "passed", spa_fallback_cache: "no-cache" };
   });
   await record("release_parity", async () => {
-    const manifestResult = await fetchBounded(new URL("/release-manifest.json", baseUrl), { maxBytes: 256_000 });
-    const assuranceResult = await fetchBounded(new URL("/assurance-receipt.json", baseUrl), { maxBytes: 256_000 });
+    const manifestResult = await fetchStudioEvidence(baseUrl, "/release-manifest.json", { maxBytes: 256_000 });
+    const assuranceResult = await fetchStudioEvidence(baseUrl, "/assurance-receipt.json", { maxBytes: 256_000 });
     const headerBlockers = [...validatePublicHeaders(manifestResult.response.headers, "receipt"), ...validatePublicHeaders(assuranceResult.response.headers, "receipt")];
     if (!/application\/json/i.test(manifestResult.response.headers.get("content-type") ?? "") || !/application\/json/i.test(assuranceResult.response.headers.get("content-type") ?? "")) throw new Error("Release receipts are not served as JSON.");
     manifest = JSON.parse(manifestResult.body.toString("utf8"));
@@ -197,7 +328,7 @@ export async function runStagingSmoke(options) {
     })];
     if (blockers.length) throw new Error(blockers.join(" "));
     for (const artifact of manifest.artifacts) {
-      const artifactResult = await fetchBounded(new URL(`/${artifact.path}`, baseUrl), { maxBytes: Math.max(artifact.bytes + 1, 64_000) });
+      const artifactResult = await fetchStudioEvidence(baseUrl, `/${artifact.path}`, { maxBytes: Math.max(artifact.bytes + 1, 64_000) });
       if (!artifactResult.response.ok || artifactResult.body.byteLength !== artifact.bytes || sha256(artifactResult.body) !== artifact.sha256) throw new Error(`Artifact parity failed for ${artifact.path}.`);
       if (artifact.path.startsWith("assets/")) {
         const cacheBlockers = validatePublicHeaders(artifactResult.response.headers, "asset");
@@ -211,7 +342,8 @@ export async function runStagingSmoke(options) {
     for (const url of options.policy.key_source_urls) statuses[url] = await fetchAvailability(url);
     return { status: "passed", urls: statuses };
   });
-  await record("rpc_chain_id", () => checkRpc(options.rpcUrl, options.policy.expected_testnet_chain_id));
+  await record("duskds_node_read", () => checkDuskDsNodeRead(options.policy.duskds_testnet_graphql_url));
+  checks.rpc_chain_id = deferredRpcChainId(options.policy);
   await record("rpc_degradation", async () => {
     if (options.rpcDegradationStatus !== "success" && options.rpcDegradationStatus !== "passed") throw new Error("Hosted browser RPC degradation test did not pass in this run.");
     return { status: "passed", evidence: "hosted-browser-offline-recovery" };
@@ -220,12 +352,14 @@ export async function runStagingSmoke(options) {
   await record("development_port_closed", () => checkPublicPortClosed(baseUrl.hostname, 5173));
   await record("companion_port_closed", () => checkPublicPortClosed(baseUrl.hostname, 8788));
 
+  const classification = classifyAssuranceChecks(checks);
   return {
     schema_version: 1,
     checked_at: new Date().toISOString(),
     target: baseUrl.origin,
     expected_environment: options.expectedEnvironment,
     status: errors.length ? "failed" : "passed",
+    ...classification,
     checks,
     errors
   };

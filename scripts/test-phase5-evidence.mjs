@@ -10,16 +10,28 @@ const digest = "a".repeat(64);
 const owners = Object.fromEntries(policy.required_owners.map((owner) => [owner, `${owner}-owner`]));
 const reviews = Object.fromEntries(policy.required_reviews.map((review) => [review, { status: "accepted", reviewer: `${review}-reviewer`, reviewed_at: "2026-07-15T00:00:00Z", independent: true }]));
 const sessions = [
-  ["p1", "evm", "novice", "windows", true, true],
-  ["p2", "evm", "experienced", "wsl", true, true],
-  ["p3", "evm", "experienced", "linux", true, true],
-  ["p4", "native", "novice", "windows", true, true],
-  ["p5", "native", "experienced", "wsl", true, true],
-  ["p6", "native", "experienced", "linux", true, true],
-  ["p7", "evm", "experienced", "macos", true, true],
-  ["p8", "native", "experienced", "macos", true, true]
+  ["p1", "duskds", "novice", "windows", true, true],
+  ["p2", "duskds", "experienced", "wsl", true, true],
+  ["p3", "duskds", "experienced", "linux", true, true],
+  ["p4", "duskds", "novice", "windows", true, true],
+  ["p5", "duskds", "experienced", "wsl", true, true],
+  ["p6", "duskds", "experienced", "linux", true, true],
+  ["p7", "duskds", "experienced", "macos", true, true],
+  ["p8", "duskds", "experienced", "macos", true, true]
 ].map(([id, pathName, experience, context, recoveryAttempted, recovered]) => ({ id, path: pathName, experience, context, completed: true, recovery_attempted: recoveryAttempted, recovered, trust_score: 5, blocking_confusion: false, duration_minutes: 20 }));
 const checks = Object.fromEntries(policy.required_synthetic_checks.map((check) => [check, { status: "passed", owner: "platform-owner" }]));
+checks.duskds_node_read = {
+  ...checks.duskds_node_read,
+  endpoint: policy.duskds_testnet_graphql_url,
+  height: 3_818_138,
+  hash: "f".repeat(64),
+  observed_at: "2026-07-15T00:00:00Z"
+};
+checks.rpc_chain_id = {
+  status: "deferred",
+  path: "evm",
+  reason: policy.deferred_synthetic_checks.rpc_chain_id.reason
+};
 checks.monitor_heartbeat = {
   ...checks.monitor_heartbeat,
   receipt_sha256: digest,
@@ -39,6 +51,23 @@ checks.external_dead_man = {
   missed_ping_rehearsed_at: "2026-07-10T12:00:00Z",
   rehearsal_reference: "external-rehearsal-2026-07-10"
 };
+checks.external_direct_health = {
+  ...checks.external_direct_health,
+  outside_github: true,
+  provider: "external-uptime-provider",
+  check_id: "studio-public-health",
+  target_url: "https://studio.134-122-59-217.sslip.io/healthz",
+  response_status: 200,
+  body_match: "ok",
+  tls_verified: true,
+  alert_channel: "email",
+  alert_delivery_verified: true,
+  latest_success_at: "2026-07-14T18:00:00Z",
+  alert_rehearsed_at: "2026-07-10T13:00:00Z",
+  recovery_verified: true,
+  recovered_at: "2026-07-10T13:30:00Z",
+  rehearsal_reference: "direct-health-rehearsal-2026-07-10"
+};
 const passedSteps = (steps) => Object.fromEntries(steps.map((step) => [step, "passed"]));
 const evidence = {
   schema_version: 1,
@@ -47,7 +76,7 @@ const evidence = {
   owners,
   reviews,
   pilot: { sessions },
-  live_smoke: { status: "passed", authority_reference: "approval-2026-07-15", redacted: true, evm_steps: passedSteps(policy.required_evm_smoke_steps), native_steps: passedSteps(policy.required_native_smoke_steps) },
+  live_smoke: { status: "passed", authority_reference: "approval-2026-07-15", redacted: true, native_steps: passedSteps(policy.required_native_smoke_steps) },
   synthetics: { checks, alert_delivery_verified: true, checked_at: "2026-07-15T00:00:00Z" },
   rollback: {
     product: { status: "passed", owner: "engineering-owner", duration_seconds: 100, restored_fingerprint_sha256: digest, health_proof: "receipt-product", data_cache_effects: "immutable assets retained; HTML reverted" },
@@ -61,11 +90,37 @@ const evidence = {
 assert.equal(evaluatePhase5Evidence(policy, evidence, { now }).decision, "go");
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, candidate: { ...evidence.candidate, public_fingerprint_sha256: "c".repeat(64) } }, { now }).blockers.join("\n"), /fingerprints differ/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { sessions: sessions.slice(0, 7) } }, { now }).blockers.join("\n"), /Pilot has 7\/8/);
+const mixedPathSessions = sessions.map((session, index) => index === 0 ? { ...session, path: "evm" } : session);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { sessions: mixedPathSessions } }, { now }).blockers.join("\n"), /required DuskDS sessions|non-production path/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, live_smoke: { status: "not-authorized" } }, { now }).blockers.join("\n"), /explicit authority/);
+const incompleteNativeSmoke = JSON.parse(JSON.stringify(evidence));
+delete incompleteNativeSmoke.live_smoke.native_steps.node_read;
+assert.match(evaluatePhase5Evidence(policy, incompleteNativeSmoke, { now }).blockers.join("\n"), /DuskDS production smoke step node_read/);
+const missingRpcDeferral = JSON.parse(JSON.stringify(evidence));
+delete missingRpcDeferral.synthetics.checks.rpc_chain_id;
+assert.match(evaluatePhase5Evidence(policy, missingRpcDeferral, { now }).blockers.join("\n"), /exact reviewed pre-launch deferral/);
+const attemptedEvmActivation = JSON.parse(JSON.stringify(policy));
+attemptedEvmActivation.production_paths.push("evm");
+attemptedEvmActivation.preview_paths = [];
+const attemptedEvmBlockers = evaluatePhase5Evidence(attemptedEvmActivation, evidence, { now }).blockers.join("\n");
+assert.match(attemptedEvmBlockers, /real RPC verification and no active deferral/);
+assert.match(attemptedEvmBlockers, /explicit EVM smoke steps and pilot coverage/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, companion_security: { ...reviews.companion_security, independent: false } } }, { now }).blockers.join("\n"), /not recorded as independent/);
 const missingDevelopmentPort = JSON.parse(JSON.stringify(evidence));
 delete missingDevelopmentPort.synthetics.checks.development_port_closed;
 assert.match(evaluatePhase5Evidence(policy, missingDevelopmentPort, { now }).blockers.join("\n"), /development_port_closed/);
+const invalidDuskDsRead = JSON.parse(JSON.stringify(evidence));
+invalidDuskDsRead.synthetics.checks.duskds_node_read.height = 0;
+assert.match(evaluatePhase5Evidence(policy, invalidDuskDsRead, { now }).blockers.join("\n"), /DuskDS node-read evidence/);
+const staleDuskDsRead = JSON.parse(JSON.stringify(evidence));
+staleDuskDsRead.synthetics.checks.duskds_node_read.observed_at = "2026-07-13T00:00:00Z";
+assert.match(evaluatePhase5Evidence(policy, staleDuskDsRead, { now }).blockers.join("\n"), /DuskDS node-read evidence/);
+const futureDuskDsRead = JSON.parse(JSON.stringify(evidence));
+futureDuskDsRead.synthetics.checks.duskds_node_read.observed_at = "2026-07-15T00:01:00Z";
+assert.match(evaluatePhase5Evidence(policy, futureDuskDsRead, { now }).blockers.join("\n"), /DuskDS node-read evidence/);
+const unboundDuskDsRead = JSON.parse(JSON.stringify(evidence));
+unboundDuskDsRead.synthetics.checked_at = "2026-07-14T23:30:00Z";
+assert.match(evaluatePhase5Evidence(policy, unboundDuskDsRead, { now }).blockers.join("\n"), /DuskDS node-read evidence/);
 const unboundHeartbeat = JSON.parse(JSON.stringify(evidence));
 delete unboundHeartbeat.synthetics.checks.monitor_heartbeat.receipt_sha256;
 assert.match(evaluatePhase5Evidence(policy, unboundHeartbeat, { now }).blockers.join("\n"), /Monitor heartbeat evidence/);
@@ -75,6 +130,33 @@ assert.match(evaluatePhase5Evidence(policy, githubBoundDeadMan, { now }).blocker
 const staleExternalSuccess = JSON.parse(JSON.stringify(evidence));
 staleExternalSuccess.synthetics.checks.external_dead_man.latest_success_at = "2026-07-13T00:00:00Z";
 assert.match(evaluatePhase5Evidence(policy, staleExternalSuccess, { now }).blockers.join("\n"), /External dead-man evidence/);
+const missingDirectHealth = JSON.parse(JSON.stringify(evidence));
+delete missingDirectHealth.synthetics.checks.external_direct_health;
+assert.match(evaluatePhase5Evidence(policy, missingDirectHealth, { now }).blockers.join("\n"), /external_direct_health|External direct health evidence/);
+const wrongDirectTarget = JSON.parse(JSON.stringify(evidence));
+wrongDirectTarget.synthetics.checks.external_direct_health.target_url = "https://studio.134-122-59-217.sslip.io:8443/healthz";
+assert.match(evaluatePhase5Evidence(policy, wrongDirectTarget, { now }).blockers.join("\n"), /External direct health evidence/);
+const unhealthyDirectObservation = JSON.parse(JSON.stringify(evidence));
+unhealthyDirectObservation.synthetics.checks.external_direct_health.tls_verified = false;
+assert.match(evaluatePhase5Evidence(policy, unhealthyDirectObservation, { now }).blockers.join("\n"), /External direct health evidence/);
+const staleDirectObservation = JSON.parse(JSON.stringify(evidence));
+staleDirectObservation.synthetics.checks.external_direct_health.latest_success_at = "2026-07-13T00:00:00Z";
+assert.match(evaluatePhase5Evidence(policy, staleDirectObservation, { now }).blockers.join("\n"), /External direct health evidence/);
+const staleDirectAlert = JSON.parse(JSON.stringify(evidence));
+staleDirectAlert.synthetics.checks.external_direct_health.alert_rehearsed_at = "2026-06-01T00:00:00Z";
+assert.match(evaluatePhase5Evidence(policy, staleDirectAlert, { now }).blockers.join("\n"), /External direct health evidence/);
+const unverifiedDirectRecovery = JSON.parse(JSON.stringify(evidence));
+unverifiedDirectRecovery.synthetics.checks.external_direct_health.recovery_verified = false;
+assert.match(evaluatePhase5Evidence(policy, unverifiedDirectRecovery, { now }).blockers.join("\n"), /External direct health evidence/);
+const recoveryBeforeAlert = JSON.parse(JSON.stringify(evidence));
+recoveryBeforeAlert.synthetics.checks.external_direct_health.recovered_at = "2026-07-10T12:30:00Z";
+assert.match(evaluatePhase5Evidence(policy, recoveryBeforeAlert, { now }).blockers.join("\n"), /External direct health evidence/);
+const successBeforeRecovery = JSON.parse(JSON.stringify(evidence));
+successBeforeRecovery.synthetics.checks.external_direct_health.latest_success_at = "2026-07-10T13:15:00Z";
+assert.match(evaluatePhase5Evidence(policy, successBeforeRecovery, { now }).blockers.join("\n"), /External direct health evidence/);
+const reusedExternalCheck = JSON.parse(JSON.stringify(evidence));
+reusedExternalCheck.synthetics.checks.external_direct_health.check_id = reusedExternalCheck.synthetics.checks.external_dead_man.check_id;
+assert.match(evaluatePhase5Evidence(policy, reusedExternalCheck, { now }).blockers.join("\n"), /External direct health evidence/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "P1-1", severity: "P1", status: "open" }] }, { now }).blockers.join("\n"), /no complete exception/);
 const unsignedDistribution = { ...evidence, companion_distribution: { hosted_mode: "docs-only", availability: "unsigned-downloads", targets: {} } };
 assert.match(evaluatePhase5Evidence(policy, unsignedDistribution, { now }).blockers.join("\n"), /availability is not allowed/);

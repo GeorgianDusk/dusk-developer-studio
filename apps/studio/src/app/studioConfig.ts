@@ -15,22 +15,49 @@ export const expiryDate = new Date(sourceFreshness.expires_at + "T00:00:00.000Z"
 export const sourceIsStale = Date.now() > Date.parse(sourceFreshness.expires_at + "T23:59:59.999Z");
 
 export const pathText = {
-  evm: { label: "DuskEVM", eyebrow: "Solidity path", summary: "Choose this for Solidity, Foundry or Hardhat, EVM wallets, DUSK gas, Blockscout, and optional Hedger research.", start: "Start Solidity path", result: "A tested DuskEVM starter plus a read-only receipt, address, or block result." },
-  duskds: { label: "DuskDS", eyebrow: "Native Dusk path", summary: "Choose this for Rust/WASM contracts, DuskVM, data drivers, W3sper, Dusk Connect, or privacy-aware native flows.", start: "Start native path", result: "A Forge starter with contract/data-driver build evidence and a recorded native read result." }
-} satisfies Record<BuilderPath, { label: string; eyebrow: string; summary: string; start: string; result: string }>;
+  evm: {
+    label: "DuskEVM",
+    eyebrow: "Solidity path",
+    availability: "Pre-launch preview",
+    availabilityTone: "warn",
+    availabilityCopy: "Browse the educational workflow now. Live Testnet evidence remains deferred until the network launches.",
+    summary: "Choose this to learn the planned Solidity, Foundry or Hardhat, EVM wallet, DUSK gas, Blockscout, and optional Hedger research flow.",
+    start: "Start Solidity path",
+    result: "A source-backed map of the DuskEVM workflow; live RPC, wallet, and inspection proof waits for Testnet launch."
+  },
+  duskds: {
+    label: "DuskDS",
+    eyebrow: "Native Dusk path",
+    availability: "Active guide",
+    availabilityTone: "good",
+    availabilityCopy: "Public docs and read-only node guidance are available now. Local machine actions require the portable companion.",
+    summary: "Choose this for Rust/WASM contracts, DuskVM, data drivers, W3sper, Dusk Connect, or privacy-aware native flows.",
+    start: "Start native path",
+    result: "A source-backed DuskDS route to a Forge starter, contract/data-driver build evidence, and a recorded native read."
+  }
+} satisfies Record<BuilderPath, {
+  label: string;
+  eyebrow: string;
+  availability: string;
+  availabilityTone: "good" | "warn";
+  availabilityCopy: string;
+  summary: string;
+  start: string;
+  result: string;
+}>;
 
 export const steps = {
   evm: [
-    { id: "setup", number: "1", label: "Setup", title: "Prove your RPC, wallet network, account, and balance read.", intent: "Confirm DuskEVM Testnet without signing or storing wallet details.", done: ["RPC returns the expected Testnet chain.", "Wallet reports the expected chain and a selected account.", "A read-only balance request succeeds."] },
-    { id: "access", number: "2", label: "Access", title: "Confirm testnet DUSK is available for gas.", intent: "Use a read-only wallet balance and the official bridge guide; the Studio never moves funds.", done: ["Wallet remains on DuskEVM Testnet.", "The selected account has a positive testnet balance."] },
-    { id: "build", number: "3", label: "Build", title: "Create, build, and test the Counter starter.", intent: "Verify generated structure locally, run the displayed commands, and record the result honestly.", done: ["Counter source and test files exist.", "Foundry build and tests pass.", "Deploy signing remains manual through an encrypted account."] },
-    { id: "inspect", number: "4", label: "Inspect", title: "Read an address, transaction, or block from Testnet.", intent: "Classify the identifier locally, query only the allowlisted RPC, and link to Blockscout.", done: ["Identifier type is known.", "A read-only RPC result is shown with provenance.", "No signing request was made."] }
+    { id: "setup", number: "1", label: "Setup", title: "Understand the planned RPC and wallet checks.", intent: "Use only the explicit pre-launch endpoint probe; wallet, account, and balance actions remain disabled.", done: ["Pre-launch status is understood.", "No wallet prompt is enabled.", "Live evidence remains deferred."] },
+    { id: "access", number: "2", label: "Access", title: "Review how Testnet access and gas will work.", intent: "Learn the future read-only balance and official bridge flow without connecting a wallet or moving funds.", done: ["The future access sequence is understood.", "No wallet or balance request is enabled.", "No funds are moved."] },
+    { id: "build", number: "3", label: "Build", title: "Review the planned local Foundry workflow.", intent: "Learn the starter, build, test, and signing boundaries without creating files or showing a deploy command.", done: ["The planned local workflow is understood.", "No companion scaffold is enabled.", "No deployment command is exposed."] },
+    { id: "inspect", number: "4", label: "Inspect", title: "Learn the supported Testnet identifier shapes.", intent: "Classify an example locally while network inspection remains disabled until reviewed activation.", done: ["Identifier formats are understood.", "Classification stays local.", "No RPC or signing request is made."] }
   ],
   duskds: [
     { id: "setup", number: "1", label: "Setup", title: "Prove the native Dusk toolchain is ready.", intent: "Classify required tool failures without exposing environment values or local paths.", done: ["Required tools pass.", "Rust 1.94, WASM target, and rust-src are present.", "Windows VM-test requirements are explicit."] },
     { id: "access", number: "2", label: "Access", title: "Prove a read-only Dusk node query works.", intent: "Run the W3sper query locally, check its expected shape, then record the observed outcome.", done: ["Latest block header is returned.", "Profile and endpoint context are understood.", "No key or transaction is required."] },
     { id: "build", number: "3", label: "Build", title: "Build contract and data-driver WASM together.", intent: "Verify scaffold structure, build both outputs, and separately record the VM-test result.", done: ["Forge structure is verified.", "Both WASM artifacts are observed.", "VM tests pass in the stated environment."] },
-    { id: "inspect", number: "4", label: "Inspect", title: "Confirm native finality and data-driver compatibility.", intent: "Record the read-only network and schema checks you actually observed; deployment stays manual.", done: ["Recent state is queryable.", "Data-driver schema/call behavior is checked.", "No unobserved on-chain claim is made."] }
+    { id: "inspect", number: "4", label: "Inspect", title: "Confirm native finality and data-driver compatibility.", intent: "Record the read-only network and schema checks you actually observed; deployment stays manual.", done: ["Recent state is queryable.", "Data-driver schema and encode/decode behavior are checked.", "No unobserved on-chain claim is made."] }
   ]
 } satisfies Record<BuilderPath, StepInfo[]>;
 
@@ -39,7 +66,7 @@ export const capabilityIds = { evm: ["duskevm-solidity-contracts", "duskevm-wall
 export const troubleIds = { evm: ["wrong-chain", "no-wallet", "insufficient-gas", "rpc-unavailable", "foundry-missing", "verification-failed"], duskds: ["dusk-forge-windows-wasm-opt-shim", "dusk-forge-windows-long-path-linker", "rust-wasm-target-missing", "dusk-forge-rust-stable-drift", "data-driver-build-missing", "dusk-forge-test-linux-required"] } satisfies Record<BuilderPath, string[]>;
 
 export const evidenceLabels: Record<EvidenceCode, string> = {
-  "evm-rpc-chain": "Testnet RPC chain verified", "evm-wallet-chain": "Wallet chain verified", "evm-wallet-account": "Selected account observed", "evm-balance-read": "Read-only balance succeeded", "evm-positive-balance": "Positive testnet balance observed", "evm-starter-structure": "Counter scaffold structure verified", "evm-build-test-attestation": "Build and tests recorded as passed", "evm-read-inspection": "Read-only RPC inspection returned a result",
+  "evm-rpc-chain": "Future gate: Testnet RPC chain verified", "evm-wallet-chain": "Future gate: wallet chain verified", "evm-wallet-account": "Future gate: selected account observed", "evm-balance-read": "Future gate: read-only balance succeeded", "evm-positive-balance": "Future gate: positive Testnet balance observed", "evm-starter-structure": "Future gate: Counter scaffold verified", "evm-build-test-attestation": "Future gate: build and tests passed", "evm-read-inspection": "Future gate: read-only RPC inspection passed",
   "duskds-required-preflight": "All required native tools passed", "duskds-node-read-attestation": "W3sper node read recorded as successful", "duskds-starter-structure": "Forge scaffold structure verified", "duskds-build-artifact-attestation": "Both WASM outputs recorded as observed", "duskds-vm-test-attestation": "VM tests recorded as passed", "duskds-read-inspection-attestation": "Native state and data-driver checks recorded"
 };
 

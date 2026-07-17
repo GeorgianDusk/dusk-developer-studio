@@ -1,0 +1,141 @@
+name: DuskDS native production smoke
+
+"on":
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/duskds-native-smoke.yml
+      - apps/studio/**
+      - config/phase5-policy.json
+      - packages/**
+      - scripts/staging-smoke.mjs
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/duskds-native-smoke.yml
+      - apps/studio/**
+      - config/phase5-policy.json
+      - packages/**
+      - scripts/staging-smoke.mjs
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: duskds-native-production-smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-smoke:
+    name: Exact DuskDS scaffold, build, VM test, and inspection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CI: "true"
+      CARGO_TERM_COLOR: never
+      RUST_TOOLCHAIN: 1.94.0
+      FORGE_COMMIT: d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a
+      RUSK_COMMIT: ae1a38a2079c681126a96f94c17d282ea2639946
+      EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - name: Check out the exact reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Bind the run to the checked-out commit
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test -z "$(git status --short)"
+      - name: Use the verified Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.11.0
+          package-manager-cache: "false"
+      - name: Read the official DuskDS Testnet node
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { checkDuskDsNodeRead } from "./scripts/staging-smoke.mjs";
+          const policy = JSON.parse(fs.readFileSync("config/phase5-policy.json", "utf8"));
+          const evidence = await checkDuskDsNodeRead(policy.duskds_testnet_graphql_url);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            "### DuskDS official node read",
+            `- Observed at: \`${evidence.observed_at}\``,
+            `- Height: \`${evidence.height}\``,
+            `- Hash: \`${evidence.hash}\``,
+            ""
+          ].join("\n"));
+          NODE
+      - name: Install the pinned Rust and Dusk Forge toolchain
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup target add --toolchain "$RUST_TOOLCHAIN" wasm32-unknown-unknown
+          rustup component add --toolchain "$RUST_TOOLCHAIN" rust-src
+          cargo +"$RUST_TOOLCHAIN" install --locked \
+            --root "$RUNNER_TEMP/dusk-forge" \
+            --git https://github.com/dusk-network/forge \
+            --rev "$FORGE_COMMIT" \
+            dusk-forge-cli
+          echo "$RUNNER_TEMP/dusk-forge/bin" >> "$GITHUB_PATH"
+      - name: Verify required native tools
+        run: |
+          test "$(rustc +"$RUST_TOOLCHAIN" --version | awk '{print $2}')" = "$RUST_TOOLCHAIN"
+          cargo +"$RUST_TOOLCHAIN" --version
+          dusk-forge --version
+          git --version
+          make --version | head -n 1
+      - name: Scaffold through the pinned Forge release
+        run: |
+          ROOT="$RUNNER_TEMP/duskds-native-smoke"
+          PROJECT="$ROOT/duskds-phase5-smoke"
+          mkdir -p "$ROOT"
+          dusk-forge new duskds-phase5-smoke --path "$ROOT" --no-git --template counter
+          sed -i -E 's/channel[[:space:]]*=[[:space:]]*"[^"]+"/channel = "1.94.0"/' "$PROJECT/rust-toolchain.toml"
+          grep -Fq 'channel = "1.94.0"' "$PROJECT/rust-toolchain.toml"
+          grep -Fq "git+https://github.com/dusk-network/rusk?tag=dusk-core-1.6.0#$RUSK_COMMIT" "$PROJECT/Cargo.lock"
+          test -f "$PROJECT/Cargo.toml"
+          test -f "$PROJECT/src/lib.rs"
+          test -f "$PROJECT/tests/contract.rs"
+          echo "DUSKDS_SMOKE_PROJECT=$PROJECT" >> "$GITHUB_ENV"
+      - name: Check, build both artifacts, and run the Linux VM test
+        run: |
+          cd "$DUSKDS_SMOKE_PROJECT"
+          dusk-forge check
+          dusk-forge build all
+          dusk-forge test
+      - name: Inspect and record bounded artifact evidence
+        run: |
+          cd "$DUSKDS_SMOKE_PROJECT"
+          VERIFY_OUTPUT="$(dusk-forge verify --skip-build)"
+          printf '%s\n' "$VERIFY_OUTPUT"
+          CONTRACT="target/contract/wasm32-unknown-unknown/release/duskds_phase5_smoke.wasm"
+          DRIVER="target/data-driver/wasm32-unknown-unknown/release/duskds_phase5_smoke.wasm"
+          test -s "$CONTRACT"
+          test -s "$DRIVER"
+          CONTRACT_HASH="$(sha256sum "$CONTRACT" | awk '{print $1}')"
+          DRIVER_HASH="$(sha256sum "$DRIVER" | awk '{print $1}')"
+          CONTRACT_BYTES="$(stat -c %s "$CONTRACT")"
+          DRIVER_BYTES="$(stat -c %s "$DRIVER")"
+          CONTRACT_BLAKE3="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^contract_blake3: //p')"
+          SCHEMA_FUNCTIONS="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^schema_functions: //p')"
+          test "${#CONTRACT_BLAKE3}" = 64
+          test "$SCHEMA_FUNCTIONS" -gt 0
+          {
+            echo "### DuskDS native smoke evidence"
+            echo "- Studio commit: \`$EXPECTED_COMMIT\`"
+            echo "- Rust: \`$RUST_TOOLCHAIN\`"
+            echo "- Dusk Forge commit: \`$FORGE_COMMIT\`"
+            echo "- Rusk commit: \`$RUSK_COMMIT\`"
+            echo "- Contract WASM: \`$CONTRACT_BYTES bytes\`, SHA-256 \`$CONTRACT_HASH\`"
+            echo "- Data-driver WASM: \`$DRIVER_BYTES bytes\`, SHA-256 \`$DRIVER_HASH\`"
+            echo "- Contract BLAKE3: \`$CONTRACT_BLAKE3\`"
+            echo "- Schema functions: \`$SCHEMA_FUNCTIONS\`"
+            echo "- VM test: \`passed on ubuntu-24.04\`"
+          } >> "$GITHUB_STEP_SUMMARY"

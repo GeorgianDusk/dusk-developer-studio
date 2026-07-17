@@ -2,7 +2,12 @@
 
 ## Scope
 
-Dusk Developer Studio is an independent community preview: a static public Studio plus an optional local companion running on each developer's own machine. Product, self-hosting, and release boundaries are documented in `../../README.md` and `../deployment/`.
+Dusk Developer Studio is an independent open-source project: a static public
+Studio plus optional local-companion source for each developer's own machine.
+The hosted production scope is DuskDS guidance and read-only public-node
+verification. DuskEVM remains an educational pre-launch preview until its
+Testnet is live and independently verified. Product, self-hosting, and release
+boundaries are documented in `../../README.md` and `../deployment/`.
 
 ## Assets To Protect
 
@@ -28,7 +33,7 @@ Dusk Developer Studio is an independent community preview: a static public Studi
 11. An unauthenticated request triggers body parsing, process execution, or filesystem writes.
 12. Request floods exhaust local CPU, memory, subprocess, or filesystem capacity.
 
-## Public Preview Controls
+## Public Hosted Controls
 
 - Public VPS serves only the static Studio.
 - Local companion binds to `127.0.0.1` only, validates the exact loopback Host and Origin, and rejects missing origins.
@@ -61,6 +66,12 @@ The precise boundary and configuration contract is documented in local-companion
 
 ## Release Gate
 
-Before a production announcement: production domain confirmation; exact release-manifest parity; supported companion distribution or enforced docs-only mode; Dusk source freshness; dependency and secret gates; browser, accessibility, and representative developer QA; independent companion security review; separate platform/Caddy review; approved copy and visible release identity; assigned support/monitoring owners; rehearsed Studio/platform rollback; and explicit confirmation that no VPS-exposed companion exists.
+Before claiming any builder path production-ready: approved production origin;
+exact release-manifest parity; supported companion distribution or enforced
+docs-only mode; Dusk source freshness; dependency and secret gates; browser,
+accessibility, and representative developer QA; independent companion security
+review; separate platform/Caddy review; approved copy and visible release
+identity; assigned support/monitoring owners; rehearsed Studio/platform
+rollback; and explicit confirmation that no VPS-exposed companion exists.
 
 No P0 may remain. A P1 is no-go unless George explicitly accepts a time-limited exception containing the owner, rationale, compensating control, residual risk, monitoring, expiry, and revalidation trigger.

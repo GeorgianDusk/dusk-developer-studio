@@ -15,41 +15,32 @@ describe("Phase 2 evidence journeys", () => {
     Object.defineProperty(window, "ethereum", { value: undefined, configurable: true, writable: true });
   });
 
-  it("verifies wallet evidence without persisting the account or balance", async () => {
+  it("keeps the DuskEVM wallet action disabled during pre-launch", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
-    const account = `0x${"a".repeat(40)}`;
     const provider = {
-      request: vi.fn(async ({ method }: { method: string }) => {
-        if (method === "wallet_switchEthereumChain") return null;
-        if (method === "eth_chainId") return "0x2e9";
-        if (method === "eth_requestAccounts") return [account];
-        if (method === "eth_getBalance") return "0xde0b6b3a7640000";
-        throw new Error(`unexpected ${method}`);
-      })
+      request: vi.fn()
     };
     Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Verify Testnet wallet" }));
-    await waitFor(() => expect(screen.getByText(/read-only balance 1 DUSK/)).toBeInTheDocument());
-    await waitFor(() => expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).toContain("evm-wallet-account"));
-    const stored = window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)!;
-    expect(stored).not.toContain(account);
-    expect(stored).not.toContain("1000000000000000000");
+
+    expect(screen.getByRole("button", { name: "Available after Testnet launch" })).toBeDisabled();
+    expect(provider.request).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account");
   });
 
-  it("classifies and records a read-only contract-code inspection", async () => {
+  it("classifies an EVM identifier locally but defers network inspection", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#inspect";
     const address = `0x${"b".repeat(40)}`;
-    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ jsonrpc: "2.0", id: 1, result: "0x60016000" }) })));
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
     render(<App />);
-    fireEvent.change(screen.getByLabelText("Testnet identifier"), { target: { value: address } });
+    fireEvent.change(screen.getByLabelText("Future Testnet identifier"), { target: { value: address } });
     expect(screen.getByText("address")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Inspect read-only" }));
-    await waitFor(() => expect(screen.getByText("Contract bytecode is present at this address.")).toBeInTheDocument());
-    await waitFor(() => expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).toContain("evm-read-inspection"));
-    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).not.toContain(address);
+    expect(screen.getByRole("button", { name: "Network inspection available after Testnet launch" })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-read-inspection");
   });
 
   it("exposes invalid Inspect input through the field description", () => {
@@ -57,11 +48,11 @@ describe("Phase 2 evidence journeys", () => {
     window.location.hash = "#inspect";
     render(<App />);
 
-    const input = screen.getByLabelText("Testnet identifier");
+    const input = screen.getByLabelText("Future Testnet identifier");
     fireEvent.change(input, { target: { value: "not-an-identifier" } });
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toHaveAccessibleDescription(/Identifier not recognized/);
-    expect(screen.getByRole("button", { name: "Inspect read-only" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Network inspection available after Testnet launch" })).toBeDisabled();
   });
 
   it("keeps native completion explicit when the browser cannot observe the terminal", async () => {

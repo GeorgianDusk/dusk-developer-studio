@@ -12,17 +12,17 @@ test("guided builder flow stays clear", async ({ page }) => {
   await expect(page.getByRole("button", { name: "DuskEVM", exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: /Start Solidity path/i }).click();
-  await expect(page.getByRole("heading", { name: "Prove your RPC, wallet network, account, and balance read." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Run RPC check" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Understand the planned RPC and wallet checks." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Probe pre-launch endpoint" })).toBeVisible();
 
   const evmGuide = page.getByLabel("DuskEVM guide sequence");
   await evmGuide.getByRole("button", { name: /2 Access/i }).click();
-  await expect(page.getByRole("heading", { name: "Confirm testnet DUSK is available for gas." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review how Testnet access and gas will work." })).toBeVisible();
   await expect(page.getByText("Check the selected Testnet balance")).toBeVisible();
 
   await evmGuide.getByRole("button", { name: /3 Build/i }).click();
-  await expect(page.getByRole("heading", { name: "Create, build, and test the Counter starter." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Available in local Studio|Set up local companion|Create and verify Counter starter/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Review the planned local Foundry workflow." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Starter actions available after Testnet activation" })).toBeDisabled();
 
   await page.getByRole("button", { name: "Reference" }).click();
   await expect(page.getByRole("heading", { name: "Deeper context, with source receipts." })).toBeVisible();

@@ -1,7 +1,7 @@
 # Deploy Automation Policy
 
-Date: 2026-07-03
-Status: public-preview guardrail
+Date: 2026-07-17
+Status: hosted-production guardrail; DuskEVM remains pre-launch
 
 ## Position
 
@@ -9,7 +9,8 @@ The public Studio may automate local checks, scaffolding, build commands, read-o
 
 ## Allowed Now
 
-- Show DuskEVM and DuskDS deploy command shapes.
+- Show DuskDS deploy command shapes and clearly labeled educational DuskEVM
+  command shapes that do not imply a live Testnet.
 - Generate local starter projects through allowlisted local-agent routes.
 - Run preflight checks for required and optional tooling.
 - Link to official docs and explorers.

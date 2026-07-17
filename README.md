@@ -4,24 +4,27 @@
 
 Dusk Developer Studio is a developer cockpit for choosing and following the right Dusk builder path: DuskEVM for Solidity/EVM tooling, or DuskDS for native Rust/WASM/DuskVM work.
 
+The current production Studio is [studio.134-122-59-217.sslip.io](https://studio.134-122-59-217.sslip.io).
+
 ## Use it today
 
-- Choose DuskEVM or DuskDS and follow one focused Setup → Access → Build → Inspect journey.
-- Use source-backed references, troubleshooting guidance, and read-only DuskEVM Testnet checks.
+- Follow the active DuskDS Setup → Access → Build → Inspect guide with source-backed public-node, W3sper, Forge, and data-driver guidance.
+- Browse the complete DuskEVM journey as a pre-launch educational preview. DuskEVM Testnet is not live yet, so live RPC, wallet, balance, and inspection evidence is unavailable and deferred.
+- Use the hosted Studio as a static, docs-only guide; it never runs local machine actions or proxies the companion.
 - Clone the repository and run the Studio locally with the commands below.
 
 ## What it provides
 
-- A first-screen choice between DuskEVM and DuskDS, followed by one focused four-step journey.
+- A first-screen choice between an active DuskDS guide and a clearly labelled DuskEVM pre-launch preview, followed by one focused four-step journey.
 - Source-labelled capability, network, resource, and troubleshooting references.
-- Read-only DuskEVM Testnet checks and safe Foundry starter guidance.
-- DuskDS prerequisites, Dusk Forge guidance, and constrained starter creation.
+- DuskEVM architecture, safety boundaries, and Foundry guidance without claiming that its Testnet is already live.
+- DuskDS prerequisites, public read-only node guidance, Dusk Forge guidance, and constrained starter creation.
 - A loopback-only local companion for allowlisted preflight checks and starter scaffolding.
 - Static self-hosting assets, security headers, source freshness receipts, and release assurance gates.
 
 ## Security model
 
-The public site is static. Local machine actions run only through the optional companion on `127.0.0.1`, require a paired loopback browser session, and remain capability-gated and allowlisted.
+The public site is static. Local machine actions run only through the optional companion on `127.0.0.1`, require a paired loopback browser session, and remain capability-gated and allowlisted. Public companion binaries are not distributed yet, so the hosted and source-checkout experiences remain docs-only for machine actions.
 
 The Studio never asks for, stores, transmits, or logs private keys, mnemonics, wallet passwords, seeders, profile entropy, or API secrets. It does not dispense faucet funds, sign browser transactions, automate mainnet deployment, or execute arbitrary local commands.
 

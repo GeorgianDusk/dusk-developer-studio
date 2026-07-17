@@ -15,12 +15,12 @@ describe("command generation", () => {
     expect(() => windowsPathToWsl("\\\\server\\share")).toThrow("absolute Windows drive path");
   });
 
-  it("separates Windows build commands from Ubuntu VM tests", () => {
+  it("separates Windows build commands from Ubuntu-24.04 VM tests", () => {
     const commands = buildDuskDsCommandSet({ parentDir: "", projectName: "native-demo", platform: "windows" });
     expect(commands.build).toContain("Set-Location -LiteralPath 'C:\\tmp\\dusk-studio-projects\\native-demo'");
-    expect(commands.test).toContain("wsl -d Ubuntu");
+    expect(commands.test).toContain("wsl -d Ubuntu-24.04");
     expect(commands.test).toContain("cd '/mnt/c/tmp/dusk-studio-projects/native-demo'");
-    expect(commands.testEnvironment).toBe("Ubuntu WSL");
+    expect(commands.testEnvironment).toBe("Ubuntu-24.04 WSL");
   });
 
   it("uses the local generated root on POSIX", () => {

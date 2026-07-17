@@ -1,4 +1,4 @@
-name: Studio public staging assurance
+name: Studio public deployment assurance
 
 "on":
   schedule:
@@ -6,16 +6,16 @@ name: Studio public staging assurance
   workflow_dispatch:
     inputs:
       target_url:
-        description: Approved Studio staging or production origin
-        required: true
-        default: https://studio.134-122-59-217.sslip.io
+        description: Approved Studio origin; leave blank to use the repository configuration
+        required: false
         type: string
       expected_environment:
-        description: Expected release-manifest environment
-        required: true
-        default: staging
+        description: Expected release-manifest environment; repository-default uses the repository configuration
+        required: false
+        default: repository-default
         type: choice
         options:
+          - repository-default
           - staging
           - production
       verify_alert_delivery:
@@ -40,10 +40,10 @@ jobs:
       contents: read
       issues: write
     env:
-      TARGET_URL: ${{ github.event.inputs.target_url || 'https://studio.134-122-59-217.sslip.io' }}
-      EXPECTED_ENVIRONMENT: ${{ github.event.inputs.expected_environment || 'staging' }}
-      DUSK_STUDIO_PUBLIC_URL: ${{ github.event.inputs.target_url || 'https://studio.134-122-59-217.sslip.io' }}
-      DUSK_STUDIO_EXPECTED_ENVIRONMENT: ${{ github.event.inputs.expected_environment || 'staging' }}
+      TARGET_URL: ${{ github.event.inputs.target_url || vars.DUSK_STUDIO_PUBLIC_URL }}
+      EXPECTED_ENVIRONMENT: ${{ (github.event.inputs.expected_environment != 'repository-default' && github.event.inputs.expected_environment) || vars.DUSK_STUDIO_PUBLIC_ENVIRONMENT }}
+      DUSK_STUDIO_PUBLIC_URL: ${{ github.event.inputs.target_url || vars.DUSK_STUDIO_PUBLIC_URL }}
+      DUSK_STUDIO_EXPECTED_ENVIRONMENT: ${{ (github.event.inputs.expected_environment != 'repository-default' && github.event.inputs.expected_environment) || vars.DUSK_STUDIO_PUBLIC_ENVIRONMENT }}
       CI: "true"
     steps:
       - name: Check out the exact source under test
@@ -62,16 +62,47 @@ jobs:
           corepack install --global pnpm@11.7.0
       - name: Restore frozen dependencies
         run: pnpm install --frozen-lockfile
+      - name: Reject missing or invalid target configuration
+        run: |
+          test -n "$TARGET_URL"
+          case "$EXPECTED_ENVIRONMENT" in staging|production) ;; *) echo "Expected environment must be staging or production." >&2; exit 1 ;; esac
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { validateAssuranceTargetOrigin } from "./scripts/staging-smoke.mjs";
+          const policy = JSON.parse(fs.readFileSync("config/phase5-policy.json", "utf8"));
+          validateAssuranceTargetOrigin(process.env.TARGET_URL, policy);
+          NODE
       - name: Install Chromium for hosted desktop and mobile checks
         run: pnpm exec playwright install --with-deps chromium
-      - name: Run public routes and controlled RPC degradation checks
+      - name: Run public routes and controlled DuskEVM preview degradation checks
         id: browser
         continue-on-error: true
         run: pnpm e2e:public
-      - name: Run receipt, exact-commit, TLS, source, RPC, fallback-cache, and closed-port checks
+      - name: Run receipt, exact-commit, TLS, DuskDS node, source, fallback-cache, and closed-port checks
         id: synthetic
         continue-on-error: true
         run: node scripts/check-staging.mjs --url="$TARGET_URL" --environment="$EXPECTED_ENVIRONMENT" --commit="$GITHUB_SHA" --rpc-degradation="${{ steps.browser.outcome }}" --out=output/public-synthetic-receipt.json
+      - name: Classify Studio and upstream dependency state
+        id: classification
+        if: always()
+        env:
+          BROWSER_OUTCOME: ${{ steps.browser.outcome }}
+          SYNTHETIC_OUTCOME: ${{ steps.synthetic.outcome }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { selectAssuranceIncidentTitle, selectScheduledHeartbeatSignal } from "./scripts/staging-smoke.mjs";
+          let receipt = {};
+          try { receipt = JSON.parse(fs.readFileSync("output/public-synthetic-receipt.json", "utf8")); } catch {}
+          const normalize = (value) => value === "passed" || value === "failed" ? value : "unknown";
+          const classification = {
+            studio_status: normalize(receipt.studio_status),
+            upstream_dependency_status: normalize(receipt.upstream_dependency_status)
+          };
+          const incidentTitle = selectAssuranceIncidentTitle(process.env.BROWSER_OUTCOME, process.env.SYNTHETIC_OUTCOME, classification);
+          const heartbeatSignal = selectScheduledHeartbeatSignal(process.env.BROWSER_OUTCOME, process.env.SYNTHETIC_OUTCOME, classification);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `studio_status=${classification.studio_status}\nupstream_status=${classification.upstream_dependency_status}\nincident_title=${incidentTitle}\nheartbeat_signal=${heartbeatSignal}\n`);
+          NODE
       - name: Upload the bounded synthetic receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -83,36 +114,59 @@ jobs:
           compression-level: 0
       - name: Send the externally hosted success heartbeat
         id: external_heartbeat
-        if: always() && github.event_name == 'schedule' && steps.synthetic.outcome == 'success' && steps.browser.outcome == 'success'
+        if: always() && github.event_name == 'schedule' && steps.classification.outputs.heartbeat_signal == 'success'
         continue-on-error: true
         env:
           EXTERNAL_HEARTBEAT_URL: ${{ secrets.STUDIO_MONITOR_HEARTBEAT_URL }}
         run: |
           case "$EXTERNAL_HEARTBEAT_URL" in https://*) ;; *) echo "External heartbeat is not configured with an HTTPS secret URL." >&2; exit 1 ;; esac
           curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 20 --output /dev/null "$EXTERNAL_HEARTBEAT_URL"
+      - name: Send the externally hosted failure heartbeat
+        id: external_failure
+        if: always() && github.event_name == 'schedule' && steps.classification.outputs.heartbeat_signal != 'success'
+        continue-on-error: true
+        env:
+          EXTERNAL_HEARTBEAT_FAIL_URL: ${{ secrets.STUDIO_MONITOR_HEARTBEAT_FAIL_URL }}
+        run: |
+          case "$EXTERNAL_HEARTBEAT_FAIL_URL" in https://*) ;; *) echo "External failure heartbeat is not configured with an HTTPS secret URL." >&2; exit 1 ;; esac
+          curl --proto '=https' --tlsv1.2 --fail --silent --show-error --max-time 20 --output /dev/null "$EXTERNAL_HEARTBEAT_FAIL_URL"
       - name: Open or update the assigned monitor alert
         if: always() && github.event_name == 'schedule' && (steps.synthetic.outcome != 'success' || steps.browser.outcome != 'success' || steps.external_heartbeat.outcome != 'success')
         env:
           GH_TOKEN: ${{ github.token }}
+          INCIDENT_TITLE: ${{ steps.classification.outputs.incident_title }}
         run: |
-          title="Studio staging synthetic assurance failed"
+          case "$INCIDENT_TITLE" in
+            "Studio upstream dependency unavailable") title="$INCIDENT_TITLE" ;;
+            *) title="Studio public deployment assurance failed" ;;
+          esac
           issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
-          body="Scheduled assurance or its external success heartbeat failed for $TARGET_URL at commit $GITHUB_SHA. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="Scheduled DuskDS production assurance failed for $TARGET_URL at commit $GITHUB_SHA. Studio status: ${{ steps.classification.outputs.studio_status }}. DuskDS upstream dependency status: ${{ steps.classification.outputs.upstream_status }}. DuskEVM RPC remains an expected non-blocking pre-launch deferral. External success heartbeat: ${{ steps.external_heartbeat.outcome }}. External failure signal: ${{ steps.external_failure.outcome }}. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if [ -n "$issue" ]; then
             gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
           else
-            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" --assignee GeorgianDusk
+            issue_url="$(gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body" --assignee GeorgianDusk)"
+            issue="${issue_url##*/}"
           fi
+          for other_title in "Studio public deployment assurance failed" "Studio upstream dependency unavailable" "DuskEVM Testnet upstream dependency unavailable" "Studio staging synthetic assurance failed"; do
+            if [ "$other_title" = "$title" ]; then continue; fi
+            other_issues="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --limit 100 --search "$other_title in:title" --json number,title --jq ".[] | select(.title == \"$other_title\") | .number")"
+            while IFS= read -r other_issue; do
+              if [ -z "$other_issue" ]; then continue; fi
+              gh issue close "$other_issue" --repo "$GITHUB_REPOSITORY" --comment "Reclassified into #$issue by failed scheduled assurance $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
+            done <<< "$other_issues"
+          done
       - name: Close the active monitor alert after recovery
         if: always() && github.event_name == 'schedule' && steps.synthetic.outcome == 'success' && steps.browser.outcome == 'success' && steps.external_heartbeat.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          title="Studio staging synthetic assurance failed"
-          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
-          if [ -n "$issue" ]; then
-            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "Scheduled assurance recovered in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          fi
+          for title in "Studio public deployment assurance failed" "Studio upstream dependency unavailable" "DuskEVM Testnet upstream dependency unavailable" "Studio staging synthetic assurance failed"; do
+            issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
+            if [ -n "$issue" ]; then
+              gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "Scheduled assurance recovered in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            fi
+          done
       - name: Rehearse assigned issue-alert delivery
         if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_alert_delivery
         env:
@@ -136,6 +190,12 @@ jobs:
       - name: Enforce synthetic assurance result
         if: always()
         run: |
+          if [ "$GITHUB_EVENT_NAME" = 'schedule' ]; then
+            if [ "${{ steps.classification.outputs.heartbeat_signal }}" = 'success' ]; then
+              test "${{ steps.external_heartbeat.outcome }}" = "success"
+            else
+              test "${{ steps.external_failure.outcome }}" = "success"
+            fi
+          fi
           test "${{ steps.browser.outcome }}" = "success"
           test "${{ steps.synthetic.outcome }}" = "success"
-          if [ "$GITHUB_EVENT_NAME" = 'schedule' ]; then test "${{ steps.external_heartbeat.outcome }}" = "success"; fi

@@ -3,10 +3,10 @@ import { expect, test } from "@playwright/test";
 
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
-  ["setup", "Prove your RPC, wallet network, account, and balance read."],
-  ["access", "Confirm testnet DUSK is available for gas."],
-  ["build", "Create, build, and test the Counter starter."],
-  ["inspect", "Read an address, transaction, or block from Testnet."],
+  ["setup", "Understand the planned RPC and wallet checks."],
+  ["access", "Review how Testnet access and gas will work."],
+  ["build", "Review the planned local Foundry workflow."],
+  ["inspect", "Learn the supported Testnet identifier shapes."],
   ["reference", "Deeper context, with source receipts."],
   ["troubleshooting", "Fix the blocker in front of you."],
   ["companion", "Machine actions are unavailable in this build."],
@@ -62,13 +62,13 @@ test("keyboard and reduced-motion modes preserve the primary flow", async ({ pag
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#setup$/);
-  const setupHeading = page.getByRole("heading", { name: "Prove your RPC, wallet network, account, and balance read." });
+  const setupHeading = page.getByRole("heading", { name: "Understand the planned RPC and wallet checks." });
   await expect(setupHeading).toBeFocused();
-  await expect(page).toHaveTitle(/Prove your RPC, wallet network, account, and balance read\. \| Dusk Developer Studio/);
+  await expect(page).toHaveTitle(/Understand the planned RPC and wallet checks\. \| Dusk Developer Studio/);
   const nextStep = page.getByRole("button", { name: "Next: Access" });
   await nextStep.focus();
   await page.keyboard.press("Enter");
-  const accessHeading = page.getByRole("heading", { name: "Confirm testnet DUSK is available for gas." });
+  const accessHeading = page.getByRole("heading", { name: "Review how Testnet access and gas will work." });
   await expect(accessHeading).toBeFocused();
 });
 
@@ -106,7 +106,7 @@ test("offline RPC failure stays controlled and retryable", async ({ page, contex
   await page.goto("/");
   await page.getByRole("button", { name: /Start Solidity path/i }).click();
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Run RPC check" }).click();
+  await page.getByRole("button", { name: "Probe pre-launch endpoint" }).click();
   await expect(page.getByRole("alert")).toContainText(/browser could not reach|RPC request failed|timed out/i);
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
   await context.setOffline(false);
