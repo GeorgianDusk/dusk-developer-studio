@@ -17,6 +17,29 @@ must not imply those machine actions ran in the browser. Separately authorized
 operator smoke evidence may exercise the local toolchain, but must preserve the
 companion boundary and redaction rules.
 
+## Native Smoke Gate
+
+`.github/workflows/duskds-native-smoke.yml` is the reviewed Linux execution
+path for the exact Studio commit. It runs on `ubuntu-24.04`, installs Rust
+`1.94.0` and Dusk Forge commit
+`d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a`, rejects a generated lockfile unless
+the `dusk-core-1.6.0` tag resolves to Rusk commit
+`ae1a38a2079c681126a96f94c17d282ea2639946`, and then records:
+
+- required native tool versions;
+- a bounded positive block-height/hash read from the official DuskDS Testnet
+  GraphQL endpoint;
+- successful scaffold and structure checks;
+- separate contract and data-driver WASM sizes and SHA-256 hashes;
+- a passed `dusk-forge test` VM result on Linux;
+- successful artifact validation and a non-empty data-driver schema.
+
+The workflow uses read-only repository permissions, writes sanitized evidence
+to the run summary, and uploads no generated project or binary artifact. A
+green run must still be bound to the Phase 5 evidence record by exact commit
+and durable Actions run URL; it does not replace pilots, independent reviews,
+monitoring, rollback, or product sign-off.
+
 ## Independent Reviews
 
 ### Companion security

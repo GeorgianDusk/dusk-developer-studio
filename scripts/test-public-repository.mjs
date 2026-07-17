@@ -13,6 +13,7 @@ for (const file of [
   ".github/workflows/studio-companion-signed-rc.yml",
   ".github/workflows/studio-public-staging.yml",
   ".github/workflows/studio-monitor-schedule-guard.yml",
+  ".github/workflows/duskds-native-smoke.yml",
   "docs/operations/public-monitoring.md",
   "docs/deployment/project-domain-migration.md"
 ]) assert.ok(fs.existsSync(path.join(root, file)), `Missing public repository contract: ${file}`);
@@ -44,7 +45,8 @@ const workflows = [
   ".github/workflows/platform-caddy-security.yml",
   ".github/workflows/studio-companion-signed-rc.yml",
   ".github/workflows/studio-public-staging.yml",
-  ".github/workflows/studio-monitor-schedule-guard.yml"
+  ".github/workflows/studio-monitor-schedule-guard.yml",
+  ".github/workflows/duskds-native-smoke.yml"
 ].map((file) => [file, read(file)]);
 for (const [file, workflow] of workflows) {
   assert.doesNotMatch(workflow, /dusk-network\/marketing|products\/developer-testnet-studio/);
@@ -89,6 +91,22 @@ assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.heartbeat_s
 assert.match(publicStagingWorkflow, /for other_title in "Studio public deployment assurance failed" "Studio upstream dependency unavailable"/);
 assert.match(publicStagingWorkflow, /Reclassified into #\$issue by failed scheduled assurance/);
 assert.ok(publicStagingWorkflow.indexOf('issue_url="$(gh issue create') < publicStagingWorkflow.indexOf('for other_title in "Studio public deployment assurance failed"'), "The selected incident must be open before other component titles are reclassified.");
+const duskDsNativeSmokeWorkflow = read(".github/workflows/duskds-native-smoke.yml");
+assert.match(duskDsNativeSmokeWorkflow, /^name: DuskDS native production smoke$/m);
+assert.match(duskDsNativeSmokeWorkflow, /runs-on: ubuntu-24\.04/);
+assert.match(duskDsNativeSmokeWorkflow, /persist-credentials: "false"/);
+assert.match(duskDsNativeSmokeWorkflow, /RUST_TOOLCHAIN: 1\.94\.0/);
+assert.match(duskDsNativeSmokeWorkflow, /FORGE_COMMIT: d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a/);
+assert.match(duskDsNativeSmokeWorkflow, /RUSK_COMMIT: ae1a38a2079c681126a96f94c17d282ea2639946/);
+assert.match(duskDsNativeSmokeWorkflow, /dusk-forge new duskds-phase5-smoke/);
+assert.match(duskDsNativeSmokeWorkflow, /dusk-forge check/);
+assert.match(duskDsNativeSmokeWorkflow, /dusk-forge build all/);
+assert.match(duskDsNativeSmokeWorkflow, /dusk-forge test/);
+assert.match(duskDsNativeSmokeWorkflow, /dusk-forge verify --skip-build/);
+assert.match(duskDsNativeSmokeWorkflow, /--max-redirs 0[\s\S]*--max-filesize 65536/);
+assert.match(duskDsNativeSmokeWorkflow, /git\+https:\/\/github\.com\/dusk-network\/rusk\?tag=dusk-core-1\.6\.0#\$RUSK_COMMIT/);
+assert.match(duskDsNativeSmokeWorkflow, /GITHUB_STEP_SUMMARY/);
+assert.doesNotMatch(duskDsNativeSmokeWorkflow, /upload-artifact|contents:\s*write|secrets\./);
 const publicReleaseSpec = read("tests/e2e/public-release.spec.ts");
 assert.match(publicReleaseSpec, /request\.get\(expected\.href, \{ maxRedirects: 0 \}\)/);
 assert.match(publicReleaseSpec, /context\.route\("\*\*\/\*"/);
