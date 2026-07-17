@@ -15,6 +15,7 @@ for (const file of [
   ".github/workflows/studio-monitor-schedule-guard.yml",
   ".github/workflows/duskds-native-smoke.yml",
   "docs/operations/public-monitoring.md",
+  "docs/operations/github-only-monitoring-decision.md",
   "docs/deployment/project-domain-migration.md"
 ]) assert.ok(fs.existsSync(path.join(root, file)), `Missing public repository contract: ${file}`);
 
@@ -71,9 +72,7 @@ assert.match(publicStagingWorkflow, /--rpc-degradation="\$\{\{ steps\.browser\.o
 assert.match(publicStagingWorkflow, /issues: write/);
 assert.match(publicStagingWorkflow, /gh issue create[\s\S]*--assignee GeorgianDusk/);
 assert.match(publicStagingWorkflow, /gh issue close/);
-assert.match(publicStagingWorkflow, /secrets\.STUDIO_MONITOR_HEARTBEAT_URL/);
-assert.match(publicStagingWorkflow, /secrets\.STUDIO_MONITOR_HEARTBEAT_FAIL_URL/);
-assert.match(publicStagingWorkflow, /curl --proto '=https'[\s\S]*EXTERNAL_HEARTBEAT_URL/);
+assert.doesNotMatch(publicStagingWorkflow, /STUDIO_MONITOR_HEARTBEAT|EXTERNAL_HEARTBEAT|external_heartbeat|external_failure/);
 assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_URL/);
 assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_ENVIRONMENT/);
 assert.doesNotMatch(publicStagingWorkflow, /default:\s*https:\/\/studio\.134-122-59-217\.sslip\.io/);
@@ -85,9 +84,8 @@ assert.match(publicStagingWorkflow, /Studio upstream dependency unavailable/);
 assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.studio_status/);
 assert.match(publicStagingWorkflow, /selectAssuranceIncidentTitle/);
 assert.match(publicStagingWorkflow, /selectAssuranceIncidentTitle\(process\.env\.BROWSER_OUTCOME, process\.env\.SYNTHETIC_OUTCOME, classification\)/);
-assert.match(publicStagingWorkflow, /selectScheduledHeartbeatSignal/);
-assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.heartbeat_signal == 'success'/);
-assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.heartbeat_signal != 'success'/);
+assert.doesNotMatch(publicStagingWorkflow, /selectScheduledHeartbeatSignal|heartbeat_signal/);
+assert.match(publicStagingWorkflow, /Monitoring mode: GitHub-only under docs\/operations\/github-only-monitoring-decision\.md/);
 assert.match(publicStagingWorkflow, /for other_title in "Studio public deployment assurance failed" "Studio upstream dependency unavailable"/);
 assert.match(publicStagingWorkflow, /Reclassified into #\$issue by failed scheduled assurance/);
 assert.ok(publicStagingWorkflow.indexOf('issue_url="$(gh issue create') < publicStagingWorkflow.indexOf('for other_title in "Studio public deployment assurance failed"'), "The selected incident must be open before other component titles are reclassified.");
@@ -121,15 +119,22 @@ assert.match(publicReleaseSpec, /requestUrl\.origin !== publicOrigin/);
 assert.match(publicReleaseSpec, /rpc\.testnet\.evm\.dusk\.network/);
 assert.match(publicReleaseSpec, /redirectedFrom\(\)/);
 assert.match(publicReleaseSpec, /expect\(page\.url\(\), pathname\)\.toBe\(expected\.href\)/);
-assert.match(read("docs/operations/public-monitoring.md"), /STUDIO_MONITOR_HEARTBEAT_FAIL_URL/);
-assert.match(read("docs/operations/public-monitoring.md"), /external_direct_health/);
+const publicMonitoring = read("docs/operations/public-monitoring.md");
+assert.match(publicMonitoring, /monitoring_evidence\.mode=github-only/);
+assert.match(publicMonitoring, /does not call a third-party heartbeat/);
+assert.doesNotMatch(publicMonitoring, /STUDIO_MONITOR_HEARTBEAT/);
+const monitoringDecision = read("docs/operations/github-only-monitoring-decision.md");
+assert.match(monitoringDecision, /Status: accepted/);
+assert.match(monitoringDecision, /Owner: George/);
+assert.match(monitoringDecision, /GitHub-wide Actions or Issues outage/);
+assert.match(monitoringDecision, /Revisit triggers/);
 const domainMigration = read("docs/deployment/project-domain-migration.md");
 assert.match(domainMigration, /current origin approved for production/);
 assert.match(domainMigration, /optional future migration, not a current launch\s+blocker/);
 assert.match(domainMigration, /client-side resolver or\s+endpoint-security interception, not an invalid certificate/);
 assert.match(domainMigration, /Never add a browser, antivirus, or TLS exception/);
 assert.match(domainMigration, /Stage 1: prepare source and the exact candidate/);
-assert.match(domainMigration, /Stage 4: activate scheduled and external monitoring/);
+assert.match(domainMigration, /Stage 4: activate scheduled GitHub monitoring/);
 const caddyDryRunIndex = domainMigration.indexOf("non-mutating dry run of candidate configuration **B**");
 const caddyDrillIndex = domainMigration.indexOf('Before the real deployment, run `-RehearseRollback`');
 const caddyLiveIndex = domainMigration.indexOf("Only after that rehearsal passes, deploy B once");
@@ -173,16 +178,22 @@ assert.doesNotMatch(stagingSmoke, /eth_chainId|checkRpc\(/, "DuskEVM RPC must no
 assert.match(stagingSmoke, /checks\.rpc_chain_id = deferredRpcChainId\(options\.policy\)/);
 assert.match(stagingSmoke, /record\("duskds_node_read", \(\) => checkDuskDsNodeRead/);
 assert.ok(phase5Policy.required_synthetic_checks.includes("monitor_heartbeat"));
-assert.ok(phase5Policy.required_synthetic_checks.includes("external_dead_man"));
-assert.ok(phase5Policy.required_synthetic_checks.includes("external_direct_health"));
-assert.ok(phase5Policy.monitoring_evidence.direct_health_max_age_hours > 0);
+assert.ok(!phase5Policy.required_synthetic_checks.includes("external_dead_man"));
+assert.ok(!phase5Policy.required_synthetic_checks.includes("external_direct_health"));
+assert.equal(phase5Policy.monitoring_evidence.mode, "github-only");
+assert.equal(phase5Policy.monitoring_evidence.accepted_risk.owner, "George");
+assert.equal(phase5Policy.monitoring_evidence.accepted_risk.authority_reference, "docs/operations/github-only-monitoring-decision.md");
+assert.ok(phase5Policy.monitoring_evidence.accepted_risk.revisit_triggers.length >= 2);
 const phase5Template = JSON.parse(read("config/phase5-evidence.template.json"));
+assert.equal(phase5Template.schema_version, 2);
 assert.equal(phase5Template.synthetics.checks.rpc_chain_id.status, "deferred");
 assert.equal(phase5Template.synthetics.checks.rpc_chain_id.reason, phase5Policy.deferred_synthetic_checks.rpc_chain_id.reason);
 assert.ok(!Object.hasOwn(phase5Template.live_smoke, "evm_steps"));
 assert.deepEqual(Object.keys(phase5Template.live_smoke.native_steps), phase5Policy.required_native_smoke_steps);
-assert.equal(phase5Template.synthetics.checks.external_direct_health.recovery_verified, false);
-assert.equal(phase5Template.synthetics.checks.external_direct_health.recovered_at, "pending");
+assert.equal(phase5Template.synthetics.monitoring.mode, "github-only");
+assert.equal(phase5Template.synthetics.monitoring.owner, "George");
+assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_dead_man"));
+assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_direct_health"));
 assert.match(read("docs/operations/public-monitoring.md"), /https:\/\/studio\.134-122-59-217\.sslip\.io\/healthz/);
 assert.doesNotMatch(read("docs/operations/public-monitoring.md"), /https:\/\/<project-domain>\/healthz/);
 

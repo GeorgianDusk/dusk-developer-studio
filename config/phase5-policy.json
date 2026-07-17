@@ -70,17 +70,26 @@
     "tls_expiry",
     "companion_port_closed",
     "development_port_closed",
-    "monitor_heartbeat",
-    "external_dead_man",
-    "external_direct_health"
+    "monitor_heartbeat"
   ],
   "monitoring_evidence": {
+    "mode": "github-only",
     "canonical_repository": "GeorgianDusk/dusk-developer-studio",
     "schedule_guard_workflow": ".github/workflows/studio-monitor-schedule-guard.yml",
     "monitor_heartbeat_max_age_hours": 18,
-    "external_success_max_age_hours": 15,
-    "direct_health_max_age_hours": 15,
-    "external_rehearsal_max_age_days": 30
+    "accepted_risk": {
+      "owner": "George",
+      "accepted_at": "2026-07-17T00:00:00Z",
+      "authority_reference": "docs/operations/github-only-monitoring-decision.md",
+      "rationale": "This personal project intentionally avoids a third-party monitoring account and keeps operational ownership inside the public GitHub repository.",
+      "residual_risk": "A GitHub-wide outage or a scheduled workflow that never starts may suppress both detection and the assigned GitHub issue alert.",
+      "revisit_triggers": [
+        "public companion binary publication",
+        "service-level or commercial commitments",
+        "a monitoring-blindness incident",
+        "material growth in external developer usage"
+      ]
+    }
   },
   "required_native_smoke_steps": [
     "preflight",

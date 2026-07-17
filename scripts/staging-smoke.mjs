@@ -224,15 +224,6 @@ export function selectAssuranceIncidentTitle(browserOutcome, syntheticOutcome, c
     : STUDIO_ASSURANCE_INCIDENT_TITLE;
 }
 
-export function selectScheduledHeartbeatSignal(browserOutcome, syntheticOutcome, classification = {}) {
-  return browserOutcome === "success"
-    && syntheticOutcome === "success"
-    && classification.studio_status === "passed"
-    && classification.upstream_dependency_status === "passed"
-    ? "success"
-    : "failure";
-}
-
 function normalizeDuskDsHeight(value) {
   if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value;
   if (typeof value === "string" && /^\d{1,16}$/.test(value)) {

@@ -6,6 +6,7 @@ import { evaluatePhase5Evidence } from "./phase5-evidence.mjs";
 const root = path.resolve(process.cwd());
 const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "phase5-policy.json"), "utf8"));
 const now = new Date("2026-07-15T00:00:00Z");
+policy.monitoring_evidence.accepted_risk.accepted_at = now.toISOString();
 const digest = "a".repeat(64);
 const owners = Object.fromEntries(policy.required_owners.map((owner) => [owner, `${owner}-owner`]));
 const reviews = Object.fromEntries(policy.required_reviews.map((review) => [review, { status: "accepted", reviewer: `${review}-reviewer`, reviewed_at: "2026-07-15T00:00:00Z", independent: true }]));
@@ -39,45 +40,25 @@ checks.monitor_heartbeat = {
   observed_at: "2026-07-14T12:00:00Z",
   run_url: "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123456"
 };
-checks.external_dead_man = {
-  ...checks.external_dead_man,
-  outside_github: true,
-  success_endpoint_configured: true,
-  provider: "external-dead-man-provider",
-  check_id: "studio-public-staging",
-  alert_channel: "email",
-  alert_delivery_verified: true,
-  latest_success_at: "2026-07-14T18:00:00Z",
-  missed_ping_rehearsed_at: "2026-07-10T12:00:00Z",
-  rehearsal_reference: "external-rehearsal-2026-07-10"
-};
-checks.external_direct_health = {
-  ...checks.external_direct_health,
-  outside_github: true,
-  provider: "external-uptime-provider",
-  check_id: "studio-public-health",
-  target_url: "https://studio.134-122-59-217.sslip.io/healthz",
-  response_status: 200,
-  body_match: "ok",
-  tls_verified: true,
-  alert_channel: "email",
-  alert_delivery_verified: true,
-  latest_success_at: "2026-07-14T18:00:00Z",
-  alert_rehearsed_at: "2026-07-10T13:00:00Z",
-  recovery_verified: true,
-  recovered_at: "2026-07-10T13:30:00Z",
-  rehearsal_reference: "direct-health-rehearsal-2026-07-10"
-};
 const passedSteps = (steps) => Object.fromEntries(steps.map((step) => [step, "passed"]));
 const evidence = {
-  schema_version: 1,
+  schema_version: 2,
   candidate: { artifact_fingerprint_sha256: digest, public_fingerprint_sha256: digest, commit: "b".repeat(40), manifest_url: "https://studio.134-122-59-217.sslip.io/release-manifest.json", built_at: "2026-07-15T00:00:00Z", source_checked_at: "2026-07-14T00:00:00Z", source_expires_at: "2026-08-03T23:59:59Z" },
   companion_distribution: { hosted_mode: "docs-only", availability: "not-published", targets: {} },
   owners,
   reviews,
   pilot: { sessions },
   live_smoke: { status: "passed", authority_reference: "approval-2026-07-15", redacted: true, native_steps: passedSteps(policy.required_native_smoke_steps) },
-  synthetics: { checks, alert_delivery_verified: true, checked_at: "2026-07-15T00:00:00Z" },
+  synthetics: {
+    checks,
+    monitoring: {
+      mode: policy.monitoring_evidence.mode,
+      owner: policy.monitoring_evidence.accepted_risk.owner,
+      authority_reference: policy.monitoring_evidence.accepted_risk.authority_reference
+    },
+    alert_delivery_verified: true,
+    checked_at: "2026-07-15T00:00:00Z"
+  },
   rollback: {
     product: { status: "passed", owner: "engineering-owner", duration_seconds: 100, restored_fingerprint_sha256: digest, health_proof: "receipt-product", data_cache_effects: "immutable assets retained; HTML reverted" },
     platform: { status: "passed", owner: "platform-owner", duration_seconds: 200, restored_fingerprint_sha256: digest, health_proof: "receipt-platform", data_cache_effects: "no data mutation; route restored" }
@@ -124,39 +105,100 @@ assert.match(evaluatePhase5Evidence(policy, unboundDuskDsRead, { now }).blockers
 const unboundHeartbeat = JSON.parse(JSON.stringify(evidence));
 delete unboundHeartbeat.synthetics.checks.monitor_heartbeat.receipt_sha256;
 assert.match(evaluatePhase5Evidence(policy, unboundHeartbeat, { now }).blockers.join("\n"), /Monitor heartbeat evidence/);
-const githubBoundDeadMan = JSON.parse(JSON.stringify(evidence));
+const wrongMonitoringMode = JSON.parse(JSON.stringify(evidence));
+wrongMonitoringMode.synthetics.monitoring.mode = "external";
+assert.match(evaluatePhase5Evidence(policy, wrongMonitoringMode, { now }).blockers.join("\n"), /reviewed monitoring mode/);
+const missingAcceptedRisk = JSON.parse(JSON.stringify(policy));
+delete missingAcceptedRisk.monitoring_evidence.accepted_risk;
+assert.match(evaluatePhase5Evidence(missingAcceptedRisk, evidence, { now }).blockers.join("\n"), /accepted-risk record/);
+const futureAcceptedRisk = JSON.parse(JSON.stringify(policy));
+futureAcceptedRisk.monitoring_evidence.accepted_risk.accepted_at = "2099-01-01T00:00:00Z";
+assert.match(evaluatePhase5Evidence(futureAcceptedRisk, evidence, { now }).blockers.join("\n"), /accepted-risk record/);
+const externalRequiredByGithubOnly = JSON.parse(JSON.stringify(policy));
+externalRequiredByGithubOnly.required_synthetic_checks.push("external_dead_man");
+assert.match(evaluatePhase5Evidence(externalRequiredByGithubOnly, evidence, { now }).blockers.join("\n"), /cannot require external checks/);
+
+const externalPolicy = JSON.parse(JSON.stringify(policy));
+externalPolicy.required_synthetic_checks.push("external_dead_man", "external_direct_health");
+externalPolicy.monitoring_evidence = {
+  ...externalPolicy.monitoring_evidence,
+  mode: "external",
+  external_success_max_age_hours: 15,
+  direct_health_max_age_hours: 15,
+  external_rehearsal_max_age_days: 30
+};
+delete externalPolicy.monitoring_evidence.accepted_risk;
+const externalEvidence = JSON.parse(JSON.stringify(evidence));
+externalEvidence.synthetics.monitoring = {
+  mode: "external",
+  owner: "platform-owner",
+  authority_reference: "external-monitoring-review"
+};
+externalEvidence.synthetics.checks.external_dead_man = {
+  status: "passed",
+  owner: "platform-owner",
+  outside_github: true,
+  success_endpoint_configured: true,
+  provider: "external-dead-man-provider",
+  check_id: "studio-public-staging",
+  alert_channel: "email",
+  alert_delivery_verified: true,
+  latest_success_at: "2026-07-14T18:00:00Z",
+  missed_ping_rehearsed_at: "2026-07-10T12:00:00Z",
+  rehearsal_reference: "external-rehearsal-2026-07-10"
+};
+externalEvidence.synthetics.checks.external_direct_health = {
+  status: "passed",
+  owner: "platform-owner",
+  outside_github: true,
+  provider: "external-uptime-provider",
+  check_id: "studio-public-health",
+  target_url: "https://studio.134-122-59-217.sslip.io/healthz",
+  response_status: 200,
+  body_match: "ok",
+  tls_verified: true,
+  alert_channel: "email",
+  alert_delivery_verified: true,
+  latest_success_at: "2026-07-14T18:00:00Z",
+  alert_rehearsed_at: "2026-07-10T13:00:00Z",
+  recovery_verified: true,
+  recovered_at: "2026-07-10T13:30:00Z",
+  rehearsal_reference: "direct-health-rehearsal-2026-07-10"
+};
+assert.equal(evaluatePhase5Evidence(externalPolicy, externalEvidence, { now }).decision, "go");
+const githubBoundDeadMan = JSON.parse(JSON.stringify(externalEvidence));
 githubBoundDeadMan.synthetics.checks.external_dead_man.outside_github = false;
-assert.match(evaluatePhase5Evidence(policy, githubBoundDeadMan, { now }).blockers.join("\n"), /External dead-man evidence/);
-const staleExternalSuccess = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, githubBoundDeadMan, { now }).blockers.join("\n"), /External dead-man evidence/);
+const staleExternalSuccess = JSON.parse(JSON.stringify(externalEvidence));
 staleExternalSuccess.synthetics.checks.external_dead_man.latest_success_at = "2026-07-13T00:00:00Z";
-assert.match(evaluatePhase5Evidence(policy, staleExternalSuccess, { now }).blockers.join("\n"), /External dead-man evidence/);
-const missingDirectHealth = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, staleExternalSuccess, { now }).blockers.join("\n"), /External dead-man evidence/);
+const missingDirectHealth = JSON.parse(JSON.stringify(externalEvidence));
 delete missingDirectHealth.synthetics.checks.external_direct_health;
-assert.match(evaluatePhase5Evidence(policy, missingDirectHealth, { now }).blockers.join("\n"), /external_direct_health|External direct health evidence/);
-const wrongDirectTarget = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, missingDirectHealth, { now }).blockers.join("\n"), /external_direct_health|External direct health evidence/);
+const wrongDirectTarget = JSON.parse(JSON.stringify(externalEvidence));
 wrongDirectTarget.synthetics.checks.external_direct_health.target_url = "https://studio.134-122-59-217.sslip.io:8443/healthz";
-assert.match(evaluatePhase5Evidence(policy, wrongDirectTarget, { now }).blockers.join("\n"), /External direct health evidence/);
-const unhealthyDirectObservation = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, wrongDirectTarget, { now }).blockers.join("\n"), /External direct health evidence/);
+const unhealthyDirectObservation = JSON.parse(JSON.stringify(externalEvidence));
 unhealthyDirectObservation.synthetics.checks.external_direct_health.tls_verified = false;
-assert.match(evaluatePhase5Evidence(policy, unhealthyDirectObservation, { now }).blockers.join("\n"), /External direct health evidence/);
-const staleDirectObservation = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, unhealthyDirectObservation, { now }).blockers.join("\n"), /External direct health evidence/);
+const staleDirectObservation = JSON.parse(JSON.stringify(externalEvidence));
 staleDirectObservation.synthetics.checks.external_direct_health.latest_success_at = "2026-07-13T00:00:00Z";
-assert.match(evaluatePhase5Evidence(policy, staleDirectObservation, { now }).blockers.join("\n"), /External direct health evidence/);
-const staleDirectAlert = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, staleDirectObservation, { now }).blockers.join("\n"), /External direct health evidence/);
+const staleDirectAlert = JSON.parse(JSON.stringify(externalEvidence));
 staleDirectAlert.synthetics.checks.external_direct_health.alert_rehearsed_at = "2026-06-01T00:00:00Z";
-assert.match(evaluatePhase5Evidence(policy, staleDirectAlert, { now }).blockers.join("\n"), /External direct health evidence/);
-const unverifiedDirectRecovery = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, staleDirectAlert, { now }).blockers.join("\n"), /External direct health evidence/);
+const unverifiedDirectRecovery = JSON.parse(JSON.stringify(externalEvidence));
 unverifiedDirectRecovery.synthetics.checks.external_direct_health.recovery_verified = false;
-assert.match(evaluatePhase5Evidence(policy, unverifiedDirectRecovery, { now }).blockers.join("\n"), /External direct health evidence/);
-const recoveryBeforeAlert = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, unverifiedDirectRecovery, { now }).blockers.join("\n"), /External direct health evidence/);
+const recoveryBeforeAlert = JSON.parse(JSON.stringify(externalEvidence));
 recoveryBeforeAlert.synthetics.checks.external_direct_health.recovered_at = "2026-07-10T12:30:00Z";
-assert.match(evaluatePhase5Evidence(policy, recoveryBeforeAlert, { now }).blockers.join("\n"), /External direct health evidence/);
-const successBeforeRecovery = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, recoveryBeforeAlert, { now }).blockers.join("\n"), /External direct health evidence/);
+const successBeforeRecovery = JSON.parse(JSON.stringify(externalEvidence));
 successBeforeRecovery.synthetics.checks.external_direct_health.latest_success_at = "2026-07-10T13:15:00Z";
-assert.match(evaluatePhase5Evidence(policy, successBeforeRecovery, { now }).blockers.join("\n"), /External direct health evidence/);
-const reusedExternalCheck = JSON.parse(JSON.stringify(evidence));
+assert.match(evaluatePhase5Evidence(externalPolicy, successBeforeRecovery, { now }).blockers.join("\n"), /External direct health evidence/);
+const reusedExternalCheck = JSON.parse(JSON.stringify(externalEvidence));
 reusedExternalCheck.synthetics.checks.external_direct_health.check_id = reusedExternalCheck.synthetics.checks.external_dead_man.check_id;
-assert.match(evaluatePhase5Evidence(policy, reusedExternalCheck, { now }).blockers.join("\n"), /External direct health evidence/);
+assert.match(evaluatePhase5Evidence(externalPolicy, reusedExternalCheck, { now }).blockers.join("\n"), /External direct health evidence/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "P1-1", severity: "P1", status: "open" }] }, { now }).blockers.join("\n"), /no complete exception/);
 const unsignedDistribution = { ...evidence, companion_distribution: { hosted_mode: "docs-only", availability: "unsigned-downloads", targets: {} } };
 assert.match(evaluatePhase5Evidence(policy, unsignedDistribution, { now }).blockers.join("\n"), /availability is not allowed/);

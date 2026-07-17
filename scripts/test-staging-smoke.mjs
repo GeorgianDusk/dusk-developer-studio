@@ -11,7 +11,6 @@ import {
   fetchAvailability,
   fetchStudioEvidence,
   selectAssuranceIncidentTitle,
-  selectScheduledHeartbeatSignal,
   STUDIO_ASSURANCE_INCIDENT_TITLE,
   UPSTREAM_ASSURANCE_INCIDENT_TITLE,
   validateAssuranceTargetOrigin,
@@ -187,13 +186,4 @@ assert.equal(selectAssuranceIncidentTitle("failure", "failure", duskDsFailure), 
 assert.equal(selectAssuranceIncidentTitle("success", "success", duskDsFailure), STUDIO_ASSURANCE_INCIDENT_TITLE);
 assert.equal(selectAssuranceIncidentTitle("success", "failure", mixedFailure), STUDIO_ASSURANCE_INCIDENT_TITLE);
 assert.equal(selectAssuranceIncidentTitle("success", "failure", { studio_status: "unknown", upstream_dependency_status: "failed" }), STUDIO_ASSURANCE_INCIDENT_TITLE);
-const passingClassification = classifyAssuranceChecks(passingChecks);
-assert.equal(selectScheduledHeartbeatSignal("success", "success", passingClassification), "success");
-const deferredEvmClassification = classifyAssuranceChecks({ ...passingChecks, rpc_chain_id: { status: "deferred", path: "evm", reason: "pre-launch" } });
-assert.equal(selectScheduledHeartbeatSignal("success", "success", deferredEvmClassification), "success");
-assert.equal(selectScheduledHeartbeatSignal("failure", "success", passingClassification), "failure");
-assert.equal(selectScheduledHeartbeatSignal("success", "failure", passingClassification), "failure");
-assert.equal(selectScheduledHeartbeatSignal("skipped", "skipped", passingClassification), "failure");
-assert.equal(selectScheduledHeartbeatSignal("success", "success", sourceFailure), "failure");
-assert.equal(selectScheduledHeartbeatSignal("success", "success", { studio_status: "unknown", upstream_dependency_status: "passed" }), "failure");
 console.log("Phase 5 staging smoke fixtures passed.");
