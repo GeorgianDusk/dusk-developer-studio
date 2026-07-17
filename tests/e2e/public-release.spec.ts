@@ -9,14 +9,14 @@ const publicOrigin = new URL(configuredPublicUrl ?? "http://127.0.0.1:5173").ori
 const allowedRpcOrigin = new URL("https://rpc.testnet.evm.dusk.network").origin;
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
-  ["setup", "Understand the planned RPC and wallet checks."],
-  ["access", "Review how Testnet access and gas will work."],
-  ["build", "Review the planned local Foundry workflow."],
-  ["inspect", "Learn the supported Testnet identifier shapes."],
-  ["reference", "Deeper context, with source receipts."],
-  ["troubleshooting", "Fix the blocker in front of you."],
-  ["companion", "Machine actions are unavailable in this build."],
-  ["settings", "Know exactly what this build knows."]
+  ["setup", "Explore the planned DuskEVM developer workflow."],
+  ["access", "Explore the planned DuskEVM developer workflow."],
+  ["build", "Explore the planned DuskEVM developer workflow."],
+  ["inspect", "Explore the planned DuskEVM developer workflow."],
+  ["reference", "Source-backed context for the task in front of you."],
+  ["troubleshooting", "Review DuskEVM launch-planning issues."],
+  ["companion", "Use the hosted DuskDS guide manually today."],
+  ["settings", "See the build you are using and control its saved progress."]
 ] as const;
 
 async function getExact(request: APIRequestContext, pathname: string): Promise<APIResponse> {
@@ -67,7 +67,7 @@ test("public candidate exposes the exact release across key routes", async ({ pa
 
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
+  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
   for (const [route, heading] of routes) {
     await gotoExact(page, `/#${route}`);
     await expect(page).toHaveTitle(`${heading} | Dusk Developer Studio`);
@@ -104,55 +104,50 @@ test("public candidate exposes the complete DuskDS guide without DuskEVM RPC tra
 
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  const duskDsPath = page.getByRole("button", { name: /Start native path/i });
-  const duskEvmPath = page.getByRole("button", { name: /Start Solidity path/i });
-  await expect(duskDsPath.getByText("Active guide", { exact: true })).toBeVisible();
-  await expect(duskEvmPath.getByText("Pre-launch preview", { exact: true })).toBeVisible();
+  const duskDsPath = page.getByRole("button", { name: /Start DuskDS manually/i });
+  const duskEvmPath = page.getByRole("button", { name: /Explore pre-launch reference/i });
+  await expect(duskDsPath.getByText("Manual guide available", { exact: true })).toBeVisible();
+  await expect(duskEvmPath.getByText("Reference only", { exact: true })).toBeVisible();
   await duskDsPath.click();
 
   const guide = page.getByLabel("DuskDS guide sequence");
-  await expect(page.getByRole("heading", { name: "Prove the native Dusk toolchain is ready." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Available in local Studio" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Record the native toolchain checks you ran." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Run the required checks yourself" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save manual setup confirmation" })).toBeVisible();
 
   await guide.getByRole("button", { name: /2 Access/i }).click();
-  await expect(page.getByRole("heading", { name: "Prove a read-only Dusk node query works." })).toBeVisible();
-  await expect(page.getByText("Query the latest block with W3sper")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Check a read-only Dusk node query." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Read the public Testnet tip" })).toBeVisible();
 
   await guide.getByRole("button", { name: /3 Build/i }).click();
   await expect(page.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Build contract + data-driver WASM" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Available in local Studio" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create the reviewed starter" })).toBeVisible();
 
   await guide.getByRole("button", { name: /4 Inspect/i }).click();
-  await expect(page.getByRole("heading", { name: "Confirm native finality and data-driver compatibility." })).toBeVisible();
-  await expect(page.getByText(/POST \/on\/driver:<contract_id>\/get_schema/)).toBeVisible();
-  await expect(page.getByText(/POST \/on\/driver:<contract_id>\/decode_output_fn:<fn_name>/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Confirm native state access and data-driver compatibility." })).toBeVisible();
+  await expect(page.getByText(/\/on\/driver:<contract_id>\/get_schema/)).toBeVisible();
+  await expect(page.getByText(/\/on\/driver:<contract_id>\/decode_output_fn:<fn_name>/)).toBeVisible();
 
   expect(evmRpcRequests, "DuskDS browsing must not contact the DuskEVM RPC").toEqual([]);
 });
 
-test("public candidate presents a controlled offline RPC recovery", async ({ page, context }) => {
+test("public candidate keeps the DuskEVM pre-launch reference inert while offline", async ({ page, context }) => {
   const evmRpcRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).origin === allowedRpcOrigin) evmRpcRequests.push(request.url());
   });
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
-  await expect(page.getByRole("button", { name: "Available after Testnet launch" })).toBeDisabled();
+  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
+  await gotoExact(page, "/#setup");
+  await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Probe pre-launch endpoint" }).click();
-  await expect(page.getByRole("alert")).toContainText(/browser could not reach|RPC request failed|timed out/i);
-  await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
-  await context.setOffline(false);
-
-  const guide = page.getByLabel("DuskEVM guide sequence");
-  await guide.getByRole("button", { name: /2 Access/i }).click();
-  await expect(page.getByRole("button", { name: "Balance check available after Testnet launch" })).toBeDisabled();
-  await guide.getByRole("button", { name: /3 Build/i }).click();
-  await expect(page.getByRole("button", { name: "Starter actions available after Testnet activation" })).toBeDisabled();
+  await page.getByLabel("Example identifier").fill(`0x${"b".repeat(40)}`);
+  await expect(page.getByText("address", { exact: true })).toBeVisible();
+  await expect(page.getByText("No live evidence is recorded")).toBeVisible();
+  await expect(page.getByLabel("DuskEVM guide sequence")).toHaveCount(0);
   await expect(page.getByText(/forge create|cast wallet import/i)).toHaveCount(0);
-  await guide.getByRole("button", { name: /4 Inspect/i }).click();
-  await expect(page.getByRole("button", { name: "Network inspection available after Testnet launch" })).toBeDisabled();
-  expect(evmRpcRequests.length, "Only the explicit pre-launch probe may contact the EVM RPC").toBeLessThanOrEqual(1);
+  expect(evmRpcRequests, "The pre-launch reference must not contact the EVM RPC").toEqual([]);
+  await context.setOffline(false);
 });

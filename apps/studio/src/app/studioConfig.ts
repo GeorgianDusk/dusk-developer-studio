@@ -1,7 +1,7 @@
-import { getDefaultDuskEvmNetwork } from "@dusk/core";
+import { getDefaultDuskEvmNetwork } from "@dusk/core/browser-catalog";
 import sourceFreshness from "../../../../data/dusk/source-freshness.json";
 import { STUDIO_RELEASE } from "../release";
-import type { BuilderPath, EvidenceCode } from "./journeyProgress";
+import type { BlockerCode, BuilderPath, EvidenceCode } from "./journeyProgress";
 import { getStudioRuntime } from "./runtime";
 import type { StepInfo } from "./types";
 
@@ -17,23 +17,23 @@ export const sourceIsStale = Date.now() > Date.parse(sourceFreshness.expires_at 
 export const pathText = {
   evm: {
     label: "DuskEVM",
-    eyebrow: "Solidity path",
-    availability: "Pre-launch preview",
+    eyebrow: "Solidity pre-launch",
+    availability: "Reference only",
     availabilityTone: "warn",
-    availabilityCopy: "Browse the educational workflow now. Live Testnet evidence remains deferred until the network launches.",
-    summary: "Choose this to learn the planned Solidity, Foundry or Hardhat, EVM wallet, DUSK gas, Blockscout, and optional Hedger research flow.",
-    start: "Start Solidity path",
-    result: "A source-backed map of the DuskEVM workflow; live RPC, wallet, and inspection proof waits for Testnet launch."
+    availabilityCopy: "Explore one source-backed pre-launch reference. It does not provide a completion score, wallet flow, starter, funding action, or deployment task.",
+    summary: "Review the planned Solidity, Foundry or Hardhat, EVM wallet, DUSK gas, Blockscout, and optional Hedger direction before the live developer journey is activated.",
+    start: "Explore pre-launch reference",
+    result: "A clear map of the planned DuskEVM workflow and the conditions that must be met before live developer actions are enabled."
   },
   duskds: {
     label: "DuskDS",
     eyebrow: "Native Dusk path",
-    availability: "Active guide",
+    availability: "Manual guide available",
     availabilityTone: "good",
-    availabilityCopy: "Public docs and read-only node guidance are available now. Local machine actions require the portable companion.",
-    summary: "Choose this for Rust/WASM contracts, DuskVM, data drivers, W3sper, Dusk Connect, or privacy-aware native flows.",
-    start: "Start native path",
-    result: "A source-backed DuskDS route to a Forge starter, contract/data-driver build evidence, and a recorded native read."
+    availabilityCopy: "Follow the complete hosted instructions manually now. Portable automation is optional and is not publicly released yet.",
+    summary: "Choose this for Rust/WASM contracts, DuskVM, data drivers, W3sper, Dusk Connect, or privacy-aware native flows. Hosted Studio guides the work without accessing your machine.",
+    start: "Start DuskDS manually",
+    result: "A source-backed manual route through prerequisites, a read-only node query, a local Forge build, and clearly labeled confirmations."
   }
 } satisfies Record<BuilderPath, {
   label: string;
@@ -54,10 +54,10 @@ export const steps = {
     { id: "inspect", number: "4", label: "Inspect", title: "Learn the supported Testnet identifier shapes.", intent: "Classify an example locally while network inspection remains disabled until reviewed activation.", done: ["Identifier formats are understood.", "Classification stays local.", "No RPC or signing request is made."] }
   ],
   duskds: [
-    { id: "setup", number: "1", label: "Setup", title: "Prove the native Dusk toolchain is ready.", intent: "Classify required tool failures without exposing environment values or local paths.", done: ["Required tools pass.", "Rust 1.94, WASM target, and rust-src are present.", "Windows VM-test requirements are explicit."] },
-    { id: "access", number: "2", label: "Access", title: "Prove a read-only Dusk node query works.", intent: "Run the W3sper query locally, check its expected shape, then record the observed outcome.", done: ["Latest block header is returned.", "Profile and endpoint context are understood.", "No key or transaction is required."] },
+    { id: "setup", number: "1", label: "Setup", title: "Record the native toolchain checks you ran.", intent: "Classify required tool failures without exposing environment values or local paths.", done: ["Required tool checks are recorded.", "Rust 1.94, WASM target, and rust-src are present.", "Windows VM-test requirements are explicit."] },
+    { id: "access", number: "2", label: "Access", title: "Check a read-only Dusk node query.", intent: "Run the W3sper query locally, check its expected shape, then record the observed outcome.", done: ["Latest block header is returned.", "Profile and endpoint context are understood.", "No key or transaction is required."] },
     { id: "build", number: "3", label: "Build", title: "Build contract and data-driver WASM together.", intent: "Verify scaffold structure, build both outputs, and separately record the VM-test result.", done: ["Forge structure is verified.", "Both WASM artifacts are observed.", "VM tests pass in the stated environment."] },
-    { id: "inspect", number: "4", label: "Inspect", title: "Confirm native finality and data-driver compatibility.", intent: "Record the read-only network and schema checks you actually observed; deployment stays manual.", done: ["Recent state is queryable.", "Data-driver schema and encode/decode behavior are checked.", "No unobserved on-chain claim is made."] }
+    { id: "inspect", number: "4", label: "Inspect", title: "Confirm native state access and data-driver compatibility.", intent: "Record the read-only network and schema checks you actually observed; deployment stays manual.", done: ["Recent state is queryable.", "Data-driver schema and encode/decode behavior are checked.", "No unobserved on-chain claim is made."] }
   ]
 } satisfies Record<BuilderPath, StepInfo[]>;
 
@@ -67,7 +67,22 @@ export const troubleIds = { evm: ["wrong-chain", "no-wallet", "insufficient-gas"
 
 export const evidenceLabels: Record<EvidenceCode, string> = {
   "evm-rpc-chain": "Future gate: Testnet RPC chain verified", "evm-wallet-chain": "Future gate: wallet chain verified", "evm-wallet-account": "Future gate: selected account observed", "evm-balance-read": "Future gate: read-only balance succeeded", "evm-positive-balance": "Future gate: positive Testnet balance observed", "evm-starter-structure": "Future gate: Counter scaffold verified", "evm-build-test-attestation": "Future gate: build and tests passed", "evm-read-inspection": "Future gate: read-only RPC inspection passed",
-  "duskds-required-preflight": "All required native tools passed", "duskds-node-read-attestation": "W3sper node read recorded as successful", "duskds-starter-structure": "Forge scaffold structure verified", "duskds-build-artifact-attestation": "Both WASM outputs recorded as observed", "duskds-vm-test-attestation": "VM tests recorded as passed", "duskds-read-inspection-attestation": "Native state and data-driver checks recorded"
+  "duskds-required-preflight": "Required native tool checks recorded", "duskds-node-read-attestation": "W3sper node read result recorded", "duskds-starter-structure": "Forge scaffold structure recorded", "duskds-build-artifact-attestation": "Both WASM outputs recorded as observed", "duskds-vm-test-attestation": "VM test result recorded", "duskds-inspect-latest-block": "Latest block header observed", "duskds-inspect-artifact-revision": "Contract and data-driver source identity matched", "duskds-inspect-driver-schema": "Data-driver schema response confirmed", "duskds-inspect-driver-encode": "Data-driver input encoding confirmed", "duskds-inspect-driver-decode": "Data-driver output decoding confirmed", "duskds-read-inspection-attestation": "Legacy native inspection confirmation"
+};
+
+export const blockerLabels: Record<BlockerCode, string> = {
+  "rpc-unavailable": "The public node request could not be completed",
+  "wrong-chain": "The selected wallet network does not match",
+  "no-wallet": "No compatible wallet was found",
+  "no-account": "No wallet account was selected",
+  "insufficient-gas": "The selected account does not have enough gas",
+  "companion-unavailable": "Portable automation is not available",
+  "toolchain-incomplete": "One or more required tool checks are incomplete",
+  "unsupported-platform": "This platform is not in the reviewed execution lane",
+  "invalid-identifier": "The identifier format is not supported",
+  "result-not-found": "The requested result was not found",
+  "local-build-unverified": "The local build result has not been recorded",
+  "user-deferred": "This step was skipped for now"
 };
 
 export function joinPath(parent: string, child: string): string {

@@ -90,15 +90,32 @@ assert.match(publicStagingWorkflow, /for other_title in "Studio public deploymen
 assert.match(publicStagingWorkflow, /Reclassified into #\$issue by failed scheduled assurance/);
 assert.ok(publicStagingWorkflow.indexOf('issue_url="$(gh issue create') < publicStagingWorkflow.indexOf('for other_title in "Studio public deployment assurance failed"'), "The selected incident must be open before other component titles are reclassified.");
 const duskDsNativeSmokeWorkflow = read(".github/workflows/duskds-native-smoke.yml");
+const duskDsToolchainPolicy = JSON.parse(read("config/duskds-toolchain-policy.json"));
+assert.equal(duskDsToolchainPolicy.schema_version, 1);
+assert.equal(duskDsToolchainPolicy.rust_toolchain, "1.94.0");
+assert.deepEqual(duskDsToolchainPolicy.dusk_forge, {
+  repository: "https://github.com/dusk-network/forge",
+  package: "dusk-forge-cli",
+  binary: "dusk-forge",
+  revision: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a"
+});
+assert.deepEqual(duskDsToolchainPolicy.rusk, {
+  tag: "dusk-core-1.6.0",
+  revision: "ae1a38a2079c681126a96f94c17d282ea2639946"
+});
 assert.match(duskDsNativeSmokeWorkflow, /^name: DuskDS native production smoke$/m);
 assert.match(duskDsNativeSmokeWorkflow, /runs-on: ubuntu-24\.04/);
 assert.match(duskDsNativeSmokeWorkflow, /persist-credentials: "false"/);
 assert.match(duskDsNativeSmokeWorkflow, /EXPECTED_COMMIT: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
 assert.match(duskDsNativeSmokeWorkflow, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}[\s\S]*git rev-parse HEAD\)" = "\$EXPECTED_COMMIT"/);
 assert.match(duskDsNativeSmokeWorkflow, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020[\s\S]*node-version: 24\.11\.0/);
-assert.match(duskDsNativeSmokeWorkflow, /RUST_TOOLCHAIN: 1\.94\.0/);
-assert.match(duskDsNativeSmokeWorkflow, /FORGE_COMMIT: d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a/);
-assert.match(duskDsNativeSmokeWorkflow, /RUSK_COMMIT: ae1a38a2079c681126a96f94c17d282ea2639946/);
+assert.match(duskDsNativeSmokeWorkflow, /config\/duskds-toolchain-policy\.json/);
+assert.match(duskDsNativeSmokeWorkflow, /`RUST_TOOLCHAIN=\$\{policy\.rust_toolchain\}`/);
+assert.match(duskDsNativeSmokeWorkflow, /`FORGE_COMMIT=\$\{policy\.dusk_forge\.revision\}`/);
+assert.match(duskDsNativeSmokeWorkflow, /`RUSK_TAG=\$\{policy\.rusk\.tag\}`/);
+assert.match(duskDsNativeSmokeWorkflow, /`RUSK_COMMIT=\$\{policy\.rusk\.revision\}`/);
+assert.doesNotMatch(duskDsNativeSmokeWorkflow, /FORGE_COMMIT:\s*[0-9a-f]{40}/);
+assert.match(duskDsNativeSmokeWorkflow, /grep -Fq "\$FORGE_COMMIT" "\$RUNNER_TEMP\/dusk-forge\/\.crates2\.json"/);
 assert.match(duskDsNativeSmokeWorkflow, /dusk-forge new duskds-phase5-smoke/);
 assert.match(duskDsNativeSmokeWorkflow, /dusk-forge check/);
 assert.match(duskDsNativeSmokeWorkflow, /dusk-forge build all/);
@@ -108,7 +125,7 @@ assert.match(duskDsNativeSmokeWorkflow, /scripts\/staging-smoke\.mjs/);
 assert.match(duskDsNativeSmokeWorkflow, /checkDuskDsNodeRead\(policy\.duskds_testnet_graphql_url\)/);
 assert.doesNotMatch(duskDsNativeSmokeWorkflow, /curl[\s\S]*DUSKDS_GRAPHQL_URL|\.data\.block\.header|DUSKDS_GRAPHQL_URL/);
 assert.ok(duskDsNativeSmokeWorkflow.indexOf("Read the official DuskDS Testnet node") < duskDsNativeSmokeWorkflow.indexOf("Install the pinned Rust and Dusk Forge toolchain"), "The bounded node read must fail fast before the expensive native toolchain install.");
-assert.match(duskDsNativeSmokeWorkflow, /git\+https:\/\/github\.com\/dusk-network\/rusk\?tag=dusk-core-1\.6\.0#\$RUSK_COMMIT/);
+assert.match(duskDsNativeSmokeWorkflow, /git\+https:\/\/github\.com\/dusk-network\/rusk\?tag=\$RUSK_TAG#\$RUSK_COMMIT/);
 assert.match(duskDsNativeSmokeWorkflow, /GITHUB_STEP_SUMMARY/);
 assert.doesNotMatch(duskDsNativeSmokeWorkflow, /upload-artifact|contents:\s*write|secrets\./);
 const publicReleaseSpec = read("tests/e2e/public-release.spec.ts");
@@ -150,6 +167,49 @@ assert.ok(domainMigration.indexOf("Immediately dispatch public assurance") < dom
 const caddyWorkflow = read(".github/workflows/platform-caddy-security.yml");
 assert.match(caddyWorkflow, /sudo install -d -m 0755[\s\S]*\/var\/log\/caddy/);
 assert.match(caddyWorkflow, /\/tmp\/caddy validate --config "\$fragment" --adapter caddyfile/);
+
+function assertStableScopedContext({ workflow, contextName, classifierName, heavySteps }) {
+  assert.match(workflow, /pull_request:\n {4}branches: \[main\]\n {2}push:/, `${contextName} must instantiate on every pull request to main.`);
+  assert.match(workflow, /push:\n {4}branches: \[main\]\n {4}paths:/, `${contextName} must retain push path filtering.`);
+  assert.match(workflow, new RegExp(`name: ${contextName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(workflow, new RegExp(`- name: ${classifierName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*id: scope`));
+  assert.match(workflow, /changed_paths="\$RUNNER_TEMP\/[^"]+"/);
+  assert.match(workflow, /git diff --no-renames --name-only -z "\$BASE_SHA\.\.\.\$HEAD_SHA" > "\$changed_paths"/);
+  assert.match(workflow, /done < "\$changed_paths"/);
+  assert.doesNotMatch(workflow, /done < <\(git diff/, `${contextName} must not hide a failed diff inside process substitution.`);
+  assert.match(workflow, /test -n "\$BASE_SHA"[\s\S]*test -n "\$HEAD_SHA"[\s\S]*git cat-file -e "\$BASE_SHA\^\{commit\}"[\s\S]*git cat-file -e "\$HEAD_SHA\^\{commit\}"/);
+  assert.match(workflow, /- name: Report scope-only success\n {8}if: steps\.scope\.outputs\.relevant == 'false'/);
+  assert.doesNotMatch(workflow, /^ {4}if: .*scope/m, `${contextName} must not use a job-level scope condition.`);
+  for (const stepName of heavySteps) {
+    const escaped = stepName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(workflow, new RegExp(`- name: ${escaped}\\n {8}if: steps\\.scope\\.outputs\\.relevant == 'true'`), `${stepName} must be scope-gated.`);
+  }
+}
+
+assertStableScopedContext({
+  workflow: duskDsNativeSmokeWorkflow,
+  contextName: "Exact DuskDS scaffold, build, VM test, and inspection",
+  classifierName: "Classify DuskDS native-smoke scope",
+  heavySteps: [
+    "Use the verified Node.js line",
+    "Load the reviewed DuskDS toolchain policy",
+    "Read the official DuskDS Testnet node",
+    "Install the pinned Rust and Dusk Forge toolchain",
+    "Verify required native tools",
+    "Scaffold through the pinned Forge release",
+    "Check, build both artifacts, and run the Linux VM test",
+    "Inspect and record bounded artifact evidence"
+  ]
+});
+assertStableScopedContext({
+  workflow: caddyWorkflow,
+  contextName: "Validate static-only Caddy fragment",
+  classifierName: "Classify Caddy security scope",
+  heavySteps: [
+    "Install checksum-pinned Caddy",
+    "Enforce the static-hosting boundary"
+  ]
+});
 
 const watchdogWorkflow = read(".github/workflows/studio-monitor-schedule-guard.yml");
 assert.match(watchdogWorkflow, /^"on":\n {2}schedule:\n {4}- cron: "47 4,16 \* \* \*"\n {2}workflow_dispatch:/m);
@@ -207,7 +267,7 @@ const runtime = read("apps/studio/src/app/runtime.ts");
 assert.match(runtime, /channel === "portable" && LOOPBACK_HOSTS/);
 const systemRoutes = read("apps/studio/src/app/routes/SystemRoutes.tsx");
 assert.doesNotMatch(systemRoutes, /Pairing token|Set-Clipboard|DUSK_STUDIO_PAIRING_TOKEN/);
-assert.match(systemRoutes, /there is no manual token-copy workflow/);
+assert.match(systemRoutes, /No token, Node installation, package-manager command, or source checkout is required/);
 
 const forbidden = /dusk-network\/marketing|studio\.dusk\.network|Dusk-controlled|Dusk Foundation|not affiliated|not an official Dusk|UNLICENSED|docs\/planning/i;
 const ignored = new Set(["node_modules", ".git", "output", "dist", "coverage", "playwright-report", "test-results"]);

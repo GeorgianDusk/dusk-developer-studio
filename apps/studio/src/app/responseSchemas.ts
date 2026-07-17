@@ -1,4 +1,4 @@
-import type { CommandPlatform } from "@dusk/core";
+import type { CommandPlatform } from "@dusk/core/commands";
 import type { BuilderPath } from "./journeyProgress";
 
 export interface PreflightTool {
@@ -43,6 +43,10 @@ export interface ScaffoldEvidence {
   files: string[];
   rustToolchain?: string;
   platform?: CommandPlatform;
+  forgePackage?: string;
+  forgeVersion?: string;
+  forgeRevision?: string;
+  forgeRepository?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,5 +100,9 @@ export function isScaffoldEvidence(value: unknown): value is ScaffoldEvidence {
       || typeof value.structureVerified !== "boolean" || !Array.isArray(value.files)
       || value.files.length > 256 || !value.files.every((file) => boundedString(file, 256))) return false;
   return optionalBoundedString(value.rustToolchain, 64)
-    && (value.platform === undefined || value.platform === "windows" || value.platform === "wsl" || value.platform === "posix");
+    && (value.platform === undefined || value.platform === "windows" || value.platform === "wsl" || value.platform === "posix")
+    && optionalBoundedString(value.forgePackage, 64)
+    && optionalBoundedString(value.forgeVersion, 64)
+    && (value.forgeRevision === undefined || (boundedString(value.forgeRevision, 40) && /^[0-9a-f]{40}$/.test(value.forgeRevision)))
+    && (value.forgeRepository === undefined || value.forgeRepository === "https://github.com/dusk-network/forge");
 }

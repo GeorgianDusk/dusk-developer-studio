@@ -10,46 +10,284 @@ import {
   type Capability,
   type Resource,
   type TroubleshootingItem
-} from "@dusk/core";
+} from "@dusk/core/browser-catalog";
 import { STEP_ROUTES, type BuilderPath } from "../journeyProgress";
-import { capabilityIds, pathText, pickById, resourceIds, sourceDate, sourceIsStale, troubleIds } from "../studioConfig";
+import { blockerLabels, capabilityIds, pathText, pickById, resourceIds, sourceDate, sourceIsStale, steps, troubleIds } from "../studioConfig";
 import { useJourney } from "../studioState";
-import { AsyncNotice, ExternalLink, PageIntro, SearchBox, StatusPill } from "../StudioUi";
+import { AsyncNotice, CopyButton, ExternalLink, PageIntro, SearchBox, StatusPill } from "../StudioUi";
+
+const DEFAULT_REFERENCE_LIMIT = 10;
+
+const readerLabels: Record<string, string> = {
+  archived: "Archived",
+  "archived-source-context": "Archived background source",
+  "external-official": "Official external resource",
+  official: "Official documentation",
+  "official-advanced": "Advanced official guidance",
+  "official-docs-referenced": "Referenced by official documentation",
+  "official-experimental": "Official experimental resource",
+  "official-playbook": "Official implementation guide",
+  "official-sdk": "Official SDK",
+  "official-source": "Official source",
+  "official-source-caveated": "Official source with caveats",
+  "official-source-evolving": "Evolving official source",
+  "official-docs": "Official documentation",
+  "official-docs-source": "Official documentation and source",
+  "advanced-official": "Advanced official guidance",
+  "advanced-ready": "Advanced workflow",
+  "advanced-source": "Advanced source",
+  ecosystem: "Ecosystem resource",
+  "experimental-review-required": "Experimental — review required",
+  "manual-official": "Official manual workflow",
+  "production-gate": "Production safeguard",
+  "protocol-core": "Core protocol",
+  "ready-local": "Usable locally",
+  "ready-testnet": "Pre-launch Testnet reference",
+  "source-context": "Background source context",
+  "source-gap": "Implementation details incomplete",
+  "unstable-examples": "Examples — not production ready",
+  "unstable-source": "Unstable source — review before use",
+  source: "Public source",
+  "docs-mentioned": "Mentioned in documentation",
+  "public-forks-caveated": "Public forks with caveats",
+  testnet: "Pre-launch Testnet metadata",
+  "mainnet-reference": "Mainnet reference metadata",
+  "devnet-reference": "Devnet reference metadata"
+};
+
+function readerLabel(value: string): string {
+  return readerLabels[value] ?? value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function prelaunchCapabilityNextStep(capability: Capability): string {
+  if (capability.path !== "evm") return capability.safeNextStep;
+  if (capability.id === "duskevm-confidential-hedger") {
+    return "Track the linked Hedger sources as product direction. A guided implementation path needs more source-backed detail before activation.";
+  }
+  return "Use this as launch-planning context only. Live wallet, funding, starter, inspection, and deployment actions are not enabled in Studio.";
+}
 
 export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null }) {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"path" | "all">(builderPath ? "path" : "all");
+  const [showAllResources, setShowAllResources] = useState(false);
+  const [showAllCapabilities, setShowAllCapabilities] = useState(false);
+  const normalizedQuery = query.trim();
   const pathResourceIds = builderPath ? new Set(resourceIds[builderPath]) : null;
-  const resources = query
-    ? searchResources(query).filter((item) => scope === "all" || !pathResourceIds || pathResourceIds.has(item.id))
+
+  const resources = normalizedQuery
+    ? searchResources(normalizedQuery).filter((item) => scope === "all" || !pathResourceIds || pathResourceIds.has(item.id))
     : scope === "all" || !builderPath ? RESOURCES : pickById(RESOURCES, resourceIds[builderPath]);
-  const capabilities = query
-    ? searchCapabilities(query).filter((item) => scope === "all" || !builderPath || item.path === builderPath || item.path === "both")
+  const capabilities = normalizedQuery
+    ? searchCapabilities(normalizedQuery).filter((item) => scope === "all" || !builderPath || item.path === builderPath || item.path === "both")
     : scope === "all" || !builderPath ? CAPABILITIES : pickById(CAPABILITIES, capabilityIds[builderPath]);
-  return <section className="reference-page"><PageIntro kicker="Reference" title="Deeper context, with source receipts." copy="Search all verified sources, or narrow to the journey you chose. Hedger remains reference-only; DuskEVM network actions remain disabled during pre-launch." />{sourceIsStale ? <AsyncNotice state="stale" title="Source receipt expired" message="This build must not be promoted until the required Dusk sources are reviewed again." /> : null}<div className="filter-bar" role="group" aria-label="Reference scope">{builderPath ? <button className={scope === "path" ? "active" : ""} type="button" aria-pressed={scope === "path"} onClick={() => setScope("path")}>{pathText[builderPath].label} only</button> : null}<button className={scope === "all" ? "active" : ""} type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>All references</button><StatusPill tone={sourceIsStale ? "warn" : "good"}>sources checked {sourceDate}</StatusPill></div><SearchBox value={query} onChange={setQuery} placeholder="Search docs, capabilities, W3sper, Hedger, Citadel, data drivers..." />{resources.length === 0 && capabilities.length === 0 ? <AsyncNotice state="empty" message="No verified reference matches this search. Try a broader term or show all references." /> : <div className="reference-columns"><section><h2>Open docs</h2>{resources.length ? <div className="link-list">{resources.slice(0, query || scope === "all" ? 10 : 6).map((resource) => <ResourceRow key={resource.id} resource={resource} />)}</div> : <AsyncNotice state="empty" message="No documentation link matches this search." />}</section><section><h2>Capabilities</h2>{capabilities.length ? <div className="link-list">{capabilities.slice(0, query || scope === "all" ? 10 : 4).map((capability) => <CapabilityRow key={capability.id} capability={capability} />)}</div> : <AsyncNotice state="empty" message="No capability matches this search." />}</section></div>}<section className="network-reference"><h2>Network reference</h2><p>DuskEVM Testnet is pre-launch; Mainnet and Devnet metadata are informational only. No wallet, funding, scaffold, RPC-inspection, or deployment action is exposed here.</p><div className="network-reference-grid">{DUSK_EVM_NETWORKS.map((network) => <NetworkReferenceRow key={network.id} network={network} />)}</div></section></section>;
+  const networksInScope = scope === "all" || !builderPath || builderPath === "evm" ? DUSK_EVM_NETWORKS : [];
+  const networks = normalizedQuery
+    ? networksInScope.filter((network) => [
+        network.id,
+        network.name,
+        network.chainId,
+        network.chainIdHex,
+        network.warning,
+        network.maturity
+      ].join(" ").toLowerCase().includes(normalizedQuery.toLowerCase()))
+    : networksInScope;
+  const visibleResources = showAllResources ? resources : resources.slice(0, DEFAULT_REFERENCE_LIMIT);
+  const visibleCapabilities = showAllCapabilities ? capabilities : capabilities.slice(0, DEFAULT_REFERENCE_LIMIT);
+  const hasResults = resources.length > 0 || capabilities.length > 0 || networks.length > 0;
+
+  function chooseScope(nextScope: "path" | "all") {
+    setScope(nextScope);
+    setShowAllResources(false);
+    setShowAllCapabilities(false);
+  }
+
+  function updateQuery(nextQuery: string) {
+    setQuery(nextQuery);
+    setShowAllResources(false);
+    setShowAllCapabilities(false);
+  }
+
+  return (
+    <section className="reference-page">
+      <PageIntro
+        kicker="Reference"
+        title="Source-backed context for the task in front of you."
+        copy="Search the sources reviewed for this Studio build, or narrow them to your selected path. External documentation opens in a new tab so your Studio session stays in place."
+      />
+      {sourceIsStale ? <AsyncNotice state="stale" title="Source review expired" message="Some details may be out of date. Check the linked official source before relying on them." /> : null}
+      <div className="filter-bar" role="group" aria-label="Reference scope">
+        {builderPath ? <button className={scope === "path" ? "active" : ""} type="button" aria-pressed={scope === "path"} onClick={() => chooseScope("path")}>{pathText[builderPath].label} only</button> : null}
+        <button className={scope === "all" ? "active" : ""} type="button" aria-pressed={scope === "all"} onClick={() => chooseScope("all")}>All references</button>
+        <StatusPill tone={sourceIsStale ? "warn" : "good"}>sources reviewed {sourceDate}</StatusPill>
+      </div>
+      <SearchBox value={query} onChange={updateQuery} placeholder="Search docs, capabilities, W3sper, Hedger, Citadel, data drivers..." />
+      {!hasResults ? (
+        <div className="empty-reference-actions">
+          <AsyncNotice state="empty" message="No reviewed reference matches this search and scope. Try a broader term or search all references." />
+          <div className="button-row">
+            {normalizedQuery ? <button className="secondary-button" type="button" onClick={() => updateQuery("")}>Clear search</button> : null}
+            {scope === "path" ? <button className="secondary-button" type="button" onClick={() => chooseScope("all")}>Search all references</button> : null}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="reference-columns">
+            <section>
+              <h2>Open docs <small>({resources.length})</small></h2>
+              {resources.length ? (
+                <>
+                  <div className="link-list">{visibleResources.map((resource) => <ResourceRow key={resource.id} resource={resource} />)}</div>
+                  {resources.length > DEFAULT_REFERENCE_LIMIT ? <button className="secondary-button" type="button" onClick={() => setShowAllResources((current) => !current)}>{showAllResources ? "Show fewer docs" : `Show all ${resources.length} docs`}</button> : null}
+                </>
+              ) : <AsyncNotice state="empty" message="No documentation link matches this search and scope." />}
+            </section>
+            <section>
+              <h2>Capabilities <small>({capabilities.length})</small></h2>
+              {capabilities.length ? (
+                <>
+                  <div className="link-list">{visibleCapabilities.map((capability) => <CapabilityRow key={capability.id} capability={capability} />)}</div>
+                  {capabilities.length > DEFAULT_REFERENCE_LIMIT ? <button className="secondary-button" type="button" onClick={() => setShowAllCapabilities((current) => !current)}>{showAllCapabilities ? "Show fewer capabilities" : `Show all ${capabilities.length} capabilities`}</button> : null}
+                </>
+              ) : <AsyncNotice state="empty" message="No capability matches this search and scope." />}
+            </section>
+          </div>
+          {networks.length ? (
+            <section className="network-reference">
+              <h2>DuskEVM network metadata <small>({networks.length})</small></h2>
+              <p>This is pre-launch reference material, not a signal that Studio wallet, funding, RPC, or deployment actions are active.</p>
+              <div className="network-reference-grid">{networks.map((network) => <NetworkReferenceRow key={network.id} network={network} />)}</div>
+            </section>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
 }
 
 function ResourceRow({ resource }: { resource: Resource }) {
   const sourceHost = new URL(resource.url).hostname;
-  return <a className="reference-row" href={resource.url} target="_blank" rel="noreferrer"><span>{resource.category}</span><strong>{resource.title}</strong><small>{resource.summary}</small><div className="provenance-line"><em>{resource.maturity}</em><em>{sourceHost}</em><em>checked {sourceDate}</em></div></a>;
+  const maturity = readerLabel(resource.maturity);
+  return (
+    <a
+      className="reference-row"
+      href={resource.url}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`${resource.title}. ${maturity}. Opens ${sourceHost} in a new tab.`}
+    >
+      <span>{resource.category}</span>
+      <strong>{resource.title}</strong>
+      <small>{resource.summary}</small>
+      <div className="provenance-line"><em>{maturity}</em><em>{sourceHost}</em><em>reviewed {sourceDate}</em></div>
+    </a>
+  );
 }
 
 function CapabilityRow({ capability }: { capability: Capability }) {
-  return <div className="reference-row"><span>{capability.category}</span><strong>{capability.title}</strong><small>{capability.safeNextStep}</small><div className="provenance-line"><em>{capability.maturity}</em><em>{capability.sourceStatus}</em><em>checked {sourceDate}</em></div><div className="small-links">{capability.links.slice(0, 2).map((link) => <ExternalLink key={link.url} href={link.url}>{link.label}</ExternalLink>)}</div></div>;
+  return (
+    <div className="reference-row">
+      <span>{capability.category}</span>
+      <strong>{capability.title}</strong>
+      <small>{prelaunchCapabilityNextStep(capability)}</small>
+      <div className="provenance-line"><em>{readerLabel(capability.maturity)}</em><em>{readerLabel(capability.sourceStatus)}</em><em>reviewed {sourceDate}</em></div>
+      <div className="small-links">{capability.links.map((link) => <ExternalLink key={link.url} href={link.url}>{link.label}</ExternalLink>)}</div>
+    </div>
+  );
 }
 
 function NetworkReferenceRow({ network }: { network: (typeof DUSK_EVM_NETWORKS)[number] }) {
-  return <article className="reference-row network-row"><div className="button-row"><StatusPill tone={network.enabledByDefault ? "warn" : "neutral"}>{network.enabledByDefault ? "pre-launch Testnet" : "read-only reference"}</StatusPill><span>{network.maturity}</span></div><strong>{network.name}</strong><small>Chain {network.chainId} / {network.chainIdHex}</small><small>{network.warning}</small><div className="provenance-line"><em>{network.sourceLabel}</em><em>checked {sourceDate}</em></div><ExternalLink href={network.sourceUrl}>Official network source</ExternalLink></article>;
+  const isTestnet = network.id === "dusk-evm-testnet";
+  return (
+    <article className="reference-row network-row">
+      <div className="button-row"><StatusPill tone={isTestnet ? "warn" : "neutral"}>{isTestnet ? "pre-launch metadata" : "reference only"}</StatusPill><span>{readerLabel(network.maturity)}</span></div>
+      <strong>{network.name}</strong>
+      <small>Chain {network.chainId} / {network.chainIdHex}</small>
+      <small>{network.warning}</small>
+      <div className="provenance-line"><em>{network.sourceLabel}</em><em>reviewed {sourceDate}</em></div>
+      <ExternalLink href={network.sourceUrl}>Official network source</ExternalLink>
+    </article>
+  );
 }
 
 export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath | null }) {
   const { progress } = useJourney();
   const [query, setQuery] = useState("");
-  const currentBlocker = builderPath ? STEP_ROUTES.map((route) => progress.paths[builderPath][route]).find((step) => step.status === "blocked")?.blocker : undefined;
-  const items = query ? searchTroubleshooting(query) : builderPath ? pickById(TROUBLESHOOTING, troubleIds[builderPath]) : TROUBLESHOOTING;
-  return <section className="reference-page"><PageIntro kicker="Troubleshoot" title="Fix the blocker in front of you." copy="Selected-journey failures stay visible here. Search the symptom, apply the bounded fix, then repeat the evidence-producing check." />{currentBlocker ? <div className="current-blocker"><StatusPill tone="danger">current failure</StatusPill><strong>{currentBlocker.replaceAll("-", " ")}</strong><span>Return to the step after recovery and rerun its check.</span></div> : builderPath ? <div className="current-blocker"><StatusPill tone="good">no recorded blocker</StatusPill><span>Browse common recovery paths for {pathText[builderPath].label} below.</span></div> : <div className="current-blocker"><StatusPill tone="neutral">no path selected</StatusPill><span>Showing recovery paths for both DuskEVM and DuskDS.</span></div>}<SearchBox value={query} onChange={setQuery} placeholder="Search wrong chain, forge, wallet, WASM, data driver..." />{items.length ? <div className="trouble-list">{items.slice(0, query ? 10 : 6).map((item) => <TroubleRow key={item.id} item={item} />)}</div> : <AsyncNotice state="empty" message="No recovery entry matches this search. Try the recorded blocker wording or ask in official support." />}</section>;
+  const normalizedQuery = query.trim();
+  const activeTroubleIds = new Set(troubleIds[builderPath ?? "duskds"]);
+  const blockedRoute = builderPath
+    ? STEP_ROUTES.find((route) => progress.paths[builderPath][route].status === "blocked")
+    : undefined;
+  const currentBlocker = builderPath && blockedRoute ? progress.paths[builderPath][blockedRoute].blocker : undefined;
+  const candidates = normalizedQuery ? searchTroubleshooting(normalizedQuery) : TROUBLESHOOTING;
+  const items = candidates.filter((item) => activeTroubleIds.has(item.id));
+  const prelaunch = builderPath === "evm";
+  const blockedStep = blockedRoute && builderPath
+    ? steps[builderPath].find((step) => step.id === blockedRoute)
+    : undefined;
+
+  return (
+    <section className="reference-page">
+      <PageIntro
+        kicker="Troubleshoot"
+        title={prelaunch ? "Review DuskEVM launch-planning issues." : "Fix the blocker in front of you."}
+        copy={prelaunch
+          ? "DuskEVM is still pre-launch. These entries explain issues to plan for later; they are not active wallet, funding, build, or deployment recovery steps."
+          : "Find the symptom, understand the likely cause, apply the bounded fix, then repeat the check that produced the result."}
+      />
+      {prelaunch ? <AsyncNotice state="partial" title="Pre-launch planning only" message="No DuskEVM troubleshooting item on this page represents a live Studio action." /> : null}
+      {currentBlocker && blockedRoute ? (
+        <div className="current-blocker">
+          <StatusPill tone="danger">Current blocker</StatusPill>
+          <strong>{blockedStep?.label ?? blockedRoute}: {blockerLabels[currentBlocker]}</strong>
+          <a className="secondary-button" href={`#${blockedRoute}`}>Return to {blockedStep?.label ?? blockedRoute} and recheck</a>
+        </div>
+      ) : builderPath ? (
+        <div className="current-blocker">
+          <StatusPill tone={prelaunch ? "warn" : "good"}>{prelaunch ? "Pre-launch" : "No recorded blocker"}</StatusPill>
+          <span>{prelaunch ? "Showing planning guidance for DuskEVM." : `Showing common recovery paths for ${pathText[builderPath].label}.`}</span>
+        </div>
+      ) : (
+        <div className="current-blocker">
+          <StatusPill tone="neutral">No path selected</StatusPill>
+          <span>Showing active DuskDS recovery guidance. Choose a path for a more focused result.</span>
+        </div>
+      )}
+      <SearchBox value={query} onChange={setQuery} placeholder={prelaunch ? "Search wallet, RPC, gas, Foundry..." : "Search Forge, Rust, WASM, data driver, VM tests..."} />
+      <p className="quiet-note" role="status">{items.length} {prelaunch ? "planning" : "recovery"} {items.length === 1 ? "entry" : "entries"} found.</p>
+      {items.length ? <div className="trouble-list">{items.map((item) => <TroubleRow key={item.id} item={item} prelaunch={prelaunch} />)}</div> : <AsyncNotice state="empty" message="No entry matches this search. Try the failed tool or symptom wording, or open project support." />}
+    </section>
+  );
 }
 
-function TroubleRow({ item }: { item: TroubleshootingItem }) {
-  return <article className="trouble-row"><StatusPill tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warn" : "neutral"}>{item.severity}</StatusPill><div><h2>{item.title}</h2><p>{item.fix}</p><small>{item.safeNextStep}</small></div></article>;
+const duskDsTroubleActions: Partial<Record<string, { route: "setup" | "build"; label: string; command?: string }>> = {
+  "dusk-forge-windows-wasm-opt-shim": { route: "setup", label: "Open Setup" },
+  "dusk-forge-windows-long-path-linker": { route: "build", label: "Open Build", command: "dusk-forge check\ndusk-forge build all" },
+  "rust-wasm-target-missing": { route: "setup", label: "Open Setup", command: "rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown" },
+  "dusk-forge-rust-stable-drift": { route: "setup", label: "Open Setup", command: "rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown" },
+  "data-driver-build-missing": { route: "build", label: "Open Build", command: "dusk-forge build all" },
+  "dusk-forge-test-linux-required": { route: "build", label: "Open Build", command: "dusk-forge test" }
+};
+
+function TroubleRow({ item, prelaunch }: { item: TroubleshootingItem; prelaunch: boolean }) {
+  const impact = item.severity === "high" ? "High impact" : item.severity === "medium" ? "Medium impact" : "Low impact";
+  const action = prelaunch ? undefined : duskDsTroubleActions[item.id];
+  return (
+    <article className="trouble-row">
+      <StatusPill tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warn" : "neutral"}>{prelaunch ? "Planning" : impact}</StatusPill>
+      <div>
+        <h2>{item.title}</h2>
+        <strong>Cause and fix</strong>
+        <p>{item.fix}</p>
+        <strong>{prelaunch ? "Review before launch" : "Recheck"}</strong>
+        <small>{item.safeNextStep}</small>
+        {action ? (
+          <div className="button-row">
+            {action.command ? <CopyButton value={action.command} label={`Copy fix command for ${item.title}`} /> : null}
+            <a className="secondary-button" href={`#${action.route}`}>{action.label}</a>
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
 }

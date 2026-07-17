@@ -21,6 +21,21 @@ The manual signed-RC workflow is intentionally blocked at readiness. It resolves
 
 `config/companion-standalone-signing-policy.json` remains fail-closed: `publication_enabled` and `candidate_transport.enabled` are `false`, the transport provider is `none`, and Windows/Apple identity fields remain blank until real identities and a separately reviewed private transport are configured.
 
+The intended public onboarding channel is a signed GitHub Release from the
+canonical repository, not an unsigned Actions artifact, a draft release, or an
+unverified package-registry shim. Once publication is separately approved, the
+release page and Studio onboarding must expose the exact tag, commit, platform
+asset, SHA-256 digest, signature-verification instructions, compatibility
+statement, support route, and rollback/revocation status. The hosted Studio
+remains static; launching the verified download opens the paired loopback
+Studio.
+
+The DuskDS toolchain remains a separate developer prerequisite. Both the
+companion and native production smoke load `config/duskds-toolchain-policy.json`.
+The companion never installs or updates Dusk Forge: it verifies Cargo's install
+receipt against the full reviewed revision before scaffolding and returns only
+the bounded package, version, repository, and revision in its scaffold receipt.
+
 ## Publication gates
 
 A public binary release requires all of the following for the exact final hashes:
@@ -33,4 +48,7 @@ A public binary release requires all of the following for the exact final hashes
 6. Documented support owner, incident route, rollback procedure, and compatibility statement.
 7. Explicit maintainer approval to change `publication_enabled` and a separately reviewed publication workflow.
 
-Until those gates pass, GitHub source is the canonical distribution. Developers may run a reviewed source checkout, but no unsigned executable should be promoted as a trusted download.
+Until those gates pass, GitHub source is the only public distribution. A source
+checkout supports review and docs-only local development; it does not turn the
+hosted Studio into a machine-action client. No unsigned executable should be
+promoted as a trusted download.
