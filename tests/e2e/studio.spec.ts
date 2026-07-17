@@ -6,43 +6,33 @@ test("guided builder flow stays clear", async ({ page }) => {
 
   await expect(page.getByText("Choose your path")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Start Solidity path/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Start native path/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Explore pre-launch reference/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start DuskDS manually/i })).toBeVisible();
   await expect(page.getByLabel("Builder path selector")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "DuskEVM", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
-  await expect(page.getByRole("heading", { name: "Understand the planned RPC and wallet checks." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Probe pre-launch endpoint" })).toBeVisible();
-
-  const evmGuide = page.getByLabel("DuskEVM guide sequence");
-  await evmGuide.getByRole("button", { name: /2 Access/i }).click();
-  await expect(page.getByRole("heading", { name: "Review how Testnet access and gas will work." })).toBeVisible();
-  await expect(page.getByText("Check the selected Testnet balance")).toBeVisible();
-
-  await evmGuide.getByRole("button", { name: /3 Build/i }).click();
-  await expect(page.getByRole("heading", { name: "Review the planned local Foundry workflow." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Starter actions available after Testnet activation" })).toBeDisabled();
-
-  await page.getByRole("button", { name: "Reference" }).click();
-  await expect(page.getByRole("heading", { name: "Deeper context, with source receipts." })).toBeVisible();
-  await expect(page.getByText("Open docs")).toBeVisible();
+  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
+  await expect(page.getByRole("heading", { name: "Source-backed context for the task in front of you." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "DuskEVM only" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: /Resume DuskEVM/i })).toHaveCount(0);
+  await expect(page.getByText(/0\/4/)).toHaveCount(0);
 
   await page.getByRole("button", { name: "Paths" }).click();
-  await page.getByRole("button", { name: /Start native path/i }).click();
-  await expect(page.getByRole("heading", { name: "Prove the native Dusk toolchain is ready." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Available in local Studio|Set up local companion|Run native preflight/i })).toBeVisible();
+  await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
+  await expect(page.getByRole("heading", { name: "Record the native toolchain checks you ran." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Run the required checks yourself" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save manual setup confirmation" })).toBeVisible();
 
   const duskDsGuide = page.getByLabel("DuskDS guide sequence");
   await duskDsGuide.getByRole("button", { name: /2 Access/i }).click();
-  await expect(page.getByRole("heading", { name: "Prove a read-only Dusk node query works." })).toBeVisible();
-  await expect(page.getByText("Query the latest block with W3sper")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Check a read-only Dusk node query." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Read the public Testnet tip" })).toBeVisible();
 
   await page.getByRole("button", { name: "Troubleshoot" }).click();
   await expect(page.getByRole("heading", { name: "Fix the blocker in front of you." })).toBeVisible();
 
-  await page.getByRole("button", { name: /Local runtime/i }).click();
-  await expect(page.getByRole("heading", { name: "Machine actions are unavailable in this build." })).toBeVisible();
+  await page.getByRole("button", { name: /Automation/i }).click();
+  await expect(page.getByRole("heading", { name: "Use the hosted DuskDS guide manually today." })).toBeVisible();
   await expect(page.getByLabel("Pairing token")).toHaveCount(0);
-  await expect(page.getByText("there is no manual token-copy workflow", { exact: false })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Choose the DuskDS manual path" })).toBeVisible();
 });

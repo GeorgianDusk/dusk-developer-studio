@@ -7,11 +7,14 @@ import {
   invalidateJourneyFrom,
   parseJourneyProgress,
   recordJourneyEvidence,
+  removeJourneyEvidence,
+  resumeJourneyStep,
   skipJourneyStep,
   type BlockerCode,
   type BuilderPath,
   type EvidenceCode,
   type JourneyProgressState,
+  type RecordEvidenceOptions,
   type StepRoute
 } from "./journeyProgress";
 import { isCompanionHealth, isPairingResult } from "./responseSchemas";
@@ -136,17 +139,21 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
 }
 
 type JourneyAction =
-  | { type: "record"; path: BuilderPath; route: StepRoute; evidence: EvidenceCode[] }
+  | { type: "record"; path: BuilderPath; route: StepRoute; evidence: EvidenceCode[]; options?: RecordEvidenceOptions }
+  | { type: "remove-evidence"; path: BuilderPath; route: StepRoute; evidence: EvidenceCode[] }
   | { type: "block"; path: BuilderPath; route: StepRoute; blocker: BlockerCode }
   | { type: "skip"; path: BuilderPath; route: StepRoute; blocker: BlockerCode }
+  | { type: "resume"; path: BuilderPath; route: StepRoute }
   | { type: "invalidate"; path: BuilderPath; route: StepRoute }
   | { type: "reset" };
 
 function journeyReducer(state: JourneyProgressState, action: JourneyAction): JourneyProgressState {
   switch (action.type) {
-    case "record": return recordJourneyEvidence(state, action.path, action.route, action.evidence);
+    case "record": return recordJourneyEvidence(state, action.path, action.route, action.evidence, action.options);
+    case "remove-evidence": return removeJourneyEvidence(state, action.path, action.route, action.evidence);
     case "block": return blockJourneyStep(state, action.path, action.route, action.blocker);
     case "skip": return skipJourneyStep(state, action.path, action.route, action.blocker);
+    case "resume": return resumeJourneyStep(state, action.path, action.route);
     case "invalidate": return invalidateJourneyFrom(state, action.path, action.route);
     case "reset": return createInitialJourneyProgress();
   }
@@ -154,9 +161,11 @@ function journeyReducer(state: JourneyProgressState, action: JourneyAction): Jou
 
 export interface JourneyController {
   progress: JourneyProgressState;
-  record: (path: BuilderPath, route: StepRoute, evidence: EvidenceCode[]) => void;
+  record: (path: BuilderPath, route: StepRoute, evidence: EvidenceCode[], options?: RecordEvidenceOptions) => void;
+  removeEvidence: (path: BuilderPath, route: StepRoute, evidence: EvidenceCode[]) => void;
   block: (path: BuilderPath, route: StepRoute, blocker: BlockerCode) => void;
   skip: (path: BuilderPath, route: StepRoute, blocker: BlockerCode) => void;
+  resume: (path: BuilderPath, route: StepRoute) => void;
   invalidate: (path: BuilderPath, route: StepRoute) => void;
   reset: () => void;
 }
@@ -168,9 +177,11 @@ export function JourneyProvider({ children }: { children: ReactNode }) {
   useEffect(() => window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress)), [progress]);
   const value: JourneyController = {
     progress,
-    record: (path, route, evidence) => dispatch({ type: "record", path, route, evidence }),
+    record: (path, route, evidence, options) => dispatch({ type: "record", path, route, evidence, options }),
+    removeEvidence: (path, route, evidence) => dispatch({ type: "remove-evidence", path, route, evidence }),
     block: (path, route, blocker) => dispatch({ type: "block", path, route, blocker }),
     skip: (path, route, blocker) => dispatch({ type: "skip", path, route, blocker }),
+    resume: (path, route) => dispatch({ type: "resume", path, route }),
     invalidate: (path, route) => dispatch({ type: "invalidate", path, route }),
     reset: () => dispatch({ type: "reset" })
   };

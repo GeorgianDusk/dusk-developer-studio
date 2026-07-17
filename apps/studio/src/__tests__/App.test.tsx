@@ -24,21 +24,32 @@ describe("App", () => {
     expect(screen.getByText("Developer Studio")).toBeInTheDocument();
     expect(screen.getByText("Choose your path")).toBeInTheDocument();
     expect(screen.getByText("Pick the execution model your app actually needs.")).toBeInTheDocument();
-    expect(screen.getByText("Active guide")).toBeInTheDocument();
-    expect(screen.getByText("Pre-launch preview")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Start Solidity path/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Start native path/i })).toBeInTheDocument();
+    expect(screen.getByText("Manual guide available")).toBeInTheDocument();
+    expect(screen.getByText("Reference only")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Explore pre-launch reference/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Start DuskDS manually/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reference" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Troubleshoot" })).toBeInTheDocument();
   });
 
-  it("keeps the explicit EVM probe pre-launch and shows release identity", () => {
+  it("opens DuskEVM as one pre-launch reference without a completion score", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Explore pre-launch reference/i }));
+
+    expect(window.location.hash).toBe("#reference");
+    expect(screen.getByRole("heading", { name: "Source-backed context for the task in front of you." })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "DuskEVM only" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: /Resume DuskEVM/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
+  });
+
+  it("keeps DuskEVM as one pre-launch learning surface and shows release identity", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
-    expect(screen.getByText("Check the DuskEVM Testnet RPC")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Probe pre-launch endpoint" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Available after Testnet launch" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
+    expect(screen.getByText("No live evidence is recorded")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy pre-launch RPC URL" })).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByText(/v0\.1\.0-test/)).toBeInTheDocument();
   });
@@ -47,8 +58,7 @@ describe("App", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#build";
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Review the planned local Foundry workflow." })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Starter actions available after Testnet activation" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
     expect(screen.queryByText(/forge create|cast wallet import|Create and verify Counter starter/i)).not.toBeInTheDocument();
   });
 
@@ -57,9 +67,9 @@ describe("App", () => {
     window.location.hash = "#inspect";
     render(<App />);
 
-    expect(screen.getByText(/POST \/on\/driver:<contract_id>\/get_schema/)).toBeInTheDocument();
-    expect(screen.getByText(/POST \/on\/driver:<contract_id>\/encode_input_fn:<fn_name>/)).toBeInTheDocument();
-    expect(screen.getByText(/POST \/on\/driver:<contract_id>\/decode_output_fn:<fn_name>/)).toBeInTheDocument();
+    expect(screen.getByText(/\/on\/driver:<contract_id>\/get_schema/)).toBeInTheDocument();
+    expect(screen.getByText(/\/on\/driver:<contract_id>\/encode_input_fn:<fn_name>/)).toBeInTheDocument();
+    expect(screen.getByText(/\/on\/driver:<contract_id>\/decode_output_fn:<fn_name>/)).toBeInTheDocument();
     expect(screen.queryByText(/\/rues\/contract/)).not.toBeInTheDocument();
   });
 
@@ -69,7 +79,7 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: "Choose a path to continue to Build." })).toBeInTheDocument();
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskDS manually/i }));
     expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
     expect(window.location.hash).toBe("#build");
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
@@ -78,26 +88,37 @@ describe("App", () => {
   it("shows maturity, source status, and freshness in references", () => {
     window.location.hash = "#reference";
     render(<App />);
-    expect(screen.getAllByText(/checked July 3, 2026/).length).toBeGreaterThan(2);
-    expect(screen.getAllByText("ready-testnet").length).toBeGreaterThan(0);
-    expect(screen.getByText("pre-launch Testnet")).toBeInTheDocument();
-    expect(screen.getAllByText("read-only reference")).toHaveLength(2);
+    expect(screen.getAllByText(/reviewed July 3, 2026/).length).toBeGreaterThan(2);
+    expect(screen.getAllByText("Pre-launch Testnet reference").length).toBeGreaterThan(0);
+    expect(screen.getByText("pre-launch metadata")).toBeInTheDocument();
+    expect(screen.getAllByText("reference only")).toHaveLength(2);
+  });
+
+  it("keeps active DuskDS recovery separate from pre-launch EVM planning", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#troubleshooting";
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: "Fix the blocker in front of you." })).toBeInTheDocument();
+    expect(screen.getAllByText("Cause and fix").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Recheck").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("heading", { name: "Wallet is on the wrong chain" })).not.toBeInTheDocument();
   });
 
   it("requires an inline confirmation before resetting browser-local progress", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskDS manually/i }));
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
 
-    fireEvent.click(screen.getByRole("button", { name: "Release & local data" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset local progress" }));
-    expect(screen.getByRole("button", { name: "Reset all progress" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Build & browser data" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset browser progress" }));
+    expect(screen.getByRole("button", { name: "Reset browser progress" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
-    await waitFor(() => expect(screen.getByRole("button", { name: "Reset local progress" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reset browser progress" })).toHaveFocus());
 
-    fireEvent.click(screen.getByRole("button", { name: "Reset local progress" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reset all progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset browser progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset browser progress" }));
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
@@ -108,12 +129,13 @@ describe("App", () => {
   it("announces successful copy feedback without changing the button name", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#setup";
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /Start Solidity path/i }));
-    fireEvent.click(screen.getByRole("button", { name: "Copy RPC URL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy pre-launch RPC URL" }));
 
-    await waitFor(() => expect(screen.getByText("Copy RPC URL copied to clipboard.")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Copy RPC URL" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Copy pre-launch RPC URL copied to clipboard.")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Copy pre-launch RPC URL" })).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledOnce();
   });
 
@@ -122,8 +144,9 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime(window.location.hostname, "source-dev")} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Local runtime/i }));
-    expect(screen.getByRole("heading", { name: "Machine actions are unavailable in this build." })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
+    expect(screen.getByRole("heading", { name: "Use the hosted DuskDS guide manually today." })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Choose the DuskDS manual path" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
   });
@@ -133,8 +156,8 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime("127.0.0.1", "hosted")} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Local runtime/i }));
-    expect(screen.getByRole("heading", { name: "Machine actions are unavailable in this build." })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
+    expect(screen.getByRole("heading", { name: "Use the hosted DuskDS guide manually today." })).toBeInTheDocument();
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
   });
@@ -147,10 +170,10 @@ describe("App", () => {
     render(<App runtime={getStudioRuntime(window.location.hostname, "portable")} release={portableRelease} />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("button", { name: /Local runtime: Actions ready/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Local runtime/i }));
+    expect(screen.getByRole("button", { name: /Automation: Actions ready/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
     expect(screen.getByText("Paired. Local capabilities are enabled.")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Local runtime, bound to this exact release." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Portable Studio is paired to this release." })).toBeInTheDocument();
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -177,10 +200,10 @@ describe("App", () => {
     render(<App runtime={getStudioRuntime(window.location.hostname, "portable")} release={portableRelease} />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole("button", { name: /Local runtime/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
     expect(screen.getByText(/release identities do not match/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
-    fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskDS manually/i }));
     fireEvent.click(screen.getByRole("button", { name: /3 Build/i }));
     expect(screen.getByRole("button", { name: "Resolve local release mismatch" })).toBeInTheDocument();
   });

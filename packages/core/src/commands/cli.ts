@@ -5,7 +5,7 @@ export interface DuskDsCommandSet {
   projectPath: string;
   build: string;
   test: string;
-  testEnvironment: "Ubuntu-24.04 WSL" | "native POSIX";
+  testEnvironment: "Ubuntu-24.04 WSL" | "native Linux";
 }
 
 const WINDOWS_ROOT = "C:\\tmp\\dusk-studio-projects";
@@ -68,11 +68,9 @@ export function buildDuskDsCommandSet(options: {
         "dusk-forge check",
         "dusk-forge build all"
       ].join("\n"),
-      test: [
-        "wsl -d Ubuntu-24.04",
-        `cd ${quotePosixArg(windowsPathToWsl(projectPath))}`,
-        "dusk-forge test"
-      ].join("\n"),
+      test: `wsl -d Ubuntu-24.04 -- bash -lc ${quotePowerShellArg(
+        `cd ${quotePosixArg(windowsPathToWsl(projectPath))} && dusk-forge test`
+      )}`,
       testEnvironment: "Ubuntu-24.04 WSL"
     };
   }
@@ -81,6 +79,6 @@ export function buildDuskDsCommandSet(options: {
     projectPath,
     build: [`cd ${quotePosixArg(projectPath)}`, "dusk-forge check", "dusk-forge build all"].join("\n"),
     test: [`cd ${quotePosixArg(projectPath)}`, "dusk-forge test"].join("\n"),
-    testEnvironment: "native POSIX"
+    testEnvironment: "native Linux"
   };
 }

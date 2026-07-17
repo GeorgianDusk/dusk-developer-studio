@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "rust_toolchain": "1.94.0",
+  "dusk_forge": {
+    "repository": "https://github.com/dusk-network/forge",
+    "package": "dusk-forge-cli",
+    "binary": "dusk-forge",
+    "revision": "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a"
+  },
+  "rusk": {
+    "tag": "dusk-core-1.6.0",
+    "revision": "ae1a38a2079c681126a96f94c17d282ea2639946"
+  }
+}

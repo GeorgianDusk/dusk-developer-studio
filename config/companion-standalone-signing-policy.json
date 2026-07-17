@@ -7,7 +7,7 @@
   "protected_environment": "studio-companion-signing",
   "release_tag_pattern": "^studio-companion-v\\d+\\.\\d+\\.\\d+-rc\\.\\d+$",
   "publication_enabled": false,
-  "publication_blocker": "The independent maintainer's Windows and Apple signing identities are not configured, and no signed clean-machine release candidate has passed.",
+  "publication_blocker": "Windows and Apple signing identities, reviewed private candidate transport, signed clean-machine evidence, independent security acceptance, support and rollback ownership, and explicit publication approval are still required.",
   "candidate_transport": {
     "enabled": false,
     "provider": "none",

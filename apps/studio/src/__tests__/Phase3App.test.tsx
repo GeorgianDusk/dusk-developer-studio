@@ -17,22 +17,22 @@ describe("Phase 3 interaction semantics", () => {
     expect(within(globalNavigation).getByRole("button", { name: "Paths" })).toBeInTheDocument();
     expect(within(globalNavigation).getByRole("button", { name: "Reference" })).toBeInTheDocument();
     expect(within(globalNavigation).getByRole("button", { name: "Troubleshoot" })).toBeInTheDocument();
-    expect(within(globalNavigation).getByRole("button", { name: /Local runtime/i })).toBeInTheDocument();
+    expect(within(globalNavigation).getByRole("button", { name: /Automation/i })).toBeInTheDocument();
     expect(within(globalNavigation).queryByRole("button", { name: /Setup|Access|Build|Inspect/i })).not.toBeInTheDocument();
 
-    const evmPath = screen.getByRole("button", { name: /Start Solidity path/i });
-    const nativePath = screen.getByRole("button", { name: /Start native path/i });
-    expect(evmPath).toHaveAccessibleName("DuskEVM. Start Solidity path");
-    expect(evmPath).toHaveAccessibleDescription(/Choose this to learn the planned Solidity/);
-    expect(evmPath).toHaveAccessibleDescription(/Live Testnet evidence remains deferred/);
-    expect(nativePath).toHaveAccessibleName("DuskDS. Start native path");
-    expect(nativePath).toHaveAccessibleDescription(/Local machine actions require the portable companion/);
+    const evmPath = screen.getByRole("button", { name: /Explore pre-launch reference/i });
+    const nativePath = screen.getByRole("button", { name: /Start DuskDS manually/i });
+    expect(evmPath).toHaveAccessibleName("DuskEVM. Explore pre-launch reference");
+    expect(evmPath).toHaveAccessibleDescription(/Explore one source-backed pre-launch reference/);
+    expect(evmPath).toHaveAccessibleDescription(/does not provide a completion score/);
+    expect(nativePath).toHaveAccessibleName("DuskDS. Start DuskDS manually");
+    expect(nativePath).toHaveAccessibleDescription(/Follow the complete hosted instructions manually now/);
     expect(evmPath).not.toHaveAttribute("aria-pressed");
     expect(nativePath).not.toHaveAttribute("aria-pressed");
     expect(screen.getByRole("table", { name: "Quick comparison of the two Dusk builder paths" })).toBeInTheDocument();
 
     fireEvent.click(nativePath);
-    expect(screen.getByLabelText("Current journey")).toHaveTextContent("DuskDS journey");
+    expect(screen.getByRole("button", { name: "Resume DuskDS at Setup" })).toHaveTextContent("0/4 complete · 0 automatic · 0 manual");
     expect(within(globalNavigation).queryByRole("button", { name: /Setup|Access|Build|Inspect/i })).not.toBeInTheDocument();
 
     const guideNavigation = screen.getByLabelText("DuskDS guide sequence");
@@ -40,12 +40,17 @@ describe("Phase 3 interaction semantics", () => {
     expect(within(guideNavigation).getByRole("button", { name: /2 Access/i })).toBeInTheDocument();
 
     fireEvent.click(within(globalNavigation).getByRole("button", { name: "Reference" }));
+    expect(screen.getByRole("button", { name: "Return to DuskDS at Setup" })).toBeInTheDocument();
     const pathFilter = screen.getByRole("button", { name: "DuskDS only" });
     const allFilter = screen.getByRole("button", { name: "All references" });
     expect(pathFilter).toHaveAttribute("aria-pressed", "true");
     expect(allFilter).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByRole("heading", { name: /DuskEVM network metadata/i })).not.toBeInTheDocument();
     fireEvent.click(allFilter);
     expect(pathFilter).toHaveAttribute("aria-pressed", "false");
     expect(allFilter).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: /DuskEVM network metadata/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Show all \d+ docs/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Show all \d+ capabilities/i })).toBeInTheDocument();
   });
 });

@@ -3,10 +3,6 @@ name: Studio Caddy fragment security
 "on":
   pull_request:
     branches: [main]
-    paths:
-      - .github/workflows/platform-caddy-security.yml
-      - deploy/caddy/**
-      - docs/deployment/self-hosting.md
   push:
     branches: [main]
     paths:
@@ -31,9 +27,38 @@ jobs:
       - name: Check out reviewed source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: "false"
+      - name: Classify Caddy security scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test -n "$BASE_SHA"
+          test -n "$HEAD_SHA"
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          changed_paths="$RUNNER_TEMP/caddy-security-changed-paths"
+          git diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" > "$changed_paths"
+          relevant=false
+          while IFS= read -r -d '' changed; do
+            case "$changed" in
+              .github/workflows/platform-caddy-security.yml|deploy/caddy/*|docs/deployment/self-hosting.md)
+                relevant=true
+                break
+                ;;
+            esac
+          done < "$changed_paths"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
       - name: Install checksum-pinned Caddy
+        if: steps.scope.outputs.relevant == 'true'
         env:
           CADDY_VERSION: 2.11.4
           CADDY_ARCHIVE_SHA256: 527fbf917c39189a1e3b31d34fa955601680b2d5c8055d2a87b8b9588dec7bb9
@@ -49,6 +74,7 @@ jobs:
           case "$actual_version" in "v${CADDY_VERSION} "*|"${CADDY_VERSION} "*|"v${CADDY_VERSION}"|"${CADDY_VERSION}") ;; *) exit 1 ;; esac
           printf '%s\n' "$actual_version"
       - name: Enforce the static-hosting boundary
+        if: steps.scope.outputs.relevant == 'true'
         run: |
           set -euo pipefail
           fragment=deploy/caddy/studio.caddy
@@ -72,3 +98,10 @@ jobs:
             exit 1
           fi
           /tmp/caddy validate --config "$fragment" --adapter caddyfile
+      - name: Report scope-only success
+        if: steps.scope.outputs.relevant == 'false'
+        run: |
+          {
+            echo "### Studio Caddy fragment security"
+            echo "No Caddy boundary inputs changed. The stable required-check context passed without downloading Caddy."
+          } >> "$GITHUB_STEP_SUMMARY"

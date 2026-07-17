@@ -33,12 +33,13 @@ All static responses use no-store, a local-only Content Security Policy, frame d
 - Pairing, session, capability, body, timeout, output, concurrency, file-count, byte, and directory-depth bounds are enforced.
 - Child tools receive an allowlisted environment. Dusk Studio variables and secret-shaped GitHub, cloud, wallet, API, credential, cookie, password, private-key, seed, and token variables are not inherited.
 - External tools use exact commands without a shell, bounded asynchronous output and time, and process-tree termination on timeout, overflow, or supervisor shutdown.
+- DuskDS preflight reads only Cargo's `.crates2.json` install receipt under the active `CARGO_INSTALL_ROOT`, falling back to `CARGO_HOME` and then the standard user Cargo home. It returns a normalized package/version/revision identity and fails required readiness when the receipt is absent, malformed, or not bound to the reviewed Forge revision. Forge checks and scaffolding invoke the binary from that same install root's `bin` directory rather than accepting a shadowing `PATH` entry. The companion never installs or updates Forge.
 
 ## Filesystem Gates
 
 Portable projects live in the current user data directory, outside the extracted release. The Foundry template root is the verified packaged template. The Dusk Forge output root is a trusted supervisor option, not a child environment override.
 
-Scaffolds populate a private sibling stage, reject lexical escapes and reparse components, revalidate parent identity and target absence, enforce resource bounds, and atomically rename one complete tree. Existing targets are never merged or overwritten.
+Before DuskDS scaffolding, the companion revalidates the normalized Cargo install receipt against `config/duskds-toolchain-policy.json`. Scaffolds then populate a private sibling stage, reject lexical escapes and reparse components, revalidate parent identity and target absence, enforce resource bounds, and atomically rename one complete tree. Existing targets are never merged or overwritten.
 
 ## Distribution Gates
 

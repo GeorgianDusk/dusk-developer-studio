@@ -227,6 +227,28 @@ function sanitizePreflight(result: PreflightResult): PreflightResult {
   };
 }
 
+function sanitizeForgeReceipt(result: ForgeScaffoldResult): {
+  forgePackage: string;
+  forgeVersion: string;
+  forgeRevision: string;
+  forgeRepository: string;
+} {
+  if (
+    !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(result.forgePackage)
+    || !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$/.test(result.forgeVersion)
+    || !/^[0-9a-f]{40}$/.test(result.forgeRevision)
+    || result.source !== "https://github.com/dusk-network/forge"
+  ) {
+    throw new Error("Dusk Forge scaffold receipt is invalid.");
+  }
+  return {
+    forgePackage: result.forgePackage,
+    forgeVersion: result.forgeVersion,
+    forgeRevision: result.forgeRevision,
+    forgeRepository: result.source
+  };
+}
+
 function consumeRateLimit(windows: Map<string, RateWindow>, key: string, maximum: number, now = Date.now()): boolean {
   const current = windows.get(key);
   if (!current || current.resetsAt <= now) {
@@ -391,7 +413,15 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
         try {
           const body = ScaffoldBodySchema.parse(await readJson(request, bodyLimitBytes, bodyTimeoutMs));
           const result = await dependencies.scaffoldDuskDsForge({ cwd: workspaceRoot, projectName: body.projectName, parentDir: body.parentDir });
-          sendJson(response, 200, { ok: true, projectName: body.projectName, rustToolchain: result.rustToolchain, platform: result.platform, structureVerified: result.structureVerified, files: result.files.slice(0, 256) }, origin);
+          sendJson(response, 200, {
+            ok: true,
+            projectName: body.projectName,
+            rustToolchain: result.rustToolchain,
+            platform: result.platform,
+            structureVerified: result.structureVerified,
+            files: result.files.slice(0, 256),
+            ...sanitizeForgeReceipt(result)
+          }, origin);
         } finally { release(); }
         return;
       }

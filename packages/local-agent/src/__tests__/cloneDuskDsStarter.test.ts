@@ -2,7 +2,20 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  DUSK_FORGE_REVISION,
+  reviewedDuskForgeExecutable,
+  type DuskForgeInstallIdentity
+} from "../commands/duskDsToolchainPolicy";
 import { scaffoldDuskDsForge } from "../commands/scaffoldDuskDsForge";
+
+const REVIEWED_FORGE_IDENTITY: DuskForgeInstallIdentity = {
+  package: "dusk-forge-cli",
+  packageVersion: "0.4.0",
+  binary: "dusk-forge",
+  repository: "https://github.com/dusk-network/forge",
+  revision: DUSK_FORGE_REVISION
+};
 
 let tempRoots: string[] = [];
 let previousDuskDsProjectRoot: string | undefined;
@@ -43,14 +56,24 @@ describe("DuskDS Forge scaffold", () => {
 
     const result = await scaffoldDuskDsForge(
       { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
-      { runProcess, projectRoot }
+      { runProcess, projectRoot, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY }
     );
 
-    expect(result).toMatchObject({ ok: true, source: "https://github.com/dusk-network/forge", tool: "dusk-forge", projectRoot, rustToolchain: "1.94.0", structureVerified: true });
+    expect(result).toMatchObject({
+      ok: true,
+      source: "https://github.com/dusk-network/forge",
+      tool: "dusk-forge",
+      projectRoot,
+      rustToolchain: "1.94.0",
+      forgePackage: "dusk-forge-cli",
+      forgeVersion: "0.4.0",
+      forgeRevision: DUSK_FORGE_REVISION,
+      structureVerified: true
+    });
     expect(result.path).toBe(path.resolve(projectRoot, "tmp/qa", "native-demo"));
     await expect(fs.readFile(path.join(result.path, "rust-toolchain.toml"), "utf8")).resolves.toContain('channel = "1.94.0"');
     expect(runProcess).toHaveBeenCalledWith(expect.objectContaining({
-      command: "dusk-forge",
+      command: reviewedDuskForgeExecutable(),
       args: ["new", "native-demo", "--path", expect.stringMatching(/\.dusk-studio-stage-/), "--no-git", "--template", "counter"],
       timeoutMs: 300_000,
       maxOutputBytes: 1_048_576
@@ -67,7 +90,7 @@ describe("DuskDS Forge scaffold", () => {
 
     await expect(scaffoldDuskDsForge(
       { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
-      { runProcess, projectRoot }
+      { runProcess, projectRoot, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY }
     )).rejects.toThrow("already exists");
     expect(runProcess).not.toHaveBeenCalled();
   });
@@ -80,9 +103,25 @@ describe("DuskDS Forge scaffold", () => {
 
     await expect(scaffoldDuskDsForge(
       { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
-      { runProcess, projectRoot }
+      { runProcess, projectRoot, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY }
     )).rejects.toThrow("bounded process failed");
     await expect(fs.lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
     expect((await fs.readdir(path.dirname(target))).filter((name) => name.startsWith(".dusk-studio-stage-"))).toEqual([]);
+  });
+
+  it("refuses to scaffold before execution when the Forge revision is not reviewed", async () => {
+    const workspaceRoot = await makeTempRoot();
+    const projectRoot = await makeTempRoot();
+    const runProcess = vi.fn();
+
+    await expect(scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
+      {
+        runProcess,
+        projectRoot,
+        readDuskForgeIdentity: async () => ({ ...REVIEWED_FORGE_IDENTITY, revision: "f".repeat(40) })
+      }
+    )).rejects.toThrow("does not match the reviewed source revision");
+    expect(runProcess).not.toHaveBeenCalled();
   });
 });

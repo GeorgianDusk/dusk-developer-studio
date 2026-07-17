@@ -3,16 +3,11 @@ name: DuskDS native production smoke
 "on":
   pull_request:
     branches: [main]
-    paths:
-      - .github/workflows/duskds-native-smoke.yml
-      - apps/studio/**
-      - config/phase5-policy.json
-      - packages/**
-      - scripts/staging-smoke.mjs
   push:
     branches: [main]
     paths:
       - .github/workflows/duskds-native-smoke.yml
+      - config/duskds-toolchain-policy.json
       - apps/studio/**
       - config/phase5-policy.json
       - packages/**
@@ -34,9 +29,6 @@ jobs:
     env:
       CI: "true"
       CARGO_TERM_COLOR: never
-      RUST_TOOLCHAIN: 1.94.0
-      FORGE_COMMIT: d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a
-      RUSK_COMMIT: ae1a38a2079c681126a96f94c17d282ea2639946
       EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     defaults:
       run:
@@ -46,19 +38,75 @@ jobs:
       - name: Check out the exact reviewed source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          fetch-depth: 1
+          fetch-depth: 0
           persist-credentials: "false"
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Bind the run to the checked-out commit
         run: |
           test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
           test -z "$(git status --short)"
+      - name: Classify DuskDS native-smoke scope
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          test -n "$BASE_SHA"
+          test -n "$HEAD_SHA"
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          changed_paths="$RUNNER_TEMP/duskds-native-smoke-changed-paths"
+          git diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" > "$changed_paths"
+          relevant=false
+          while IFS= read -r -d '' changed; do
+            case "$changed" in
+              .github/workflows/duskds-native-smoke.yml|apps/studio/*|config/duskds-toolchain-policy.json|config/phase5-policy.json|packages/*|scripts/staging-smoke.mjs)
+                relevant=true
+                break
+                ;;
+            esac
+          done < "$changed_paths"
+          echo "relevant=$relevant" >> "$GITHUB_OUTPUT"
       - name: Use the verified Node.js line
+        if: steps.scope.outputs.relevant == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24.11.0
           package-manager-cache: "false"
+      - name: Load the reviewed DuskDS toolchain policy
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const policy = JSON.parse(fs.readFileSync("config/duskds-toolchain-policy.json", "utf8"));
+          const fortyHex = /^[0-9a-f]{40}$/;
+          if (
+            policy.schema_version !== 1
+            || !/^\d+\.\d+\.\d+$/.test(policy.rust_toolchain)
+            || policy.dusk_forge?.repository !== "https://github.com/dusk-network/forge"
+            || policy.dusk_forge?.package !== "dusk-forge-cli"
+            || !fortyHex.test(policy.dusk_forge?.revision ?? "")
+            || !/^dusk-core-\d+\.\d+\.\d+$/.test(policy.rusk?.tag ?? "")
+            || !fortyHex.test(policy.rusk?.revision ?? "")
+          ) {
+            throw new Error("DuskDS toolchain policy is invalid.");
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, [
+            `RUST_TOOLCHAIN=${policy.rust_toolchain}`,
+            `FORGE_COMMIT=${policy.dusk_forge.revision}`,
+            `RUSK_TAG=${policy.rusk.tag}`,
+            `RUSK_COMMIT=${policy.rusk.revision}`,
+            ""
+          ].join("\n"));
+          NODE
       - name: Read the official DuskDS Testnet node
+        if: steps.scope.outputs.relevant == 'true'
         run: |
           node --input-type=module <<'NODE'
           import fs from "node:fs";
@@ -74,6 +122,7 @@ jobs:
           ].join("\n"));
           NODE
       - name: Install the pinned Rust and Dusk Forge toolchain
+        if: steps.scope.outputs.relevant == 'true'
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
           rustup target add --toolchain "$RUST_TOOLCHAIN" wasm32-unknown-unknown
@@ -85,13 +134,16 @@ jobs:
             dusk-forge-cli
           echo "$RUNNER_TEMP/dusk-forge/bin" >> "$GITHUB_PATH"
       - name: Verify required native tools
+        if: steps.scope.outputs.relevant == 'true'
         run: |
           test "$(rustc +"$RUST_TOOLCHAIN" --version | awk '{print $2}')" = "$RUST_TOOLCHAIN"
           cargo +"$RUST_TOOLCHAIN" --version
+          grep -Fq "$FORGE_COMMIT" "$RUNNER_TEMP/dusk-forge/.crates2.json"
           dusk-forge --version
           git --version
           make --version | head -n 1
       - name: Scaffold through the pinned Forge release
+        if: steps.scope.outputs.relevant == 'true'
         run: |
           ROOT="$RUNNER_TEMP/duskds-native-smoke"
           PROJECT="$ROOT/duskds-phase5-smoke"
@@ -99,18 +151,20 @@ jobs:
           dusk-forge new duskds-phase5-smoke --path "$ROOT" --no-git --template counter
           sed -i -E 's/channel[[:space:]]*=[[:space:]]*"[^"]+"/channel = "1.94.0"/' "$PROJECT/rust-toolchain.toml"
           grep -Fq 'channel = "1.94.0"' "$PROJECT/rust-toolchain.toml"
-          grep -Fq "git+https://github.com/dusk-network/rusk?tag=dusk-core-1.6.0#$RUSK_COMMIT" "$PROJECT/Cargo.lock"
+          grep -Fq "git+https://github.com/dusk-network/rusk?tag=$RUSK_TAG#$RUSK_COMMIT" "$PROJECT/Cargo.lock"
           test -f "$PROJECT/Cargo.toml"
           test -f "$PROJECT/src/lib.rs"
           test -f "$PROJECT/tests/contract.rs"
           echo "DUSKDS_SMOKE_PROJECT=$PROJECT" >> "$GITHUB_ENV"
       - name: Check, build both artifacts, and run the Linux VM test
+        if: steps.scope.outputs.relevant == 'true'
         run: |
           cd "$DUSKDS_SMOKE_PROJECT"
           dusk-forge check
           dusk-forge build all
           dusk-forge test
       - name: Inspect and record bounded artifact evidence
+        if: steps.scope.outputs.relevant == 'true'
         run: |
           cd "$DUSKDS_SMOKE_PROJECT"
           VERIFY_OUTPUT="$(dusk-forge verify --skip-build)"
@@ -138,4 +192,11 @@ jobs:
             echo "- Contract BLAKE3: \`$CONTRACT_BLAKE3\`"
             echo "- Schema functions: \`$SCHEMA_FUNCTIONS\`"
             echo "- VM test: \`passed on ubuntu-24.04\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Report scope-only success
+        if: steps.scope.outputs.relevant == 'false'
+        run: |
+          {
+            echo "### DuskDS native smoke"
+            echo "No DuskDS native-smoke inputs changed. The stable required-check context passed without installing the native toolchain."
           } >> "$GITHUB_STEP_SUMMARY"

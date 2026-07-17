@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./browser-catalog": "./src/resources/browserCatalog.ts",
+    "./commands": "./src/commands/cli.ts",
+    "./evm-read": "./src/adapters/evmRead.ts",
+    "./safe-export": "./src/security/redact.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit"

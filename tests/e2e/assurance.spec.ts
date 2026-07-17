@@ -3,23 +3,26 @@ import { expect, test } from "@playwright/test";
 
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
-  ["setup", "Understand the planned RPC and wallet checks."],
-  ["access", "Review how Testnet access and gas will work."],
-  ["build", "Review the planned local Foundry workflow."],
-  ["inspect", "Learn the supported Testnet identifier shapes."],
-  ["reference", "Deeper context, with source receipts."],
-  ["troubleshooting", "Fix the blocker in front of you."],
-  ["companion", "Machine actions are unavailable in this build."],
-  ["settings", "Know exactly what this build knows."]
+  ["setup", "Explore the planned DuskEVM developer workflow."],
+  ["access", "Explore the planned DuskEVM developer workflow."],
+  ["build", "Explore the planned DuskEVM developer workflow."],
+  ["inspect", "Explore the planned DuskEVM developer workflow."],
+  ["reference", "Source-backed context for the task in front of you."],
+  ["troubleshooting", "Review DuskEVM launch-planning issues."],
+  ["companion", "Use the hosted DuskDS guide manually today."],
+  ["settings", "See the build you are using and control its saved progress."]
 ] as const;
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.clear());
+  await page.addInitScript(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 });
 
 test("every deep link renders a stable route", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
+  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
   for (const [route, heading] of routes) {
     await page.goto(`/#${route}`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -31,8 +34,8 @@ test("a pathless guide deep link preserves the requested step until path choice"
   await page.goto("/#build");
   await expect(page).toHaveURL(/#build$/);
   await expect(page.getByRole("heading", { name: "Choose a path to continue to Build." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Start Solidity path/i })).toHaveAccessibleName("DuskEVM. Start Solidity path");
-  await page.getByRole("button", { name: /Start native path/i }).click();
+  await expect(page.getByRole("button", { name: /Explore pre-launch reference/i })).toHaveAccessibleName("DuskEVM. Explore pre-launch reference");
+  await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
   await expect(page).toHaveURL(/#build$/);
   await expect(page.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeVisible();
 });
@@ -52,30 +55,30 @@ test("keyboard and reduced-motion modes preserve the primary flow", async ({ pag
   await page.keyboard.press("Enter");
   await expect(page.locator("main#studio-main")).toBeFocused();
   const homeButton = page.getByRole("button", { name: "Dusk Developer Studio home", exact: true });
-  const duskEvmPath = page.getByRole("button", { name: /Start Solidity path/i });
+  const duskDsPath = page.getByRole("button", { name: /Start DuskDS manually/i });
   await homeButton.focus();
   await expect(homeButton).toBeFocused();
-  await duskEvmPath.focus();
-  await expect(duskEvmPath).toBeFocused();
-  await expect(duskEvmPath).not.toHaveAttribute("aria-pressed");
-  const duration = await duskEvmPath.evaluate((element) => getComputedStyle(element).transitionDuration);
+  await duskDsPath.focus();
+  await expect(duskDsPath).toBeFocused();
+  await expect(duskDsPath).not.toHaveAttribute("aria-pressed");
+  const duration = await duskDsPath.evaluate((element) => getComputedStyle(element).transitionDuration);
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(/#setup$/);
-  const setupHeading = page.getByRole("heading", { name: "Understand the planned RPC and wallet checks." });
+  const setupHeading = page.getByRole("heading", { name: "Record the native toolchain checks you ran." });
   await expect(setupHeading).toBeFocused();
-  await expect(page).toHaveTitle(/Understand the planned RPC and wallet checks\. \| Dusk Developer Studio/);
+  await expect(page).toHaveTitle(/Record the native toolchain checks you ran\. \| Dusk Developer Studio/);
   const nextStep = page.getByRole("button", { name: "Next: Access" });
   await nextStep.focus();
   await page.keyboard.press("Enter");
-  const accessHeading = page.getByRole("heading", { name: "Review how Testnet access and gas will work." });
+  const accessHeading = page.getByRole("heading", { name: "Check a read-only Dusk node query." });
   await expect(accessHeading).toBeFocused();
 });
 
 test("narrow and zoom-equivalent layouts reflow without page overflow", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "One deterministic reflow pass covers the shared responsive layout.");
   await page.goto("/");
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
+  await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
   for (const viewport of [
     { width: 320, height: 800, route: "overview" },
     { width: 320, height: 800, route: "setup" },
@@ -89,6 +92,19 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
       scrollWidth: document.documentElement.scrollWidth,
       clippedTextCount: Array.from(document.querySelectorAll("main p, main h1, main h2, main h3, main strong, main em"))
         .filter((element) => element.scrollWidth > element.clientWidth + 1).length,
+      overflowingElements: Array.from(document.querySelectorAll<HTMLElement>("body *"))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            selector: `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${element.className && typeof element.className === "string" ? `.${element.className.trim().replace(/\s+/g, ".")}` : ""}`,
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth
+          };
+        })
+        .filter((element) => element.left < -1 || element.right > window.innerWidth + 1 || element.scrollWidth > element.clientWidth + 1)
+        .slice(0, 20),
       smallTargetCount: Array.from(document.querySelectorAll<HTMLElement>("button, a[href], input, select"))
         .filter((element) => {
           const rect = element.getBoundingClientRect();
@@ -96,18 +112,19 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
           return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden" && (rect.width < 40 || rect.height < 40);
         }).length
     }));
-    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.innerWidth);
+    expect(layout.scrollWidth, JSON.stringify(layout.overflowingElements, null, 2)).toBeLessThanOrEqual(layout.innerWidth);
     expect(layout.clippedTextCount).toBe(0);
     expect(layout.smallTargetCount).toBe(0);
   }
 });
 
-test("offline RPC failure stays controlled and retryable", async ({ page, context }) => {
+test("offline hosted DuskDS node failure stays controlled and retryable", async ({ page, context }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
+  await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
+  await page.goto("/#access");
   await context.setOffline(true);
-  await page.getByRole("button", { name: "Probe pre-launch endpoint" }).click();
-  await expect(page.getByRole("alert")).toContainText(/browser could not reach|RPC request failed|timed out/i);
+  await page.getByRole("button", { name: "Run hosted safe check" }).click();
+  await expect(page.getByRole("alert")).toContainText(/could not be reached|did not answer/i);
   await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
   await context.setOffline(false);
 });
@@ -127,7 +144,7 @@ test("built release exposes matching release and assurance receipts", async ({ r
 test("critical routes have no automated WCAG A/AA violations", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "One deterministic axe pass covers shared markup; browser projects cover rendering parity.");
   await page.goto("/");
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
+  await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
   for (const route of ["overview", "setup", "reference"] as const) {
     await page.goto(`/#${route}`);
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
@@ -145,7 +162,7 @@ test("Chromium lab metrics stay inside the enforced policy", async ({ page }, te
     new PerformanceObserver((list) => { for (const entry of list.getEntries()) metrics.interaction = Math.max(metrics.interaction, entry.duration); }).observe({ type: "event", buffered: true });
   });
   await page.goto("/", { waitUntil: "networkidle" });
-  await page.getByRole("button", { name: /Start Solidity path/i }).click();
+  await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
   await page.waitForTimeout(250);
   const metrics = await page.evaluate(() => (window as unknown as { __studioMetrics: { lcp: number; cls: number; interaction: number } }).__studioMetrics);
   expect(metrics.lcp).toBeGreaterThan(0);

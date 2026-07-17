@@ -2,6 +2,17 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createChildEnvironment } from "./childEnvironment";
+import {
+  assertReviewedDuskForgeIdentity,
+  DUSK_FORGE_BINARY,
+  DUSK_FORGE_INSTALL_COMMAND,
+  DUSK_FORGE_REVISION,
+  DUSKDS_RUST_TOOLCHAIN,
+  readReviewedDuskForgeIdentity,
+  resolveCargoHome,
+  reviewedDuskForgeExecutable,
+  type DuskForgeInstallIdentity
+} from "./duskDsToolchainPolicy";
 import { BoundedProcessError, runBoundedProcess } from "./runBoundedProcess";
 
 export interface ToolCheck {
@@ -12,6 +23,7 @@ export interface ToolCheck {
   windowsDirect?: boolean;
   expectedOutputIncludes?: string;
   installHint?: string;
+  checkKind?: "process" | "dusk-forge-identity";
 }
 
 export type ToolFailureKind = "missing" | "unsupported" | "timeout" | "version-mismatch" | "execution-failed";
@@ -40,13 +52,14 @@ const EVM_TOOLS: ToolCheck[] = [
 
 const DUSKDS_TOOLS: ToolCheck[] = [
   { name: "Git", command: "git", args: ["--version"], required: true, installHint: "Install Git so Cargo can fetch Dusk Forge and pinned Dusk dependencies when needed." },
-  { name: "Rustup", command: "rustup", args: ["--version"], required: true, installHint: "Install rustup so Forge projects can use the verified Rust 1.94.0 toolchain." },
-  { name: "Rust compiler", command: "rustc", args: ["--version"], required: true, installHint: "Install Rust with rustup for Dusk Forge projects; the Studio pins generated starters to Rust 1.94.0 until newer stable link behavior is verified." },
+  { name: "Rustup", command: "rustup", args: ["--version"], required: true, installHint: `Install rustup so Forge projects can use the reviewed Rust ${DUSKDS_RUST_TOOLCHAIN} toolchain.` },
+  { name: "Rust compiler", command: "rustc", args: ["--version"], required: true, installHint: `Install Rust with rustup for Dusk Forge projects; the Studio pins generated starters to Rust ${DUSKDS_RUST_TOOLCHAIN} until newer stable link behavior is verified.` },
   { name: "Cargo", command: "cargo", args: ["--version"], required: true, installHint: "Cargo is required to build contract and data-driver WASM." },
-  { name: "Dusk Forge CLI", command: "dusk-forge", args: ["--version"], required: true, installHint: "Install with: cargo install --git https://github.com/dusk-network/forge dusk-forge-cli" },
-  { name: "Rust 1.94.0 toolchain", command: "rustup", args: ["run", "1.94.0", "rustc", "--version"], required: true, installHint: "Run rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown." },
-  { name: "Rust 1.94.0 WASM target", command: "rustup", args: ["target", "list", "--installed", "--toolchain", "1.94.0"], required: true, expectedOutputIncludes: "wasm32-unknown-unknown", installHint: "Run rustup target add wasm32-unknown-unknown --toolchain 1.94.0." },
-  { name: "Rust 1.94.0 rust-src", command: "rustup", args: ["component", "list", "--installed", "--toolchain", "1.94.0"], required: true, expectedOutputIncludes: "rust-src", installHint: "Run rustup component add rust-src --toolchain 1.94.0." },
+  { name: "Dusk Forge source revision", command: "cargo-install-receipt", args: [], required: true, checkKind: "dusk-forge-identity", installHint: `Reinstall the reviewed revision with: ${DUSK_FORGE_INSTALL_COMMAND}` },
+  { name: "Dusk Forge CLI", command: DUSK_FORGE_BINARY, args: ["--version"], required: true, installHint: `Install the reviewed revision with: ${DUSK_FORGE_INSTALL_COMMAND}` },
+  { name: `Rust ${DUSKDS_RUST_TOOLCHAIN} toolchain`, command: "rustup", args: ["run", DUSKDS_RUST_TOOLCHAIN, "rustc", "--version"], required: true, installHint: `Run rustup toolchain install ${DUSKDS_RUST_TOOLCHAIN} --component rust-src --target wasm32-unknown-unknown.` },
+  { name: `Rust ${DUSKDS_RUST_TOOLCHAIN} WASM target`, command: "rustup", args: ["target", "list", "--installed", "--toolchain", DUSKDS_RUST_TOOLCHAIN], required: true, expectedOutputIncludes: "wasm32-unknown-unknown", installHint: `Run rustup target add wasm32-unknown-unknown --toolchain ${DUSKDS_RUST_TOOLCHAIN}.` },
+  { name: `Rust ${DUSKDS_RUST_TOOLCHAIN} rust-src`, command: "rustup", args: ["component", "list", "--installed", "--toolchain", DUSKDS_RUST_TOOLCHAIN], required: true, expectedOutputIncludes: "rust-src", installHint: `Run rustup component add rust-src --toolchain ${DUSKDS_RUST_TOOLCHAIN}.` },
   { name: "Make", command: "make", args: ["--version"], required: false, installHint: "Optional for template Makefile shortcuts; Forge CLI can build without Make." },
   { name: "wasm-pack", command: "wasm-pack", args: ["--version"], required: false, installHint: "Optional for JS-facing WASM packaging outside the basic Forge build." },
   { name: "wasm-tools", command: "wasm-tools", args: ["--version"], required: false, installHint: "Optional for manual WASM inspection and advanced workflows." },
@@ -75,15 +88,16 @@ function getToolAllowlist(path: PreflightPath): ToolCheck[] {
             "command -v make",
             "command -v jq",
             "command -v wasm-opt",
-            "command -v dusk-forge",
-            "rustup run 1.94.0 rustc --version",
-            "rustup target list --installed --toolchain 1.94.0 | grep -q wasm32-unknown-unknown",
-            "dusk-forge --version"
+            "test -x \"${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}/bin/dusk-forge\"",
+            `rustup run ${DUSKDS_RUST_TOOLCHAIN} rustc --version`,
+            `rustup target list --installed --toolchain ${DUSKDS_RUST_TOOLCHAIN} | grep -q wasm32-unknown-unknown`,
+            `grep -Fq ${DUSK_FORGE_REVISION} "\${CARGO_INSTALL_ROOT:-\${CARGO_HOME:-$HOME/.cargo}}/.crates2.json"`,
+            "\"${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}/bin/dusk-forge\" --version"
           ].join("; ")
         ],
         required: false,
         windowsDirect: true,
-        installHint: "Optional for VM-backed dusk-forge test on Windows; confirms Ubuntu-24.04 has Make, jq, wasm-opt, Dusk Forge, and Rust 1.94.0."
+        installHint: `Optional for VM-backed dusk-forge test on Windows; confirms Ubuntu-24.04 has Make, jq, wasm-opt, Dusk Forge revision ${DUSK_FORGE_REVISION}, and Rust ${DUSKDS_RUST_TOOLCHAIN}.`
       }]
     : [];
 
@@ -91,17 +105,13 @@ function getToolAllowlist(path: PreflightPath): ToolCheck[] {
 }
 
 function pathAdditionsForTool(tool: ToolCheck): string[] {
-  if (process.platform !== "win32") {
-    return [];
-  }
-
   const home = homedir();
   const candidates: string[] = [];
-  if (["forge", "cast", "anvil", "chisel"].includes(tool.command)) {
+  if (process.platform === "win32" && ["forge", "cast", "anvil", "chisel"].includes(tool.command)) {
     candidates.push(join(home, ".foundry", "bin"));
   }
   if (["cargo", "rustc", "rustup", "dusk-forge", "rusk-wallet", "wasm-pack", "wasm-tools"].includes(tool.command)) {
-    candidates.push(join(home, ".cargo", "bin"));
+    candidates.push(join(resolveCargoHome(), "bin"));
   }
 
   return candidates.filter((candidate) => existsSync(candidate));
@@ -135,11 +145,17 @@ async function checkWasmOptShimAsync(tool: ToolCheck, runProcess: typeof runBoun
 }
 
 async function checkToolAsync(tool: ToolCheck, runProcess: typeof runBoundedProcess): Promise<ToolResult> {
+  if (tool.checkKind === "dusk-forge-identity") {
+    throw new Error("Dusk Forge identity checks require the dedicated bounded receipt reader.");
+  }
   const shimWarning = await checkWasmOptShimAsync(tool, runProcess);
   if (shimWarning) return shimWarning;
-  const invocation = process.platform === "win32" && !tool.windowsDirect
-    ? { command: "cmd.exe", args: ["/d", "/s", "/c", tool.command, ...tool.args] }
-    : { command: tool.command, args: tool.args };
+  const reviewedForgeExecutable = tool.command === DUSK_FORGE_BINARY ? reviewedDuskForgeExecutable() : undefined;
+  const invocation = reviewedForgeExecutable
+    ? { command: reviewedForgeExecutable, args: tool.args }
+    : process.platform === "win32" && !tool.windowsDirect
+      ? { command: "cmd.exe", args: ["/d", "/s", "/c", tool.command, ...tool.args] }
+      : { command: tool.command, args: tool.args };
   try {
     const result = await runProcess({
       ...invocation,
@@ -179,12 +195,63 @@ async function checkToolAsync(tool: ToolCheck, runProcess: typeof runBoundedProc
   }
 }
 
+async function checkDuskForgeIdentityAsync(
+  tool: ToolCheck,
+  readIdentity: () => Promise<DuskForgeInstallIdentity>
+): Promise<ToolResult> {
+  try {
+    const identity = assertReviewedDuskForgeIdentity(await readIdentity());
+    return {
+      name: tool.name,
+      command: tool.command,
+      required: tool.required,
+      ok: true,
+      version: `${identity.package} ${identity.packageVersion} @ ${identity.revision}`,
+      installHint: tool.installHint
+    };
+  } catch {
+    return {
+      name: tool.name,
+      command: tool.command,
+      required: tool.required,
+      ok: false,
+      error: "The installed Dusk Forge source revision could not be verified.",
+      failureKind: "version-mismatch",
+      installHint: tool.installHint
+    };
+  }
+}
+
 export async function runPreflightAsync(
   path: PreflightPath = "evm",
-  runtime: { runProcess?: typeof runBoundedProcess; bundledNodeVersion?: string } = {}
+  runtime: {
+    runProcess?: typeof runBoundedProcess;
+    bundledNodeVersion?: string;
+    readDuskForgeIdentity?: () => Promise<DuskForgeInstallIdentity>;
+  } = {}
 ): Promise<{ ok: boolean; checkedAt: string; path: PreflightPath; tools: ToolResult[] }> {
   const tools: ToolResult[] = [{ name: "Node.js", command: "node", required: true, ok: true, version: runtime.bundledNodeVersion?.trim() || process.version, installHint: "Included with the portable Studio runtime." }];
   const runProcess = runtime.runProcess ?? runBoundedProcess;
-  for (const tool of getToolAllowlist(path)) tools.push(await checkToolAsync(tool, runProcess));
+  const readDuskForgeIdentity = runtime.readDuskForgeIdentity ?? (() => readReviewedDuskForgeIdentity());
+  let duskForgeIdentityVerified = path !== "duskds";
+  for (const tool of getToolAllowlist(path)) {
+    if (tool.checkKind === "dusk-forge-identity") {
+      const result = await checkDuskForgeIdentityAsync(tool, readDuskForgeIdentity);
+      duskForgeIdentityVerified = result.ok;
+      tools.push(result);
+    } else if (tool.command === DUSK_FORGE_BINARY && !duskForgeIdentityVerified) {
+      tools.push({
+        name: tool.name,
+        command: tool.command,
+        required: tool.required,
+        ok: false,
+        error: "Dusk Forge was not executed because its installed source revision could not be verified.",
+        failureKind: "version-mismatch",
+        installHint: tool.installHint
+      });
+    } else {
+      tools.push(await checkToolAsync(tool, runProcess));
+    }
+  }
   return { ok: tools.every((tool) => tool.ok || !tool.required), checkedAt: new Date().toISOString(), path, tools };
 }

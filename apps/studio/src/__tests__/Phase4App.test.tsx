@@ -19,7 +19,7 @@ describe("Phase 4 controlled failures", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "<img src=x onerror=secret>", paired: true, capabilitiesEnabled: "yes" }))));
     render(<App runtime={getStudioRuntime(window.location.hostname, "portable")} release={portableRelease} />);
-    fireEvent.click(screen.getByRole("button", { name: /Local runtime/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
     await waitFor(() => expect(screen.getByText("The local companion returned data this Studio cannot safely use.")).toBeInTheDocument());
     expect(screen.queryByText(/onerror=secret/)).not.toBeInTheDocument();
   });
@@ -33,7 +33,7 @@ describe("Phase 4 controlled failures", () => {
     render(<App runtime={getStudioRuntime(window.location.hostname, "portable")} release={portableRelease} />);
     await waitFor(() => expect(screen.getByText("Paired. Local capabilities are disabled until explicitly enabled.")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
-    fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskDS manually/i }));
     fireEvent.click(within(screen.getByLabelText("DuskDS guide sequence")).getByRole("button", { name: /3 Build/i }));
     expect(screen.getByRole("button", { name: "Enable local capabilities" })).toBeInTheDocument();
   });

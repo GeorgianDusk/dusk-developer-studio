@@ -251,6 +251,75 @@ describe("local companion containment boundary", () => {
     expect(scaffoldFoundryTemplate).not.toHaveBeenCalled();
   });
 
+  it("returns only bounded reviewed Forge identity in DuskDS scaffold receipts", async () => {
+    const scaffoldDuskDsForge = vi.fn(async () => ({
+      ok: true,
+      path: "C:\\private\\project",
+      projectRoot: "C:\\private",
+      rustToolchain: "1.94.0",
+      source: "https://github.com/dusk-network/forge" as const,
+      tool: "dusk-forge",
+      forgePackage: "dusk-forge-cli",
+      forgeVersion: "0.4.0",
+      forgeRevision: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a",
+      platform: "windows" as const,
+      structureVerified: true,
+      files: ["Cargo.toml", "rust-toolchain.toml"]
+    }));
+    const { port } = await startServer({ capabilitiesEnabled: true, dependencies: { scaffoldDuskDsForge } });
+    const cookie = await pair(port);
+    const response = await request(port, {
+      method: "POST",
+      path: "/scaffold-duskds-forge",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "native-demo" })
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      ok: true,
+      projectName: "native-demo",
+      rustToolchain: "1.94.0",
+      platform: "windows",
+      structureVerified: true,
+      files: ["Cargo.toml", "rust-toolchain.toml"],
+      forgePackage: "dusk-forge-cli",
+      forgeVersion: "0.4.0",
+      forgeRevision: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a",
+      forgeRepository: "https://github.com/dusk-network/forge"
+    });
+    expect(JSON.stringify(response.body)).not.toContain("private");
+  });
+
+  it("fails closed instead of returning an invalid Forge scaffold receipt", async () => {
+    const scaffoldDuskDsForge = vi.fn(async () => ({
+      ok: true,
+      path: "C:\\private\\project",
+      projectRoot: "C:\\private",
+      rustToolchain: "1.94.0",
+      source: "https://github.com/dusk-network/forge" as const,
+      tool: "dusk-forge",
+      forgePackage: "dusk-forge-cli",
+      forgeVersion: "0.4.0",
+      forgeRevision: "not-a-commit",
+      platform: "windows" as const,
+      structureVerified: true,
+      files: ["Cargo.toml", "rust-toolchain.toml"]
+    }));
+    const { port } = await startServer({ capabilitiesEnabled: true, dependencies: { scaffoldDuskDsForge } });
+    const cookie = await pair(port);
+    const response = await request(port, {
+      method: "POST",
+      path: "/scaffold-duskds-forge",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "native-demo" })
+    });
+    expect(response.status).toBe(500);
+    expect(response.body).toMatchObject({ ok: false, code: "internal_error" });
+    expect(JSON.stringify(response.body)).not.toContain("not-a-commit");
+  });
+
   it("redacts local paths and raw tool errors from authenticated preflight output", async () => {
     const runPreflight = vi.fn(() => ({
       ok: false,

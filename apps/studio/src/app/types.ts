@@ -1,5 +1,5 @@
-import type { CommandPlatform } from "@dusk/core";
-import type { StepRoute } from "./journeyProgress";
+import type { CommandPlatform } from "@dusk/core/commands";
+import type { EvidenceMethod, EvidenceStatus, StepRoute } from "./journeyProgress";
 import type { CompanionRelease } from "./responseSchemas";
 
 export type RouteId = "overview" | StepRoute | "reference" | "troubleshooting" | "companion" | "settings";
@@ -27,4 +27,14 @@ export interface ScaffoldEvidence {
   files: string[];
   rustToolchain?: string;
   platform?: CommandPlatform;
+  forgePackage?: string;
+  forgeVersion?: string;
+  forgeRevision?: string;
+  forgeRepository?: string;
+}
+
+export interface CompletionSummary {
+  method: EvidenceMethod;
+  status: EvidenceStatus;
+  observedAt: string;
 }

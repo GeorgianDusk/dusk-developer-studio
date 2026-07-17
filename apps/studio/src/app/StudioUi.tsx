@@ -6,7 +6,13 @@ import type { Tone } from "./types";
 export type AsyncState = "idle" | "loading" | "success" | "empty" | "partial" | "stale" | "timeout" | "error" | "unavailable";
 
 export function toneForStatus(status: JourneyStatus): Tone {
-  return status === "verified" ? "good" : status === "blocked" ? "danger" : status === "ready" ? "warn" : "neutral";
+  return status === "verified" || status === "passed-automatically" || status === "confirmed-manually"
+    ? "good"
+    : status === "blocked"
+      ? "danger"
+      : status === "ready"
+        ? "warn"
+        : "neutral";
 }
 
 export function StatusPill({ tone, children }: { tone: Tone; children: ReactNode }) {
@@ -31,7 +37,7 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
 }
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
-  return <a className="text-link" href={href} target="_blank" rel="noreferrer">{children}<ArrowUpRight size={14} /></a>;
+  return <a className="text-link" href={href} target="_blank" rel="noreferrer">{children}<ArrowUpRight size={14} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>;
 }
 
 export function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {

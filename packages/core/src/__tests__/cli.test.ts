@@ -18,14 +18,14 @@ describe("command generation", () => {
   it("separates Windows build commands from Ubuntu-24.04 VM tests", () => {
     const commands = buildDuskDsCommandSet({ parentDir: "", projectName: "native-demo", platform: "windows" });
     expect(commands.build).toContain("Set-Location -LiteralPath 'C:\\tmp\\dusk-studio-projects\\native-demo'");
-    expect(commands.test).toContain("wsl -d Ubuntu-24.04");
-    expect(commands.test).toContain("cd '/mnt/c/tmp/dusk-studio-projects/native-demo'");
+    expect(commands.test).toContain("wsl -d Ubuntu-24.04 -- bash -lc");
+    expect(commands.test).toContain("cd ''/mnt/c/tmp/dusk-studio-projects/native-demo'' && dusk-forge test");
     expect(commands.testEnvironment).toBe("Ubuntu-24.04 WSL");
   });
 
   it("uses the local generated root on POSIX", () => {
     const commands = buildDuskDsCommandSet({ parentDir: "examples", projectName: "native-demo", platform: "posix" });
     expect(commands.projectPath).toBe(".generated/examples/native-demo");
-    expect(commands.testEnvironment).toBe("native POSIX");
+    expect(commands.testEnvironment).toBe("native Linux");
   });
 });
