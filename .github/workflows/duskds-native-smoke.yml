@@ -8,6 +8,7 @@ name: DuskDS native production smoke
       - apps/studio/**
       - config/phase5-policy.json
       - packages/**
+      - scripts/staging-smoke.mjs
   push:
     branches: [main]
     paths:
@@ -15,6 +16,7 @@ name: DuskDS native production smoke
       - apps/studio/**
       - config/phase5-policy.json
       - packages/**
+      - scripts/staging-smoke.mjs
   workflow_dispatch:
 
 permissions:
@@ -35,7 +37,7 @@ jobs:
       RUST_TOOLCHAIN: 1.94.0
       FORGE_COMMIT: d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a
       RUSK_COMMIT: ae1a38a2079c681126a96f94c17d282ea2639946
-      DUSKDS_GRAPHQL_URL: https://testnet.nodes.dusk.network/on/graphql/query
+      EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
     defaults:
       run:
         shell: bash
@@ -46,10 +48,31 @@ jobs:
         with:
           fetch-depth: 1
           persist-credentials: "false"
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Bind the run to the checked-out commit
         run: |
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
           test -z "$(git status --short)"
+      - name: Use the verified Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.11.0
+          package-manager-cache: "false"
+      - name: Read the official DuskDS Testnet node
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { checkDuskDsNodeRead } from "./scripts/staging-smoke.mjs";
+          const policy = JSON.parse(fs.readFileSync("config/phase5-policy.json", "utf8"));
+          const evidence = await checkDuskDsNodeRead(policy.duskds_testnet_graphql_url);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            "### DuskDS official node read",
+            `- Observed at: \`${evidence.observed_at}\``,
+            `- Height: \`${evidence.height}\``,
+            `- Hash: \`${evidence.hash}\``,
+            ""
+          ].join("\n"));
+          NODE
       - name: Install the pinned Rust and Dusk Forge toolchain
         run: |
           rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
@@ -68,23 +91,6 @@ jobs:
           dusk-forge --version
           git --version
           make --version | head -n 1
-          jq --version
-      - name: Read the official DuskDS Testnet node
-        run: |
-          RESPONSE="$(curl --proto '=https' --tlsv1.2 --fail --silent --show-error \
-            --max-redirs 0 --connect-timeout 10 --max-time 20 --max-filesize 65536 \
-            --header 'content-type: application/json' \
-            --data '{"query":"query { block(height: -1) { header { height hash } } }"}' \
-            "$DUSKDS_GRAPHQL_URL")"
-          HEIGHT="$(jq -er '.data.block.header.height | select(type == "number" and . > 0 and (. == floor))' <<<"$RESPONSE")"
-          HASH="$(jq -er '.data.block.header.hash | select(type == "string" and test("^[0-9A-Fa-f]{64}$"))' <<<"$RESPONSE")"
-          OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          {
-            echo "### DuskDS official node read"
-            echo "- Observed at: \`$OBSERVED_AT\`"
-            echo "- Height: \`$HEIGHT\`"
-            echo "- Hash: \`$HASH\`"
-          } >> "$GITHUB_STEP_SUMMARY"
       - name: Scaffold through the pinned Forge release
         run: |
           ROOT="$RUNNER_TEMP/duskds-native-smoke"
@@ -123,7 +129,7 @@ jobs:
           test "$SCHEMA_FUNCTIONS" -gt 0
           {
             echo "### DuskDS native smoke evidence"
-            echo "- Studio commit: \`$GITHUB_SHA\`"
+            echo "- Studio commit: \`$EXPECTED_COMMIT\`"
             echo "- Rust: \`$RUST_TOOLCHAIN\`"
             echo "- Dusk Forge commit: \`$FORGE_COMMIT\`"
             echo "- Rusk commit: \`$RUSK_COMMIT\`"

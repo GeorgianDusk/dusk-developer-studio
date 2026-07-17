@@ -133,7 +133,8 @@ assert.equal(duskDsRequest.options.method, "POST");
 assert.equal(duskDsRequest.options.maxBytes, 64_000);
 assert.equal(duskDsRequest.options.redirect, "error");
 assert.match(duskDsRequest.options.body, /block\(height: -1\)/);
-await assert.rejects(checkDuskDsNodeRead("https://testnet.nodes.dusk.network/other", async () => { throw new Error("must not fetch"); }), /exact HTTPS/);
+await assert.rejects(checkDuskDsNodeRead("https://testnet.nodes.dusk.network/other", async () => { throw new Error("must not fetch"); }), /exact official HTTPS/);
+await assert.rejects(checkDuskDsNodeRead("https://example.com/on/graphql/query", async () => { throw new Error("must not fetch"); }), /exact official HTTPS/);
 await assert.rejects(checkDuskDsNodeRead("https://testnet.nodes.dusk.network/on/graphql/query", async () => ({
   response: { ok: true, status: 200, url: "https://testnet.nodes.dusk.network/on/graphql/query", redirected: false },
   body: Buffer.from(JSON.stringify({ block: { header: { height: -1, hash: "a".repeat(64) } } }))

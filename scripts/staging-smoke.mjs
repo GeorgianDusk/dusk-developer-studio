@@ -249,9 +249,10 @@ export async function checkDuskDsNodeRead(graphqlUrl, boundedFetch = fetchBounde
   } catch {
     throw new Error("DuskDS Testnet GraphQL policy URL is invalid.");
   }
-  if (target.protocol !== "https:" || target.username || target.password || target.port
+  if (target.protocol !== "https:" || target.hostname !== "testnet.nodes.dusk.network"
+      || target.username || target.password || target.port
       || target.pathname !== "/on/graphql/query" || target.search || target.hash) {
-    throw new Error("DuskDS Testnet GraphQL policy URL must be an exact HTTPS /on/graphql/query endpoint.");
+    throw new Error("DuskDS Testnet GraphQL policy URL must be the exact official HTTPS endpoint.");
   }
   const { response, body } = await boundedFetch(target, {
     method: "POST",
