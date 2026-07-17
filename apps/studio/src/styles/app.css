@@ -210,7 +210,7 @@ a { color: inherit; }
   border-bottom: 1px solid var(--border);
 }
 .hero-copy, .page-intro { max-width: 880px; }
-.section-kicker, .step-heading > span, .path-card-code, .path-card-eyebrow {
+.section-kicker, .step-heading-meta > span:first-child, .path-card-code, .path-card-eyebrow {
   color: var(--info);
   font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   font-size: 11px;
@@ -245,6 +245,8 @@ a { color: inherit; }
   letter-spacing: 0.08em;
 }
 .mission-flags i { width: 7px; height: 7px; background: var(--success); box-shadow: 2px 2px 0 #183e32; }
+.mission-flags .preview i { background: var(--warning); box-shadow: 2px 2px 0 #493a1a; }
+.mission-flags .docs-only i { background: var(--info); box-shadow: 2px 2px 0 #17324a; }
 
 .workstation-scene {
   min-width: 0;
@@ -305,7 +307,7 @@ a { color: inherit; }
   position: relative;
   min-height: 294px;
   display: grid;
-  grid-template-rows: auto auto auto auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto auto auto 1fr auto;
   gap: 10px;
   align-content: start;
   padding: 24px;
@@ -320,6 +322,8 @@ a { color: inherit; }
 .path-card:hover { border-color: var(--info); background: var(--surface-raised); box-shadow: 4px 4px 0 #17324a; transform: translate(-1px, -1px); }
 .path-card:hover::before { background: var(--info); }
 .path-card-code { color: var(--quiet); font-size: 9px; }
+.path-card-availability { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.path-card-availability small { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .path-card-eyebrow { color: var(--info); }
 .path-card strong { margin-top: 4px; font-family: "Cascadia Mono", "JetBrains Mono", Consolas, monospace; font-size: 38px; line-height: 1; }
 .path-card p { max-width: 600px; margin: 0; color: var(--muted); line-height: 1.58; }
@@ -405,8 +409,12 @@ a { color: inherit; }
 .step-sheet, .done-panel, .focus-card, .command-pair > div, .reference-row, .trouble-row { min-width: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
 .step-sheet { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 28px; box-shadow: 4px 4px 0 #000; }
 .step-heading { padding-bottom: 24px; border-bottom: 1px solid var(--border-strong); }
+.step-heading-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .step-heading h1 { font-size: 40px; }
 .step-heading p { max-width: 740px; margin: 0; font-size: 16px; }
+.step-heading .journey-availability-note { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 13px; }
+.step-heading .journey-availability-note.evm { color: var(--warning); }
+.step-heading .journey-availability-note.duskds { color: var(--success); }
 .action-stack { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 0.44fr); gap: 0 24px; }
 .focus-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 13px; padding: 20px; }
 .focus-card.wide { grid-column: 1 / -1; }

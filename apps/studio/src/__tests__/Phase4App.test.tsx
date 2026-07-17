@@ -33,8 +33,8 @@ describe("Phase 4 controlled failures", () => {
     render(<App runtime={getStudioRuntime(window.location.hostname, "portable")} release={portableRelease} />);
     await waitFor(() => expect(screen.getByText("Paired. Local capabilities are disabled until explicitly enabled.")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
-    fireEvent.click(screen.getByRole("button", { name: /Start Solidity path/i }));
-    fireEvent.click(within(screen.getByLabelText("DuskEVM guide sequence")).getByRole("button", { name: /3 Build/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start native path/i }));
+    fireEvent.click(within(screen.getByLabelText("DuskDS guide sequence")).getByRole("button", { name: /3 Build/i }));
     expect(screen.getByRole("button", { name: "Enable local capabilities" })).toBeInTheDocument();
   });
 });

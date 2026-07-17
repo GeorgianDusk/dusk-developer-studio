@@ -1,7 +1,21 @@
 # Phase 5 Pilot And Independent Review Protocol
 
-Date: 2026-07-15
+Date: 2026-07-17
 Status: ready for assigned reviewers and participants
+
+## Launch Scope
+
+Phase 5 currently evaluates DuskDS as the only production path. DuskEVM is an
+educational pre-launch preview while its Testnet is unavailable; it contributes
+no required source, live-smoke, or pilot evidence to the DuskDS decision. A
+future DuskEVM activation requires a reviewed policy change and successful real
+RPC verification before EVM evidence can become launch-gating.
+
+The hosted Studio remains docs-only. It must state that native preflight and
+scaffolding need a future full local companion distribution; hosted pilot tasks
+must not imply those machine actions ran in the browser. Separately authorized
+operator smoke evidence may exercise the local toolchain, but must preserve the
+companion boundary and redaction rules.
 
 ## Independent Reviews
 
@@ -49,34 +63,27 @@ GitHub as its external channel, or incomplete.
 
 ## Pilot Cohort
 
-Minimum eight observed sessions:
+Minimum eight observed DuskDS sessions:
 
-- at least three DuskEVM developers;
-- at least three native Rust/WASM developers;
-- novice and experienced participants represented;
+- all participants exercise the DuskDS production path;
+- native Rust/WASM novice and experienced developers are represented;
 - Windows, WSL, Linux, and macOS contexts represented.
 
 Use pseudonymous participant ids. Do not commit names, email addresses, wallet addresses, local paths, recordings, or raw screen captures without a separate data-handling approval.
 
 ## Tasks
 
-### DuskEVM
-
-1. Choose the correct path and explain why.
-2. Complete Setup with RPC/wallet read-only evidence or recover from the injected failure.
-3. Find the approved Testnet access route.
-4. Create/build the Foundry starter locally.
-5. Use Inspect for a supplied non-sensitive Testnet identifier.
-6. Find source, support, and local-companion boundaries.
-
-### Native
+### DuskDS
 
 1. Choose the native path and explain why.
-2. Complete Dusk Forge/Rust/WSL preflight or recover from the injected failure.
+2. Explain the hosted docs-only boundary, then complete an authorized Dusk Forge/Rust/WSL preflight or recover from the injected failure.
 3. Identify the correct access/API layer.
 4. Scaffold and build the constrained counter starter.
-5. Identify execution/finality/data-driver evidence in Inspect.
-6. Find source, support, and manual deploy boundaries.
+5. Verify both WASM artifacts and the VM-test result separately.
+6. Observe a positive block height and 64-hex hash from the official Testnet node.
+7. Identify execution/finality/data-driver evidence in Inspect.
+8. Use the current `/on/driver:<contract_id>/...` schema and encoding/decoding routes without signing or deployment.
+9. Find source, support, and manual deploy boundaries.
 
 Each participant receives one controlled recoverable failure. Never inject a real wallet, secret, filesystem, or network safety failure.
 
@@ -96,7 +103,7 @@ For every session record:
 
 ## Acceptance Thresholds
 
-- eight sessions minimum, with at least 3/3 path coverage;
+- eight DuskDS sessions minimum;
 - completion rate at least 83%;
 - recovery rate at least 80% among attempted recoveries;
 - average trust score at least 4/5;

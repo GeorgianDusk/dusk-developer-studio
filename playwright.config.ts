@@ -4,7 +4,7 @@ const publicUrl = process.env.DUSK_STUDIO_PUBLIC_URL?.replace(/\/$/, "");
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  testIgnore: publicUrl ? [/assurance\.spec\.ts/, /studio\.spec\.ts/] : /public-release\.spec\.ts/,
+  testIgnore: publicUrl ? [/assurance\.spec\.ts/, /studio\.spec\.ts/] : [],
   timeout: 45_000,
   expect: { timeout: 8_000 },
   retries: process.env.CI ? 1 : 0,

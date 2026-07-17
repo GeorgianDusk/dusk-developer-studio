@@ -8,6 +8,8 @@ import { URL } from "node:url";
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
+const DUSKDS_BLOCK_HASH_RE = /^[a-f0-9]{64}$/i;
+const DUSKDS_GRAPHQL_QUERY = "query { block(height: -1) { header { height hash } } }";
 const REQUIRED_PREDEPLOY_ASSURANCE = ["dependency_audit", "secret_scan", "browser_matrix", "source_access"];
 const SYNTHETIC_USER_AGENT = "DuskStudioSynthetic/1.0 (+https://github.com/GeorgianDusk/dusk-developer-studio)";
 export const ASSURANCE_CHECK_OWNERSHIP = Object.freeze({
@@ -15,7 +17,7 @@ export const ASSURANCE_CHECK_OWNERSHIP = Object.freeze({
   key_routes: "studio",
   release_parity: "studio",
   source_links: "upstream",
-  rpc_chain_id: "upstream",
+  duskds_node_read: "upstream",
   rpc_degradation: "studio",
   tls_expiry: "studio",
   development_port_closed: "studio",
@@ -202,7 +204,10 @@ export function classifyAssuranceChecks(checks) {
   const ownedChecks = Object.entries(ASSURANCE_CHECK_OWNERSHIP);
   const studioChecks = ownedChecks.filter(([, owner]) => owner === "studio").map(([name]) => name);
   const upstreamChecks = ownedChecks.filter(([, owner]) => owner === "upstream").map(([name]) => name);
-  const unclassifiedChecks = Object.keys(observedChecks).filter((name) => !Object.hasOwn(ASSURANCE_CHECK_OWNERSHIP, name));
+  const unclassifiedChecks = Object.keys(observedChecks).filter((name) => {
+    if (Object.hasOwn(ASSURANCE_CHECK_OWNERSHIP, name)) return false;
+    return !(name === "rpc_chain_id" && observedChecks[name]?.status === "deferred");
+  });
   const groupStatus = (names) => names.every((name) => observedChecks[name]?.status === "passed") ? "passed" : "failed";
   return {
     studio_status: groupStatus([...studioChecks, ...unclassifiedChecks]),
@@ -228,17 +233,59 @@ export function selectScheduledHeartbeatSignal(browserOutcome, syntheticOutcome,
     : "failure";
 }
 
-async function checkRpc(rpcUrl, expectedChainId) {
-  const { response, body } = await fetchBounded(rpcUrl, {
+function normalizeDuskDsHeight(value) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) return value;
+  if (typeof value === "string" && /^\d{1,16}$/.test(value)) {
+    const parsed = Number(value);
+    if (Number.isSafeInteger(parsed) && parsed > 0) return parsed;
+  }
+  throw new Error("DuskDS Testnet GraphQL returned an invalid or unbounded block height.");
+}
+
+export async function checkDuskDsNodeRead(graphqlUrl, boundedFetch = fetchBounded, now = () => new Date()) {
+  let target;
+  try {
+    target = new URL(graphqlUrl);
+  } catch {
+    throw new Error("DuskDS Testnet GraphQL policy URL is invalid.");
+  }
+  if (target.protocol !== "https:" || target.username || target.password || target.port
+      || target.pathname !== "/on/graphql/query" || target.search || target.hash) {
+    throw new Error("DuskDS Testnet GraphQL policy URL must be an exact HTTPS /on/graphql/query endpoint.");
+  }
+  const { response, body } = await boundedFetch(target, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_chainId", params: [] }),
-    maxBytes: 64_000
+    headers: { "content-type": "text/plain; charset=utf-8" },
+    body: DUSKDS_GRAPHQL_QUERY,
+    maxBytes: 64_000,
+    redirect: "error"
   });
-  if (!response.ok) throw new Error(`Testnet RPC returned ${response.status}.`);
+  if (response.redirected === true || (response.status >= 300 && response.status < 400) || response.url !== target.href) {
+    throw new Error("DuskDS Testnet GraphQL must not redirect or change its exact URL.");
+  }
+  if (!response.ok) throw new Error(`DuskDS Testnet GraphQL returned ${response.status}.`);
   const payload = JSON.parse(body.toString("utf8"));
-  if (payload.result !== expectedChainId) throw new Error(`Testnet RPC returned chain ${payload.result ?? "missing"}, expected ${expectedChainId}.`);
-  return { status: "passed", chain_id: payload.result };
+  if (Array.isArray(payload?.errors) && payload.errors.length) throw new Error("DuskDS Testnet GraphQL returned query errors.");
+  const height = normalizeDuskDsHeight(payload?.block?.header?.height);
+  const hash = payload?.block?.header?.hash;
+  if (typeof hash !== "string" || !DUSKDS_BLOCK_HASH_RE.test(hash)) {
+    throw new Error("DuskDS Testnet GraphQL returned an invalid 64-hex block hash.");
+  }
+  return {
+    status: "passed",
+    endpoint: target.href,
+    height,
+    hash: hash.toLowerCase(),
+    observed_at: now().toISOString()
+  };
+}
+
+function deferredRpcChainId(policy) {
+  const deferral = policy?.deferred_synthetic_checks?.rpc_chain_id;
+  if (deferral?.path !== "evm" || typeof deferral.reason !== "string" || !deferral.reason.trim() || deferral.reason.length > 300) {
+    throw new Error("DuskEVM RPC deferral policy is missing or invalid.");
+  }
+  return { status: "deferred", path: "evm", reason: deferral.reason };
 }
 
 export async function runStagingSmoke(options) {
@@ -294,7 +341,8 @@ export async function runStagingSmoke(options) {
     for (const url of options.policy.key_source_urls) statuses[url] = await fetchAvailability(url);
     return { status: "passed", urls: statuses };
   });
-  await record("rpc_chain_id", () => checkRpc(options.rpcUrl, options.policy.expected_testnet_chain_id));
+  await record("duskds_node_read", () => checkDuskDsNodeRead(options.policy.duskds_testnet_graphql_url));
+  checks.rpc_chain_id = deferredRpcChainId(options.policy);
   await record("rpc_degradation", async () => {
     if (options.rpcDegradationStatus !== "success" && options.rpcDegradationStatus !== "passed") throw new Error("Hosted browser RPC degradation test did not pass in this run.");
     return { status: "passed", evidence: "hosted-browser-offline-recovery" };

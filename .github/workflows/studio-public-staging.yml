@@ -1,4 +1,4 @@
-name: Studio public staging assurance
+name: Studio public deployment assurance
 
 "on":
   schedule:
@@ -74,11 +74,11 @@ jobs:
           NODE
       - name: Install Chromium for hosted desktop and mobile checks
         run: pnpm exec playwright install --with-deps chromium
-      - name: Run public routes and controlled RPC degradation checks
+      - name: Run public routes and controlled DuskEVM preview degradation checks
         id: browser
         continue-on-error: true
         run: pnpm e2e:public
-      - name: Run receipt, exact-commit, TLS, source, RPC, fallback-cache, and closed-port checks
+      - name: Run receipt, exact-commit, TLS, DuskDS node, source, fallback-cache, and closed-port checks
         id: synthetic
         continue-on-error: true
         run: node scripts/check-staging.mjs --url="$TARGET_URL" --environment="$EXPECTED_ENVIRONMENT" --commit="$GITHUB_SHA" --rpc-degradation="${{ steps.browser.outcome }}" --out=output/public-synthetic-receipt.json
@@ -141,7 +141,7 @@ jobs:
             *) title="Studio public deployment assurance failed" ;;
           esac
           issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
-          body="Scheduled assurance failed for $TARGET_URL at commit $GITHUB_SHA. Studio status: ${{ steps.classification.outputs.studio_status }}. Upstream dependency status: ${{ steps.classification.outputs.upstream_status }}. External success heartbeat: ${{ steps.external_heartbeat.outcome }}. External failure signal: ${{ steps.external_failure.outcome }}. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="Scheduled DuskDS production assurance failed for $TARGET_URL at commit $GITHUB_SHA. Studio status: ${{ steps.classification.outputs.studio_status }}. DuskDS upstream dependency status: ${{ steps.classification.outputs.upstream_status }}. DuskEVM RPC remains an expected non-blocking pre-launch deferral. External success heartbeat: ${{ steps.external_heartbeat.outcome }}. External failure signal: ${{ steps.external_failure.outcome }}. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if [ -n "$issue" ]; then
             gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
           else

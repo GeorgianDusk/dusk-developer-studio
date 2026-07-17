@@ -61,6 +61,7 @@ for (const step of signedWorkflow.split(/\n(?= {6}- )/)) {
 }
 
 const publicStagingWorkflow = read(".github/workflows/studio-public-staging.yml");
+assert.match(publicStagingWorkflow, /^name: Studio public deployment assurance$/m);
 assert.match(publicStagingWorkflow, /^"on":\n {2}schedule:\n {4}- cron: "23 \*\/6 \* \* \*"\n {2}workflow_dispatch:/m);
 assert.doesNotMatch(publicStagingWorkflow, /^ {2}(?:push|pull_request):/m);
 assert.match(publicStagingWorkflow, /--commit="\$GITHUB_SHA"/);
@@ -99,7 +100,10 @@ assert.match(publicReleaseSpec, /expect\(page\.url\(\), pathname\)\.toBe\(expect
 assert.match(read("docs/operations/public-monitoring.md"), /STUDIO_MONITOR_HEARTBEAT_FAIL_URL/);
 assert.match(read("docs/operations/public-monitoring.md"), /external_direct_health/);
 const domainMigration = read("docs/deployment/project-domain-migration.md");
-assert.match(domainMigration, /blocked on one exact George-controlled FQDN/);
+assert.match(domainMigration, /current origin approved for production/);
+assert.match(domainMigration, /optional future migration, not a current launch\s+blocker/);
+assert.match(domainMigration, /client-side resolver or\s+endpoint-security interception, not an invalid certificate/);
+assert.match(domainMigration, /Never add a browser, antivirus, or TLS exception/);
 assert.match(domainMigration, /Stage 1: prepare source and the exact candidate/);
 assert.match(domainMigration, /Stage 4: activate scheduled and external monitoring/);
 const caddyDryRunIndex = domainMigration.indexOf("non-mutating dry run of candidate configuration **B**");
@@ -111,7 +115,7 @@ assert.match(domainMigration, /finish with A's release id, hashes, Studio routes
 assert.ok(domainMigration.indexOf("one real deployment of B") < domainMigration.indexOf("Immediately dispatch public assurance"), "The one real candidate deployment must precede manual assurance.");
 assert.match(domainMigration, /new versioned\s+rollback release from the retained exact A artifact/);
 assert.match(domainMigration, /-ExpectedCurrentReleaseId '<B-release-id>'/);
-assert.match(domainMigration, /project hostname and the\s+preview alias/);
+assert.match(domainMigration, /project hostname and the\s+current production alias/);
 assert.ok(domainMigration.indexOf("Immediately dispatch public assurance") < domainMigration.indexOf("Set `DUSK_STUDIO_PUBLIC_URL=https://<fqdn>`"), "Manual production assurance must precede the scheduled-monitor target cutover.");
 
 const caddyWorkflow = read(".github/workflows/platform-caddy-security.yml");
@@ -127,13 +131,36 @@ assert.match(watchdogWorkflow, /gh issue create[\s\S]*--assignee GeorgianDusk/);
 assert.match(watchdogWorkflow, /ref: \$\{\{ github\.sha \}\}[\s\S]*git rev-parse HEAD/);
 
 const phase5Policy = JSON.parse(read("config/phase5-policy.json"));
+assert.deepEqual(phase5Policy.production_paths, ["duskds"]);
+assert.deepEqual(phase5Policy.preview_paths, ["evm"]);
+assert.equal(phase5Policy.duskds_testnet_graphql_url, "https://testnet.nodes.dusk.network/on/graphql/query");
+assert.ok(phase5Policy.duskds_node_read_evidence.max_age_hours > 0);
+assert.ok(phase5Policy.duskds_node_read_evidence.max_receipt_skew_minutes > 0);
+assert.equal(phase5Policy.deferred_synthetic_checks.rpc_chain_id.path, "evm");
+assert.match(phase5Policy.deferred_synthetic_checks.rpc_chain_id.reason, /Testnet is not live/i);
+assert.ok(phase5Policy.deferred_synthetic_checks.rpc_chain_id.activation_requirements.some((requirement) => /real DuskEVM Testnet RPC/i.test(requirement)));
+assert.ok(!phase5Policy.required_synthetic_checks.includes("rpc_chain_id"));
+assert.ok(phase5Policy.required_synthetic_checks.includes("duskds_node_read"));
+assert.deepEqual(phase5Policy.required_native_smoke_steps, ["preflight", "node_read", "scaffold", "build_artifacts", "vm_test", "inspect"]);
+assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total);
+assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
+const stagingSmoke = read("scripts/staging-smoke.mjs");
+assert.doesNotMatch(stagingSmoke, /eth_chainId|checkRpc\(/, "DuskEVM RPC must not be requested while its policy check is deferred.");
+assert.match(stagingSmoke, /checks\.rpc_chain_id = deferredRpcChainId\(options\.policy\)/);
+assert.match(stagingSmoke, /record\("duskds_node_read", \(\) => checkDuskDsNodeRead/);
 assert.ok(phase5Policy.required_synthetic_checks.includes("monitor_heartbeat"));
 assert.ok(phase5Policy.required_synthetic_checks.includes("external_dead_man"));
 assert.ok(phase5Policy.required_synthetic_checks.includes("external_direct_health"));
 assert.ok(phase5Policy.monitoring_evidence.direct_health_max_age_hours > 0);
 const phase5Template = JSON.parse(read("config/phase5-evidence.template.json"));
+assert.equal(phase5Template.synthetics.checks.rpc_chain_id.status, "deferred");
+assert.equal(phase5Template.synthetics.checks.rpc_chain_id.reason, phase5Policy.deferred_synthetic_checks.rpc_chain_id.reason);
+assert.ok(!Object.hasOwn(phase5Template.live_smoke, "evm_steps"));
+assert.deepEqual(Object.keys(phase5Template.live_smoke.native_steps), phase5Policy.required_native_smoke_steps);
 assert.equal(phase5Template.synthetics.checks.external_direct_health.recovery_verified, false);
 assert.equal(phase5Template.synthetics.checks.external_direct_health.recovered_at, "pending");
+assert.match(read("docs/operations/public-monitoring.md"), /https:\/\/studio\.134-122-59-217\.sslip\.io\/healthz/);
+assert.doesNotMatch(read("docs/operations/public-monitoring.md"), /https:\/\/<project-domain>\/healthz/);
 
 const caddy = read("deploy/caddy/studio.caddy");
 assert.doesNotMatch(caddy, /reverse_proxy|127\.0\.0\.1|localhost|8788|basic_auth|basicauth|\/login/i);

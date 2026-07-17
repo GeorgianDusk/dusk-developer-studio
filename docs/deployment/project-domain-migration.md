@@ -1,19 +1,25 @@
 # Project domain migration
 
 Owner: George
-Status: prepared; blocked on one exact George-controlled FQDN
+Status: optional future migration procedure; current origin approved for production
 
-The current `studio.134-122-59-217.sslip.io` origin is a preview and is blocked
-by at least one common endpoint-security path. Production must use a dedicated
-project hostname controlled by George. Prefer a subdomain so DNS and rollback
-remain isolated from unrelated services.
+The current `studio.134-122-59-217.sslip.io` origin is the approved GeorgianDusk
+production hostname until George chooses to replace it. A dedicated project
+hostname is therefore an optional future migration, not a current launch
+blocker. Prefer a subdomain so DNS and rollback remain isolated from unrelated
+services.
 
-## Required decision
+One earlier protected-client failure was traced to client-side resolver or
+endpoint-security interception, not an invalid certificate served by the
+approved origin. That client path must still be rechecked during any future
+migration. Never add a browser, antivirus, or TLS exception to force a pass.
 
-Record one exact lowercase FQDN, such as `studio.example.com`, and proof that
-George controls its DNS. Do not use an official-organization hostname, a
-wildcard, a URL path, an apex shared with unrelated services, or an unreviewed
-dynamic-DNS suffix.
+## Future migration decision
+
+If George later chooses to migrate, record one exact lowercase FQDN, such as
+`studio.example.com`, and proof that George controls its DNS. Do not use an
+official-organization hostname, a wildcard, a URL path, an apex shared with
+unrelated services, or an unreviewed dynamic-DNS suffix.
 
 No DNS or Caddy cutover is authorized merely by editing this document.
 
@@ -29,18 +35,18 @@ No DNS or Caddy cutover is authorized merely by editing this document.
 
 After the FQDN is selected:
 
-1. Add the exact hostname to `config/phase5-policy.json`; retain the preview
-   hostname through the compatibility period.
-2. Add the exact hostname alongside the preview alias in
+1. Add the exact hostname to `config/phase5-policy.json`; retain the current
+   production hostname through the compatibility period.
+2. Add the exact hostname alongside the current production alias in
    `deploy/caddy/studio.caddy` and in the private platform-owned fragment.
    Use reviewed literal hostnames, not a wildcard or runtime environment
    placeholder.
 3. Make all private shared-config, static-release, and binary-maintenance smoke
-   checks test the production hostname while keeping the preview as a
+   checks test the new production hostname while keeping the current origin as a
    compatibility check.
 4. Keep CSP same-origin and preserve the prohibition on ports 5173 and 8788.
 5. Leave `DUSK_STUDIO_PUBLIC_URL` and
-   `DUSK_STUDIO_PUBLIC_ENVIRONMENT` on the last verified preview/staging
+   `DUSK_STUDIO_PUBLIC_ENVIRONMENT` on the last verified current production
    deployment. Do not point scheduled monitoring at the new hostname yet.
 6. Prepare two distinct external checks without marking them passed: the
    six-hour dead-man heartbeat and a paused direct HTTPS monitor for
@@ -68,7 +74,7 @@ After the FQDN is selected:
 6. Only after that rehearsal passes, deploy B once with a new live release id.
    Do not reuse either the dry-run or drill id, and do not run the rehearsal
    after the live deployment.
-7. Verify the complete certificate chain, exact project and preview hostnames,
+7. Verify the complete certificate chain, exact project and current production hostnames,
    expiry, TLS 1.2/1.3, and rejection of TLS 1.0/1.1.
 8. Verify `/`, `/healthz`, receipts, SPA fallback, immutable assets, CSP, cache
    policy, log privacy, closed ports, both Studio aliases, and both
@@ -106,7 +112,7 @@ After the FQDN is selected:
    verify
    the rollback release serves A's exact manifest fingerprint and file content,
    health, routes, and cache behavior through both the project hostname and the
-   preview alias. Verify the active symlink names the new rollback release; do
+   current production alias. Verify the active symlink names the new rollback release; do
    not claim that A's original release id was reactivated. Leave repository
    variables and external monitors unchanged. An unverified or ad-hoc file copy
    is not an acceptable rollback.
@@ -141,7 +147,7 @@ evidence. Final sign-off occurs after the evaluator passes; it is not a
 precondition for deploying the guarded candidate needed to collect live
 evidence.
 
-Keep the preview alias during the agreed compatibility window. Remove it only
+Keep the previous production alias during the agreed compatibility window. Remove it only
 through another reviewed Caddy change after monitoring and rollback evidence
 for the project domain is complete.
 

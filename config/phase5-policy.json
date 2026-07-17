@@ -1,9 +1,31 @@
 {
   "schema_version": 1,
+  "production_paths": [
+    "duskds"
+  ],
+  "preview_paths": [
+    "evm"
+  ],
   "candidate_hosts": [
     "studio.134-122-59-217.sslip.io"
   ],
-  "expected_testnet_chain_id": "0x2e9",
+  "duskds_testnet_graphql_url": "https://testnet.nodes.dusk.network/on/graphql/query",
+  "duskds_node_read_evidence": {
+    "max_age_hours": 15,
+    "max_receipt_skew_minutes": 10
+  },
+  "deferred_synthetic_checks": {
+    "rpc_chain_id": {
+      "path": "evm",
+      "expected_chain_id": "0x2e9",
+      "reason": "DuskEVM Testnet is not live; the EVM journey is an educational pre-launch preview and does not gate DuskDS production.",
+      "activation_requirements": [
+        "reviewed Phase 5 policy change moving evm into production_paths",
+        "successful real DuskEVM Testnet RPC chain-ID verification",
+        "updated EVM live-smoke and pilot evidence"
+      ]
+    }
+  },
   "minimum_tls_days_remaining": 14,
   "required_owners": [
     "product",
@@ -22,8 +44,7 @@
   ],
   "pilot": {
     "minimum_total": 8,
-    "minimum_evm": 3,
-    "minimum_native": 3,
+    "minimum_duskds": 8,
     "required_experience": [
       "novice",
       "experienced"
@@ -44,7 +65,7 @@
     "release_parity",
     "key_routes",
     "source_links",
-    "rpc_chain_id",
+    "duskds_node_read",
     "rpc_degradation",
     "tls_expiry",
     "companion_port_closed",
@@ -61,18 +82,12 @@
     "direct_health_max_age_hours": 15,
     "external_rehearsal_max_age_days": 30
   },
-  "required_evm_smoke_steps": [
-    "provider",
-    "account",
-    "balance",
-    "build",
-    "deploy",
-    "receipt",
-    "explorer"
-  ],
   "required_native_smoke_steps": [
+    "preflight",
+    "node_read",
     "scaffold",
-    "build",
+    "build_artifacts",
+    "vm_test",
     "inspect"
   ],
   "rollback_targets_seconds": {
@@ -80,9 +95,9 @@
     "platform": 600
   },
   "key_source_urls": [
-    "https://docs.dusk.network/developer/overview/",
-    "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
-    "https://docs.dusk.network/developer/integrations/w3sper",
+    "https://docs.dusk.network/developer/smart-contracts-duskds/",
+    "https://docs.dusk.network/developer/integrations/w3sper/",
+    "https://docs.dusk.network/developer/integrations/http-api/",
     "https://github.com/dusk-network/forge"
   ],
   "companion_distribution": {
