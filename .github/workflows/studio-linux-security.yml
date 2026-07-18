@@ -180,18 +180,43 @@ jobs:
           node scripts/companion-verify.mjs "--release=$releaseRoot"
           $node = Join-Path $releaseRoot 'runtime/node.exe'
           $companion = Join-Path $releaseRoot 'app/companion.mjs'
-          $elevatedOutput = (& $node $companion --no-open 2>&1 | Out-String)
-          $elevatedStatus = $LASTEXITCODE
-          if ($elevatedStatus -eq 0) { throw 'Extracted Windows companion accepted an elevated launch.' }
-          if (-not $elevatedOutput.Contains('Dusk Developer Studio refuses elevated or root execution.')) {
-            throw 'Extracted Windows companion did not report the required elevated-launch denial.'
-          }
-          $unexpectedListener = $false
+          $process = $null
           try {
-            Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5173/healthz' -TimeoutSec 2 | Out-Null
-            $unexpectedListener = $true
-          } catch {}
-          if ($unexpectedListener) { throw 'Rejected elevated companion launch left the Studio health endpoint reachable.' }
+            $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $processInfo.FileName = $node
+            $processInfo.UseShellExecute = $false
+            $processInfo.CreateNoWindow = $true
+            $processInfo.RedirectStandardOutput = $true
+            $processInfo.RedirectStandardError = $true
+            $processInfo.ArgumentList.Add($companion)
+            $processInfo.ArgumentList.Add('--no-open')
+            $process = [System.Diagnostics.Process]::Start($processInfo)
+            $stdout = $process.StandardOutput.ReadToEndAsync()
+            $stderr = $process.StandardError.ReadToEndAsync()
+            if (-not $process.WaitForExit(15000)) {
+              $process.Kill($true)
+              $process.WaitForExit()
+              throw 'Extracted Windows companion accepted an elevated launch.'
+            }
+            $process.WaitForExit()
+            $elevatedStatus = $process.ExitCode
+            $elevatedOutput = "$($stdout.Result)`n$($stderr.Result)"
+            if ($elevatedStatus -eq 0) { throw 'Extracted Windows companion accepted an elevated launch.' }
+            if (-not $elevatedOutput.Contains('Dusk Developer Studio refuses elevated or root execution.')) {
+              throw 'Extracted Windows companion did not report the required elevated-launch denial.'
+            }
+            $unexpectedListener = $false
+            try {
+              Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5173/healthz' -TimeoutSec 2 | Out-Null
+              $unexpectedListener = $true
+            } catch {}
+            if ($unexpectedListener) { throw 'Rejected elevated companion launch left the Studio health endpoint reachable.' }
+          } finally {
+            if ($null -ne $process -and -not $process.HasExited) {
+              $process.Kill($true)
+              $process.WaitForExit()
+            }
+          }
       - name: Validate Windows, WSL, and POSIX command generation
         run: pnpm exec vitest run packages/core/src/__tests__/cli.test.ts packages/local-agent/src/__tests__/safePaths.test.ts packages/local-agent/src/__tests__/preflightFailureKinds.test.ts --reporter=verbose
       - name: Run platform-neutral compile and secret gates

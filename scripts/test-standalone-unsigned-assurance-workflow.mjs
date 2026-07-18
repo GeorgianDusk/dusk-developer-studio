@@ -33,6 +33,7 @@ assert.doesNotMatch(workflow, /gh release|create-release|action-gh-release|npm p
 assert.doesNotMatch(workflow, /Azure\/login|artifact-signing|cosign|notarytool|stapler staple|Developer ID/i);
 assert.doesNotMatch(workflow, /actions\/cache@/i);
 assert.doesNotMatch(workflow, /^\s+cache:\s+/m);
+assert.doesNotMatch(workflow, /\b[0-9]+_[0-9]+\b/);
 for (const match of workflow.matchAll(/package-manager-cache:\s*([^\n]+)/g)) {
   assert.match(match[1].trim(), /^"?false"?$/);
 }
@@ -136,11 +137,15 @@ for (const probe of [
 
 const macosObservation = "--operation=platform-observations --target=darwin-arm64";
 for (const probe of [
-  "codesign --verify --strict",
-  "Signature=adhoc",
+  '"$safe_app|$sea/$safe_name"',
+  '"$actions_app|$sea/$actions_name"',
+  'cmp -s "$source_executable" "$executable"',
+  'codesign --verify --strict --verbose=4 "$source_executable"',
+  'codesign -d --verbose=4 "$source_executable" 2>&1',
   'test "$gatekeeper_status" -ne 0',
   "rejected([[:space:]]|$)"
 ]) assertProbeBefore(probe, macosObservation);
+assert.doesNotMatch(workflow, /codesign --verify --strict --verbose=4 "\$executable"/);
 
 assert.equal(policy.assurance_level, "unsigned-engineering-only");
 assert.equal(policy.same_runner, true);

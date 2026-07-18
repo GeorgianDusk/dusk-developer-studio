@@ -167,7 +167,7 @@ jobs:
           $guardProcess = [System.Diagnostics.Process]::Start($guardInfo)
           $guardStdout = $guardProcess.StandardOutput.ReadToEndAsync()
           $guardStderr = $guardProcess.StandardError.ReadToEndAsync()
-          if (-not $guardProcess.WaitForExit(30_000)) {
+          if (-not $guardProcess.WaitForExit(30000)) {
             $guardProcess.Kill($true)
             throw 'Elevated-launch rejection probe timed out.'
           }
@@ -244,7 +244,7 @@ jobs:
               $lifecycleInfo.ArgumentList.Add($argument)
             }
             $lifecycleProcess = [System.Diagnostics.Process]::Start($lifecycleInfo)
-            if (-not $lifecycleProcess.WaitForExit(300_000)) {
+            if (-not $lifecycleProcess.WaitForExit(300000)) {
               $lifecycleProcess.Kill($true)
               throw 'Standard-user Windows lifecycle timed out.'
             }
@@ -501,11 +501,14 @@ jobs:
           node scripts/standalone-safe-zip-extract.mjs --archive="$package" --target=darwin-arm64 --ephemeral-root="$RUNNER_TEMP" --out="$install" --profile=unsigned-engineering
           safe_app="$install/Dusk Developer Studio.app"
           actions_app="$install/Dusk Developer Studio Local Actions.app"
-          for app in "$safe_app" "$actions_app"; do
+          for record in "$safe_app|$sea/$safe_name" "$actions_app|$sea/$actions_name"; do
+            app="${record%%|*}"
+            source_executable="${record#*|}"
             executable="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+            cmp -s "$source_executable" "$executable"
             file "$executable" | grep -F 'Mach-O 64-bit executable arm64'
-            codesign --verify --strict --verbose=4 "$executable"
-            codesign -d --verbose=4 "$executable" 2>&1 | grep -F 'Signature=adhoc'
+            codesign --verify --strict --verbose=4 "$source_executable"
+            codesign -d --verbose=4 "$source_executable" 2>&1 | grep -F 'Signature=adhoc'
             xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");GitHubActions;" "$app"
             set +e
             gatekeeper_output="$(spctl --assess --type execute --verbose=4 "$app" 2>&1)"

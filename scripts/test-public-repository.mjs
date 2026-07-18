@@ -93,7 +93,12 @@ const elevatedArchiveStep = requiredWindowsWorkflow.slice(elevatedArchiveStepSta
 assert.match(elevatedArchiveStep, /Dusk Developer Studio refuses elevated or root execution\./);
 assert.match(elevatedArchiveStep, /\$elevatedStatus -eq 0/);
 assert.match(elevatedArchiveStep, /\$unexpectedListener/);
-assert.doesNotMatch(elevatedArchiveStep, /Start-Process|did not become healthy/);
+assert.match(elevatedArchiveStep, /\[System\.Diagnostics\.ProcessStartInfo\]::new\(\)/);
+assert.match(elevatedArchiveStep, /RedirectStandardOutput = \$true[\s\S]*RedirectStandardError = \$true/);
+assert.match(elevatedArchiveStep, /StandardOutput\.ReadToEndAsync\(\)[\s\S]*StandardError\.ReadToEndAsync\(\)/);
+assert.match(elevatedArchiveStep, /\$process\.WaitForExit\(15000\)/);
+assert.match(elevatedArchiveStep, /finally \{[\s\S]*\$process\.Kill\(\$true\)[\s\S]*\$process\.WaitForExit\(\)/);
+assert.doesNotMatch(elevatedArchiveStep, /did not become healthy/);
 
 const signedWorkflow = read(".github/workflows/studio-companion-signed-rc.yml");
 assert.doesNotMatch(signedWorkflow, /^\s+(?:push|pull_request|schedule):/m);
