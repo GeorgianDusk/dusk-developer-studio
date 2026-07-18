@@ -323,6 +323,43 @@ assert.match(lifecycleBlock, /\$baselineProcessSnapshot = Get-SidProcessSnapshot
 assert.match(lifecycleBlock, /\$baselineUnresolvedProcessKeys =[\s\S]*?HashSet\[string\]/);
 assert.match(lifecycleBlock, /baseline unresolved process lacked a stable instance identity/i);
 assert.match(lifecycleBlock, /new live process-owner queries remained unresolved after cleanup/);
+const baselineSnapshot = lifecycleBlock.indexOf(
+  "$baselineProcessSnapshot = Get-SidProcessSnapshot -Sid 'S-1-0-0'"
+);
+const createTemporaryUser = lifecycleBlock.indexOf(
+  "$standardUser = New-LocalUser -Name $userName"
+);
+assert.ok(
+  baselineSnapshot >= 0 && createTemporaryUser > baselineSnapshot,
+  "The immutable unresolved-process baseline must be complete before the temporary account exists."
+);
+assert.equal(
+  (
+    lifecycleBlock.match(
+      /-BaselineKeys\s+\$baselineUnresolvedProcessKeys/g
+    ) ?? []
+  ).length,
+  4
+);
+const baselineComparisons = [];
+let baselineComparisonCursor = 0;
+while (true) {
+  const match = lifecycleBlock.indexOf(
+    "-BaselineKeys $baselineUnresolvedProcessKeys",
+    baselineComparisonCursor
+  );
+  if (match < 0) break;
+  baselineComparisons.push(match);
+  baselineComparisonCursor = match + 1;
+}
+assert.equal(baselineComparisons.length, 4);
+assert.ok(
+  baselineComparisons[0] < removeUser
+    && baselineComparisons[1] < removeUser
+    && baselineComparisons[2] > removeUser
+    && baselineComparisons[3] > removeUser,
+  "Both pre-deletion and post-deletion process sweeps must compare against the immutable baseline."
+);
 assert.match(lifecycleBlock, /\$processCleanupConfirmed = \$true/);
 assert.match(lifecycleBlock, /\$ancestorAclCleanupConfirmed = \$true/);
 assert.match(lifecycleBlock, /\$profileCleanupConfirmed = \$true/);
