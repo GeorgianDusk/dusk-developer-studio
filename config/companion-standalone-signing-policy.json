@@ -7,20 +7,44 @@
   "protected_environment": "studio-companion-signing",
   "release_tag_pattern": "^studio-companion-v\\d+\\.\\d+\\.\\d+-rc\\.\\d+$",
   "publication_enabled": false,
-  "publication_blocker": "Windows and Apple signing identities, reviewed private candidate transport, signed clean-machine evidence, independent security acceptance, support and rollback ownership, and explicit publication approval are still required.",
+  "publication_blocker": "Windows and Apple signing identities, reviewed private candidate transport, OS-level containment of detached tool descendants or an explicitly accepted same-user tool boundary, signed clean-machine evidence, independent security acceptance, support and rollback ownership, and explicit publication approval are still required.",
   "candidate_transport": {
     "enabled": false,
     "provider": "none",
     "blocker": "No private signed-candidate transport has been implemented and independently reviewed; candidate binaries must not use GitHub Actions artifacts or draft releases."
   },
+  "publication_evidence_contract": {
+    "schema_version": 1,
+    "maximum_candidate_age_days": 30,
+    "maximum_clock_skew_minutes": 5,
+    "maximum_monitoring_revisit_days": 90,
+    "actor_identity_scheme": "github-login",
+    "evidence_authentication": "not-implemented-schema-2",
+    "required_gates": [
+      "security_review",
+      "support_incident_route",
+      "compatibility",
+      "rollback_revocation",
+      "reputation_quarantine",
+      "monitoring_revisit",
+      "explicit_approval"
+    ]
+  },
+  "payload_trust": {
+    "platform_signed_assets": "each-launcher-or-app-bundle-only",
+    "outer_zip_authentication": "not-established-until-reviewed-transport-binds-package-digest",
+    "embedded_portable_payload": "internal-unsigned-release-candidate",
+    "binding": "exact-build-receipt-unsigned-asset-index-and-package-manifest",
+    "portable_directory_ed25519_publication_satisfied": false
+  },
   "runner_labels": {
     "windows-x64": "windows-2025",
     "linux-x64": "ubuntu-24.04",
-    "darwin-arm64": "macos-14"
+    "darwin-arm64": "macos-15"
   },
   "targets": {
     "windows-x64": {
-      "distribution_format": "pe-executable",
+      "distribution_format": "zip-with-two-authenticode-executables",
       "signing_provider": "azure-artifact-signing",
       "approved_identity": "",
       "identity_field": "publisher_subject",
@@ -29,13 +53,13 @@
         "timestamp_valid",
         "publisher_identity_verified",
         "fresh_runner_smoke_passed",
-        "cleanup_verified",
+        "install_cleanup_verified",
         "malware_scan_passed",
-        "rollback_verified"
+        "install_rollback_verified"
       ]
     },
     "linux-x64": {
-      "distribution_format": "elf-executable-with-sigstore-bundle",
+      "distribution_format": "zip-with-two-elf-launchers-and-sigstore-bundles",
       "signing_provider": "sigstore-keyless",
       "identity_field": "certificate_identity",
       "identity_template": "https://github.com/GeorgianDusk/dusk-developer-studio/.github/workflows/studio-companion-signed-rc.yml@refs/tags/{release_tag}",
@@ -45,12 +69,12 @@
         "rekor_inclusion_verified",
         "workflow_identity_verified",
         "fresh_runner_smoke_passed",
-        "cleanup_verified",
-        "rollback_verified"
+        "install_cleanup_verified",
+        "install_rollback_verified"
       ]
     },
     "darwin-arm64": {
-      "distribution_format": "zip-with-stapled-app-bundle",
+      "distribution_format": "zip-with-two-stapled-app-bundles",
       "signing_provider": "apple-developer-id-notary",
       "approved_identity": "",
       "identity_field": "apple_team_id",
@@ -61,8 +85,8 @@
         "ticket_stapled",
         "gatekeeper_assessed",
         "fresh_runner_smoke_passed",
-        "cleanup_verified",
-        "rollback_verified"
+        "install_cleanup_verified",
+        "install_rollback_verified"
       ]
     }
   }

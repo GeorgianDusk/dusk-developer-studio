@@ -166,7 +166,7 @@ export function buildNpmPrototype({ windowsRelease, linuxRelease, outDir }) {
     }
     const packageVersion = npmVersion(win.version, win.commit);
     const packageJson = {
-      name: "@dusk-network/developer-studio",
+      name: "@georgiandusk/dusk-developer-studio",
       version: packageVersion,
       private: true,
       description: "Private distribution prototype for Dusk Developer Studio Local.",
@@ -240,22 +240,60 @@ export function buildSeaPrototype({ releaseDir, target, outDir }) {
     const releaseBundle = path.join(temporary, "release.bundle.gz");
     const releaseBundleBytes = createReleaseBundle(records, executablePathsFor(manifest));
     fs.writeFileSync(releaseBundle, releaseBundleBytes);
-    const blob = path.join(temporary, "sea-preparation.blob");
-    const config = path.join(temporary, "sea-config.json");
     const bootstrap = path.join(productRoot, "distribution", "prototypes", "sea", "bootstrap-bundle.cjs");
-    fs.writeFileSync(config, jsonBytes({ main: bootstrap, output: blob, disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, assets: { "release.bundle.gz": releaseBundle } }));
-    runNode(["--experimental-sea-config", config], { cwd: temporary });
-    const executableName = `dusk-developer-studio-local-${manifest.version}-${target}-private-v2${target === "windows-x64" ? ".exe" : ""}`;
-    const executable = path.join(output, executableName);
-    fs.copyFileSync(runtimeRecord.absolute, executable, fs.constants.COPYFILE_EXCL);
-    try { fs.chmodSync(executable, 0o755); } catch { /* Windows executable mode is not POSIX. */ }
-    if (target === "darwin-arm64") runCommand("codesign", ["--remove-signature", executable], { cwd: temporary });
-    const postjectArgs = [postjectCli(), executable, "NODE_SEA_BLOB", blob, "--sentinel-fuse", SEA_FUSE, ...(target === "darwin-arm64" ? ["--macho-segment-name", "NODE_JS"] : [])];
-    runNode(postjectArgs, { cwd: temporary });
-    if (target === "darwin-arm64") runCommand("codesign", ["--sign", "-", "--force", executable], { cwd: temporary });
+    const extension = target === "windows-x64" ? ".exe" : "";
+    const launcherDefinitions = [
+      {
+        key: "safe",
+        mode: "safe",
+        name: `dusk-developer-studio-safe-${manifest.version}-${target}-internal-rc${extension}`
+      },
+      {
+        key: "local_actions",
+        mode: "local-actions",
+        name: `dusk-developer-studio-local-actions-${manifest.version}-${target}-internal-rc${extension}`
+      }
+    ];
+    const executablePaths = {};
+    const launcherRecords = {};
+    for (const definition of launcherDefinitions) {
+      const blob = path.join(temporary, `sea-${definition.key}.blob`);
+      const config = path.join(temporary, `sea-${definition.key}.json`);
+      const launcherMode = path.join(temporary, `launcher-mode-${definition.key}.txt`);
+      fs.writeFileSync(launcherMode, `${definition.mode}\n`);
+      fs.writeFileSync(config, jsonBytes({
+        main: bootstrap,
+        output: blob,
+        disableExperimentalSEAWarning: true,
+        useSnapshot: false,
+        useCodeCache: false,
+        execArgvExtension: "none",
+        assets: {
+          "launcher-mode.txt": launcherMode,
+          "release.bundle.gz": releaseBundle
+        }
+      }));
+      runNode(["--experimental-sea-config", config], { cwd: temporary });
+      const executable = path.join(output, definition.name);
+      fs.copyFileSync(runtimeRecord.absolute, executable, fs.constants.COPYFILE_EXCL);
+      try { fs.chmodSync(executable, 0o755); } catch { /* Windows executable mode is not POSIX. */ }
+      if (target === "darwin-arm64") runCommand("codesign", ["--remove-signature", executable], { cwd: temporary });
+      const postjectArgs = [postjectCli(), executable, "NODE_SEA_BLOB", blob, "--sentinel-fuse", SEA_FUSE, ...(target === "darwin-arm64" ? ["--macho-segment-name", "NODE_JS"] : [])];
+      runNode(postjectArgs, { cwd: temporary });
+      if (target === "darwin-arm64") runCommand("codesign", ["--sign", "-", "--force", executable], { cwd: temporary });
+      executablePaths[definition.key] = executable;
+      launcherRecords[definition.key] = {
+        mode: definition.mode,
+        name: definition.name,
+        bytes: fs.statSync(executable).size,
+        sha256: sha256(fs.readFileSync(executable))
+      };
+    }
+    const unsignedAssetIndex = [launcherRecords.safe, launcherRecords.local_actions];
+    const unsignedAssetIndexSha256 = sha256(jsonBytes(unsignedAssetIndex));
     const receipt = {
-      schema_version: 2,
-      status: "private-nonpublication-prototype",
+      schema_version: 3,
+      status: "internal-nonpublication-rc",
       channel: "node-sea-in-process",
       target,
       version: manifest.version,
@@ -269,12 +307,30 @@ export function buildSeaPrototype({ releaseDir, target, outDir }) {
       embedded_release_bundle_sha256: sha256(releaseBundleBytes),
       postject_version: POSTJECT_VERSION,
       platform_signature_status: target === "darwin-arm64" ? "adhoc-development-only" : "unsigned",
-      executable: executableName,
-      executable_sha256: sha256(fs.readFileSync(executable)),
-      executable_bytes: fs.statSync(executable).size
+      embedded_payload_trust: {
+        portable_manifest_signing_status: manifest.signing_status,
+        standalone_platform_trust: "not-established",
+        publication_eligible: false
+      },
+      launchers: launcherRecords,
+      unsigned_asset_index_sha256: unsignedAssetIndexSha256,
+      executable: launcherRecords.safe.name,
+      executable_sha256: launcherRecords.safe.sha256,
+      executable_bytes: launcherRecords.safe.bytes
     };
     fs.writeFileSync(path.join(output, "prototype-receipt.json"), jsonBytes(receipt));
-    return { output, executable, receipt, sha256: receipt.executable_sha256, bytes: receipt.executable_bytes };
+    return {
+      output,
+      executable: executablePaths.safe,
+      executables: {
+        safe: executablePaths.safe,
+        localActions: executablePaths.local_actions
+      },
+      receipt,
+      sha256: receipt.executable_sha256,
+      bytes: receipt.executable_bytes,
+      unsignedAssetIndexSha256
+    };
   } catch (error) {
     fs.rmSync(output, { recursive: true, force: true });
     throw error;

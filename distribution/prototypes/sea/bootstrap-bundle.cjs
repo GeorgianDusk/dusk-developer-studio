@@ -10,6 +10,7 @@ const { pathToFileURL } = require("node:url");
 const { gunzipSync } = require("node:zlib");
 
 const ASSET_KEY = "release.bundle.gz";
+const LAUNCHER_MODE_ASSET_KEY = "launcher-mode.txt";
 const TEMP_PREFIX = "dusk-studio-sea-";
 const SHA256_RE = /^[a-f0-9]{64}$/;
 
@@ -29,7 +30,9 @@ function expectedTarget() {
 
 function decodeBundle() {
   const keys = getAssetKeys();
-  if (keys.length !== 1 || keys[0] !== ASSET_KEY) throw new Error("The executable has an unexpected embedded asset set.");
+  if (keys.length !== 2 || !keys.includes(ASSET_KEY) || !keys.includes(LAUNCHER_MODE_ASSET_KEY)) {
+    throw new Error("The executable has an unexpected embedded asset set.");
+  }
   const bundle = gunzipSync(Buffer.from(getRawAsset(ASSET_KEY)), { maxOutputLength: 536_870_912 });
   if (bundle.length < 4) throw new Error("The embedded release bundle is truncated.");
   const headerBytes = bundle.readUInt32BE(0);
@@ -55,6 +58,13 @@ function decodeBundle() {
   return records;
 }
 
+function launcherMode() {
+  const mode = Buffer.from(getRawAsset(LAUNCHER_MODE_ASSET_KEY)).toString("utf8");
+  if (mode === "safe\n") return "safe";
+  if (mode === "local-actions\n") return "local-actions";
+  throw new Error("The executable has an invalid embedded launcher mode.");
+}
+
 function removePrivateRoot(root) {
   const parent = path.resolve(os.tmpdir());
   const resolved = path.resolve(root);
@@ -75,6 +85,7 @@ function runtimeArgs() {
 
 async function main() {
   if (!isSea()) throw new Error("The standalone bootstrap must run from a Node single executable.");
+  const mode = launcherMode();
   const records = decodeBundle();
   const manifestRecord = records.find((record) => record.path === "payload-manifest.json");
   if (!manifestRecord) throw new Error("The embedded release manifest is missing.");
@@ -96,8 +107,14 @@ async function main() {
     const companion = path.join(root, "app", "companion.mjs");
     const stat = fs.lstatSync(companion);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("The embedded companion entrypoint is invalid.");
-    const args = runtimeArgs();
-    if (args.includes("--enable-local-actions")) {
+    const userArgs = runtimeArgs();
+    if (userArgs.some((argument) => argument === "--enable-local-actions" || argument.startsWith("--enable-local-actions="))) {
+      throw new Error(mode === "safe"
+        ? "Safe mode cannot be escalated with a command-line flag. Start the separate Local Actions executable."
+        : "Local Actions mode is fixed by this executable. Do not pass --enable-local-actions.");
+    }
+    const args = mode === "local-actions" ? [...userArgs, "--enable-local-actions"] : userArgs;
+    if (mode === "local-actions") {
       console.log("Dusk Developer Studio will be allowed to check local tools and create starter files.");
       console.log("No wallet signing or funded-account action is enabled.");
     }

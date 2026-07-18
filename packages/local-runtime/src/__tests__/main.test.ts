@@ -13,9 +13,13 @@ describe("portable runtime CLI mode", () => {
     expect(resolvePortableRuntimeCliMode(["--signed-rc-self-test", "--no-open"])).toEqual({ capabilitiesEnabled: false, openBrowser: false, signedRcSelfTest: true });
   });
 
-  it("rejects unknown, repeated, and capability-enabling self-test arguments", () => {
+  it("rejects unknown and repeated arguments while allowing the mode-bound actions launcher to self-test", () => {
     expect(() => resolvePortableRuntimeCliMode(["--unknown"])).toThrow(/Unsupported argument/);
     expect(() => resolvePortableRuntimeCliMode(["--no-open", "--no-open"])).toThrow(/must not be repeated/);
-    expect(() => resolvePortableRuntimeCliMode(["--signed-rc-self-test", "--enable-local-actions"])).toThrow(/cannot enable local machine actions/);
+    expect(resolvePortableRuntimeCliMode(["--signed-rc-self-test", "--enable-local-actions"])).toEqual({
+      capabilitiesEnabled: true,
+      openBrowser: false,
+      signedRcSelfTest: true
+    });
   });
 });

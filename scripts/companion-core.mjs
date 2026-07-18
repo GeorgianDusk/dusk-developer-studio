@@ -7,7 +7,13 @@ import path from "node:path";
 
 const SHA_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
-const RESERVED_RE = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+const VERSION_RE = /^\d+\.\d+\.\d+$/;
+const RESERVED_RE = /^(?:con|prn|aux|nul|clock\$|conin\$|conout\$|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+const RUNTIME_TARGETS = {
+  "windows-x64": { archive: "win-x64.zip", source: "node.exe", payload: "runtime/node.exe" },
+  "linux-x64": { archive: "linux-x64.tar.xz", source: "bin/node", payload: "runtime/node" },
+  "darwin-arm64": { archive: "darwin-arm64.tar.xz", source: "bin/node", payload: "runtime/node" }
+};
 const SECRET_RES = [
   /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
   /(?:PRIVATE[_-]?KEY|MNEMONIC|SEED[_-]?(?:PHRASE|ER)?|API[_-]?KEY|PAIRING[_-]?TOKEN)\s*[:=]\s*["']?(?!replace|example|your-|<|\$\{|process\.|undefined|null|false)[A-Za-z0-9_+/=.-]{16,}/i,
@@ -18,6 +24,33 @@ const HOST_PATH_RES = [/[A-Za-z]:[\\/]Users[\\/](?!%|\$|\{|\[)[^\\/\s"'<>]+/, /\
 export const digest = (value) => createHash("sha256").update(value).digest("hex");
 export const jsonBytes = (value) => Buffer.from(`${JSON.stringify(value, null, 2)}\n`);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
+
+function hasExactKeys(value, expected) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+}
+
+export function validateRuntimeLock(lock) {
+  if (!hasExactKeys(lock, ["schema_version", "runtime"]) || lock.schema_version !== 1
+      || !hasExactKeys(lock.runtime, ["name", "version", "checksum_url", "targets"])
+      || lock.runtime.name !== "node" || !VERSION_RE.test(lock.runtime.version ?? "")
+      || lock.runtime.checksum_url !== `https://nodejs.org/dist/v${lock.runtime.version}/SHASUMS256.txt`
+      || !hasExactKeys(lock.runtime.targets, Object.keys(RUNTIME_TARGETS))) {
+    throw new Error("Companion runtime lock identity or official checksum origin is invalid.");
+  }
+  for (const [target, contract] of Object.entries(RUNTIME_TARGETS)) {
+    const record = lock.runtime.targets[target];
+    const archiveRoot = `node-v${lock.runtime.version}-${contract.archive.replace(/\.(?:zip|tar\.xz)$/, "")}`;
+    if (!hasExactKeys(record, [
+      "archive_url", "archive_sha256", "archive_root", "source_binary_path", "payload_binary_path"
+    ]) || record.archive_url !== `https://nodejs.org/dist/v${lock.runtime.version}/${archiveRoot}.${contract.archive.endsWith(".zip") ? "zip" : "tar.xz"}`
+      || !SHA_RE.test(record.archive_sha256 ?? "") || record.archive_root !== archiveRoot
+      || record.source_binary_path !== contract.source || record.payload_binary_path !== contract.payload) {
+      throw new Error(`Companion runtime lock target is invalid: ${target}.`);
+    }
+  }
+  return lock;
+}
 
 function safePath(value, policy) {
   const relative = value.replaceAll("\\", "/").replace(/^\.\//, "");
@@ -165,7 +198,7 @@ function makeProvenance(productRoot, manifest, manifestBytes, sbomBytes, epoch) 
   const lock = path.join(productRoot, "pnpm-lock.yaml");
   if (fs.existsSync(lock)) dependencies.push({ uri: "file:pnpm-lock.yaml", digest: { sha256: digest(fs.readFileSync(lock)) } });
   const stamp = new Date(epoch * 1000).toISOString();
-  return { _type: "https://in-toto.io/Statement/v1", subject: [{ name: "payload-manifest.json", digest: { sha256: digest(manifestBytes) } }, { name: "companion-sbom.cdx.json", digest: { sha256: digest(sbomBytes) } }], predicateType: "https://slsa.dev/provenance/v1", predicate: { buildDefinition: { buildType: "https://dusk.network/buildtypes/developer-studio-local-portable/v1", externalParameters: { version: manifest.version, commit: manifest.commit, target: manifest.target, channel: manifest.channel }, internalParameters: { source_date_epoch: epoch }, resolvedDependencies: dependencies }, runDetails: { builder: { id: "https://dusk.network/builders/developer-studio-companion-release/v1" }, metadata: { invocationId: digest(Buffer.concat([manifestBytes, sbomBytes])), startedOn: stamp, finishedOn: stamp } } } };
+  return { _type: "https://in-toto.io/Statement/v1", subject: [{ name: "payload-manifest.json", digest: { sha256: digest(manifestBytes) } }, { name: "companion-sbom.cdx.json", digest: { sha256: digest(sbomBytes) } }], predicateType: "https://slsa.dev/provenance/v1", predicate: { buildDefinition: { buildType: "https://github.com/GeorgianDusk/dusk-developer-studio/buildtypes/developer-studio-local-portable/v1", externalParameters: { version: manifest.version, commit: manifest.commit, target: manifest.target, channel: manifest.channel }, internalParameters: { source_date_epoch: epoch }, resolvedDependencies: dependencies }, runDetails: { builder: { id: "https://github.com/GeorgianDusk/dusk-developer-studio/builders/companion-release/v1" }, metadata: { invocationId: digest(Buffer.concat([manifestBytes, sbomBytes])), startedOn: stamp, finishedOn: stamp } } } };
 }
 
 function signManifest(bytes, keyFile) {
@@ -186,6 +219,7 @@ function cleanCommit(root) {
 export function buildRelease(options) {
   const root = path.resolve(options.productRoot);
   const runtimeLock = readJson(path.join(root, "config", "companion-runtime-lock.json"));
+  validateRuntimeLock(runtimeLock);
   const policy = readJson(path.join(root, "config", "companion-release-policy.json"));
   const target = options.target;
   if (runtimeLock.schema_version !== 1 || policy.schema_version !== 1 || !policy.supported_targets.includes(target)) throw new Error("Unsupported companion configuration or target.");
@@ -262,6 +296,7 @@ function verifySignature(release, bytes, keyFile) {
 export function verifyRelease(options) {
   const root = path.resolve(options.productRoot); const release = path.resolve(options.releaseDir);
   const lock = readJson(path.join(root, "config", "companion-runtime-lock.json")); const policy = readJson(path.join(root, "config", "companion-release-policy.json"));
+  validateRuntimeLock(lock);
   const manifestBytes = fs.readFileSync(path.join(release, "payload-manifest.json")); const manifest = JSON.parse(manifestBytes);
   if (manifest.schema_version !== 1 || manifest.product !== "Dusk Developer Studio Local" || manifest.channel !== "portable" || !COMMIT_RE.test(manifest.commit ?? "") || !policy.supported_targets.includes(manifest.target)) throw new Error("Manifest identity, commit, or target is invalid.");
   const signed = manifest.signing_status === "signed" && manifest.unsigned_rc === false; const unsigned = manifest.signing_status === "unsigned-rc" && manifest.unsigned_rc === true;

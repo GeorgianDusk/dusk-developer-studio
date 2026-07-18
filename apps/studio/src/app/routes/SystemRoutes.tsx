@@ -31,7 +31,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
         <div className="focus-card wide secondary">
           <StatusPill tone="warn">Not published</StatusPill>
           <h2>Portable automation is being prepared</h2>
-          <p>When a verified release is available, it will run allowlisted tool checks and create approved starter files through a loopback-only local session. The public website will never connect directly to your machine.</p>
+          <p>When a verified release is available, it will include separate Safe and Local Actions launchers. Only the clearly named Local Actions launcher will run allowlisted tool checks or create approved starter files through a loopback-only session. The public website will never connect directly to your machine.</p>
           <p className="quiet-note">You do not need the source repository to use the manual guide. The source link below is provided only for advanced review and contribution.</p>
           <div className="button-row">
             <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-duskds/">Open the DuskDS guide</ExternalLink>
@@ -52,7 +52,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
       <PageIntro
         kicker="Automation"
         title="Portable Studio is paired to this release."
-        copy="This local Studio pairs with its bundled runtime automatically. Machine actions stay off unless you deliberately start the Local Actions launcher."
+        copy="This local Studio pairs with its bundled runtime automatically. The Safe launcher cannot be escalated with a command-line flag; machine work starts only from the separately named Local Actions launcher."
       />
       <div className="focus-card wide">
         <h2>Portable session</h2>
@@ -80,10 +80,10 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           <p>Safe mode can show instructions and read public Testnet data but cannot run tool checks or create starter files.</p>
           <ol>
             <li>Close this Portable Studio window.</li>
-            <li>Run <strong>bin\dusk-studio-local-actions.cmd</strong> on Windows or <strong>bin/dusk-studio-local-actions</strong> on Linux or WSL.</li>
+            <li>Start the separate file or app whose name includes <strong>Local Actions</strong> or <strong>local-actions</strong>. It is included beside the Safe launcher in the same verified release.</li>
             <li>Return here and confirm the status reads “Actions ready” before creating files.</li>
           </ol>
-          <p className="quiet-note">A normal restart keeps actions off. No token, Node installation, package-manager command, or source checkout is required.</p>
+          <p className="quiet-note">Do not add <strong>--enable-local-actions</strong> to the Safe launcher; it will refuse to start. No token, Node installation, package-manager command, or source checkout is required.</p>
         </div>
       )}
     </section>
