@@ -29,9 +29,60 @@ The publication-dossier validator rejects extra fields, stale or future-dated ev
 
 ## Current workflow boundary
 
-The manual signed-RC workflow is intentionally blocked before transport. It resolves the selected protected tag to one immutable workflow commit and every checkout uses that commit, but no private signed-candidate transport has been implemented. Each signing runner assembles one strict forward-slash ZIP for its OS containing both mode-bound launchers, the exact signed-launcher index, the unsigned build receipt, and a complete allowlisted package manifest. Fresh runners must validate the ZIP central directory, bounds, paths, file types, modes, CRCs, digests, and manifest before materializing or executing any entry. Candidate packages must never use GitHub Actions artifacts or draft releases; the workflow leaves each package on its signing runner and fails before transport. Only bounded, current-attempt JSON evidence may use Actions artifacts after a future reviewed transport makes fresh-runner checks possible.
+The manual signed-RC workflow is intentionally blocked before transport. It
+resolves the selected protected tag to one immutable workflow commit and every
+checkout uses that commit, but no private signed-candidate transport has been
+implemented. Today, readiness fails because the Windows and Apple identities
+are unconfigured, so the signing jobs are skipped and no candidate package is
+built. If those identities are configured later, each signing runner will
+assemble one strict forward-slash ZIP for its OS containing both mode-bound
+launchers, the exact signed-launcher index, the unsigned build receipt, and a
+complete allowlisted package manifest. Fresh runners must validate the ZIP
+central directory, bounds, paths, file types, modes, CRCs, digests, and manifest
+before materializing or executing any entry. Candidate packages must never use
+GitHub Actions artifacts or draft releases; even after identities are
+configured, each signing job leaves its package runner-local and fails before
+transport. Only bounded, current-attempt JSON evidence may use Actions artifacts
+after a future reviewed transport makes fresh-runner checks possible.
 
-`config/companion-standalone-signing-policy.json` remains fail-closed: `publication_enabled` and `candidate_transport.enabled` are `false`, the transport provider is `none`, and Windows/Apple identity fields remain blank until real identities and a separately reviewed private transport are configured.
+`config/companion-standalone-signing-policy.json` remains fail-closed: `publication_enabled` and `candidate_transport.enabled` are `false`, the transport provider is `none`, and Windows/Apple identity fields are intentionally blank under the current source-only distribution decision.
+
+George accepts the documented same-user tool-authority and detached-process
+boundary for the current source-only and internal companion scope, with
+compensating controls and explicit revisit triggers recorded in
+[the boundary decision](../security/same-user-tool-boundary-decision.md). This
+maintainer decision does not constitute independent security acceptance,
+candidate approval, or publication approval.
+
+## Unsigned engineering assurance
+
+`.github/workflows/studio-companion-unsigned-assurance.yml` is a separate
+engineering lane, not a release workflow. On fresh GitHub-hosted Windows x64,
+Linux x64, and macOS arm64 runners, it builds both launchers twice, verifies
+their reproducible receipt and digest boundary, creates and strictly extracts a
+runner-local unsigned package, exercises Safe and Local Actions through the
+bounded lifecycle harness, performs native platform observations, and deletes
+every enumerated workflow-owned candidate path before recording evidence.
+Linux and macOS native jobs prove root-launch rejection. Canonical unit tests
+and launcher source-contract tests separately verify POSIX identity-mismatch
+handling and Linux capability-field handling. Because the Windows hosted runner
+is elevated, it first proves elevated rejection and then executes the exact
+lifecycle as a temporary standard local user inside an ACL-isolated runner root,
+without a product or CI bypass.
+
+The workflow keeps full evidence records and all candidate files inside each
+ephemeral native runner and uploads no workflow artifacts. Ordinary bounded
+status output remains in GitHub Actions logs and may include runner-temporary
+paths. It never transfers an executable, app bundle, archive, build directory,
+full diagnostic record, or signing material between jobs. Its machine-readable
+policy fixes `same_runner=true`, `clean_machine=false`,
+`platform_trust=false`, `publication_eligible=false`, and
+`retention_scope=workflow-owned-candidate-paths-only`, with those scoped paths
+verified absent before evidence is recorded. It does not claim that no copy
+could exist elsewhere on the runner. The JSON is not authenticated publication
+evidence, the checked pull request can change the lane and its validators, and a same-runner lifecycle is not a transported clean-machine
+install. Passing this lane cannot satisfy signing, candidate transport,
+reputation, independent-review, or publication gates.
 
 The standalone trust contract is distinct from the portable-directory release mode. Its embedded portable payload remains an internal unsigned RC whose files are digest-bound into the SEA build. Authenticode, Sigstore, or Developer ID then authenticates each complete final launcher or app bundle after injection. Those signatures do not authenticate the outer ZIP, receipt, index, or manifest; exact package integrity remains unestablished until a reviewed transport binds the ZIP digest. Launcher trust also does not claim to satisfy the separate Ed25519 requirement for publishing a portable directory.
 
@@ -59,7 +110,7 @@ A public binary release requires all of the following for the exact final hashes
 3. A separately reviewed private candidate transport that prevents public access and binds every transfer to the exact candidate digest. GitHub Actions artifacts and draft releases are not approved candidate transports.
 4. Fresh-machine installation and exact-package lifecycle evidence for both launchers: one-time bootstrap, authenticated session and release parity, safe-mode action denial, Local Actions preflight, exact Studio-owned loopback listeners before and after preflight, closed Studio ports after shutdown, isolated user-data roots, extraction cleanup, install rollback, quarantine, and reputation checks.
 5. Independent companion security review and resolution of every release-blocking finding.
-6. OS-level containment of deliberately detached tool descendants, or an explicitly accepted same-user tool boundary with compensating controls.
+6. OS-level containment of deliberately detached tool descendants, or revalidation of the [accepted same-user tool boundary](../security/same-user-tool-boundary-decision.md) and its compensating controls during the independent candidate-specific security review.
 7. Documented support owner, incident route, rollback procedure, and compatibility statement.
 8. Explicit maintainer approval to change `publication_enabled` and a separately reviewed publication workflow.
 

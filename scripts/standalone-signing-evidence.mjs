@@ -13,8 +13,28 @@ const MAX_EVIDENCE_BYTES = 4 * 1024 * 1024;
 const MAX_SIGNING_RUN_DURATION_MS = 6 * 60 * 60 * 1000;
 const POLICY_KEYS = [
   "schema_version", "product", "channel", "canonical_repository", "workflow_path", "protected_environment",
-  "release_tag_pattern", "publication_enabled", "publication_blocker", "candidate_transport",
+  "release_tag_pattern", "publication_enabled", "publication_blocker", "same_user_tool_boundary", "candidate_transport",
   "publication_evidence_contract", "payload_trust", "runner_labels", "targets"
+];
+const SAME_USER_BOUNDARY_CONTROLS = [
+  "separate-safe-and-local-actions-launchers",
+  "privileged-launch-rejected",
+  "exact-command-and-argument-allowlist",
+  "no-user-controlled-or-arbitrary-shell-surface",
+  "minimal-secret-stripped-child-environment",
+  "bounded-time-output-concurrency-and-studio-managed-filesystem-effects",
+  "tracked-direct-and-ordinary-process-group-termination",
+  "studio-listener-recheck-and-fixed-port-closure",
+  "machine-wide-process-cleanup-not-claimed",
+  "public-companion-binaries-disabled"
+];
+const SAME_USER_BOUNDARY_REVISIT_TRIGGERS = [
+  "public-companion-binary-publication",
+  "arbitrary-project-command-execution",
+  "package-install-or-update-capability",
+  "expanded-tool-allowlist",
+  "administrator-or-service-capability",
+  "same-user-tool-security-incident"
 ];
 const PUBLICATION_GATES = [
   "security_review",
@@ -204,6 +224,21 @@ function validateBasePolicy(policy, releaseTag) {
   if (typeof policy?.publication_enabled !== "boolean") blockers.push("Standalone publication state is invalid.");
   if (policy?.publication_enabled === false && !boundedText(policy?.publication_blocker, 1000)) blockers.push("Disabled publication requires a bounded blocker.");
   if (policy?.publication_enabled === true && policy?.publication_blocker !== "") blockers.push("Enabled publication cannot retain a contradictory blocker.");
+  const boundary = policy?.same_user_tool_boundary;
+  const boundaryKeys = [
+    "schema_version", "decision", "owner", "accepted_at", "authority_reference", "scope",
+    "compensating_controls", "residual_risk", "revisit_triggers"
+  ];
+  const boundaryShapeValid = exactKeys(boundary, boundaryKeys, "Same-user tool boundary decision", blockers);
+  if (!boundaryShapeValid || boundary?.schema_version !== 1 || boundary?.decision !== "accepted"
+      || boundary?.owner !== "George" || !validTimestamp(boundary?.accepted_at)
+      || boundary?.authority_reference !== "docs/security/same-user-tool-boundary-decision.md"
+      || boundary?.scope !== "allowlisted-local-developer-tools-current-user"
+      || JSON.stringify(boundary?.compensating_controls) !== JSON.stringify(SAME_USER_BOUNDARY_CONTROLS)
+      || !boundedText(boundary?.residual_risk, 1000)
+      || JSON.stringify(boundary?.revisit_triggers) !== JSON.stringify(SAME_USER_BOUNDARY_REVISIT_TRIGGERS)) {
+    blockers.push("Same-user tool boundary decision is invalid.");
+  }
   return blockers;
 }
 
@@ -373,7 +408,7 @@ export function createStandalonePublicationEvidenceTemplate(policy, { signingEvi
     created_at: createdAt,
     gates: {
       security_review: { status: "pending", reviewer_actor: "", reviewed_at: "", report_url: "", report_sha256: "", scope_commit: commit, open_critical_findings: null, open_high_findings: null },
-      support_incident_route: { status: "pending", owner_actor: "", route_url: "", tested_at: "", response_sla_hours: null },
+      support_incident_route: { status: "pending", owner_actor: "", route_url: "", tested_at: "", response_target_hours: null },
       compatibility: { status: "pending", matrix_url: "", matrix_sha256: "", tested_at: "", targets: Object.keys(TARGET_CONTRACT) },
       rollback_revocation: { status: "pending", owner_actor: "", runbook_url: "", runbook_sha256: "", tested_at: "", revocation_tested: false },
       reputation_quarantine: { status: "pending", owner_actor: "", evidence_url: "", evidence_sha256: "", quarantine_plan_url: "", quarantine_plan_sha256: "", reviewed_at: "" },
@@ -423,9 +458,9 @@ export function evaluateStandalonePublicationEvidence(policy, evidence, { signin
     requireTimestamp(security.reviewed_at, "Security review", createdAt, blockers, timeOptions);
   }
   const support = evidence?.gates?.support_incident_route;
-  if (exactKeys(support, ["status", "owner_actor", "route_url", "tested_at", "response_sla_hours"], "Support and incident gate", blockers)) {
+  if (exactKeys(support, ["status", "owner_actor", "route_url", "tested_at", "response_target_hours"], "Support and incident gate", blockers)) {
     if (support.status !== "accepted" || !validActor(support.owner_actor) || !validRepositoryUrl(support.route_url, policy)
-        || !Number.isSafeInteger(support.response_sla_hours) || support.response_sla_hours < 1 || support.response_sla_hours > 168) blockers.push("Support and incident route gate is not accepted.");
+        || !Number.isSafeInteger(support.response_target_hours) || support.response_target_hours < 1 || support.response_target_hours > 168) blockers.push("Support and incident route gate is not accepted.");
     requireTimestamp(support.tested_at, "Support and incident route test", createdAt, blockers, timeOptions);
   }
   const compatibility = evidence?.gates?.compatibility;

@@ -7,7 +7,36 @@
   "protected_environment": "studio-companion-signing",
   "release_tag_pattern": "^studio-companion-v\\d+\\.\\d+\\.\\d+-rc\\.\\d+$",
   "publication_enabled": false,
-  "publication_blocker": "Windows and Apple signing identities, reviewed private candidate transport, OS-level containment of detached tool descendants or an explicitly accepted same-user tool boundary, signed clean-machine evidence, independent security acceptance, support and rollback ownership, and explicit publication approval are still required.",
+  "publication_blocker": "Public binaries remain disabled because Windows and Apple signing identities are intentionally unconfigured, candidate transport and publication-evidence authentication are unavailable, and signed clean-machine evidence, independent security acceptance, tested support rehearsal, exact rollback and withdrawal drill evidence, and explicit publication approval are incomplete.",
+  "same_user_tool_boundary": {
+    "schema_version": 1,
+    "decision": "accepted",
+    "owner": "George",
+    "accepted_at": "2026-07-18T00:00:00Z",
+    "authority_reference": "docs/security/same-user-tool-boundary-decision.md",
+    "scope": "allowlisted-local-developer-tools-current-user",
+    "compensating_controls": [
+      "separate-safe-and-local-actions-launchers",
+      "privileged-launch-rejected",
+      "exact-command-and-argument-allowlist",
+      "no-user-controlled-or-arbitrary-shell-surface",
+      "minimal-secret-stripped-child-environment",
+      "bounded-time-output-concurrency-and-studio-managed-filesystem-effects",
+      "tracked-direct-and-ordinary-process-group-termination",
+      "studio-listener-recheck-and-fixed-port-closure",
+      "machine-wide-process-cleanup-not-claimed",
+      "public-companion-binaries-disabled"
+    ],
+    "residual_risk": "A hostile or compromised allowlisted developer tool runs with the user's account authority and can use that authority for filesystem, network, and process effects while active, including deliberately creating a detached same-user process that survives Studio shutdown and escapes portable child-process tracking.",
+    "revisit_triggers": [
+      "public-companion-binary-publication",
+      "arbitrary-project-command-execution",
+      "package-install-or-update-capability",
+      "expanded-tool-allowlist",
+      "administrator-or-service-capability",
+      "same-user-tool-security-incident"
+    ]
+  },
   "candidate_transport": {
     "enabled": false,
     "provider": "none",

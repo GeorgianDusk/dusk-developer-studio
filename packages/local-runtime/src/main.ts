@@ -2,11 +2,13 @@ import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import http from "node:http";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createLocalAgentServer } from "@dusk/local-agent/server";
 import { terminateAllBoundedProcesses } from "@dusk/local-agent/process";
+import { assertNonElevatedLaunch } from "./launchPrivilege";
 import { createLocalStudioServer } from "./staticServer";
 import { verifyPayload, type PayloadManifest, type PayloadVerificationOptions } from "./verifyPayload";
 
@@ -93,6 +95,7 @@ export async function startPortableRuntime(options: PortableRuntimeOptions): Pro
   projectRoot: string;
   shutdown: () => Promise<void>;
 }> {
+  assertNonElevatedLaunch();
   const distributionRoot = path.resolve(options.distributionRoot);
   const manifest = await verifyPayload(distributionRoot, options.verification);
   if (manifest.target !== currentTarget()) throw new Error("This portable archive does not match the current platform and architecture.");
@@ -220,12 +223,22 @@ function ownedListeningEndpoints(): string[] {
 
 async function assertStudioLoopbackServicesStopped(): Promise<void> {
   for (const port of [STUDIO_PORT, COMPANION_PORT]) {
-    try {
-      await selfTestRequest({ host: HOST, port, path: "/healthz", method: "GET", headers: { host: `${HOST}:${port}` } });
-      throw new Error(`Signed-RC self-test left port ${port} reachable.`);
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("left port")) throw error;
-    }
+    await new Promise<void>((resolve, reject) => {
+      const socket = net.createConnection({ host: HOST, port });
+      socket.setTimeout(5_000);
+      socket.once("connect", () => {
+        socket.destroy();
+        reject(new Error(`Signed-RC self-test left port ${port} reachable.`));
+      });
+      socket.once("timeout", () => {
+        socket.destroy();
+        reject(new Error(`Signed-RC self-test could not prove port ${port} is closed.`));
+      });
+      socket.once("error", (error: NodeJS.ErrnoException) => {
+        if (error.code === "ECONNREFUSED") resolve();
+        else reject(new Error(`Signed-RC self-test could not prove port ${port} is closed (${error.code ?? "unknown"}).`));
+      });
+    });
   }
 }
 

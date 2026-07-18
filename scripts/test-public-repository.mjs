@@ -11,11 +11,15 @@ for (const file of [
   ".github/workflows/studio-linux-security.yml",
   ".github/workflows/platform-caddy-security.yml",
   ".github/workflows/studio-companion-signed-rc.yml",
+  ".github/workflows/studio-companion-unsigned-assurance.yml",
   ".github/workflows/studio-public-staging.yml",
   ".github/workflows/studio-monitor-schedule-guard.yml",
   ".github/workflows/duskds-native-smoke.yml",
   "docs/operations/public-monitoring.md",
   "docs/operations/github-only-monitoring-decision.md",
+  "docs/security/same-user-tool-boundary-decision.md",
+  "config/companion-unsigned-assurance-policy.json",
+  "SUPPORT.md",
   "docs/deployment/project-domain-migration.md"
 ]) assert.ok(fs.existsSync(path.join(root, file)), `Missing public repository contract: ${file}`);
 
@@ -40,11 +44,23 @@ assert.deepEqual(policy.candidate_transport, {
 assert.equal(policy.targets["windows-x64"].approved_identity, "");
 assert.equal(policy.targets["darwin-arm64"].approved_identity, "");
 assert.match(policy.targets["linux-x64"].identity_template, /GeorgianDusk\/dusk-developer-studio/);
+assert.equal(policy.same_user_tool_boundary.decision, "accepted");
+assert.equal(policy.same_user_tool_boundary.owner, "George");
+assert.equal(policy.same_user_tool_boundary.authority_reference, "docs/security/same-user-tool-boundary-decision.md");
+assert.ok(policy.same_user_tool_boundary.compensating_controls.includes("public-companion-binaries-disabled"));
+assert.match(policy.same_user_tool_boundary.residual_risk, /survives Studio shutdown/);
+assert.doesNotMatch(policy.publication_blocker, /same-user tool boundary|detached tool descendants/i);
+const boundaryDecision = read("docs/security/same-user-tool-boundary-decision.md");
+assert.match(boundaryDecision, /Status: accepted/);
+assert.match(boundaryDecision, /Owner: George/);
+assert.match(boundaryDecision, /not an independent security\s+review/i);
+assert.match(boundaryDecision, /does not approve public binary publication/i);
 
 const workflows = [
   ".github/workflows/studio-linux-security.yml",
   ".github/workflows/platform-caddy-security.yml",
   ".github/workflows/studio-companion-signed-rc.yml",
+  ".github/workflows/studio-companion-unsigned-assurance.yml",
   ".github/workflows/studio-public-staging.yml",
   ".github/workflows/studio-monitor-schedule-guard.yml",
   ".github/workflows/duskds-native-smoke.yml"

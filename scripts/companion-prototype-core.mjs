@@ -278,7 +278,7 @@ export function buildSeaPrototype({ releaseDir, target, outDir }) {
       fs.copyFileSync(runtimeRecord.absolute, executable, fs.constants.COPYFILE_EXCL);
       try { fs.chmodSync(executable, 0o755); } catch { /* Windows executable mode is not POSIX. */ }
       if (target === "darwin-arm64") runCommand("codesign", ["--remove-signature", executable], { cwd: temporary });
-      const postjectArgs = [postjectCli(), executable, "NODE_SEA_BLOB", blob, "--sentinel-fuse", SEA_FUSE, ...(target === "darwin-arm64" ? ["--macho-segment-name", "NODE_JS"] : [])];
+      const postjectArgs = [postjectCli(), executable, "NODE_SEA_BLOB", blob, "--sentinel-fuse", SEA_FUSE, ...(target === "darwin-arm64" ? ["--macho-segment-name", "NODE_SEA"] : [])];
       runNode(postjectArgs, { cwd: temporary });
       if (target === "darwin-arm64") runCommand("codesign", ["--sign", "-", "--force", executable], { cwd: temporary });
       executablePaths[definition.key] = executable;

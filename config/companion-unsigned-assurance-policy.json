@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "product": "Dusk Developer Studio Local Standalone",
+  "assurance_level": "unsigned-engineering-only",
+  "workflow_path": ".github/workflows/studio-companion-unsigned-assurance.yml",
+  "node_version": "24.18.0",
+  "pnpm_version": "11.7.0",
+  "same_runner": true,
+  "clean_machine": false,
+  "platform_trust": false,
+  "publication_eligible": false,
+  "retention_scope": "workflow-owned-candidate-paths-only",
+  "scoped_candidate_paths_absent_at_check": true,
+  "cleanup_paths": {
+    "windows-x64": {
+      "standard_user_root": "unsigned-windows-standard-user",
+      "runtime_archive": "node-v24.18.0-win-x64.zip",
+      "bundle_1": "unsigned-windows-bundle-1",
+      "bundle_2": "unsigned-windows-bundle-2",
+      "release_1": "unsigned-windows-release-1",
+      "release_2": "unsigned-windows-release-2",
+      "sea_1": "unsigned-windows-sea-1",
+      "sea_2": "unsigned-windows-sea-2",
+      "package_stage": "unsigned-windows-stage",
+      "install_root": "unsigned-windows-standard-user/installed-unsigned-windows",
+      "lifecycle_workspace": "unsigned-windows-standard-user/unsigned-lifecycle-windows",
+      "candidate_zip": "unsigned-windows-standard-user/unsigned-windows-engineering.zip"
+    },
+    "linux-x64": {
+      "runtime_archive": "node-v24.18.0-linux-x64.tar.xz",
+      "bundle_1": "unsigned-linux-bundle-1",
+      "bundle_2": "unsigned-linux-bundle-2",
+      "release_1": "unsigned-linux-release-1",
+      "release_2": "unsigned-linux-release-2",
+      "sea_1": "unsigned-linux-sea-1",
+      "sea_2": "unsigned-linux-sea-2",
+      "package_stage": "unsigned-linux-stage",
+      "install_root": "installed-unsigned-linux",
+      "lifecycle_workspace": "unsigned-lifecycle-linux",
+      "candidate_zip": "unsigned-linux-engineering.zip"
+    },
+    "darwin-arm64": {
+      "runtime_archive": "node-v24.18.0-darwin-arm64.tar.xz",
+      "bundle_1": "unsigned-macos-bundle-1",
+      "bundle_2": "unsigned-macos-bundle-2",
+      "release_1": "unsigned-macos-release-1",
+      "release_2": "unsigned-macos-release-2",
+      "sea_1": "unsigned-macos-sea-1",
+      "sea_2": "unsigned-macos-sea-2",
+      "app_bundle_root": "unsigned-macos-apps",
+      "package_stage": "unsigned-macos-stage",
+      "install_root": "installed-unsigned-macos",
+      "lifecycle_workspace": "unsigned-lifecycle-macos",
+      "candidate_zip": "unsigned-macos-engineering.zip"
+    }
+  },
+  "runner_labels": {
+    "windows-x64": "windows-2025",
+    "linux-x64": "ubuntu-24.04",
+    "darwin-arm64": "macos-15"
+  },
+  "required_checks": [
+    "exact_checkout_verified",
+    "frozen_dependencies_restored",
+    "runtime_lock_verified",
+    "dual_launchers_distinct",
+    "two_build_reproducibility_verified",
+    "runner_local_package_verified",
+    "non_elevated_launch_verified",
+    "safe_mode_local_action_denied",
+    "local_actions_preflight_verified",
+    "release_parity_verified",
+    "studio_listening_endpoints_verified",
+    "unexpected_studio_listening_ports_absent",
+    "isolated_user_data_roots_verified",
+    "studio_loopback_services_stopped",
+    "extraction_cleanup_verified",
+    "install_cleanup_verified",
+    "scoped_candidate_paths_absent_at_check"
+  ],
+  "limitations": [
+    "unsigned candidates have no publisher identity or platform trust",
+    "build and lifecycle execution occur on the same ephemeral hosted runner",
+    "no executable crosses a runner or receives download-integrity assurance",
+    "SmartScreen Gatekeeper notarization and public reputation are not established",
+    "malware scans cannot prove the absence of all malicious behavior",
+    "the launch privilege guard prevents accidental elevation but is not OS containment against a hostile administrator or root user",
+    "deliberately detached same-user tool daemons are outside the portable containment guarantee",
+    "JSON records are bounded CI diagnostics, not authenticated publication evidence",
+    "cleanup is a point-in-time check of exact workflow-owned candidate paths",
+    "pull request code can change this lane and its validators, so the check is not an independent control"
+  ]
+}

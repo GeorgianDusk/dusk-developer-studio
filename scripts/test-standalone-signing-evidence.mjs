@@ -30,7 +30,13 @@ const runAttempt = "2";
 const runActor = "github:GeorgianDusk";
 const approvalReferenceUrl = "https://github.com/GeorgianDusk/dusk-developer-studio/issues/42";
 const targetCreatedAt = "2026-07-16T06:50:00Z";
-assert.match(policy.publication_blocker, /OS-level containment of detached tool descendants or an explicitly accepted same-user tool boundary/);
+assert.equal(policy.same_user_tool_boundary.decision, "accepted");
+assert.equal(policy.same_user_tool_boundary.owner, "George");
+assert.equal(policy.same_user_tool_boundary.authority_reference, "docs/security/same-user-tool-boundary-decision.md");
+assert.match(policy.same_user_tool_boundary.residual_risk, /detached same-user process/);
+assert.ok(policy.same_user_tool_boundary.compensating_controls.includes("public-companion-binaries-disabled"));
+assert.ok(policy.same_user_tool_boundary.revisit_triggers.includes("public-companion-binary-publication"));
+assert.doesNotMatch(policy.publication_blocker, /same-user tool boundary|detached tool descendants/i);
 const lifecycleChecks = {
   bootstrap_one_time_verified: true,
   authenticated_session_verified: true,
@@ -66,6 +72,7 @@ assert.equal(unconfigured.decision, "blocked");
 assert.match(unconfigured.blockers.join("\n"), /windows-x64 platform identity is not configured/);
 assert.match(unconfigured.blockers.join("\n"), /darwin-arm64 platform identity is not configured/);
 assert.doesNotMatch(unconfigured.blockers.join("\n"), /transport|publication is disabled/i);
+assert.doesNotMatch(unconfigured.blockers.join("\n"), /same-user tool boundary/i);
 
 const signingReadyPolicy = clone(policy);
 signingReadyPolicy.targets["windows-x64"].approved_identity = "CN=Independent Studio Publisher, O=Independent Studio Publisher, C=RO";
@@ -80,6 +87,15 @@ assert.match(evaluateStandaloneSigningReadiness(falsePortableTrustClaim, { relea
 const extraPolicyField = clone(signingReadyPolicy);
 extraPolicyField.unreviewed = true;
 assert.match(evaluateStandaloneSigningReadiness(extraPolicyField, { releaseTag }).blockers.join("\n"), /policy fields are invalid/);
+const pendingBoundaryDecision = clone(signingReadyPolicy);
+pendingBoundaryDecision.same_user_tool_boundary.decision = "pending";
+assert.match(evaluateStandaloneSigningReadiness(pendingBoundaryDecision, { releaseTag }).blockers.join("\n"), /Same-user tool boundary decision is invalid/);
+const weakenedBoundaryControls = clone(signingReadyPolicy);
+weakenedBoundaryControls.same_user_tool_boundary.compensating_controls.pop();
+assert.match(evaluateStandaloneSigningReadiness(weakenedBoundaryControls, { releaseTag }).blockers.join("\n"), /Same-user tool boundary decision is invalid/);
+const extraBoundaryField = clone(signingReadyPolicy);
+extraBoundaryField.same_user_tool_boundary.unreviewed = true;
+assert.match(evaluateStandaloneSigningReadiness(extraBoundaryField, { releaseTag }).blockers.join("\n"), /Same-user tool boundary decision fields are invalid/);
 
 const transportBlocked = evaluateStandaloneTransportReadiness(signingReadyPolicy);
 assert.equal(transportBlocked.stage, "candidate-transport-readiness");
@@ -272,7 +288,7 @@ publicationEvidence.gates.support_incident_route = {
   owner_actor: "github:GeorgianDusk",
   route_url: "https://github.com/GeorgianDusk/dusk-developer-studio/security",
   tested_at: "2026-07-16T09:00:00Z",
-  response_sla_hours: 24
+  response_target_hours: 24
 };
 publicationEvidence.gates.compatibility = {
   status: "accepted",

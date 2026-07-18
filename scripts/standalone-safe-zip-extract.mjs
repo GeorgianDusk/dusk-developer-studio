@@ -9,12 +9,23 @@ import { TextDecoder } from "node:util";
 import { createDeflateRaw, createInflateRaw, inflateRawSync } from "node:zlib";
 import { cli } from "./companion-core.mjs";
 import { verifyCandidatePackageManifest } from "./standalone-candidate-package-manifest.mjs";
+import {
+  UNSIGNED_INDEX_NAME,
+  UNSIGNED_MANIFEST_NAME,
+  verifyUnsignedPackageManifest
+} from "./standalone-unsigned-assurance.mjs";
 
 const TARGETS = new Set(["windows-x64", "linux-x64", "darwin-arm64"]);
-const MANIFEST_NAME = "candidate-package-manifest.json";
-const INDEX_NAME = "signed-launcher-index.json";
+const SIGNED_MANIFEST_NAME = "candidate-package-manifest.json";
+const SIGNED_INDEX_NAME = "signed-launcher-index.json";
 const RECEIPT_NAME = "evidence/prototype-receipt.json";
-const CONTROL_METADATA = new Set([MANIFEST_NAME, INDEX_NAME, RECEIPT_NAME]);
+const CONTROL_METADATA = new Set([
+  SIGNED_MANIFEST_NAME,
+  SIGNED_INDEX_NAME,
+  UNSIGNED_MANIFEST_NAME,
+  UNSIGNED_INDEX_NAME,
+  RECEIPT_NAME
+]);
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 const LOCAL_SIGNATURE = 0x04034b50;
@@ -32,6 +43,44 @@ const UNIX_DIRECTORY = 0o040000;
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const WINDOWS_RESERVED = /^(?:con|prn|aux|nul|clock\$|conin\$|conout\$|com[1-9]|lpt[1-9])(?:\.|$)/i;
 const decoder = new TextDecoder("utf-8", { fatal: true });
+
+function packageProfile(profile = "signed") {
+  if (profile === "signed") {
+    return {
+      manifestName: SIGNED_MANIFEST_NAME,
+      indexName: SIGNED_INDEX_NAME,
+      manifestKeys: [
+        "schema_version", "target", "version", "commit", "unsigned_asset_index_sha256",
+        "signed_launcher_index_sha256", "files"
+      ],
+      verify: ({ root, target, receipt, index, manifest }) => verifyCandidatePackageManifest({
+        root,
+        target,
+        buildReceipt: receipt,
+        signedLauncherIndex: index,
+        manifestFile: manifest
+      })
+    };
+  }
+  if (profile === "unsigned-engineering") {
+    return {
+      manifestName: UNSIGNED_MANIFEST_NAME,
+      indexName: UNSIGNED_INDEX_NAME,
+      manifestKeys: [
+        "schema_version", "assurance_level", "target", "version", "commit", "platform_trust",
+        "publication_eligible", "unsigned_launcher_index_sha256", "files"
+      ],
+      verify: ({ root, target, receipt, index, manifest }) => verifyUnsignedPackageManifest({
+        root,
+        target,
+        buildReceipt: receipt,
+        launcherIndex: index,
+        manifestFile: manifest
+      })
+    };
+  }
+  throw new Error("Unsupported standalone candidate package profile.");
+}
 
 export const STANDALONE_ZIP_LIMITS = Object.freeze({
   archiveBytes: 1_342_177_280,
@@ -629,19 +678,19 @@ function parseJsonMetadata(fd, entry, label) {
   }
 }
 
-function validateManifestAllowlist(fd, entries, target) {
+function validateManifestAllowlist(fd, entries, target, profile) {
+  const contract = packageProfile(profile);
   const files = entries.filter((entry) => !entry.directory);
   const byName = new Map(files.map((entry) => [entry.name, entry]));
-  const manifest = parseJsonMetadata(fd, byName.get(MANIFEST_NAME), "Candidate package manifest");
-  exactKeys(manifest, [
-    "schema_version", "target", "version", "commit", "unsigned_asset_index_sha256",
-    "signed_launcher_index_sha256", "files"
-  ], "Candidate package manifest");
+  const manifest = parseJsonMetadata(
+    fd, byName.get(contract.manifestName), "Candidate package manifest"
+  );
+  exactKeys(manifest, contract.manifestKeys, "Candidate package manifest");
   if (manifest.schema_version !== 1 || manifest.target !== target || !Array.isArray(manifest.files)) {
     throw new Error("Candidate package manifest identity is invalid.");
   }
-  const allowed = new Set([MANIFEST_NAME]);
-  const folded = new Set([MANIFEST_NAME.toLowerCase()]);
+  const allowed = new Set([contract.manifestName]);
+  const folded = new Set([contract.manifestName.toLowerCase()]);
   for (const record of manifest.files) {
     exactKeys(record, ["path", "bytes", "sha256"], "Candidate package manifest file");
     const raw = Buffer.from(String(record.path ?? ""), "utf8");
@@ -665,15 +714,17 @@ function validateManifestAllowlist(fd, entries, target) {
       throw new Error(`Candidate package ZIP contains an unexpected directory: ${entry.name}.`);
     }
   }
-  const index = parseJsonMetadata(fd, byName.get(INDEX_NAME), "Signed launcher index");
+  const index = parseJsonMetadata(fd, byName.get(contract.indexName), "Candidate launcher index");
   if (index?.schema_version !== 1 || index.target !== target || !index.launchers
       || index.launchers.safe?.mode !== "safe" || index.launchers.local_actions?.mode !== "local-actions") {
-    throw new Error("Signed launcher index identity is invalid.");
+    throw new Error("Candidate launcher index identity is invalid.");
   }
   const executables = new Set();
   for (const launcher of [index.launchers.safe, index.launchers.local_actions]) {
     const safe = safeArchivePath(Buffer.from(String(launcher.name ?? ""), "utf8"), UTF8_FLAG);
-    if (safe.directory || !allowed.has(safe.name)) throw new Error("Signed launcher index contains an unsafe or absent launcher.");
+    if (safe.directory || !allowed.has(safe.name)) {
+      throw new Error("Candidate launcher index contains an unsafe or absent launcher.");
+    }
     executables.add(safe.name);
   }
   if (executables.size !== 2 || !allowed.has(RECEIPT_NAME)) {
@@ -882,51 +933,62 @@ function validateStageFilesystemBoundaries(stage) {
   visit(stage);
 }
 
-function stageContract(stage, target) {
-  const manifestPath = path.join(stage, MANIFEST_NAME);
-  const indexPath = path.join(stage, INDEX_NAME);
-  for (const name of CONTROL_METADATA) {
+function stageContract(stage, target, profile) {
+  const packageContract = packageProfile(profile);
+  const manifestPath = path.join(stage, packageContract.manifestName);
+  const indexPath = path.join(stage, packageContract.indexName);
+  for (const name of [packageContract.manifestName, packageContract.indexName, RECEIPT_NAME]) {
     const file = path.join(stage, ...name.split("/"));
     const stat = fs.lstatSync(file);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > STANDALONE_ZIP_LIMITS.metadataBytes) {
       throw new Error(`Candidate package control metadata exceeds its bound: ${name}.`);
     }
   }
-  const manifest = verifyCandidatePackageManifest({
+  const manifest = packageContract.verify({
     root: stage,
     target,
-    buildReceipt: path.join(stage, ...RECEIPT_NAME.split("/")),
-    signedLauncherIndex: indexPath,
-    manifestFile: manifestPath
+    receipt: path.join(stage, ...RECEIPT_NAME.split("/")),
+    index: indexPath,
+    manifest: manifestPath
   });
   const manifestBytes = fs.readFileSync(manifestPath);
   let index;
   try {
     index = JSON.parse(fs.readFileSync(indexPath, "utf8"));
   } catch {
-    throw new Error("Signed launcher index is not valid JSON.");
+    throw new Error("Candidate launcher index is not valid JSON.");
   }
   if (index?.schema_version !== 1 || index.target !== target
       || index.launchers?.safe?.mode !== "safe"
       || index.launchers?.local_actions?.mode !== "local-actions") {
-    throw new Error("Signed launcher index identity is invalid.");
+    throw new Error("Candidate launcher index identity is invalid.");
   }
   const executables = new Set();
   for (const launcher of [index.launchers.safe, index.launchers.local_actions]) {
     const safe = safeArchivePath(Buffer.from(String(launcher.name ?? ""), "utf8"), UTF8_FLAG);
-    if (safe.directory) throw new Error("Signed launcher index contains an invalid launcher path.");
+    if (safe.directory) throw new Error("Candidate launcher index contains an invalid launcher path.");
     executables.add(safe.name);
   }
-  if (executables.size !== 2) throw new Error("Signed launcher index must contain two distinct launchers.");
+  if (executables.size !== 2) throw new Error("Candidate launcher index must contain two distinct launchers.");
   const expected = new Map(manifest.files.map((record) => [
     record.path,
     { bytes: record.bytes, sha256: record.sha256 }
   ]));
-  expected.set(MANIFEST_NAME, { bytes: manifestBytes.length, sha256: createHash("sha256").update(manifestBytes).digest("hex") });
+  expected.set(packageContract.manifestName, {
+    bytes: manifestBytes.length,
+    sha256: createHash("sha256").update(manifestBytes).digest("hex")
+  });
   for (const name of executables) {
-    if (!expected.has(name)) throw new Error("Signed launcher index references a file outside the package manifest.");
+    if (!expected.has(name)) {
+      throw new Error("Candidate launcher index references a file outside the package manifest.");
+    }
   }
-  return { manifest, manifestSha256: expected.get(MANIFEST_NAME).sha256, expected, executables };
+  return {
+    manifest,
+    manifestSha256: expected.get(packageContract.manifestName).sha256,
+    expected,
+    executables
+  };
 }
 
 function inventoryStage(stage, contract) {
@@ -1193,7 +1255,7 @@ function hashRegularFile(file) {
 }
 
 export async function createStandaloneCandidateZip({
-  root: packageRoot, target, ephemeralRoot, output
+  root: packageRoot, target, ephemeralRoot, output, profile = "signed"
 }) {
   if (!TARGETS.has(target)) throw new Error("Unsupported standalone candidate ZIP target.");
   const ephemeral = existingRealRoot(ephemeralRoot);
@@ -1202,7 +1264,7 @@ export async function createStandaloneCandidateZip({
   if (!out.toLowerCase().endsWith(".zip")) throw new Error("Candidate ZIP output must have a .zip extension.");
   if (within(stage, out)) throw new Error("Candidate ZIP output must remain outside the package stage.");
   validateStageFilesystemBoundaries(stage);
-  const contract = stageContract(stage, target);
+  const contract = stageContract(stage, target, profile);
   const inventory = inventoryStage(stage, contract);
   const temporary = privateFile(ephemeral, "zip-create", ".tmp.zip",
     fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, 0o600);
@@ -1230,7 +1292,7 @@ export async function createStandaloneCandidateZip({
     fs.fsyncSync(fd);
     fs.closeSync(fd);
     fd = undefined;
-    const after = stageContract(stage, target);
+    const after = stageContract(stage, target, profile);
     if (JSON.stringify(after.manifest) !== JSON.stringify(contract.manifest)
         || after.manifestSha256 !== contract.manifestSha256) {
       throw new Error("Candidate package stage changed while its ZIP was created.");
@@ -1263,7 +1325,7 @@ export async function createStandaloneCandidateZip({
 }
 
 export async function safeExtractStandaloneCandidateZip({
-  archive, target, ephemeralRoot, output
+  archive, target, ephemeralRoot, output, profile = "signed"
 }) {
   if (!TARGETS.has(target)) throw new Error("Unsupported standalone candidate ZIP target.");
   const root = existingRealRoot(ephemeralRoot);
@@ -1292,7 +1354,8 @@ export async function safeExtractStandaloneCandidateZip({
   let working;
   try {
     const parsed = parseCentralDirectory(snapshot.fd, snapshot.size);
-    const contract = validateManifestAllowlist(snapshot.fd, parsed.entries, target);
+    const packageContract = packageProfile(profile);
+    const contract = validateManifestAllowlist(snapshot.fd, parsed.entries, target, profile);
     working = privateDirectory(root, "zip-extract");
     for (const entry of parsed.entries) {
       if (entry.directory) {
@@ -1301,12 +1364,12 @@ export async function safeExtractStandaloneCandidateZip({
         await extractFile(snapshot.fd, snapshot.path, working, entry);
       }
     }
-    verifyCandidatePackageManifest({
+    packageContract.verify({
       root: working,
       target,
-      buildReceipt: path.join(working, ...RECEIPT_NAME.split("/")),
-      signedLauncherIndex: path.join(working, INDEX_NAME),
-      manifestFile: path.join(working, MANIFEST_NAME)
+      receipt: path.join(working, ...RECEIPT_NAME.split("/")),
+      index: path.join(working, packageContract.indexName),
+      manifest: path.join(working, packageContract.manifestName)
     });
     applyModes(working, parsed.entries, contract.executables);
     const archiveSha256 = snapshot.sha256;
@@ -1353,13 +1416,15 @@ if (isMain) {
         root: args.root,
         target: args.target,
         ephemeralRoot: args["ephemeral-root"],
-        output: args.out
+        output: args.out,
+        profile: args.profile ?? "signed"
       })
       : await safeExtractStandaloneCandidateZip({
         archive: args.archive,
         target: args.target,
         ephemeralRoot: args["ephemeral-root"],
-        output: args.out
+        output: args.out,
+        profile: args.profile ?? "signed"
       });
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {

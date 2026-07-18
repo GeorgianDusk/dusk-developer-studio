@@ -6,9 +6,16 @@ Security fixes target the current `main` branch and the latest published release
 
 ## Reporting a vulnerability
 
-Do not open a public issue containing an exploitable vulnerability, secret, or unredacted diagnostic. Use GitHub's private vulnerability reporting for `GeorgianDusk/dusk-developer-studio` once the repository is public. If that feature is temporarily unavailable, open a minimal public issue requesting a private security contact without describing the vulnerability.
+Do not open a public issue containing an exploitable vulnerability, secret, or
+unredacted diagnostic. Use
+[GitHub private vulnerability reporting](https://github.com/GeorgianDusk/dusk-developer-studio/security/advisories/new).
+If that feature is temporarily unavailable, open a minimal public issue
+requesting a private security contact without describing the vulnerability.
 
 Include the affected commit or version, platform, impact, reproducible steps, and a minimal proof of concept with all credentials and personal data removed. You should receive an acknowledgement within seven days; timelines for remediation and disclosure depend on severity and reproducibility.
+
+For non-sensitive product and documentation problems, use the route in
+[SUPPORT.md](SUPPORT.md).
 
 ## Hard boundaries
 

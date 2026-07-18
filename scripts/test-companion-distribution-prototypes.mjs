@@ -13,6 +13,79 @@ import { createMacosStandaloneApp } from "./standalone-macos-app.mjs";
 
 const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "dusk-distribution-prototype-test-"));
+const prototypeCoreSource = fs.readFileSync(
+  path.join(process.cwd(), "scripts", "companion-prototype-core.mjs"),
+  "utf8"
+);
+assert.match(prototypeCoreSource, /--macho-segment-name", "NODE_SEA"/);
+assert.doesNotMatch(prototypeCoreSource, /--macho-segment-name", "NODE_JS"/);
+const seaBootstrapSource = fs.readFileSync(
+  path.join(process.cwd(), "distribution", "prototypes", "sea", "bootstrap-bundle.cjs"),
+  "utf8"
+);
+const npmLaunchSource = fs.readFileSync(
+  path.join(process.cwd(), "distribution", "prototypes", "npm", "launch.mjs"),
+  "utf8"
+);
+const canonicalPrivilegeSource = fs.readFileSync(
+  path.join(process.cwd(), "packages", "local-runtime", "src", "launchPrivilege.ts"),
+  "utf8"
+);
+function elevatedGuardBlock(source) {
+  return source.match(/\/\/ BEGIN ELEVATED LAUNCH GUARD\n([\s\S]*?)\/\/ END ELEVATED LAUNCH GUARD/)?.[1] ?? "";
+}
+const seaGuard = elevatedGuardBlock(seaBootstrapSource);
+const npmGuard = elevatedGuardBlock(npmLaunchSource);
+assert.ok(seaGuard);
+assert.equal(seaGuard, npmGuard, "SEA and npm launchers must use the exact same elevation guard.");
+assert.match(seaGuard, /Dusk Developer Studio refuses elevated or root execution\./);
+assert.match(seaGuard, /path\.win32\.join\(normalizedRoot, "System32", "whoami\.exe"\)/);
+assert.match(seaGuard, /spawnSync\(whoami, \["\/groups"\], \{[\s\S]*?shell: false/);
+assert.match(seaGuard, /identity\.isFile\(\) \|\| identity\.isSymbolicLink\(\)/);
+assert.match(seaGuard, /parseIntegrityRid\(result\.stdout\) >= 12_288/);
+for (const contract of [
+  /Dusk Developer Studio refuses elevated or root execution\./,
+  /uid !== euid/,
+  /gid !== egid/,
+  /capabilities\.permitted !== 0n/,
+  /capabilities\.effective !== 0n/,
+  /capabilities\.ambient !== 0n/,
+  /\^CapPrm:/,
+  /\^CapEff:/,
+  /\^CapAmb:/,
+  /process\.getgid/,
+  /process\.getegid/,
+  /readFileSync\("\/proc\/self\/status", "utf8"\)/,
+  /parseIntegrityRid\(result\.stdout\) >= 12_288/
+]) {
+  assert.match(canonicalPrivilegeSource, contract);
+  assert.match(seaGuard, contract);
+}
+assert.doesNotMatch(seaGuard, /shell: true|ALLOW_|BYPASS|SKIP_/i);
+const seaMain = seaBootstrapSource.slice(
+  seaBootstrapSource.indexOf("async function main()"),
+  seaBootstrapSource.indexOf("main().catch")
+);
+const npmLaunch = npmLaunchSource.slice(npmLaunchSource.indexOf("export async function launch"));
+for (const [label, source, firstSensitiveAction] of [
+  ["SEA", seaMain, "decodeBundle()"],
+  ["npm", npmLaunch, "hostTarget()"]
+]) {
+  const guard = source.indexOf("assertNonElevatedLaunch();");
+  assert.ok(guard >= 0, `${label} launcher must invoke its elevation guard.`);
+  assert.ok(guard < source.indexOf(firstSensitiveAction), `${label} launcher must guard before host/runtime verification.`);
+  assert.ok(guard < source.indexOf("fs.mkdtempSync"), `${label} launcher must guard before extraction.`);
+}
+const localRuntimeSource = fs.readFileSync(
+  path.join(process.cwd(), "packages", "local-runtime", "src", "main.ts"),
+  "utf8"
+);
+const stoppedProbe = localRuntimeSource.match(
+  /async function assertStudioLoopbackServicesStopped\(\): Promise<void> \{([\s\S]*?)\n\}\n\nasync function runSignedRcLifecycleSelfTest/
+)?.[1] ?? "";
+assert.match(stoppedProbe, /net\.createConnection/);
+assert.match(stoppedProbe, /error\.code === "ECONNREFUSED"/);
+assert.doesNotMatch(stoppedProbe, /selfTestRequest/);
 const commit = "b".repeat(40);
 const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 

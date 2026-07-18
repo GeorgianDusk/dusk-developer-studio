@@ -1,0 +1,590 @@
+name: Studio companion unsigned engineering assurance
+
+"on":
+  pull_request:
+    branches: [main]
+  merge_group:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-companion-unsigned-assurance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 24.18.0
+  PNPM_VERSION: 11.7.0
+  EXPECTED_COMMIT: ${{ github.sha }}
+  UNSIGNED_ASSURANCE_CHECKS: exact_checkout_verified,frozen_dependencies_restored,runtime_lock_verified,dual_launchers_distinct,two_build_reproducibility_verified,runner_local_package_verified,non_elevated_launch_verified,safe_mode_local_action_denied,local_actions_preflight_verified,release_parity_verified,studio_listening_endpoints_verified,unexpected_studio_listening_ports_absent,isolated_user_data_roots_verified,studio_loopback_services_stopped,extraction_cleanup_verified,install_cleanup_verified,scoped_candidate_paths_absent_at_check
+
+jobs:
+  preflight:
+    name: Validate unsigned assurance source contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - name: Check out the exact reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+          ref: ${{ env.EXPECTED_COMMIT }}
+      - name: Bind preflight to the reviewed commit
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test -z "$(git status --short)"
+      - name: Use the frozen Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          package-manager-cache: "false"
+      - name: Restore the exact dependency graph
+        run: |
+          corepack enable
+          corepack install --global pnpm@$PNPM_VERSION
+          pnpm install --frozen-lockfile
+      - name: Run the complete source and product gate
+        run: |
+          pnpm check:no-secrets
+          pnpm check:boundary
+          pnpm lint
+          pnpm typecheck
+          pnpm test
+          pnpm build
+
+  windows:
+    name: Unsigned engineering lifecycle (windows-x64)
+    needs: preflight
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: .
+    steps:
+      - name: Check out the exact reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+          ref: ${{ env.EXPECTED_COMMIT }}
+      - name: Prove native target and immutable checkout
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ((git rev-parse HEAD).Trim() -ne $env:EXPECTED_COMMIT) { throw 'Windows checkout is not the reviewed commit.' }
+          if (-not [Environment]::Is64BitOperatingSystem -or $env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'Expected native Windows x64.' }
+          if (git status --short) { throw 'Windows checkout is dirty.' }
+      - name: Use the frozen Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          package-manager-cache: "false"
+      - name: Restore the exact dependency graph
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          corepack enable
+          corepack install --global pnpm@$env:PNPM_VERSION
+          pnpm install --frozen-lockfile
+          node scripts/standalone-unsigned-assurance.mjs --operation=policy
+          node scripts/test-standalone-candidate-lifecycle-core.mjs
+      - name: Build two unsigned reproducibility attempts
+        env:
+          DUSK_STUDIO_ARTIFACT_CHANNEL: portable
+          DUSK_STUDIO_RELEASE_COMMIT: ${{ env.EXPECTED_COMMIT }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $version = node -p "JSON.parse(require('fs').readFileSync('package.json')).version"
+          $epoch = (git show -s --format=%ct $env:EXPECTED_COMMIT).Trim()
+          $runtime = Join-Path $env:RUNNER_TEMP 'node-v24.18.0-win-x64.zip'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip' -OutFile $runtime
+          pnpm --filter @dusk/studio build
+          foreach ($attempt in 1, 2) {
+            $bundle = Join-Path $env:RUNNER_TEMP "unsigned-windows-bundle-$attempt"
+            $release = Join-Path $env:RUNNER_TEMP "unsigned-windows-release-$attempt"
+            $sea = Join-Path $env:RUNNER_TEMP "unsigned-windows-sea-$attempt"
+            node scripts/companion-bundle.mjs "--out=$bundle"
+            node scripts/companion-build.mjs --target=windows-x64 "--out=$release" "--launcher-bundle=$bundle" "--runtime-archive=$runtime" "--commit=$env:EXPECTED_COMMIT" "--version=$version" "--source-date-epoch=$epoch"
+            node scripts/companion-verify.mjs "--release=$release"
+            node scripts/companion-sea-prototype.mjs "--release=$release" --target=windows-x64 "--out=$sea"
+          }
+          node scripts/standalone-unsigned-assurance.mjs --operation=reproducibility --target=windows-x64 "--first-receipt=$(Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1/prototype-receipt.json')" "--second-receipt=$(Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-2/prototype-receipt.json')" "--out=$(Join-Path $env:RUNNER_TEMP 'windows-reproducibility.json')"
+      - name: Package, extract, inspect, and exercise both Windows launchers
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $sea = Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1'
+          $receiptSource = Join-Path $sea 'prototype-receipt.json'
+          $receipt = Get-Content -Raw -LiteralPath $receiptSource | ConvertFrom-Json
+          $stage = Join-Path $env:RUNNER_TEMP 'unsigned-windows-stage'
+          New-Item -ItemType Directory -Path (Join-Path $stage 'launchers'), (Join-Path $stage 'evidence') | Out-Null
+          $safeSource = Join-Path $sea $receipt.launchers.safe.name
+          $actionsSource = Join-Path $sea $receipt.launchers.local_actions.name
+          Copy-Item -LiteralPath $safeSource, $actionsSource -Destination (Join-Path $stage 'launchers')
+          $receiptCopy = Join-Path $stage 'evidence/prototype-receipt.json'
+          Copy-Item -LiteralPath $receiptSource -Destination $receiptCopy
+          $index = Join-Path $stage 'unsigned-launcher-index.json'
+          node scripts/standalone-unsigned-assurance.mjs --operation=index --target=windows-x64 "--safe-launcher=$safeSource" "--local-actions-launcher=$actionsSource" "--safe-name=launchers/$($receipt.launchers.safe.name)" "--local-actions-name=launchers/$($receipt.launchers.local_actions.name)" "--build-receipt=$receiptCopy" "--out=$index"
+          node scripts/standalone-unsigned-assurance.mjs --operation=manifest "--root=$stage" --target=windows-x64 "--build-receipt=$receiptCopy" "--launcher-index=$index" "--out=$(Join-Path $stage 'unsigned-candidate-manifest.json')"
+          $standardUserRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user'
+          New-Item -ItemType Directory -Path $standardUserRoot | Out-Null
+          $package = Join-Path $standardUserRoot 'unsigned-windows-engineering.zip'
+          node scripts/standalone-safe-zip-extract.mjs --create "--root=$stage" --target=windows-x64 "--ephemeral-root=$env:RUNNER_TEMP" "--out=$package" --profile=unsigned-engineering
+          $install = Join-Path $standardUserRoot 'installed-unsigned-windows'
+          node scripts/standalone-safe-zip-extract.mjs "--archive=$package" --target=windows-x64 "--ephemeral-root=$standardUserRoot" "--out=$install" --profile=unsigned-engineering
+          $installedIndex = Get-Content -Raw -LiteralPath (Join-Path $install 'unsigned-launcher-index.json') | ConvertFrom-Json
+          $safe = Join-Path $install $installedIndex.launchers.safe.name
+          $actions = Join-Path $install $installedIndex.launchers.local_actions.name
+          $scanner = Get-ChildItem "$env:ProgramFiles\Windows Defender\MpCmdRun.exe", "$env:ProgramData\Microsoft\Windows Defender\Platform\*\MpCmdRun.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $scanner) { throw 'Microsoft Defender scanner is unavailable.' }
+          foreach ($candidate in @($safe, $actions)) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $candidate
+            if ($signature.Status -ne 'NotSigned') {
+              throw "Unexpected Authenticode state for an engineering launcher: $($signature.Status)."
+            }
+            & $scanner.FullName -Scan -ScanType 3 -File $candidate
+            if ($LASTEXITCODE -ne 0) { throw "Microsoft Defender scan failed with exit code $LASTEXITCODE." }
+          }
+
+          $beforeExtractionRoots = @(
+            Get-ChildItem -LiteralPath $env:TEMP -Directory -Filter 'dusk-studio-sea-*' -ErrorAction SilentlyContinue |
+              ForEach-Object FullName |
+              Sort-Object
+          )
+          $guardInfo = [System.Diagnostics.ProcessStartInfo]::new()
+          $guardInfo.FileName = $safe
+          $guardInfo.UseShellExecute = $false
+          $guardInfo.CreateNoWindow = $true
+          $guardInfo.RedirectStandardOutput = $true
+          $guardInfo.RedirectStandardError = $true
+          $guardInfo.ArgumentList.Add('--signed-rc-self-test')
+          $guardProcess = [System.Diagnostics.Process]::Start($guardInfo)
+          $guardStdout = $guardProcess.StandardOutput.ReadToEndAsync()
+          $guardStderr = $guardProcess.StandardError.ReadToEndAsync()
+          if (-not $guardProcess.WaitForExit(30_000)) {
+            $guardProcess.Kill($true)
+            throw 'Elevated-launch rejection probe timed out.'
+          }
+          $guardOutput = "$($guardStdout.Result)`n$($guardStderr.Result)"
+          if ($guardProcess.ExitCode -eq 0 -or $guardOutput -notmatch 'Dusk Developer Studio refuses elevated or root execution[.]') {
+            throw 'The Windows launcher did not reject the elevated hosted-runner token.'
+          }
+          $afterExtractionRoots = @(
+            Get-ChildItem -LiteralPath $env:TEMP -Directory -Filter 'dusk-studio-sea-*' -ErrorAction SilentlyContinue |
+              ForEach-Object FullName |
+              Sort-Object
+          )
+          if (Compare-Object $beforeExtractionRoots $afterExtractionRoots) {
+            throw 'The rejected elevated launch created a SEA extraction directory.'
+          }
+          $unexpectedListeners = @(
+            Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+              Where-Object { $_.LocalPort -in @(5173, 8788) }
+          )
+          if ($unexpectedListeners.Count -ne 0) {
+            throw 'The rejected elevated launch opened a Studio port.'
+          }
+
+          $userName = 'DuskStudioAssurance'
+          if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
+            throw 'The isolated assurance account already exists.'
+          }
+          $driverRoot = Join-Path $standardUserRoot 'driver'
+          New-Item -ItemType Directory -Path $driverRoot | Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'scripts') -Destination (Join-Path $driverRoot 'scripts') -Recurse
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'config') -Destination (Join-Path $driverRoot 'config') -Recurse
+          Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'package.json') -Destination (Join-Path $driverRoot 'package.json')
+          Copy-Item -LiteralPath (Get-Command node).Source -Destination (Join-Path $driverRoot 'node.exe')
+          $passwordText = "$([guid]::NewGuid().ToString('N'))aA1!"
+          Write-Output "::add-mask::$passwordText"
+          $securePassword = ConvertTo-SecureString $passwordText -AsPlainText -Force
+          $standardUser = New-LocalUser -Name $userName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword
+          try {
+            Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $standardUser
+            $standardUserSid = $standardUser.SID.Value
+            & (Join-Path $env:SystemRoot 'System32/icacls.exe') $standardUserRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${standardUserSid}:(OI)(CI)F" /T /C
+            if ($LASTEXITCODE -ne 0) { throw 'Could not isolate the standard-user lifecycle root.' }
+
+            $lifecycleInfo = [System.Diagnostics.ProcessStartInfo]::new()
+            $lifecycleInfo.FileName = (Join-Path $driverRoot 'node.exe')
+            $lifecycleInfo.WorkingDirectory = $driverRoot
+            $lifecycleInfo.UseShellExecute = $false
+            $lifecycleInfo.CreateNoWindow = $true
+            $lifecycleInfo.Domain = $env:COMPUTERNAME
+            $lifecycleInfo.UserName = $userName
+            $lifecycleInfo.Password = $securePassword
+            $lifecycleInfo.LoadUserProfile = $false
+            $lifecycleInfo.Environment.Clear()
+            $lifecycleInfo.Environment['SystemRoot'] = $env:SystemRoot
+            $lifecycleInfo.Environment['WINDIR'] = $env:SystemRoot
+            $lifecycleInfo.Environment['COMSPEC'] = (Join-Path $env:SystemRoot 'System32/cmd.exe')
+            $lifecycleInfo.Environment['SystemDrive'] = $env:SystemDrive
+            $lifecycleInfo.Environment['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'
+            $lifecycleInfo.Environment['PATH'] = "$driverRoot;$(Join-Path $env:SystemRoot 'System32');$env:SystemRoot"
+            $lifecycleInfo.Environment['TEMP'] = $standardUserRoot
+            $lifecycleInfo.Environment['TMP'] = $standardUserRoot
+            $lifecycleInfo.Environment['USERPROFILE'] = $standardUserRoot
+            $lifecycleInfo.Environment['LOCALAPPDATA'] = $standardUserRoot
+            $lifecycleInfo.Environment['APPDATA'] = $standardUserRoot
+            foreach ($argument in @(
+              (Join-Path $driverRoot 'scripts/companion-standalone-unsigned-self-test.mjs'),
+              '--target=windows-x64',
+              "--candidate-package=$package",
+              "--install-root=$install",
+              "--ephemeral-root=$standardUserRoot",
+              "--workspace=$(Join-Path $standardUserRoot 'unsigned-lifecycle-windows')",
+              "--out=$(Join-Path $standardUserRoot 'windows-lifecycle.json')"
+            )) {
+              $lifecycleInfo.ArgumentList.Add($argument)
+            }
+            $lifecycleProcess = [System.Diagnostics.Process]::Start($lifecycleInfo)
+            if (-not $lifecycleProcess.WaitForExit(300_000)) {
+              $lifecycleProcess.Kill($true)
+              throw 'Standard-user Windows lifecycle timed out.'
+            }
+            if ($lifecycleProcess.ExitCode -ne 0) {
+              throw "Standard-user Windows lifecycle failed with exit code $($lifecycleProcess.ExitCode)."
+            }
+            $standardUserReport = Join-Path $standardUserRoot 'windows-lifecycle.json'
+            if (-not (Test-Path -LiteralPath $standardUserReport -PathType Leaf)) {
+              throw 'Standard-user Windows lifecycle did not create its bounded report.'
+            }
+            Copy-Item -LiteralPath $standardUserReport -Destination (Join-Path $env:RUNNER_TEMP 'windows-lifecycle.json')
+          } finally {
+            Remove-LocalUser -Name $userName -ErrorAction Stop
+            if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
+              throw 'The isolated assurance account survived cleanup.'
+            }
+          }
+          node scripts/standalone-unsigned-assurance.mjs --operation=platform-observations --target=windows-x64 --checks=host_target_verified,publisher_signature_absent,defender_scan_command_completed "--out=$(Join-Path $env:RUNNER_TEMP 'windows-platform.json')"
+      - name: Delete every workflow-owned unsigned Windows candidate path before recording evidence
+        if: always()
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $paths = [ordered]@{
+            standard_user_root = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user')
+            runtime_archive = (Join-Path $env:RUNNER_TEMP 'node-v24.18.0-win-x64.zip')
+            bundle_1 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-bundle-1')
+            bundle_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-bundle-2')
+            release_1 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-release-1')
+            release_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-release-2')
+            sea_1 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1')
+            sea_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-2')
+            package_stage = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-stage')
+            install_root = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/installed-unsigned-windows')
+            lifecycle_workspace = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-lifecycle-windows')
+            candidate_zip = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-windows-engineering.zip')
+          }
+          $unsafeLifecycleTree = (Test-Path -LiteralPath $paths.install_root) -or (Test-Path -LiteralPath $paths.lifecycle_workspace)
+          foreach ($entry in $paths.GetEnumerator()) {
+            if ($entry.Key -notin @('standard_user_root', 'install_root', 'lifecycle_workspace')) {
+              Remove-Item -LiteralPath $entry.Value -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          if (-not $unsafeLifecycleTree) {
+            Remove-Item -LiteralPath $paths.standard_user_root -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          $records = $paths.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
+          node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=windows-x64 "--scope-root=$env:RUNNER_TEMP" "--paths=$($records -join '|')" "--out=$(Join-Path $env:RUNNER_TEMP 'windows-cleanup.json')"
+          node scripts/standalone-unsigned-assurance.mjs --operation=target-evidence --target=windows-x64 "--lifecycle-report=$(Join-Path $env:RUNNER_TEMP 'windows-lifecycle.json')" "--reproducibility-report=$(Join-Path $env:RUNNER_TEMP 'windows-reproducibility.json')" "--platform-observations=$(Join-Path $env:RUNNER_TEMP 'windows-platform.json')" "--cleanup-receipt=$(Join-Path $env:RUNNER_TEMP 'windows-cleanup.json')" "--repository=$env:GITHUB_REPOSITORY" "--workflow-ref=$env:GITHUB_WORKFLOW_REF" "--run-id=$env:GITHUB_RUN_ID" "--run-attempt=$env:GITHUB_RUN_ATTEMPT" "--run-actor=github:$env:GITHUB_ACTOR" "--expected-commit=$env:EXPECTED_COMMIT" "--checks=$env:UNSIGNED_ASSURANCE_CHECKS" "--out=$(Join-Path $env:RUNNER_TEMP 'windows-x64.json')"
+  linux:
+    name: Unsigned engineering lifecycle (linux-x64)
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - name: Check out the exact reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+          ref: ${{ env.EXPECTED_COMMIT }}
+      - name: Prove native target and immutable checkout
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$(uname -s)" = Linux
+          test "$(uname -m)" = x86_64
+          test -z "$(git status --short)"
+      - name: Use the frozen Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          package-manager-cache: "false"
+      - name: Restore the exact dependency graph
+        run: |
+          set -euo pipefail
+          corepack enable
+          corepack install --global pnpm@$PNPM_VERSION
+          pnpm install --frozen-lockfile
+          node scripts/standalone-unsigned-assurance.mjs --operation=policy
+      - name: Build two unsigned reproducibility attempts
+        env:
+          DUSK_STUDIO_ARTIFACT_CHANNEL: portable
+          DUSK_STUDIO_RELEASE_COMMIT: ${{ env.EXPECTED_COMMIT }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")"
+          epoch="$(git show -s --format=%ct "$EXPECTED_COMMIT")"
+          runtime="$RUNNER_TEMP/node-v24.18.0-linux-x64.tar.xz"
+          curl --fail --silent --show-error --location --output "$runtime" https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-x64.tar.xz
+          pnpm --filter @dusk/studio build
+          for attempt in 1 2; do
+            bundle="$RUNNER_TEMP/unsigned-linux-bundle-$attempt"
+            release="$RUNNER_TEMP/unsigned-linux-release-$attempt"
+            sea="$RUNNER_TEMP/unsigned-linux-sea-$attempt"
+            node scripts/companion-bundle.mjs --out="$bundle"
+            node scripts/companion-build.mjs --target=linux-x64 --out="$release" --launcher-bundle="$bundle" --runtime-archive="$runtime" --commit="$EXPECTED_COMMIT" --version="$version" --source-date-epoch="$epoch"
+            node scripts/companion-verify.mjs --release="$release"
+            node scripts/companion-sea-prototype.mjs --release="$release" --target=linux-x64 --out="$sea"
+          done
+          node scripts/standalone-unsigned-assurance.mjs --operation=reproducibility --target=linux-x64 --first-receipt="$RUNNER_TEMP/unsigned-linux-sea-1/prototype-receipt.json" --second-receipt="$RUNNER_TEMP/unsigned-linux-sea-2/prototype-receipt.json" --out="$RUNNER_TEMP/linux-reproducibility.json"
+      - name: Package, extract, inspect, and exercise both Linux launchers
+        run: |
+          set -euo pipefail
+          sea="$RUNNER_TEMP/unsigned-linux-sea-1"
+          receipt_source="$sea/prototype-receipt.json"
+          stage="$RUNNER_TEMP/unsigned-linux-stage"
+          mkdir -p "$stage/launchers" "$stage/evidence"
+          safe_name="$(node -p "JSON.parse(require('fs').readFileSync('$receipt_source')).launchers.safe.name")"
+          actions_name="$(node -p "JSON.parse(require('fs').readFileSync('$receipt_source')).launchers.local_actions.name")"
+          cp "$sea/$safe_name" "$sea/$actions_name" "$stage/launchers/"
+          cp "$receipt_source" "$stage/evidence/prototype-receipt.json"
+          node scripts/standalone-unsigned-assurance.mjs --operation=index --target=linux-x64 --safe-launcher="$sea/$safe_name" --local-actions-launcher="$sea/$actions_name" --safe-name="launchers/$safe_name" --local-actions-name="launchers/$actions_name" --build-receipt="$stage/evidence/prototype-receipt.json" --out="$stage/unsigned-launcher-index.json"
+          node scripts/standalone-unsigned-assurance.mjs --operation=manifest --root="$stage" --target=linux-x64 --build-receipt="$stage/evidence/prototype-receipt.json" --launcher-index="$stage/unsigned-launcher-index.json" --out="$stage/unsigned-candidate-manifest.json"
+          package="$RUNNER_TEMP/unsigned-linux-engineering.zip"
+          node scripts/standalone-safe-zip-extract.mjs --create --root="$stage" --target=linux-x64 --ephemeral-root="$RUNNER_TEMP" --out="$package" --profile=unsigned-engineering
+          install="$RUNNER_TEMP/installed-unsigned-linux"
+          node scripts/standalone-safe-zip-extract.mjs --archive="$package" --target=linux-x64 --ephemeral-root="$RUNNER_TEMP" --out="$install" --profile=unsigned-engineering
+          safe="$install/launchers/$safe_name"
+          actions="$install/launchers/$actions_name"
+          for candidate in "$safe" "$actions"; do
+            test -x "$candidate"
+            file "$candidate" | grep -Eq 'ELF 64-bit LSB (pie )?executable, x86-64'
+            readelf -h "$candidate" | grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64'
+            stack_flags="$(readelf -W -l "$candidate" | awk '$1 == "GNU_STACK" {print $7}')"
+            test -n "$stack_flags"
+            case "$stack_flags" in *E*) echo 'Executable GNU_STACK is forbidden.' >&2; exit 1 ;; esac
+            mode="$(stat -c '%a' "$candidate")"
+            test $((8#$mode & 06000)) -eq 0
+          done
+          if find "$install" -type f \( -iname '*.sig' -o -iname '*.pem' -o -iname '*.crt' -o -iname '*.cert' -o -iname '*.p7s' -o -iname '*.minisig' -o -iname '*.bundle' \) -print -quit | grep -q .; then
+            echo 'Unsigned engineering package unexpectedly contains a detached trust artifact.' >&2
+            exit 1
+          fi
+          before_elevated_probe="$(find /tmp -maxdepth 1 -type d -name 'dusk-studio-sea-*' -print | LC_ALL=C sort)"
+          set +e
+          elevated_output="$(sudo -n -- /usr/bin/env TMPDIR=/tmp TEMP=/tmp TMP=/tmp "$safe" --signed-rc-self-test 2>&1)"
+          elevated_status=$?
+          set -e
+          test "$elevated_status" -ne 0
+          printf '%s\n' "$elevated_output" | grep -F 'Dusk Developer Studio refuses elevated or root execution.'
+          after_elevated_probe="$(find /tmp -maxdepth 1 -type d -name 'dusk-studio-sea-*' -print | LC_ALL=C sort)"
+          test "$before_elevated_probe" = "$after_elevated_probe"
+          node scripts/companion-standalone-unsigned-self-test.mjs --target=linux-x64 --candidate-package="$package" --install-root="$install" --ephemeral-root="$RUNNER_TEMP" --workspace="$RUNNER_TEMP/unsigned-lifecycle-linux" --out="$RUNNER_TEMP/linux-lifecycle.json"
+          node scripts/standalone-unsigned-assurance.mjs --operation=platform-observations --target=linux-x64 --checks=host_target_verified,detached_trust_artifacts_absent,elf_x64_verified,nx_stack_verified,special_mode_absent --out="$RUNNER_TEMP/linux-platform.json"
+      - name: Delete every workflow-owned unsigned Linux candidate path before recording evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          cleanup_records=(
+            "runtime_archive=$RUNNER_TEMP/node-v24.18.0-linux-x64.tar.xz"
+            "bundle_1=$RUNNER_TEMP/unsigned-linux-bundle-1"
+            "bundle_2=$RUNNER_TEMP/unsigned-linux-bundle-2"
+            "release_1=$RUNNER_TEMP/unsigned-linux-release-1"
+            "release_2=$RUNNER_TEMP/unsigned-linux-release-2"
+            "sea_1=$RUNNER_TEMP/unsigned-linux-sea-1"
+            "sea_2=$RUNNER_TEMP/unsigned-linux-sea-2"
+            "package_stage=$RUNNER_TEMP/unsigned-linux-stage"
+            "install_root=$RUNNER_TEMP/installed-unsigned-linux"
+            "lifecycle_workspace=$RUNNER_TEMP/unsigned-lifecycle-linux"
+            "candidate_zip=$RUNNER_TEMP/unsigned-linux-engineering.zip"
+          )
+          for record in "${cleanup_records[@]}"; do
+            case "${record%%=*}" in
+              install_root|lifecycle_workspace) ;;
+              *) rm -rf -- "${record#*=}" ;;
+            esac
+          done
+          joined="$(IFS='|'; echo "${cleanup_records[*]}")"
+          node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=linux-x64 --scope-root="$RUNNER_TEMP" --paths="$joined" --out="$RUNNER_TEMP/linux-cleanup.json"
+          node scripts/standalone-unsigned-assurance.mjs --operation=target-evidence --target=linux-x64 --lifecycle-report="$RUNNER_TEMP/linux-lifecycle.json" --reproducibility-report="$RUNNER_TEMP/linux-reproducibility.json" --platform-observations="$RUNNER_TEMP/linux-platform.json" --cleanup-receipt="$RUNNER_TEMP/linux-cleanup.json" --repository="$GITHUB_REPOSITORY" --workflow-ref="$GITHUB_WORKFLOW_REF" --run-id="$GITHUB_RUN_ID" --run-attempt="$GITHUB_RUN_ATTEMPT" --run-actor="github:$GITHUB_ACTOR" --expected-commit="$EXPECTED_COMMIT" --checks="$UNSIGNED_ASSURANCE_CHECKS" --out="$RUNNER_TEMP/linux-x64.json"
+  macos:
+    name: Unsigned engineering lifecycle (darwin-arm64)
+    needs: preflight
+    runs-on: macos-15
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - name: Check out the exact reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+          ref: ${{ env.EXPECTED_COMMIT }}
+      - name: Prove native target and immutable checkout
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          test -z "$(git status --short)"
+      - name: Use the frozen Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          package-manager-cache: "false"
+      - name: Restore the exact dependency graph
+        run: |
+          set -euo pipefail
+          test "$(node -p 'process.arch')" = arm64
+          corepack enable
+          corepack install --global pnpm@$PNPM_VERSION
+          pnpm install --frozen-lockfile
+          node scripts/standalone-unsigned-assurance.mjs --operation=policy
+      - name: Build two unsigned reproducibility attempts
+        env:
+          DUSK_STUDIO_ARTIFACT_CHANNEL: portable
+          DUSK_STUDIO_RELEASE_COMMIT: ${{ env.EXPECTED_COMMIT }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "JSON.parse(require('fs').readFileSync('package.json')).version")"
+          epoch="$(git show -s --format=%ct "$EXPECTED_COMMIT")"
+          runtime="$RUNNER_TEMP/node-v24.18.0-darwin-arm64.tar.xz"
+          curl --fail --silent --show-error --location --output "$runtime" https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-arm64.tar.xz
+          pnpm --filter @dusk/studio build
+          for attempt in 1 2; do
+            bundle="$RUNNER_TEMP/unsigned-macos-bundle-$attempt"
+            release="$RUNNER_TEMP/unsigned-macos-release-$attempt"
+            sea="$RUNNER_TEMP/unsigned-macos-sea-$attempt"
+            node scripts/companion-bundle.mjs --out="$bundle"
+            node scripts/companion-build.mjs --target=darwin-arm64 --out="$release" --launcher-bundle="$bundle" --runtime-archive="$runtime" --commit="$EXPECTED_COMMIT" --version="$version" --source-date-epoch="$epoch"
+            node scripts/companion-verify.mjs --release="$release"
+            node scripts/companion-sea-prototype.mjs --release="$release" --target=darwin-arm64 --out="$sea"
+          done
+          node scripts/standalone-unsigned-assurance.mjs --operation=reproducibility --target=darwin-arm64 --first-receipt="$RUNNER_TEMP/unsigned-macos-sea-1/prototype-receipt.json" --second-receipt="$RUNNER_TEMP/unsigned-macos-sea-2/prototype-receipt.json" --out="$RUNNER_TEMP/macos-reproducibility.json"
+      - name: Package, extract, inspect, and exercise both macOS launchers
+        run: |
+          set -euo pipefail
+          sea="$RUNNER_TEMP/unsigned-macos-sea-1"
+          receipt_source="$sea/prototype-receipt.json"
+          safe_name="$(node -p "JSON.parse(require('fs').readFileSync('$receipt_source')).launchers.safe.name")"
+          actions_name="$(node -p "JSON.parse(require('fs').readFileSync('$receipt_source')).launchers.local_actions.name")"
+          app_root="$RUNNER_TEMP/unsigned-macos-apps"
+          node scripts/standalone-macos-app.mjs --safe-executable="$sea/$safe_name" --local-actions-executable="$sea/$actions_name" --build-receipt="$receipt_source" --out="$app_root"
+          stage="$RUNNER_TEMP/unsigned-macos-stage"
+          mkdir -p "$stage/evidence"
+          ditto "$app_root/Dusk Developer Studio.app" "$stage/Dusk Developer Studio.app"
+          ditto "$app_root/Dusk Developer Studio Local Actions.app" "$stage/Dusk Developer Studio Local Actions.app"
+          cp "$receipt_source" "$stage/evidence/prototype-receipt.json"
+          cp "$app_root/macos-app-receipt.json" "$stage/evidence/macos-app-receipt.json"
+          safe_path="$stage/Dusk Developer Studio.app/Contents/MacOS/dusk-studio"
+          actions_path="$stage/Dusk Developer Studio Local Actions.app/Contents/MacOS/dusk-studio-local-actions"
+          node scripts/standalone-unsigned-assurance.mjs --operation=index --target=darwin-arm64 --safe-launcher="$safe_path" --local-actions-launcher="$actions_path" --safe-name="Dusk Developer Studio.app/Contents/MacOS/dusk-studio" --local-actions-name="Dusk Developer Studio Local Actions.app/Contents/MacOS/dusk-studio-local-actions" --build-receipt="$stage/evidence/prototype-receipt.json" --macos-app-receipt="$stage/evidence/macos-app-receipt.json" --out="$stage/unsigned-launcher-index.json"
+          node scripts/standalone-unsigned-assurance.mjs --operation=manifest --root="$stage" --target=darwin-arm64 --build-receipt="$stage/evidence/prototype-receipt.json" --launcher-index="$stage/unsigned-launcher-index.json" --out="$stage/unsigned-candidate-manifest.json"
+          package="$RUNNER_TEMP/unsigned-macos-engineering.zip"
+          node scripts/standalone-safe-zip-extract.mjs --create --root="$stage" --target=darwin-arm64 --ephemeral-root="$RUNNER_TEMP" --out="$package" --profile=unsigned-engineering
+          install="$RUNNER_TEMP/installed-unsigned-macos"
+          node scripts/standalone-safe-zip-extract.mjs --archive="$package" --target=darwin-arm64 --ephemeral-root="$RUNNER_TEMP" --out="$install" --profile=unsigned-engineering
+          safe_app="$install/Dusk Developer Studio.app"
+          actions_app="$install/Dusk Developer Studio Local Actions.app"
+          for app in "$safe_app" "$actions_app"; do
+            executable="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+            file "$executable" | grep -F 'Mach-O 64-bit executable arm64'
+            codesign --verify --strict --verbose=4 "$executable"
+            codesign -d --verbose=4 "$executable" 2>&1 | grep -F 'Signature=adhoc'
+            xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");GitHubActions;" "$app"
+            set +e
+            gatekeeper_output="$(spctl --assess --type execute --verbose=4 "$app" 2>&1)"
+            gatekeeper_status=$?
+            set -e
+            printf '%s\n' "$gatekeeper_output"
+            test "$gatekeeper_status" -ne 0
+            printf '%s\n' "$gatekeeper_output" | grep -Eiq '(^|: )[[:space:]]*rejected([[:space:]]|$)'
+            xattr -dr com.apple.quarantine "$app"
+          done
+          safe="$safe_app/Contents/MacOS/dusk-studio"
+          before_elevated_probe="$(find /tmp -maxdepth 1 -type d -name 'dusk-studio-sea-*' -print | LC_ALL=C sort)"
+          set +e
+          elevated_output="$(sudo -n -- /usr/bin/env TMPDIR=/tmp TEMP=/tmp TMP=/tmp "$safe" --signed-rc-self-test 2>&1)"
+          elevated_status=$?
+          set -e
+          test "$elevated_status" -ne 0
+          printf '%s\n' "$elevated_output" | grep -F 'Dusk Developer Studio refuses elevated or root execution.'
+          after_elevated_probe="$(find /tmp -maxdepth 1 -type d -name 'dusk-studio-sea-*' -print | LC_ALL=C sort)"
+          test "$before_elevated_probe" = "$after_elevated_probe"
+          node scripts/companion-standalone-unsigned-self-test.mjs --target=darwin-arm64 --candidate-package="$package" --install-root="$install" --ephemeral-root="$RUNNER_TEMP" --workspace="$RUNNER_TEMP/unsigned-lifecycle-macos" --out="$RUNNER_TEMP/macos-lifecycle.json"
+          node scripts/standalone-unsigned-assurance.mjs --operation=platform-observations --target=darwin-arm64 --checks=host_target_verified,adhoc_integrity_verified,gatekeeper_rejected_unsigned --out="$RUNNER_TEMP/macos-platform.json"
+      - name: Delete every workflow-owned unsigned macOS candidate path before recording evidence
+        if: always()
+        run: |
+          set -euo pipefail
+          cleanup_records=(
+            "runtime_archive=$RUNNER_TEMP/node-v24.18.0-darwin-arm64.tar.xz"
+            "bundle_1=$RUNNER_TEMP/unsigned-macos-bundle-1"
+            "bundle_2=$RUNNER_TEMP/unsigned-macos-bundle-2"
+            "release_1=$RUNNER_TEMP/unsigned-macos-release-1"
+            "release_2=$RUNNER_TEMP/unsigned-macos-release-2"
+            "sea_1=$RUNNER_TEMP/unsigned-macos-sea-1"
+            "sea_2=$RUNNER_TEMP/unsigned-macos-sea-2"
+            "app_bundle_root=$RUNNER_TEMP/unsigned-macos-apps"
+            "package_stage=$RUNNER_TEMP/unsigned-macos-stage"
+            "install_root=$RUNNER_TEMP/installed-unsigned-macos"
+            "lifecycle_workspace=$RUNNER_TEMP/unsigned-lifecycle-macos"
+            "candidate_zip=$RUNNER_TEMP/unsigned-macos-engineering.zip"
+          )
+          for record in "${cleanup_records[@]}"; do
+            case "${record%%=*}" in
+              install_root|lifecycle_workspace) ;;
+              *) rm -rf -- "${record#*=}" ;;
+            esac
+          done
+          joined="$(IFS='|'; echo "${cleanup_records[*]}")"
+          node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=darwin-arm64 --scope-root="$RUNNER_TEMP" --paths="$joined" --out="$RUNNER_TEMP/macos-cleanup.json"
+          node scripts/standalone-unsigned-assurance.mjs --operation=target-evidence --target=darwin-arm64 --lifecycle-report="$RUNNER_TEMP/macos-lifecycle.json" --reproducibility-report="$RUNNER_TEMP/macos-reproducibility.json" --platform-observations="$RUNNER_TEMP/macos-platform.json" --cleanup-receipt="$RUNNER_TEMP/macos-cleanup.json" --repository="$GITHUB_REPOSITORY" --workflow-ref="$GITHUB_WORKFLOW_REF" --run-id="$GITHUB_RUN_ID" --run-attempt="$GITHUB_RUN_ATTEMPT" --run-actor="github:$GITHUB_ACTOR" --expected-commit="$EXPECTED_COMMIT" --checks="$UNSIGNED_ASSURANCE_CHECKS" --out="$RUNNER_TEMP/darwin-arm64.json"
+  result:
+    name: Unsigned companion engineering assurance
+    needs: [preflight, windows, linux, macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    defaults:
+      run:
+        shell: bash
+        working-directory: .
+    steps:
+      - name: Require every native job
+        env:
+          PREFLIGHT_RESULT: ${{ needs.preflight.result }}
+          WINDOWS_RESULT: ${{ needs.windows.result }}
+          LINUX_RESULT: ${{ needs.linux.result }}
+          MACOS_RESULT: ${{ needs.macos.result }}
+        run: |
+          set -euo pipefail
+          test "$PREFLIGHT_RESULT" = success
+          test "$WINDOWS_RESULT" = success
+          test "$LINUX_RESULT" = success
+          test "$MACOS_RESULT" = success
+      - name: Report bounded result
+        run: |
+          {
+            echo "### Unsigned companion engineering assurance"
+            echo "- Native target lifecycles: passed"
+            echo "- Reproducible dual-launcher builds: passed"
+            echo "- Exact workflow-owned candidate paths: absent at the cleanup check"
+            echo "- Retained workflow artifacts: none"
+            echo "- Platform trust or publication eligibility: not established"
+          } >> "$GITHUB_STEP_SUMMARY"
