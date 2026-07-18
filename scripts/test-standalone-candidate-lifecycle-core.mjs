@@ -17,12 +17,19 @@ assert.match(
 );
 assert.match(
   source,
-  /The close event proves the exact root handle exited[\s\S]*?const descendants = windowsDescendantPids\(child\.pid\);/
+  /The close event proves the exact root handle exited[\s\S]*?const inventory = windowsDescendantInventory\(child\.pid\);/
 );
 assert.match(
   source,
-  /if \(process\.platform === "win32"\) \{[\s\S]*?const descendants = windowsDescendantPids\(child\.pid\);[\s\S]*?\} else if \(!forceKillProcessGroup\(child\.pid, true\)\)/
+  /if \(process\.platform === "win32"\) \{[\s\S]*?const inventory = windowsDescendantInventory\(child\.pid\);[\s\S]*?const descendants = inventory\.pids;[\s\S]*?\} else if \(!forceKillProcessGroup\(child\.pid, true\)\)/
 );
+assert.match(
+  source,
+  /SELECT ProcessId, ParentProcessId FROM Win32_Process[\s\S]*?-OperationTimeoutSec 45/
+);
+assert.match(source, /timeout: 60_000,[\s\S]*?maxBuffer: 1_048_576/);
+assert.match(source, /category=\$\{category\}[\s\S]*?elapsed_ms=/);
+assert.doesNotMatch(source, /Get-CimInstance Win32_Process -ErrorAction Stop \| Select-Object/);
 const windowsProcessExistsSource = source.slice(
   source.indexOf("function windowsProcessExists"),
   source.indexOf("function waitForWindowsProcessTreeExit")

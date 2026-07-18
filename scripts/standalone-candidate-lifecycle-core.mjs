@@ -105,43 +105,105 @@ function terminateProcessTree(child) {
   return true;
 }
 
-function windowsDescendantPids(rootPid) {
+function boundedWindowsProbeText(value) {
+  return `${value ?? ""}`
+    .replace(/\p{Cc}+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 512);
+}
+
+function windowsProbeFailure(result, elapsedMs) {
+  const category = result.error?.code === "ETIMEDOUT"
+    ? "timeout"
+    : result.error
+      ? "spawn_error"
+      : Number.isInteger(result.status)
+        ? `exit_${result.status}`
+        : "unavailable";
+  const details = [
+    `category=${category}`,
+    `elapsed_ms=${Math.max(0, Math.min(Math.round(elapsedMs), 60_000))}`
+  ];
+  if (typeof result.signal === "string" && /^[A-Z0-9]+$/.test(result.signal)) {
+    details.push(`signal=${result.signal}`);
+  }
+  const stderr = boundedWindowsProbeText(result.stderr);
+  if (stderr) details.push(`stderr=${stderr}`);
+  return details.join(", ");
+}
+
+function windowsDescendantInventory(rootPid) {
   const powershell = path.join(
     process.env.SystemRoot ?? "C:\\Windows",
     "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
   );
   const command = [
     "$ErrorActionPreference='Stop'",
-    "$all=@(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId,ParentProcessId)",
-    `$frontier=@([uint32]${rootPid})`,
-    "$seen=@{}",
-    "$descendants=@()",
-    "while($frontier.Count -gt 0){",
-    "  $children=@($all | Where-Object { $frontier -contains [uint32]$_.ParentProcessId -and -not $seen.ContainsKey([string]$_.ProcessId) })",
-    "  if($children.Count -eq 0){ break }",
-    "  foreach($child in $children){ $seen[[string]$child.ProcessId]=$true; $descendants += [uint32]$child.ProcessId }",
-    "  $frontier=@($children | ForEach-Object { [uint32]$_.ProcessId })",
-    "}",
-    "$descendants | Sort-Object -Unique | ConvertTo-Json -Compress"
+    "$rows=@(Get-CimInstance -Query 'SELECT ProcessId, ParentProcessId FROM Win32_Process' -OperationTimeoutSec 45 -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ process_id=[uint32]$_.ProcessId; parent_process_id=[uint32]$_.ParentProcessId } })",
+    "$rows | ConvertTo-Json -Compress"
   ].join("; ");
+  const startedAt = Date.now();
   const result = spawnSync(
     powershell,
     ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
-    { encoding: "utf8", windowsHide: true, timeout: 15_000 }
+    {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 60_000,
+      maxBuffer: 1_048_576
+    }
   );
-  if (result.status !== 0) return undefined;
-  if (!result.stdout.trim()) return [];
+  const elapsedMs = Date.now() - startedAt;
+  if (result.status !== 0) {
+    return { failure: windowsProbeFailure(result, elapsedMs) };
+  }
+  if (!result.stdout.trim()) {
+    return { failure: "category=empty_output" };
+  }
   try {
     const parsed = JSON.parse(result.stdout);
-    const values = Array.isArray(parsed) ? parsed : [parsed];
-    if (values.length > 65_536
-        || values.some((value) => !Number.isSafeInteger(value) || value <= 0)) {
-      return undefined;
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    if (rows.length === 0 || rows.length > 65_536) {
+      return { failure: "category=invalid_row_count" };
     }
-    return [...new Set(values)];
+    const parentToChildren = new Map();
+    const processIds = new Set();
+    for (const row of rows) {
+      exactKeys(row, ["process_id", "parent_process_id"], "Windows process inventory row");
+      if (!Number.isSafeInteger(row.process_id) || row.process_id < 0
+          || !Number.isSafeInteger(row.parent_process_id) || row.parent_process_id < 0
+          || processIds.has(row.process_id)) {
+        return { failure: "category=invalid_row" };
+      }
+      processIds.add(row.process_id);
+      const children = parentToChildren.get(row.parent_process_id) ?? [];
+      children.push(row.process_id);
+      parentToChildren.set(row.parent_process_id, children);
+    }
+    const descendants = [];
+    const seen = new Set();
+    let frontier = [rootPid];
+    while (frontier.length !== 0) {
+      const next = [];
+      for (const parentPid of frontier) {
+        for (const childPid of parentToChildren.get(parentPid) ?? []) {
+          if (seen.has(childPid)) continue;
+          seen.add(childPid);
+          descendants.push(childPid);
+          next.push(childPid);
+        }
+      }
+      frontier = next;
+    }
+    return { pids: descendants };
   } catch {
-    return undefined;
+    return { failure: "category=invalid_output" };
   }
+}
+
+function windowsDescendantPids(rootPid) {
+  return windowsDescendantInventory(rootPid).pids;
 }
 
 function windowsProcessExists(pid) {
@@ -276,13 +338,16 @@ export function runCandidate(candidate, args, env, cwd) {
         // bare PID can observe WMI lag or a reused PID, so only inventory
         // descendants here. The outer Windows assurance lane independently
         // rejects any process still owned by its one-use standard-user SID.
-        const descendants = windowsDescendantPids(child.pid);
-        if (!descendants) {
-          const error = new Error("Candidate closed, but Windows descendant inventory was unavailable.");
+        const inventory = windowsDescendantInventory(child.pid);
+        if (!inventory.pids) {
+          const error = new Error(
+            `Candidate closed, but Windows descendant inventory was unavailable (${inventory.failure}).`
+          );
           error.cleanupSafe = false;
           reject(error);
           return;
         }
+        const descendants = inventory.pids;
         if (descendants.length !== 0) {
           const error = new Error("Candidate left a live tracked descendant process.");
           error.cleanupSafe = false;
