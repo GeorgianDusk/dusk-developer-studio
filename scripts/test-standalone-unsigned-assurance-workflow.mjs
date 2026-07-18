@@ -201,14 +201,16 @@ assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$env:GITHUB_WORKSPAC
 assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$env:GITHUB_WORKSPACE 'config'\) -Destination \(Join-Path \$driverRoot 'config'\) -Recurse/);
 assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$env:GITHUB_WORKSPACE 'package\.json'\) -Destination \(Join-Path \$driverRoot 'package\.json'\)/);
 assert.match(workflow, /Copy-Item -LiteralPath \(Get-Command node\)\.Source -Destination \(Join-Path \$driverRoot 'node\.exe'\)/);
+const standardUserRootAclLine = workflow
+  .split(/\r?\n/)
+  .find((line) => line.includes("icacls.exe') $standardUserRoot "));
+assert.ok(standardUserRootAclLine, "Standard-user root ACL command is missing.");
 assert.match(
-  workflow,
-  /icacls\.exe'\) \$standardUserRoot \/inheritance:r \/grant:r "\*S-1-5-18:\(OI\)\(CI\)F" "\*S-1-5-32-544:\(OI\)\(CI\)F" "\*\$\{runnerSid\}:\(OI\)\(CI\)F" "\*\$\{standardUserSid\}:\(OI\)\(CI\)F"/
+  standardUserRootAclLine,
+  /^ {12}& \(Join-Path \$env:SystemRoot 'System32\/icacls\.exe'\) \$standardUserRoot \/inheritance:r \/grant:r "\*S-1-5-18:\(OI\)\(CI\)F" "\*S-1-5-32-544:\(OI\)\(CI\)F" "\*\$\{runnerSid\}:\(OI\)\(CI\)F" "\*\$\{standardUserSid\}:\(OI\)\(CI\)F"$/
 );
-assert.doesNotMatch(
-  workflow,
-  /icacls\.exe'\) \$standardUserRoot[\s\S]{0,300}?\/T \/C/
-);
+assert.doesNotMatch(standardUserRootAclLine, /\/T(?:\s|$)/i);
+assert.doesNotMatch(standardUserRootAclLine, /\/C(?:\s|$)/i);
 assert.match(workflow, /function Assert-IsolatedFullControlTree/);
 assert.match(
   workflow,
