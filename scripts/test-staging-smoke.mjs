@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { EventEmitter } from "node:events";
+import fs from "node:fs";
+import path from "node:path";
 import { setImmediate } from "node:timers";
 import { URL } from "node:url";
 import {
@@ -96,6 +98,10 @@ for (const [target, pattern] of [
   ["https://studio.example/#fragment", /exact origin/],
   ["https://other.example/", /not approved/]
 ]) assert.throws(() => validateAssuranceTargetOrigin(target, targetPolicy), pattern);
+
+const productionPolicy = JSON.parse(fs.readFileSync(path.resolve("config", "phase5-policy.json"), "utf8"));
+assert.equal(validateAssuranceTargetOrigin("https://studio.134-122-59-217.nip.io", productionPolicy).href, "https://studio.134-122-59-217.nip.io/");
+assert.throws(() => validateAssuranceTargetOrigin("https://studio.134-122-59-217.sslip.io", productionPolicy), /not approved/);
 
 const approvedOrigin = new URL("https://studio.example/");
 let observedRedirectMode;

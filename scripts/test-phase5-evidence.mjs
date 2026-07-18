@@ -43,7 +43,7 @@ checks.monitor_heartbeat = {
 const passedSteps = (steps) => Object.fromEntries(steps.map((step) => [step, "passed"]));
 const evidence = {
   schema_version: 2,
-  candidate: { artifact_fingerprint_sha256: digest, public_fingerprint_sha256: digest, commit: "b".repeat(40), manifest_url: "https://studio.134-122-59-217.sslip.io/release-manifest.json", built_at: "2026-07-15T00:00:00Z", source_checked_at: "2026-07-14T00:00:00Z", source_expires_at: "2026-08-03T23:59:59Z" },
+  candidate: { artifact_fingerprint_sha256: digest, public_fingerprint_sha256: digest, commit: "b".repeat(40), manifest_url: "https://studio.134-122-59-217.nip.io/release-manifest.json", built_at: "2026-07-15T00:00:00Z", source_checked_at: "2026-07-14T00:00:00Z", source_expires_at: "2026-08-03T23:59:59Z" },
   companion_distribution: { hosted_mode: "docs-only", availability: "not-published", targets: {} },
   owners,
   reviews,
@@ -153,7 +153,7 @@ externalEvidence.synthetics.checks.external_direct_health = {
   outside_github: true,
   provider: "external-uptime-provider",
   check_id: "studio-public-health",
-  target_url: "https://studio.134-122-59-217.sslip.io/healthz",
+  target_url: "https://studio.134-122-59-217.nip.io/healthz",
   response_status: 200,
   body_match: "ok",
   tls_verified: true,
@@ -176,7 +176,7 @@ const missingDirectHealth = JSON.parse(JSON.stringify(externalEvidence));
 delete missingDirectHealth.synthetics.checks.external_direct_health;
 assert.match(evaluatePhase5Evidence(externalPolicy, missingDirectHealth, { now }).blockers.join("\n"), /external_direct_health|External direct health evidence/);
 const wrongDirectTarget = JSON.parse(JSON.stringify(externalEvidence));
-wrongDirectTarget.synthetics.checks.external_direct_health.target_url = "https://studio.134-122-59-217.sslip.io:8443/healthz";
+wrongDirectTarget.synthetics.checks.external_direct_health.target_url = "https://studio.134-122-59-217.nip.io:8443/healthz";
 assert.match(evaluatePhase5Evidence(externalPolicy, wrongDirectTarget, { now }).blockers.join("\n"), /External direct health evidence/);
 const unhealthyDirectObservation = JSON.parse(JSON.stringify(externalEvidence));
 unhealthyDirectObservation.synthetics.checks.external_direct_health.tls_verified = false;

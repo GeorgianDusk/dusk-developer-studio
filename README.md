@@ -4,7 +4,11 @@
 
 Dusk Developer Studio is a developer cockpit for choosing and following the right Dusk builder path: DuskEVM for Solidity/EVM tooling, or DuskDS for native Rust/WASM/DuskVM work.
 
-The current production Studio is [studio.134-122-59-217.sslip.io](https://studio.134-122-59-217.sslip.io).
+The current production Studio is [studio.134-122-59-217.nip.io](https://studio.134-122-59-217.nip.io).
+The previous `sslip.io` origin temporarily serves the same static release for
+compatibility but is not an approved assurance target because some protected
+DNS paths rewrite it to a block page. Browser-local progress is origin-scoped,
+so it starts fresh once when moving to the canonical `nip.io` address.
 
 ## Use it today
 

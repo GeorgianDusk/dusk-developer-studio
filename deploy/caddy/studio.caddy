@@ -1,5 +1,5 @@
 # Public static Studio. This service fragment intentionally has no authentication or reverse proxy.
-studio.134-122-59-217.sslip.io {
+studio.134-122-59-217.nip.io, studio.134-122-59-217.sslip.io {
 	root * /var/www/dusk-studio/current
 	encode zstd gzip
 	log {

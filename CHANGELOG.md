@@ -4,6 +4,7 @@ All notable Dusk Developer Studio changes are recorded here. The release manifes
 
 ## Unreleased
 
+- Make `studio.134-122-59-217.nip.io` the canonical production origin after a protected DNS path rewrote the former `sslip.io` hostname; retain the old origin only as a temporary same-release compatibility route.
 - Add a deterministic Windows/Linux portable companion RC pipeline with pinned Node runtime verification, payload manifests, SBOM, provenance, signing gates, and extracted-archive smoke.
 - Keep hosted artifacts docs-only while adding release-bound portable bootstrap, exact Studio/runtime parity, safe-mode default, and separate local-actions launchers.
 - Strip secret-shaped environment variables from child tools and terminate active process trees during shutdown.

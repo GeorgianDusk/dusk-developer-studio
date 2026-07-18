@@ -75,7 +75,7 @@ assert.match(publicStagingWorkflow, /gh issue close/);
 assert.doesNotMatch(publicStagingWorkflow, /STUDIO_MONITOR_HEARTBEAT|EXTERNAL_HEARTBEAT|external_heartbeat|external_failure/);
 assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_URL/);
 assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_ENVIRONMENT/);
-assert.doesNotMatch(publicStagingWorkflow, /default:\s*https:\/\/studio\.134-122-59-217\.sslip\.io/);
+assert.doesNotMatch(publicStagingWorkflow, /default:\s*https?:\/\//);
 assert.match(publicStagingWorkflow, /expected_environment:[\s\S]*default: repository-default[\s\S]*- repository-default/);
 assert.match(publicStagingWorkflow, /case "\$EXPECTED_ENVIRONMENT" in staging\|production/);
 assert.match(publicStagingWorkflow, /validateAssuranceTargetOrigin\(process\.env\.TARGET_URL, policy\)/);
@@ -147,8 +147,9 @@ assert.match(monitoringDecision, /GitHub-wide Actions or Issues outage/);
 assert.match(monitoringDecision, /Revisit triggers/);
 const domainMigration = read("docs/deployment/project-domain-migration.md");
 assert.match(domainMigration, /current origin approved for production/);
-assert.match(domainMigration, /optional future migration, not a current launch\s+blocker/);
-assert.match(domainMigration, /client-side resolver or\s+endpoint-security interception, not an invalid certificate/);
+assert.match(domainMigration, /optional future migration, not a\s+current\s+launch\s+blocker/);
+assert.match(domainMigration, /selective\s+client-side resolver or endpoint-security rewrite/);
+assert.match(domainMigration, /not an invalid certificate served by the\s+Studio/);
 assert.match(domainMigration, /Never add a browser, antivirus, or TLS exception/);
 assert.match(domainMigration, /Stage 1: prepare source and the exact candidate/);
 assert.match(domainMigration, /Stage 4: activate scheduled GitHub monitoring/);
@@ -222,6 +223,12 @@ assert.match(watchdogWorkflow, /ref: \$\{\{ github\.sha \}\}[\s\S]*git rev-parse
 const phase5Policy = JSON.parse(read("config/phase5-policy.json"));
 assert.deepEqual(phase5Policy.production_paths, ["duskds"]);
 assert.deepEqual(phase5Policy.preview_paths, ["evm"]);
+assert.deepEqual(phase5Policy.candidate_hosts, [
+  "studio.134-122-59-217.nip.io"
+]);
+assert.deepEqual(phase5Policy.compatibility_hosts, [
+  "studio.134-122-59-217.sslip.io"
+]);
 assert.equal(phase5Policy.duskds_testnet_graphql_url, "https://testnet.nodes.dusk.network/on/graphql/query");
 assert.ok(phase5Policy.duskds_node_read_evidence.max_age_hours > 0);
 assert.ok(phase5Policy.duskds_node_read_evidence.max_receipt_skew_minutes > 0);
@@ -254,10 +261,11 @@ assert.equal(phase5Template.synthetics.monitoring.mode, "github-only");
 assert.equal(phase5Template.synthetics.monitoring.owner, "George");
 assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_dead_man"));
 assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_direct_health"));
-assert.match(read("docs/operations/public-monitoring.md"), /https:\/\/studio\.134-122-59-217\.sslip\.io\/healthz/);
+assert.match(read("docs/operations/public-monitoring.md"), /https:\/\/studio\.134-122-59-217\.nip\.io\/healthz/);
 assert.doesNotMatch(read("docs/operations/public-monitoring.md"), /https:\/\/<project-domain>\/healthz/);
 
 const caddy = read("deploy/caddy/studio.caddy");
+assert.match(caddy, /^studio\.134-122-59-217\.nip\.io, studio\.134-122-59-217\.sslip\.io \{/m);
 assert.doesNotMatch(caddy, /reverse_proxy|127\.0\.0\.1|localhost|8788|basic_auth|basicauth|\/login/i);
 for (const required of ["Content-Security-Policy", "Strict-Transport-Security", "@health path /healthz", "file_server", "dusk-studio-access.log", "roll_keep_for 168h", "request>uri regexp \\?.*$ \"\"", "request>headers>Referer delete"]) {
   assert.ok(caddy.includes(required), `Caddy fragment is missing ${required}.`);
