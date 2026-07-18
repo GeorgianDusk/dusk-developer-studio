@@ -40,13 +40,19 @@ Profile loading and network-only credential behavior are explicitly disabled;
 the child then verifies its exact temporary SID and non-admin token at runtime.
 The harness repeatedly removes exact-SID processes, requires no loaded SID
 profile hive, defensively removes one exact, non-special, unloaded profile
-record if Windows created it, and deletes the account before it can pass. It
-does not modify local account rights or install task/service scaffolding. Its
-Windows limits are deliberately staggered: a five-minute child lifecycle, a
-bounded 15-second child post-kill confirmation, a seven-minute credentialed
-parent wait, a bounded 15-second parent shutdown confirmation, and a bounded
-15-second redirected-output drain. Linux and macOS use `sudo` only to prove
-privileged launch rejection before running lifecycles normally. The required
+record if Windows created it, and deletes the account before it can pass. A
+temporary exact-SID folder-traverse ACL makes the hosted runner's private
+temporary-root ancestor chain reachable; that ACL is removed and verified
+before account deletion. Any unresolved live process-owner query or ACL cleanup
+failure blocks cleanup evidence. The parent writes the root-deletion
+confirmation into a separate inheritance-stripped control directory that the
+temporary user cannot write. The harness does not modify local account rights
+or install task/service scaffolding. Its Windows limits are deliberately
+staggered: a five-minute child lifecycle, a bounded 15-second child post-kill
+confirmation, a seven-minute credentialed parent wait, a bounded 15-second
+parent shutdown confirmation, and a bounded 15-second redirected-output drain.
+Linux and macOS use `sudo` only to prove privileged launch rejection before
+running lifecycles normally. The required
 `.github/workflows/studio-linux-security.yml` lane asserts
 `process.platform === "linux"`, runs the POSIX filesystem/process tests
 explicitly on Ubuntu 24.04, then runs the complete source/product gate. The

@@ -122,6 +122,15 @@ jobs:
           $sea = Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1'
           $receiptSource = Join-Path $sea 'prototype-receipt.json'
           $receipt = Get-Content -Raw -LiteralPath $receiptSource | ConvertFrom-Json
+          $controlRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-control'
+          $cleanupConfirmation = Join-Path $controlRoot 'shutdown-confirmed.json'
+          $runnerSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          New-Item -ItemType Directory -Path $controlRoot | Out-Null
+          & (Join-Path $env:SystemRoot 'System32/icacls.exe') $controlRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${runnerSid}:(OI)(CI)F"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not isolate the parent-owned lifecycle control root.' }
+          if (Test-Path -LiteralPath $cleanupConfirmation) {
+            throw 'Lifecycle cleanup confirmation must not exist before execution.'
+          }
           $standardUserRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user'
           New-Item -ItemType Directory -Path $standardUserRoot | Out-Null
           $stage = Join-Path $standardUserRoot 'package-stage'
@@ -192,23 +201,62 @@ jobs:
           }
 
           $userName = 'DuskStudioAssurance'
-          if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
+          if (@(
+            Get-LocalUser -ErrorAction Stop |
+              Where-Object Name -eq $userName
+          ).Count -ne 0) {
             throw 'The isolated assurance account already exists.'
           }
-          function Get-ProcessesOwnedBySid {
+          function Get-ExactSidAclRules {
+            param(
+              [Parameter(Mandatory = $true)][string] $Path,
+              [Parameter(Mandatory = $true)][string] $Sid
+            )
+            return @(
+              (Get-Acl -LiteralPath $Path -ErrorAction Stop).Access |
+                Where-Object {
+                  try {
+                    $_.IdentityReference.Translate(
+                      [System.Security.Principal.SecurityIdentifier]
+                    ).Value -eq $Sid
+                  } catch {
+                    $_.IdentityReference.Value -eq $Sid -or
+                      $_.IdentityReference.Value -eq "*$Sid"
+                  }
+                }
+            )
+          }
+          function Get-SidProcessSnapshot {
             param([Parameter(Mandatory = $true)][string] $Sid)
-            $owned = @()
+            $owned = [System.Collections.Generic.List[object]]::new()
+            $unresolvedProcessIds = [System.Collections.Generic.List[uint32]]::new()
             foreach ($candidate in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
               try {
                 $owner = Invoke-CimMethod -InputObject $candidate -MethodName GetOwnerSid -ErrorAction Stop
+                if ($null -eq $owner -or $owner.ReturnValue -ne 0 -or
+                    [string]::IsNullOrWhiteSpace([string] $owner.Sid)) {
+                  throw 'Owner SID query did not return a verified identity.'
+                }
               } catch {
+                $liveMatch = @(
+                  Get-CimInstance Win32_Process -Filter "ProcessId = $($candidate.ProcessId)" -ErrorAction Stop
+                )
+                if ($liveMatch.Count -gt 1) {
+                  throw 'A process identifier unexpectedly matched multiple live processes.'
+                }
+                if ($liveMatch.Count -eq 1) {
+                  [void] $unresolvedProcessIds.Add([uint32] $candidate.ProcessId)
+                }
                 continue
               }
-              if ($owner.ReturnValue -eq 0 -and $owner.Sid -eq $Sid) {
-                $owned += $candidate
+              if ($owner.Sid -eq $Sid) {
+                [void] $owned.Add($candidate)
               }
             }
-            return $owned
+            return [pscustomobject]@{
+              Owned = @($owned)
+              UnresolvedProcessIds = @($unresolvedProcessIds | Sort-Object -Unique)
+            }
           }
           function Write-SanitizedDiagnostic {
             param(
@@ -252,6 +300,12 @@ jobs:
           $credentialProcess = $null
           $credentialStartInfo = $null
           $primaryFailure = $null
+          $traverseAclRoots = [System.Collections.Generic.List[string]]::new()
+          $ancestorAclSetupValid = $true
+          $processCleanupConfirmed = $false
+          $ancestorAclCleanupConfirmed = $false
+          $profileCleanupConfirmed = $false
+          $accountCleanupConfirmed = $false
           try {
             $standardUser = New-LocalUser -Name $userName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword
             $userCreated = $true
@@ -259,6 +313,51 @@ jobs:
             $standardUserSid = $standardUser.SID.Value
             if ($standardUserSid -notmatch '^S-1-5-21-(?:[0-9]+-){3}[0-9]+$') {
               throw 'Temporary standard-user SID was invalid.'
+            }
+            $runnerTempPath = [System.IO.Path]::GetFullPath($env:RUNNER_TEMP)
+            $expectedStandardUserRoot = [System.IO.Path]::GetFullPath(
+              (Join-Path $runnerTempPath 'unsigned-windows-standard-user')
+            )
+            if (-not ([System.IO.Path]::GetFullPath($standardUserRoot)).Equals(
+              $expectedStandardUserRoot,
+              [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+              throw 'Standard-user lifecycle root is not the exact runner-owned temporary path.'
+            }
+            $volumeRoot = [System.IO.Path]::GetPathRoot($runnerTempPath)
+            $traverseCursor = $runnerTempPath
+            while (-not $traverseCursor.Equals(
+              $volumeRoot,
+              [System.StringComparison]::OrdinalIgnoreCase
+            )) {
+              if (@(Get-ExactSidAclRules -Path $traverseCursor -Sid $standardUserSid).Count -ne 0) {
+                $ancestorAclSetupValid = $false
+                throw 'Fresh temporary SID unexpectedly had an ancestor ACL before setup.'
+              }
+              & (Join-Path $env:SystemRoot 'System32/icacls.exe') $traverseCursor /grant:r "*${standardUserSid}:(X)"
+              if ($LASTEXITCODE -ne 0) {
+                if (@(Get-ExactSidAclRules -Path $traverseCursor -Sid $standardUserSid).Count -ne 0) {
+                  [void] $traverseAclRoots.Add($traverseCursor)
+                }
+                $ancestorAclSetupValid = $false
+                throw 'Could not grant temporary traversal to a lifecycle-root ancestor.'
+              }
+              $grantedRules = @(Get-ExactSidAclRules -Path $traverseCursor -Sid $standardUserSid)
+              if ($grantedRules.Count -ne 1 -or $grantedRules[0].IsInherited -or
+                  $grantedRules[0].AccessControlType -ne
+                    [System.Security.AccessControl.AccessControlType]::Allow -or
+                  $grantedRules[0].InheritanceFlags -ne
+                    [System.Security.AccessControl.InheritanceFlags]::None -or
+                  $grantedRules[0].PropagationFlags -ne
+                    [System.Security.AccessControl.PropagationFlags]::None -or
+                  (([int] $grantedRules[0].FileSystemRights -band
+                    [int] [System.Security.AccessControl.FileSystemRights]::Traverse) -eq 0)) {
+                $ancestorAclSetupValid = $false
+                throw 'Temporary lifecycle-root ancestor grant was broader or different than traverse-only.'
+              }
+              [void] $traverseAclRoots.Add($traverseCursor)
+              $traverseParent = [System.IO.Directory]::GetParent($traverseCursor)
+              $traverseCursor = if ($null -eq $traverseParent) { $null } else { $traverseParent.FullName }
             }
             if (@(Get-CimInstance Win32_UserProfile -Filter "SID='$standardUserSid'" -ErrorAction Stop).Count -ne 0 -or
                 (Test-Path -LiteralPath "Registry::HKEY_USERS\$standardUserSid") -or
@@ -557,25 +656,51 @@ jobs:
           }
 
           $cleanupFailures = [System.Collections.Generic.List[string]]::new()
-          $accountRemovalSafe = $true
+          $accountRemovalSafe = $ancestorAclSetupValid
           if ($null -ne $standardUserSid) {
             try {
               $processDeadline = [DateTime]::UtcNow.AddSeconds(30)
               do {
-                $remainingOwnedProcesses = @(Get-ProcessesOwnedBySid -Sid $standardUserSid)
-                foreach ($ownedProcess in $remainingOwnedProcesses) {
+                $processSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
+                foreach ($ownedProcess in @($processSnapshot.Owned)) {
                   Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue
                 }
-                if ($remainingOwnedProcesses.Count -ne 0) {
+                $pendingProcessChecks = @($processSnapshot.Owned).Count +
+                  @($processSnapshot.UnresolvedProcessIds).Count
+                if ($pendingProcessChecks -ne 0) {
                   Start-Sleep -Milliseconds 500
                 }
-              } while ($remainingOwnedProcesses.Count -ne 0 -and [DateTime]::UtcNow -lt $processDeadline)
-              $remainingOwnedProcesses = @(Get-ProcessesOwnedBySid -Sid $standardUserSid)
-              if ($remainingOwnedProcesses.Count -ne 0) {
+              } while ($pendingProcessChecks -ne 0 -and [DateTime]::UtcNow -lt $processDeadline)
+              $processSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
+              if (@($processSnapshot.UnresolvedProcessIds).Count -ne 0) {
+                throw 'One or more live process-owner queries remained unresolved after cleanup.'
+              }
+              if (@($processSnapshot.Owned).Count -ne 0) {
                 throw 'A process owned by the temporary assurance SID survived cleanup.'
               }
+              $processCleanupConfirmed = $true
             } catch {
               $cleanupFailures.Add("temporary process cleanup: $($_.Exception.Message)")
+              $accountRemovalSafe = $false
+            }
+          }
+          if ($null -ne $standardUserSid) {
+            try {
+              foreach ($traversePath in @($traverseAclRoots | Sort-Object Length -Descending)) {
+                & (Join-Path $env:SystemRoot 'System32/icacls.exe') $traversePath /remove:g "*$standardUserSid"
+                if ($LASTEXITCODE -ne 0) {
+                  throw 'Could not revoke temporary lifecycle-root ancestor traversal.'
+                }
+                $remainingSidRules = @(
+                  Get-ExactSidAclRules -Path $traversePath -Sid $standardUserSid
+                )
+                if ($remainingSidRules.Count -ne 0) {
+                  throw 'Temporary lifecycle-root ancestor traversal survived ACL cleanup.'
+                }
+              }
+              $ancestorAclCleanupConfirmed = $true
+            } catch {
+              $cleanupFailures.Add("ancestor ACL cleanup: $($_.Exception.Message)")
               $accountRemovalSafe = $false
             }
           }
@@ -657,6 +782,7 @@ jobs:
                   (Test-Path -LiteralPath "Registry::HKEY_USERS\${standardUserSid}_Classes")) {
                 throw 'Temporary assurance profile hive survived cleanup.'
               }
+              $profileCleanupConfirmed = $true
             } catch {
               $cleanupFailures.Add("profile cleanup: $($_.Exception.Message)")
               $accountRemovalSafe = $false
@@ -668,12 +794,81 @@ jobs:
             } else {
               try {
                 Remove-LocalUser -Name $userName -ErrorAction Stop
-                if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
+                $processCleanupConfirmed = $false
+                $profileCleanupConfirmed = $false
+                $finalProcessDeadline = [DateTime]::UtcNow.AddSeconds(30)
+                do {
+                  $finalProcessSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
+                  foreach ($ownedProcess in @($finalProcessSnapshot.Owned)) {
+                    Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue
+                  }
+                  $pendingFinalProcessChecks = @($finalProcessSnapshot.Owned).Count +
+                    @($finalProcessSnapshot.UnresolvedProcessIds).Count
+                  if ($pendingFinalProcessChecks -ne 0) {
+                    Start-Sleep -Milliseconds 500
+                  }
+                } while (
+                  $pendingFinalProcessChecks -ne 0 -and
+                  [DateTime]::UtcNow -lt $finalProcessDeadline
+                )
+                $finalProcessSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
+                if (@($finalProcessSnapshot.UnresolvedProcessIds).Count -ne 0) {
+                  throw 'A final live process-owner query remained unresolved after account deletion.'
+                }
+                if (@($finalProcessSnapshot.Owned).Count -ne 0) {
+                  throw 'A process owned by the deleted temporary assurance SID survived final cleanup.'
+                }
+                $processCleanupConfirmed = $true
+
+                if (@(
+                  Get-CimInstance Win32_UserProfile -Filter "SID='$standardUserSid'" -ErrorAction Stop
+                ).Count -ne 0 -or
+                    (Test-Path -LiteralPath "Registry::HKEY_USERS\$standardUserSid") -or
+                    (Test-Path -LiteralPath "Registry::HKEY_USERS\${standardUserSid}_Classes")) {
+                  throw 'Temporary assurance profile state reappeared before cleanup confirmation.'
+                }
+                $profileCleanupConfirmed = $true
+
+                $remainingAccounts = @(
+                  Get-LocalUser -ErrorAction Stop |
+                    Where-Object {
+                      $_.Name -eq $userName -or $_.SID.Value -eq $standardUserSid
+                    }
+                )
+                if ($remainingAccounts.Count -ne 0) {
                   throw 'The isolated assurance account survived cleanup.'
                 }
+                $accountCleanupConfirmed = $true
               } catch {
                 $cleanupFailures.Add("account cleanup: $($_.Exception.Message)")
               }
+            }
+          }
+          if ($processCleanupConfirmed -and $ancestorAclCleanupConfirmed -and
+              $profileCleanupConfirmed -and $accountCleanupConfirmed) {
+            try {
+              $confirmation = [ordered]@{
+                schema_version = 1
+                expected_commit = $env:EXPECTED_COMMIT
+                standard_user_sid = $standardUserSid
+                process_cleanup_confirmed = $true
+                ancestor_acl_cleanup_confirmed = $true
+                profile_cleanup_confirmed = $true
+                account_cleanup_confirmed = $true
+              }
+              $temporaryConfirmation = "$cleanupConfirmation.$PID.tmp"
+              if ((Test-Path -LiteralPath $cleanupConfirmation) -or
+                  (Test-Path -LiteralPath $temporaryConfirmation)) {
+                throw 'Lifecycle cleanup confirmation path already exists.'
+              }
+              [System.IO.File]::WriteAllText(
+                $temporaryConfirmation,
+                ($confirmation | ConvertTo-Json -Compress),
+                [System.Text.UTF8Encoding]::new($false)
+              )
+              [System.IO.File]::Move($temporaryConfirmation, $cleanupConfirmation)
+            } catch {
+              $cleanupFailures.Add("cleanup confirmation: $($_.Exception.Message)")
             }
           }
           if ($null -ne $primaryFailure -or $cleanupFailures.Count -ne 0) {
@@ -701,14 +896,55 @@ jobs:
             lifecycle_workspace = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-lifecycle-windows')
             candidate_zip = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-windows-engineering.zip')
           }
-          $unsafeLifecycleTree = (Test-Path -LiteralPath $paths.install_root) -or (Test-Path -LiteralPath $paths.lifecycle_workspace)
-          foreach ($entry in $paths.GetEnumerator()) {
-            if ($entry.Key -notin @('standard_user_root', 'install_root', 'lifecycle_workspace')) {
-              Remove-Item -LiteralPath $entry.Value -Recurse -Force -ErrorAction SilentlyContinue
+          $controlRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-control'
+          $cleanupConfirmation = Join-Path $controlRoot 'shutdown-confirmed.json'
+          $cleanupConfirmed = $false
+          if (Test-Path -LiteralPath $cleanupConfirmation -PathType Leaf) {
+            $confirmationFile = Get-Item -LiteralPath $cleanupConfirmation
+            if ($confirmationFile.Length -gt 4096) {
+              throw 'Lifecycle cleanup confirmation exceeded its size bound.'
+            }
+            $confirmation = Get-Content -Raw -LiteralPath $cleanupConfirmation | ConvertFrom-Json
+            $actualProperties = @($confirmation.PSObject.Properties.Name | Sort-Object)
+            $expectedProperties = @(
+              'account_cleanup_confirmed',
+              'ancestor_acl_cleanup_confirmed',
+              'expected_commit',
+              'process_cleanup_confirmed',
+              'profile_cleanup_confirmed',
+              'schema_version',
+              'standard_user_sid'
+            )
+            if (Compare-Object -ReferenceObject $expectedProperties -DifferenceObject $actualProperties) {
+              throw 'Lifecycle cleanup confirmation has an unexpected shape.'
+            }
+            if ($confirmation.schema_version -ne 1 -or
+                $confirmation.expected_commit -ne $env:EXPECTED_COMMIT -or
+                $confirmation.standard_user_sid -notmatch '^S-1-5-21-(?:[0-9]+-){3}[0-9]+$' -or
+                $confirmation.process_cleanup_confirmed -ne $true -or
+                $confirmation.ancestor_acl_cleanup_confirmed -ne $true -or
+                $confirmation.profile_cleanup_confirmed -ne $true -or
+                $confirmation.account_cleanup_confirmed -ne $true) {
+              throw 'Lifecycle cleanup confirmation is invalid.'
+            }
+            $cleanupConfirmed = $true
+          }
+          foreach ($externalKey in @('runtime_archive', 'bundle_1', 'bundle_2', 'release_1', 'release_2', 'sea_1', 'sea_2')) {
+            if (Test-Path -LiteralPath $paths[$externalKey]) {
+              Remove-Item -LiteralPath $paths[$externalKey] -Recurse -Force -ErrorAction Stop
             }
           }
-          if (-not $unsafeLifecycleTree) {
-            Remove-Item -LiteralPath $paths.standard_user_root -Recurse -Force -ErrorAction SilentlyContinue
+          if (-not $cleanupConfirmed) {
+            if (Test-Path -LiteralPath $controlRoot) {
+              Remove-Item -LiteralPath $controlRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            throw 'Standard-user shutdown and exact-SID cleanup were not confirmed; preserving its entire writable root for ephemeral-runner disposal.'
+          }
+          if (Test-Path -LiteralPath $paths.standard_user_root) {
+            Remove-Item -LiteralPath $paths.standard_user_root -Recurse -Force -ErrorAction Stop
+          }
+          if (Test-Path -LiteralPath $controlRoot) {
+            Remove-Item -LiteralPath $controlRoot -Recurse -Force -ErrorAction Stop
           }
           $records = $paths.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
           node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=windows-x64 "--scope-root=$env:RUNNER_TEMP" "--paths=$($records -join '|')" "--out=$(Join-Path $env:RUNNER_TEMP 'windows-cleanup.json')"

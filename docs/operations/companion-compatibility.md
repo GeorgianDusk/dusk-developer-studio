@@ -33,10 +33,13 @@ package and cannot be inferred from the platform-specific observations above.
   developer tool. The Windows assurance harness starts one credential-backed
   process under a temporary local standard user, explicitly disables profile
   loading and network-only credential behavior, and re-verifies the exact SID
-  and non-admin token inside the child. Before passing, it requires repeated
-  exact-SID process cleanup, no loaded profile hive, defensive removal of any
-  unloaded exact-SID profile record, and verified account deletion. The harness
-  does not grant or mutate Windows account rights.
+  and non-admin token inside the child. It temporarily grants that exact SID
+  folder-traverse access to the hosted runner's otherwise private temporary-root
+  ancestors, then verifies that every added ACL is removed before deleting the
+  account. Before passing, it also requires repeated exact-SID process cleanup,
+  no unresolved live process-owner query, no loaded profile hive, defensive
+  removal of any unloaded exact-SID profile record, and verified account
+  deletion. The harness does not grant or mutate Windows account rights.
 - Local Actions verifies existing tool prerequisites. It does not silently
   install Foundry, Rust, Dusk Forge, WSL, or related utilities.
 - Dusk Forge must match the exact reviewed Cargo install receipt and source

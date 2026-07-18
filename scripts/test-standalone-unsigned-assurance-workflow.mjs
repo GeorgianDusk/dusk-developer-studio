@@ -118,8 +118,10 @@ for (const [target, platform] of Object.entries({
     assert.ok(block.includes(expected), `${target} cleanup path is not canonical: ${id}.`);
   }
   if (target === "windows-x64") {
-    assert.match(block, /-notin @\('standard_user_root', 'install_root', 'lifecycle_workspace'\)/);
-    assert.match(block, /\$unsafeLifecycleTree/);
+    assert.match(block, /\$cleanupConfirmation = Join-Path \$controlRoot 'shutdown-confirmed\.json'/);
+    assert.match(block, /if \(-not \$cleanupConfirmed\)/);
+    assert.match(block, /Remove-Item -LiteralPath \$paths\.standard_user_root/);
+    assert.doesNotMatch(block, /\$unsafeLifecycleTree/);
   } else {
     assert.match(block, /install_root\|lifecycle_workspace\) ;;/);
   }
@@ -212,11 +214,52 @@ assert.match(workflow, /\$credentialStartInfo\.LoadUserProfile = \$false/);
 assert.match(workflow, /\$credentialStartInfo\.UseCredentialsForNetworkingOnly = \$false/);
 assert.match(workflow, /\$credentialStartInfo\.Environment\.Clear\(\)/);
 assert.match(workflow, /foreach \(\$environmentName in \$launchContract\.environment\.Keys\)/);
+assert.match(
+  workflow,
+  /\$controlRoot = Join-Path \$env:RUNNER_TEMP 'unsigned-windows-control'[\s\S]*?\$runnerSid = \[System\.Security\.Principal\.WindowsIdentity\]::GetCurrent\(\)\.User\.Value[\s\S]*?icacls\.exe'\) \$controlRoot \/inheritance:r \/grant:r "\*S-1-5-18:\(OI\)\(CI\)F" "\*S-1-5-32-544:\(OI\)\(CI\)F" "\*\$\{runnerSid\}:\(OI\)\(CI\)F"/
+);
 const credentialEnvironment = workflow.slice(
   workflow.indexOf("environment = [ordered]@{"),
   workflow.indexOf("stdout_path = $launchStdout")
 );
+assert.deepEqual(
+  [...credentialEnvironment.matchAll(
+    /^ {16}(?:'([^']+)'|"([^"]+)"|([A-Za-z][A-Za-z0-9_]*))\s*=/gm
+  )].map((match) => match[1] ?? match[2] ?? match[3]),
+  [
+    "SystemRoot", "WINDIR", "COMSPEC", "SystemDrive", "PATHEXT", "PATH",
+    "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA"
+  ]
+);
 assert.doesNotMatch(credentialEnvironment, /GITHUB_|TOKEN|SECRET|PASSWORD|CREDENTIAL/i);
+const credentialEnvironmentPopulation = workflow.slice(
+  workflow.indexOf("$credentialStartInfo.Environment.Clear()"),
+  workflow.indexOf("$launchArguments = @(")
+);
+assert.equal(
+  (credentialEnvironmentPopulation.match(/\$credentialStartInfo\.Environment\.Clear\(\)/g) ?? []).length,
+  1
+);
+assert.equal(
+  (credentialEnvironmentPopulation.match(/\$credentialStartInfo\.Environment\[\$environmentName\] =/g) ?? []).length,
+  1
+);
+assert.doesNotMatch(
+  credentialEnvironmentPopulation
+    .replace("$credentialStartInfo.Environment.Clear()", "")
+    .replace(
+      "$credentialStartInfo.Environment[$environmentName] = $launchContract.environment[$environmentName]",
+      ""
+    ),
+  /\$credentialStartInfo\.Environment/
+);
+assert.doesNotMatch(
+  workflow.slice(
+    workflow.indexOf("$launchArguments = @("),
+    workflow.indexOf("$credentialProcess = [System.Diagnostics.Process]::Start($credentialStartInfo)")
+  ),
+  /\$credentialStartInfo\.Environment/
+);
 assert.match(workflow, /\$credentialStartInfo\.ArgumentList\.Add\(\$launchArgument\)/);
 assert.match(workflow, /\$launchCommandLengthBound -gt 900/);
 assert.match(workflow, /\$credentialProcess\.StandardInput\.Close\(\)/);
@@ -261,21 +304,62 @@ const lifecycleBlock = workflow.slice(
   workflow.indexOf("node scripts/standalone-unsigned-assurance.mjs --operation=platform-observations --target=windows-x64")
 );
 const removeUser = lifecycleBlock.indexOf("Remove-LocalUser -Name $userName -ErrorAction Stop");
-const verifyUserAbsent = lifecycleBlock.indexOf("Get-LocalUser -Name $userName", removeUser);
+const verifyUserAbsent = lifecycleBlock.indexOf("$remainingAccounts = @(", removeUser);
 assert.ok(removeUser >= 0 && verifyUserAbsent > removeUser, "Standard-user account cleanup must be fail-closed and verified.");
-const sweepOwnedProcesses = lifecycleBlock.indexOf("$remainingOwnedProcesses = @(Get-ProcessesOwnedBySid -Sid $standardUserSid)");
+const sweepOwnedProcesses = lifecycleBlock.indexOf("$processSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid");
 const removeProfile = lifecycleBlock.indexOf("Remove-CimInstance -InputObject $profile");
 assert.ok(
   sweepOwnedProcesses >= 0 && removeProfile > sweepOwnedProcesses && removeUser > removeProfile,
   "Exact-SID process, profile, and account cleanup must be ordered and fail-closed."
 );
-assert.match(lifecycleBlock, /Get-ProcessesOwnedBySid -Sid \$standardUserSid/);
-assert.doesNotMatch(
-  lifecycleBlock.slice(
-    lifecycleBlock.indexOf("function Get-ProcessesOwnedBySid"),
-    lifecycleBlock.indexOf("$driverRoot =")
-  ),
-  /Get-Process -Id|catch \{[\s\S]{0,100}throw/
+assert.match(lifecycleBlock, /function Get-SidProcessSnapshot/);
+assert.match(lifecycleBlock, /\$owner\.ReturnValue -ne 0/);
+assert.match(lifecycleBlock, /\$unresolvedProcessIds\.Add\(\[uint32\] \$candidate\.ProcessId\)/);
+assert.match(lifecycleBlock, /\$processSnapshot\.UnresolvedProcessIds/);
+assert.match(lifecycleBlock, /live process-owner queries remained unresolved after cleanup/);
+assert.match(lifecycleBlock, /\$processCleanupConfirmed = \$true/);
+assert.match(lifecycleBlock, /\$ancestorAclCleanupConfirmed = \$true/);
+assert.match(lifecycleBlock, /\$profileCleanupConfirmed = \$true/);
+assert.match(lifecycleBlock, /\$accountCleanupConfirmed = \$true/);
+assert.match(lifecycleBlock, /icacls\.exe'\) \$traverseCursor \/grant:r "\*\$\{standardUserSid\}:\(X\)"/);
+assert.match(lifecycleBlock, /icacls\.exe'\) \$traversePath \/remove:g "\*\$standardUserSid"/);
+assert.match(lifecycleBlock, /Temporary lifecycle-root ancestor traversal survived ACL cleanup/);
+assert.match(lifecycleBlock, /\$volumeRoot = \[System\.IO\.Path\]::GetPathRoot\(\$runnerTempPath\)/);
+assert.match(lifecycleBlock, /while \(-not \$traverseCursor\.Equals\([\s\S]*?\$volumeRoot/);
+assert.match(lifecycleBlock, /\$remainingAccounts = @\([\s\S]*?Get-LocalUser -ErrorAction Stop/);
+const finalProcessSweep = lifecycleBlock.indexOf(
+  "$finalProcessSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid",
+  removeUser
+);
+const finalProfileValidation = lifecycleBlock.indexOf(
+  "Temporary assurance profile state reappeared before cleanup confirmation.",
+  finalProcessSweep
+);
+const cleanupConfirmationWrite = lifecycleBlock.indexOf(
+  "[System.IO.File]::Move($temporaryConfirmation, $cleanupConfirmation)"
+);
+assert.ok(
+  finalProcessSweep > removeUser
+    && finalProfileValidation > finalProcessSweep
+    && verifyUserAbsent > finalProfileValidation
+    && cleanupConfirmationWrite > verifyUserAbsent,
+  "Final process, profile, and fail-closed account revalidation must precede the cleanup confirmation."
+);
+assert.match(lifecycleBlock, /\[System\.IO\.File\]::Move\(\$temporaryConfirmation, \$cleanupConfirmation\)/);
+assert.match(workflow, /Standard-user shutdown and exact-SID cleanup were not confirmed; preserving its entire writable root/);
+const confirmationValidation = workflow.slice(
+  workflow.lastIndexOf("$cleanupConfirmation ="),
+  workflow.indexOf("$records = $paths.GetEnumerator()")
+);
+assert.match(confirmationValidation, /\$confirmation\.expected_commit -ne \$env:EXPECTED_COMMIT/);
+assert.match(confirmationValidation, /\$confirmation\.process_cleanup_confirmed -ne \$true/);
+assert.match(confirmationValidation, /\$confirmation\.ancestor_acl_cleanup_confirmed -ne \$true/);
+assert.match(confirmationValidation, /\$confirmation\.profile_cleanup_confirmed -ne \$true/);
+assert.match(confirmationValidation, /\$confirmation\.account_cleanup_confirmed -ne \$true/);
+assert.ok(
+  confirmationValidation.indexOf("if (-not $cleanupConfirmed)") <
+    confirmationValidation.indexOf("Remove-Item -LiteralPath $paths.standard_user_root"),
+  "The standard-user root must be preserved until parent-owned shutdown confirmation is validated."
 );
 assert.match(lifecycleBlock, /Get-CimInstance Win32_UserProfile -Filter "SID='\$standardUserSid'"/);
 assert.match(lifecycleBlock, /if \(\$profileMatches\.Count -eq 0\)[\s\S]*?\$profile = \$null[\s\S]*?break/);
