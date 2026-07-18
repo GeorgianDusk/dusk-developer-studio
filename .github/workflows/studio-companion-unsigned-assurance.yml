@@ -251,6 +251,55 @@ jobs:
                 }
             )
           }
+          function Assert-IsolatedFullControlTree {
+            param(
+              [Parameter(Mandatory = $true)][string] $Root,
+              [Parameter(Mandatory = $true)][string[]] $AllowedSids
+            )
+            $expectedSids = [System.Collections.Generic.HashSet[string]]::new(
+              [System.StringComparer]::Ordinal
+            )
+            foreach ($sid in $AllowedSids) {
+              if (-not $expectedSids.Add($sid)) {
+                throw 'The standard-user lifecycle ACL contract repeated a SID.'
+              }
+            }
+            $fullControl = [int] [System.Security.AccessControl.FileSystemRights]::FullControl
+            $inheritOnly = [int] [System.Security.AccessControl.PropagationFlags]::InheritOnly
+            $items = @(
+              Get-Item -Force -LiteralPath $Root -ErrorAction Stop
+              Get-ChildItem -Force -LiteralPath $Root -Recurse -ErrorAction Stop
+            )
+            foreach ($item in $items) {
+              $effectiveRights = @{}
+              foreach ($sid in $AllowedSids) { $effectiveRights[$sid] = 0 }
+              foreach ($rule in (Get-Acl -LiteralPath $item.FullName -ErrorAction Stop).Access) {
+                try {
+                  $ruleSid = $rule.IdentityReference.Translate(
+                    [System.Security.Principal.SecurityIdentifier]
+                  ).Value
+                } catch {
+                  $ruleSid = $rule.IdentityReference.Value.TrimStart('*')
+                }
+                if (-not $expectedSids.Contains($ruleSid)) {
+                  throw 'The standard-user lifecycle tree retained an unexpected ACL identity.'
+                }
+                if ($rule.AccessControlType -ne
+                    [System.Security.AccessControl.AccessControlType]::Allow) {
+                  throw 'The standard-user lifecycle tree retained a deny ACL.'
+                }
+                if (([int] $rule.PropagationFlags -band $inheritOnly) -eq 0) {
+                  $effectiveRights[$ruleSid] =
+                    [int] $effectiveRights[$ruleSid] -bor [int] $rule.FileSystemRights
+                }
+              }
+              foreach ($sid in $AllowedSids) {
+                if (([int] $effectiveRights[$sid] -band $fullControl) -ne $fullControl) {
+                  throw 'The standard-user lifecycle tree lacks effective full control for a required SID.'
+                }
+              }
+            }
+          }
           function Get-SidProcessSnapshot {
             param([Parameter(Mandatory = $true)][string] $Sid)
             $owned = [System.Collections.Generic.List[object]]::new()
@@ -430,8 +479,17 @@ jobs:
                 (Test-Path -LiteralPath "Registry::HKEY_USERS\${standardUserSid}_Classes")) {
               throw 'Temporary standard user unexpectedly had profile state before launch.'
             }
-            & (Join-Path $env:SystemRoot 'System32/icacls.exe') $standardUserRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${standardUserSid}:(OI)(CI)F" /T /C
+            $standardUserTreeSids = @(
+              'S-1-5-18',
+              'S-1-5-32-544',
+              $runnerSid,
+              $standardUserSid
+            )
+            & (Join-Path $env:SystemRoot 'System32/icacls.exe') $standardUserRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${runnerSid}:(OI)(CI)F" "*${standardUserSid}:(OI)(CI)F"
             if ($LASTEXITCODE -ne 0) { throw 'Could not isolate the standard-user lifecycle root.' }
+            Assert-IsolatedFullControlTree `
+              -Root $standardUserRoot `
+              -AllowedSids $standardUserTreeSids
 
             $lifecycleReport = Join-Path $standardUserRoot 'windows-lifecycle.json'
             $launchInput = Join-Path $standardUserRoot 'windows-standard-user-input.json'

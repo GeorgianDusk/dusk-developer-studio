@@ -201,7 +201,28 @@ assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$env:GITHUB_WORKSPAC
 assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$env:GITHUB_WORKSPACE 'config'\) -Destination \(Join-Path \$driverRoot 'config'\) -Recurse/);
 assert.match(workflow, /Copy-Item -LiteralPath \(Join-Path \$env:GITHUB_WORKSPACE 'package\.json'\) -Destination \(Join-Path \$driverRoot 'package\.json'\)/);
 assert.match(workflow, /Copy-Item -LiteralPath \(Get-Command node\)\.Source -Destination \(Join-Path \$driverRoot 'node\.exe'\)/);
-assert.match(workflow, /icacls\.exe'\) \$standardUserRoot \/inheritance:r \/grant:r[\s\S]*?\/T \/C/);
+assert.match(
+  workflow,
+  /icacls\.exe'\) \$standardUserRoot \/inheritance:r \/grant:r "\*S-1-5-18:\(OI\)\(CI\)F" "\*S-1-5-32-544:\(OI\)\(CI\)F" "\*\$\{runnerSid\}:\(OI\)\(CI\)F" "\*\$\{standardUserSid\}:\(OI\)\(CI\)F"/
+);
+assert.doesNotMatch(
+  workflow,
+  /icacls\.exe'\) \$standardUserRoot[\s\S]{0,300}?\/T \/C/
+);
+assert.match(workflow, /function Assert-IsolatedFullControlTree/);
+assert.match(
+  workflow,
+  /\$expectedSids = \[System\.Collections\.Generic\.HashSet\[string\]\]::new\([\s\S]*?\[System\.StringComparer\]::Ordinal[\s\S]*?foreach \(\$sid in \$AllowedSids\)[\s\S]*?\$expectedSids\.Add\(\$sid\)/
+);
+assert.match(workflow, /The standard-user lifecycle ACL contract repeated a SID\./);
+assert.match(workflow, /\$rule\.PropagationFlags[\s\S]*?\$inheritOnly/);
+assert.match(workflow, /The standard-user lifecycle tree retained an unexpected ACL identity\./);
+assert.match(workflow, /The standard-user lifecycle tree retained a deny ACL\./);
+assert.match(workflow, /The standard-user lifecycle tree lacks effective full control for a required SID\./);
+assert.match(
+  workflow,
+  /Assert-IsolatedFullControlTree `[\s\S]*?-Root \$standardUserRoot `[\s\S]*?-AllowedSids \$standardUserTreeSids/
+);
 assert.match(workflow, /timeout_ms = 300000/);
 assert.match(workflow, /\$credentialStartInfo = \[System\.Diagnostics\.ProcessStartInfo\]::new\(\)/);
 assert.match(workflow, /\$credentialStartInfo\.FileName = \(Get-Command pwsh\)\.Source/);
