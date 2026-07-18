@@ -17,7 +17,7 @@ The deployable static artifact is `apps/studio/dist`. Deploy only from a clean r
 
 ## Caddy example
 
-`deploy/caddy/studio.caddy` is the configuration used by the current GeorgianDusk production deployment at `studio.134-122-59-217.sslip.io`. Replace its hostname and document root for another environment. Keep the content-security policy, cache boundaries, `/healthz`, and SPA fallback unless a reviewed change requires otherwise.
+`deploy/caddy/studio.caddy` is the configuration used by the current GeorgianDusk production deployment at `studio.134-122-59-217.nip.io`, with the previous `sslip.io` origin temporarily serving the same release for compatibility. The compatibility origin is not an approved production-assurance target, and browser-local progress does not transfer between origins. Replace its hostnames and document root for another environment. Keep the content-security policy, cache boundaries, `/healthz`, and SPA fallback unless a reviewed change requires otherwise.
 
 The fragment deliberately contains no `reverse_proxy`, loopback address, authentication handler, or companion port. CI validates that boundary and parses the configuration with the pinned Caddy version.
 

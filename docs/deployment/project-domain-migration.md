@@ -1,18 +1,24 @@
 # Project domain migration
 
 Owner: George
-Status: optional future migration procedure; current origin approved for production
+Status: optional future project-domain procedure; current origin approved for production
 
-The current `studio.134-122-59-217.sslip.io` origin is the approved GeorgianDusk
-production hostname until George chooses to replace it. A dedicated project
-hostname is therefore an optional future migration, not a current launch
-blocker. Prefer a subdomain so DNS and rollback remain isolated from unrelated
-services.
+The current `studio.134-122-59-217.nip.io` origin is the approved GeorgianDusk
+production hostname until George chooses to replace it. The previous
+`studio.134-122-59-217.sslip.io` origin temporarily serves the same static
+release for compatibility but is not an approved assurance target. Browser
+progress is origin-scoped and starts fresh once on `nip.io`. A dedicated
+project hostname is therefore an optional future migration, not a current
+launch blocker. Prefer a subdomain so DNS and rollback remain isolated from
+unrelated services.
 
-One earlier protected-client failure was traced to client-side resolver or
-endpoint-security interception, not an invalid certificate served by the
-approved origin. That client path must still be rechecked during any future
-migration. Never add a browser, antivirus, or TLS exception to force a pass.
+The hostname change from `sslip.io` to `nip.io` was triggered by a selective
+client-side resolver or endpoint-security rewrite: the protected path returned
+a block endpoint for `sslip.io`, while independent resolvers and the direct
+Studio connection validated the real certificate. The same client resolved
+`nip.io` to the intended VPS. This was not an invalid certificate served by the
+Studio. That client path must still be rechecked during any future migration.
+Never add a browser, antivirus, or TLS exception to force a pass.
 
 ## Future migration decision
 
@@ -36,7 +42,8 @@ No DNS or Caddy cutover is authorized merely by editing this document.
 After the FQDN is selected:
 
 1. Add the exact hostname to `config/phase5-policy.json`; retain the current
-   production hostname through the compatibility period.
+   `nip.io` production hostname through the compatibility period and remove the
+   legacy `sslip.io` route only through a separate reviewed decision.
 2. Add the exact hostname alongside the current production alias in
    `deploy/caddy/studio.caddy` and in the private platform-owned fragment.
    Use reviewed literal hostnames, not a wildcard or runtime environment

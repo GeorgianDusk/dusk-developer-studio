@@ -2,9 +2,13 @@
 
 Owner: George
 
-This control treats `https://studio.134-122-59-217.sslip.io` as the approved
+This control treats `https://studio.134-122-59-217.nip.io` as the approved
 GeorgianDusk production target when
 `DUSK_STUDIO_PUBLIC_ENVIRONMENT=production`.
+The previous `sslip.io` origin temporarily serves the same static release for
+compatibility, but it is outside `candidate_hosts` and scheduled assurance does
+not use it because some protected DNS paths rewrite that domain to a block page
+before reaching the Studio.
 
 The `Studio public deployment assurance` workflow runs every six hours and can
 also be dispatched manually. Manual runs inherit the repository target and
@@ -34,7 +38,7 @@ them and rejects any observed redirect chain or unexpected final URL.
 ## Checks
 
 - file-backed public health at
-  `https://studio.134-122-59-217.sslip.io/healthz`, requiring HTTPS, status
+  `https://studio.134-122-59-217.nip.io/healthz`, requiring HTTPS, status
   `200`, and body `ok`;
 - exact release, assurance receipt, and artifact hashes;
 - root and SPA-fallback identity and `no-cache` behavior;
