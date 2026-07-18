@@ -40,7 +40,7 @@ jobs:
       - name: Use the verified Node.js line
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Enable repository-pinned pnpm
         run: |
@@ -53,12 +53,12 @@ jobs:
           DUSK_STUDIO_ARTIFACT_CHANNEL: portable
           DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
         run: |
-          RUNTIME="$RUNNER_TEMP/node-v24.11.0-linux-x64.tar.xz"
+          RUNTIME="$RUNNER_TEMP/node-v24.18.0-linux-x64.tar.xz"
           BUNDLE="$RUNNER_TEMP/companion-bundle-linux"
           RELEASE="$RUNNER_TEMP/companion-release-linux"
           ARCHIVE="$RUNNER_TEMP/dusk-developer-studio-local-linux-x64.tar.gz"
           EXTRACT="$RUNNER_TEMP/companion-extracted-linux"
-          curl --fail --silent --show-error --location --output "$RUNTIME" https://nodejs.org/dist/v24.11.0/node-v24.11.0-linux-x64.tar.xz
+          curl --fail --silent --show-error --location --output "$RUNTIME" https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-x64.tar.xz
           node scripts/companion-bundle.mjs --out="$BUNDLE"
           pnpm --filter @dusk/studio build
           node scripts/companion-build.mjs --target=linux-x64 --out="$RELEASE" --launcher-bundle="$BUNDLE" --runtime-archive="$RUNTIME" --commit="$GITHUB_SHA" --source-date-epoch=1700000000
@@ -118,7 +118,7 @@ jobs:
       - name: Use the verified Node.js line
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Enable repository-pinned pnpm
         run: |
@@ -150,7 +150,7 @@ jobs:
       - name: Use the verified Node.js line
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Enable repository-pinned pnpm
         run: |
@@ -163,12 +163,12 @@ jobs:
           DUSK_STUDIO_ARTIFACT_CHANNEL: portable
           DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
         run: |
-          $runtime = Join-Path $env:RUNNER_TEMP 'node-v24.11.0-win-x64.zip'
+          $runtime = Join-Path $env:RUNNER_TEMP 'node-v24.18.0-win-x64.zip'
           $bundle = Join-Path $env:RUNNER_TEMP 'companion-bundle-windows'
           $release = Join-Path $env:RUNNER_TEMP 'companion-release-windows'
           $archive = Join-Path $env:RUNNER_TEMP 'dusk-developer-studio-local-windows-x64.zip'
           $extract = Join-Path $env:RUNNER_TEMP 'companion-extracted-windows'
-          Invoke-WebRequest -UseBasicParsing -Uri 'https://nodejs.org/dist/v24.11.0/node-v24.11.0-win-x64.zip' -OutFile $runtime
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip' -OutFile $runtime
           node scripts/companion-bundle.mjs "--out=$bundle"
           pnpm --filter @dusk/studio build
           node scripts/companion-build.mjs --target=windows-x64 "--out=$release" "--launcher-bundle=$bundle" "--runtime-archive=$runtime" "--commit=$env:GITHUB_SHA" --source-date-epoch=1700000000

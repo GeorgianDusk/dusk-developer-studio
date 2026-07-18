@@ -45,8 +45,8 @@ describe("path preflight", () => {
 
   it("uses the packaged Node identity without invoking a global Node command", async () => {
     const runProcess = vi.fn(async (options: BoundedProcessOptions) => ({ stdout: successfulOutput(options), stderr: "", exitCode: 0 }));
-    const result = await runPreflightAsync("evm", { runProcess, bundledNodeVersion: "v24.11.0" });
-    expect(result.tools.find((tool) => tool.command === "node")).toMatchObject({ ok: true, version: "v24.11.0" });
+    const result = await runPreflightAsync("evm", { runProcess, bundledNodeVersion: "v24.18.0" });
+    expect(result.tools.find((tool) => tool.command === "node")).toMatchObject({ ok: true, version: "v24.18.0" });
     expect(runProcess.mock.calls.some(([options]) => logicalCommand(options) === "node")).toBe(false);
   });
 

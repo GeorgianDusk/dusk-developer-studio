@@ -49,10 +49,16 @@ const workflows = [
   ".github/workflows/studio-monitor-schedule-guard.yml",
   ".github/workflows/duskds-native-smoke.yml"
 ].map((file) => [file, read(file)]);
+const runtimeLock = JSON.parse(read("config/companion-runtime-lock.json"));
 for (const [file, workflow] of workflows) {
   assert.doesNotMatch(workflow, /dusk-network\/marketing|products\/developer-testnet-studio/);
   assert.doesNotMatch(workflow, /contents:\s*write|packages:\s*write|actions:\s*write/);
   assert.doesNotMatch(workflow, /^\s*uses:\s+[^\s@]+@(?![a-f0-9]{40}(?:\s|$))/m, `${file} contains a mutable action reference.`);
+  if (workflow.includes("actions/setup-node@")) {
+    const nodeVersions = [...workflow.matchAll(/node-version:\s*([^\s]+)/g)].map((match) => match[1]);
+    assert.ok(nodeVersions.length > 0, `${file} uses setup-node without a frozen Node version.`);
+    assert.ok(nodeVersions.every((version) => version === runtimeLock.runtime.version), `${file} does not use the frozen companion runtime version.`);
+  }
 }
 
 const signedWorkflow = read(".github/workflows/studio-companion-signed-rc.yml");
@@ -108,7 +114,7 @@ assert.match(duskDsNativeSmokeWorkflow, /runs-on: ubuntu-24\.04/);
 assert.match(duskDsNativeSmokeWorkflow, /persist-credentials: "false"/);
 assert.match(duskDsNativeSmokeWorkflow, /EXPECTED_COMMIT: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
 assert.match(duskDsNativeSmokeWorkflow, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}[\s\S]*git rev-parse HEAD\)" = "\$EXPECTED_COMMIT"/);
-assert.match(duskDsNativeSmokeWorkflow, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020[\s\S]*node-version: 24\.11\.0/);
+assert.match(duskDsNativeSmokeWorkflow, /actions\/setup-node@820762786026740c76f36085b0efc47a31fe5020[\s\S]*node-version: 24\.18\.0/);
 assert.match(duskDsNativeSmokeWorkflow, /config\/duskds-toolchain-policy\.json/);
 assert.match(duskDsNativeSmokeWorkflow, /`RUST_TOOLCHAIN=\$\{policy\.rust_toolchain\}`/);
 assert.match(duskDsNativeSmokeWorkflow, /`FORGE_COMMIT=\$\{policy\.dusk_forge\.revision\}`/);

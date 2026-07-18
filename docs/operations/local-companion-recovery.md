@@ -24,7 +24,7 @@ Date: 2026-07-15
 
 ## Shutdown And Cleanup
 
-Press Ctrl+C in the foreground window. Shutdown terminates active bounded process trees, invalidates in-memory sessions, closes both loopback servers, and leaves user projects in the platform user-data directory. The extracted archive can then be removed normally. No service, registry entry, scheduled task, or daemon cleanup is required.
+Press Ctrl+C in the foreground window. Shutdown terminates active tracked child processes, invalidates in-memory sessions, closes both Studio-owned loopback servers, and leaves user projects in the platform user-data directory. The extracted archive can then be removed normally. The Studio installs no service, registry entry, scheduled task, or daemon. A separate developer tool invoked by Local Actions runs with your account authority; if that tool is compromised, its deliberately detached processes are outside the Studio's portable cleanup guarantee.
 
 If a process survives an abnormal host crash, identify the exact bundled Node process listening on 5173 or 8788 before terminating it. Do not kill unrelated Node processes by name.
 

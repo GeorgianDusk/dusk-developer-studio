@@ -4,28 +4,36 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildRelease, digest, selectRuntimeArchiveEntries, validateRuntimeArchiveEntry, verifyRelease } from "./companion-core.mjs";
+import { buildRelease, digest, selectRuntimeArchiveEntries, validateRuntimeArchiveEntry, validateRuntimeLock, verifyRelease } from "./companion-core.mjs";
 
 const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "dusk-companion-release-test-"));
 const target = process.platform === "win32" ? "windows-x64" : "linux-x64";
 const commit = "a".repeat(40);
+const runtimeLock = JSON.parse(fs.readFileSync(path.join(productRoot, "config", "companion-runtime-lock.json"), "utf8"));
+assert.equal(validateRuntimeLock(runtimeLock), runtimeLock);
+const untrustedRuntimeOrigin = JSON.parse(JSON.stringify(runtimeLock));
+untrustedRuntimeOrigin.runtime.targets["windows-x64"].archive_url = "https://example.invalid/node.zip";
+assert.throws(() => validateRuntimeLock(untrustedRuntimeOrigin), /target is invalid/);
+const untrustedChecksumOrigin = JSON.parse(JSON.stringify(runtimeLock));
+untrustedChecksumOrigin.runtime.checksum_url = "https://example.invalid/SHASUMS256.txt";
+assert.throws(() => validateRuntimeLock(untrustedChecksumOrigin), /checksum origin/);
 
 assert.equal(
-  validateRuntimeArchiveEntry("node-v24.11.0-linux-x64/lib/node_modules/npm/index.js", "node-v24.11.0-linux-x64"),
-  "node-v24.11.0-linux-x64/lib/node_modules/npm/index.js"
+  validateRuntimeArchiveEntry("node-v24.18.0-linux-x64/lib/node_modules/npm/index.js", "node-v24.18.0-linux-x64"),
+  "node-v24.18.0-linux-x64/lib/node_modules/npm/index.js"
 );
-assert.throws(() => validateRuntimeArchiveEntry("../outside.txt", "node-v24.11.0-linux-x64"), /Unsafe runtime archive path/);
-assert.throws(() => validateRuntimeArchiveEntry("other-root/node", "node-v24.11.0-linux-x64"), /outside node-v24.11.0-linux-x64/);
-const runtimeArchiveConfig = { archive_root: "node-v24.11.0-linux-x64", source_binary_path: "bin/node" };
+assert.throws(() => validateRuntimeArchiveEntry("../outside.txt", "node-v24.18.0-linux-x64"), /Unsafe runtime archive path/);
+assert.throws(() => validateRuntimeArchiveEntry("other-root/node", "node-v24.18.0-linux-x64"), /outside node-v24.18.0-linux-x64/);
+const runtimeArchiveConfig = { archive_root: "node-v24.18.0-linux-x64", source_binary_path: "bin/node" };
 assert.deepEqual(
   selectRuntimeArchiveEntries(
-    "node-v24.11.0-linux-x64/LICENSE\nnode-v24.11.0-linux-x64/bin/node\nnode-v24.11.0-linux-x64/lib/node_modules/npm/index.js\n",
+    "node-v24.18.0-linux-x64/LICENSE\nnode-v24.18.0-linux-x64/bin/node\nnode-v24.18.0-linux-x64/lib/node_modules/npm/index.js\n",
     runtimeArchiveConfig
   ),
-  ["node-v24.11.0-linux-x64/bin/node", "node-v24.11.0-linux-x64/LICENSE"]
+  ["node-v24.18.0-linux-x64/bin/node", "node-v24.18.0-linux-x64/LICENSE"]
 );
-assert.throws(() => selectRuntimeArchiveEntries("node-v24.11.0-linux-x64/LICENSE\n", runtimeArchiveConfig), /missing .*bin\/node/);
+assert.throws(() => selectRuntimeArchiveEntries("node-v24.18.0-linux-x64/LICENSE\n", runtimeArchiveConfig), /missing .*bin\/node/);
 
 function put(relative, contents) {
   const file = path.join(root, ...relative.split("/"));
@@ -76,6 +84,10 @@ try {
   assert.deepEqual(Object.keys(verified.manifest), ["schema_version", "product", "version", "commit", "channel", "target", "runtime", "unsigned_rc", "signing_status", "files"]);
   assert.deepEqual(Object.keys(verified.manifest.runtime), ["name", "version", "archive_url", "archive_sha256", "binary_path", "binary_sha256"]);
   assert.ok(verified.manifest.files.every((record) => Object.keys(record).join(",") === "path,bytes,sha256"));
+  const provenance = JSON.parse(fs.readFileSync(path.join(first.outDir, "companion-provenance.json"), "utf8"));
+  assert.equal(provenance.predicate.buildDefinition.buildType, "https://github.com/GeorgianDusk/dusk-developer-studio/buildtypes/developer-studio-local-portable/v1");
+  assert.equal(provenance.predicate.runDetails.builder.id, "https://github.com/GeorgianDusk/dusk-developer-studio/builders/companion-release/v1");
+  assert.doesNotMatch(JSON.stringify(provenance), /https:\/\/dusk[.]network\/(?:buildtypes|builders)\//);
   assert.throws(() => verifyFixture(first.outDir, { publication: true }), /Unsigned RCs cannot pass publication/);
 
   assert.deepEqual(fs.readFileSync(path.join(first.outDir, "payload", "payload-manifest.json")), fs.readFileSync(path.join(first.outDir, "payload-manifest.json")));

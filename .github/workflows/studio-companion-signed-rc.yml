@@ -8,7 +8,7 @@ name: Studio companion signed release candidate
         required: true
         type: string
       approval_reference:
-        description: Maintainer approval or decision reference for this private signed-RC run
+        description: Canonical GeorgianDusk GitHub URL approving this internal signed-RC run
         required: true
         type: string
 
@@ -21,7 +21,7 @@ concurrency:
 
 env:
   PRODUCT_ROOT: .
-  NODE_VERSION: 24.11.0
+  NODE_VERSION: 24.18.0
   PNPM_VERSION: 11.7.0
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
       - name: Use the frozen Node.js line
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Prove tag-bound invocation and policy readiness
         env:
@@ -58,6 +58,7 @@ jobs:
           git fetch --force --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$GITHUB_SHA"
           test -n "$APPROVAL_REFERENCE"
+          node -e 'const u=new URL(process.env.APPROVAL_REFERENCE); if (u.protocol!=="https:" || u.hostname!=="github.com" || u.username || u.password || !u.pathname.startsWith("/GeorgianDusk/dusk-developer-studio/")) process.exit(1)'
           node scripts/standalone-signing-evidence.mjs --readiness --release-tag="$RELEASE_TAG"
       - name: Restore the exact frozen dependency graph
         run: |
@@ -69,6 +70,7 @@ jobs:
           pnpm check:no-secrets
           node scripts/test-standalone-signing-evidence.mjs
           node scripts/test-standalone-rc-tooling.mjs
+          node scripts/test-standalone-safe-zip-extract.mjs
           node scripts/test-standalone-release-workflow.mjs
   sign-windows:
     name: Build and Authenticode-sign Windows x64
@@ -100,14 +102,16 @@ jobs:
           persist-credentials: "false"
       - name: Assert immutable Windows checkout
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           if ((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Windows checkout does not match the workflow commit.' }
       - name: Use the frozen Node.js line
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Restore frozen dependencies
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           corepack enable
           corepack install --global pnpm@$env:PNPM_VERSION
           pnpm install --frozen-lockfile
@@ -115,16 +119,20 @@ jobs:
         env:
           DUSK_STUDIO_ARTIFACT_CHANNEL: portable
           DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          $runtime = Join-Path $env:RUNNER_TEMP 'node-v24.11.0-win-x64.zip'
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:RELEASE_TAG -notmatch '^studio-companion-v(\d+\.\d+\.\d+)-rc\.\d+$') { throw 'Release tag version is invalid.' }
+          $version = $Matches[1]
+          $runtime = Join-Path $env:RUNNER_TEMP 'node-v24.18.0-win-x64.zip'
           $bundle = Join-Path $env:RUNNER_TEMP 'studio-windows-bundle'
           $release = Join-Path $env:RUNNER_TEMP 'studio-windows-release'
           $sea = Join-Path $env:RUNNER_TEMP 'studio-windows-sea'
-          Invoke-WebRequest -UseBasicParsing -Uri 'https://nodejs.org/dist/v24.11.0/node-v24.11.0-win-x64.zip' -OutFile $runtime
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip' -OutFile $runtime
           node scripts/companion-bundle.mjs "--out=$bundle"
           pnpm --filter @dusk/studio build
           $epoch = git show -s --format=%ct $env:GITHUB_SHA
-          node scripts/companion-build.mjs --target=windows-x64 "--out=$release" "--launcher-bundle=$bundle" "--runtime-archive=$runtime" "--commit=$env:GITHUB_SHA" "--source-date-epoch=$epoch"
+          node scripts/companion-build.mjs --target=windows-x64 "--out=$release" "--launcher-bundle=$bundle" "--runtime-archive=$runtime" "--commit=$env:GITHUB_SHA" "--version=$version" "--source-date-epoch=$epoch"
           node scripts/companion-verify.mjs "--release=$release"
           node scripts/companion-sea-prototype.mjs "--release=$release" --target=windows-x64 "--out=$sea"
       - name: Authenticate to Azure Artifact Signing with OIDC
@@ -151,19 +159,49 @@ jobs:
           cache-dependencies: "false"
       - name: Verify publisher, timestamp, and malware result
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           $policy = Get-Content config/companion-standalone-signing-policy.json -Raw | ConvertFrom-Json
           if (-not $env:STUDIO_WINDOWS_PUBLISHER_SUBJECT -or $policy.targets.'windows-x64'.approved_identity -ne $env:STUDIO_WINDOWS_PUBLISHER_SUBJECT) { throw 'Windows publisher does not match committed policy.' }
           $sea = Join-Path $env:RUNNER_TEMP 'studio-windows-sea'
-          $exe = @(Get-ChildItem -LiteralPath $sea -Filter *.exe -File)
-          if ($exe.Count -ne 1) { throw 'Expected exactly one signed Windows executable.' }
-          $signature = Get-AuthenticodeSignature -LiteralPath $exe[0].FullName
-          if ($signature.Status -ne 'Valid') { throw "Authenticode status is $($signature.Status)." }
-          if ($signature.SignerCertificate.Subject -ne $env:STUDIO_WINDOWS_PUBLISHER_SUBJECT) { throw 'Authenticode publisher subject mismatch.' }
-          if ($null -eq $signature.TimeStamperCertificate) { throw 'Authenticode timestamp is missing.' }
+          $receipt = Get-Content (Join-Path $sea 'prototype-receipt.json') -Raw | ConvertFrom-Json
+          $names = @($receipt.launchers.safe.name, $receipt.launchers.local_actions.name)
+          if ($names.Count -ne 2 -or $names[0] -eq $names[1]) { throw 'Expected two distinct mode-bound Windows launchers.' }
           $scanner = Get-ChildItem "$env:ProgramFiles\Windows Defender\MpCmdRun.exe", "$env:ProgramData\Microsoft\Windows Defender\Platform\*\MpCmdRun.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if ($null -eq $scanner) { throw 'Microsoft Defender scanner is unavailable.' }
-          & $scanner.FullName -Scan -ScanType 3 -File $exe[0].FullName
-          if ($LASTEXITCODE -ne 0) { throw "Microsoft Defender scan failed with exit code $LASTEXITCODE." }
+          foreach ($name in $names) {
+            $executable = Join-Path $sea $name
+            if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) { throw "Signed launcher is missing: $name" }
+            $signature = Get-AuthenticodeSignature -LiteralPath $executable
+            if ($signature.Status -ne 'Valid') { throw "Authenticode status for $name is $($signature.Status)." }
+            if ($signature.SignerCertificate.Subject -ne $env:STUDIO_WINDOWS_PUBLISHER_SUBJECT) { throw "Authenticode publisher subject mismatch for $name." }
+            if ($null -eq $signature.TimeStamperCertificate) { throw "Authenticode timestamp is missing for $name." }
+            & $scanner.FullName -Scan -ScanType 3 -File $executable
+            if ($LASTEXITCODE -ne 0) { throw "Microsoft Defender scan failed for $name with exit code $LASTEXITCODE." }
+          }
+      - name: Assemble the exact runner-local Windows candidate package
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          if ($env:RELEASE_TAG -notmatch '^studio-companion-v(\d+\.\d+\.\d+)-rc\.\d+$') { throw 'Release tag version is invalid.' }
+          $version = $Matches[1]
+          $sea = Join-Path $env:RUNNER_TEMP 'studio-windows-sea'
+          $receipt = Get-Content (Join-Path $sea 'prototype-receipt.json') -Raw | ConvertFrom-Json
+          $stage = Join-Path $env:RUNNER_TEMP 'candidate-windows-stage'
+          $launchers = Join-Path $stage 'launchers'
+          $evidence = Join-Path $stage 'evidence'
+          New-Item -ItemType Directory -Path $launchers, $evidence | Out-Null
+          $safe = Join-Path $sea $receipt.launchers.safe.name
+          $actions = Join-Path $sea $receipt.launchers.local_actions.name
+          Copy-Item -LiteralPath $safe, $actions -Destination $launchers
+          $receiptCopy = Join-Path $evidence 'prototype-receipt.json'
+          Copy-Item -LiteralPath (Join-Path $sea 'prototype-receipt.json') -Destination $receiptCopy
+          $index = Join-Path $stage 'signed-launcher-index.json'
+          node scripts/standalone-signed-launcher-index.mjs --target=windows-x64 "--safe-launcher=$safe" "--local-actions-launcher=$actions" "--safe-name=launchers/$($receipt.launchers.safe.name)" "--local-actions-name=launchers/$($receipt.launchers.local_actions.name)" "--build-receipt=$receiptCopy" "--out=$index"
+          node scripts/standalone-candidate-package-manifest.mjs "--root=$stage" --target=windows-x64 "--build-receipt=$receiptCopy" "--signed-launcher-index=$index" "--out=$(Join-Path $stage 'candidate-package-manifest.json')"
+          $package = Join-Path $env:RUNNER_TEMP "dusk-developer-studio-$version-windows-x64-internal-rc.zip"
+          node scripts/standalone-safe-zip-extract.mjs --create "--root=$stage" --target=windows-x64 "--ephemeral-root=$env:RUNNER_TEMP" "--out=$package"
+          if (-not (Test-Path -LiteralPath $package -PathType Leaf)) { throw 'Windows candidate package was not created.' }
       - name: Stop before candidate transport
         run: throw 'Candidate transport is disabled; the signed Windows candidate remains runner-local and must not be uploaded as an Actions artifact.'
   sign-linux:
@@ -191,7 +229,7 @@ jobs:
       - name: Use the frozen Node.js line
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Restore frozen dependencies
         run: |
@@ -202,33 +240,59 @@ jobs:
         env:
           DUSK_STUDIO_ARTIFACT_CHANNEL: portable
           DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          runtime="$RUNNER_TEMP/node-v24.11.0-linux-x64.tar.xz"
+          version="${RELEASE_TAG#studio-companion-v}"
+          version="${version%%-rc.*}"
+          test -n "$version"
+          runtime="$RUNNER_TEMP/node-v24.18.0-linux-x64.tar.xz"
           bundle="$RUNNER_TEMP/studio-linux-bundle"
           release="$RUNNER_TEMP/studio-linux-release"
           sea="$RUNNER_TEMP/studio-linux-sea"
-          curl --fail --silent --show-error --location --output "$runtime" https://nodejs.org/dist/v24.11.0/node-v24.11.0-linux-x64.tar.xz
+          curl --fail --silent --show-error --location --output "$runtime" https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-x64.tar.xz
           node scripts/companion-bundle.mjs --out="$bundle"
           pnpm --filter @dusk/studio build
           epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
-          node scripts/companion-build.mjs --target=linux-x64 --out="$release" --launcher-bundle="$bundle" --runtime-archive="$runtime" --commit="$GITHUB_SHA" --source-date-epoch="$epoch"
+          node scripts/companion-build.mjs --target=linux-x64 --out="$release" --launcher-bundle="$bundle" --runtime-archive="$runtime" --commit="$GITHUB_SHA" --version="$version" --source-date-epoch="$epoch"
           node scripts/companion-verify.mjs --release="$release"
           node scripts/companion-sea-prototype.mjs --release="$release" --target=linux-x64 --out="$sea"
       - name: Install integrity-verified cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.0.6
-      - name: Sign and verify the exact Linux executable
+      - name: Sign and verify both exact Linux launchers
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           sea="$RUNNER_TEMP/studio-linux-sea"
-          executable="$(find "$sea" -maxdepth 1 -type f -name 'dusk-developer-studio-local-*' | head -n 1)"
-          test -n "$executable"
-          bundle="$executable.sigstore.json"
           identity="https://github.com/GeorgianDusk/dusk-developer-studio/.github/workflows/studio-companion-signed-rc.yml@refs/tags/$RELEASE_TAG"
-          cosign sign-blob --yes --bundle "$bundle" "$executable"
-          cosign verify-blob --bundle "$bundle" --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$executable"
+          for key in safe local_actions; do
+            name="$(node -p "JSON.parse(require('fs').readFileSync('$sea/prototype-receipt.json')).launchers.$key.name")"
+            executable="$sea/$name"
+            test -f "$executable"
+            bundle="$executable.sigstore.json"
+            cosign sign-blob --yes --bundle "$bundle" "$executable"
+            cosign verify-blob --bundle "$bundle" --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$executable"
+          done
+      - name: Assemble the exact runner-local Linux candidate package
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#studio-companion-v}"
+          version="${version%%-rc.*}"
+          sea="$RUNNER_TEMP/studio-linux-sea"
+          stage="$RUNNER_TEMP/candidate-linux-stage"
+          mkdir -p "$stage/launchers" "$stage/attestations" "$stage/evidence"
+          safe_name="$(node -p "JSON.parse(require('fs').readFileSync('$sea/prototype-receipt.json')).launchers.safe.name")"
+          actions_name="$(node -p "JSON.parse(require('fs').readFileSync('$sea/prototype-receipt.json')).launchers.local_actions.name")"
+          cp "$sea/$safe_name" "$sea/$actions_name" "$stage/launchers/"
+          cp "$sea/$safe_name.sigstore.json" "$sea/$actions_name.sigstore.json" "$stage/attestations/"
+          cp "$sea/prototype-receipt.json" "$stage/evidence/prototype-receipt.json"
+          node scripts/standalone-signed-launcher-index.mjs --target=linux-x64 --safe-launcher="$sea/$safe_name" --local-actions-launcher="$sea/$actions_name" --safe-name="launchers/$safe_name" --local-actions-name="launchers/$actions_name" --build-receipt="$stage/evidence/prototype-receipt.json" --safe-attestation="$sea/$safe_name.sigstore.json" --local-actions-attestation="$sea/$actions_name.sigstore.json" --out="$stage/signed-launcher-index.json"
+          node scripts/standalone-candidate-package-manifest.mjs --root="$stage" --target=linux-x64 --build-receipt="$stage/evidence/prototype-receipt.json" --signed-launcher-index="$stage/signed-launcher-index.json" --out="$stage/candidate-package-manifest.json"
+          package="$RUNNER_TEMP/dusk-developer-studio-$version-linux-x64-internal-rc.zip"
+          node scripts/standalone-safe-zip-extract.mjs --create --root="$stage" --target=linux-x64 --ephemeral-root="$RUNNER_TEMP" --out="$package"
       - name: Stop before candidate transport
         run: |
           echo 'Candidate transport is disabled; the signed Linux candidate remains runner-local and must not be uploaded as an Actions artifact.' >&2
@@ -236,7 +300,7 @@ jobs:
   sign-macos:
     name: Build, Developer-ID sign, notarize, and staple macOS arm64
     needs: preflight
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
     environment: studio-companion-signing
     permissions:
@@ -262,7 +326,7 @@ jobs:
       - name: Use the frozen Node.js line
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Prove native Apple Silicon and restore frozen dependencies
         run: |
@@ -276,36 +340,47 @@ jobs:
         env:
           DUSK_STUDIO_ARTIFACT_CHANNEL: portable
           DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          runtime="$RUNNER_TEMP/node-v24.11.0-darwin-arm64.tar.xz"
+          version="${RELEASE_TAG#studio-companion-v}"
+          version="${version%%-rc.*}"
+          test -n "$version"
+          runtime="$RUNNER_TEMP/node-v24.18.0-darwin-arm64.tar.xz"
           bundle="$RUNNER_TEMP/studio-macos-bundle"
           release="$RUNNER_TEMP/studio-macos-release"
           sea="$RUNNER_TEMP/studio-macos-sea"
           app_root="$RUNNER_TEMP/studio-macos-app"
-          curl --fail --silent --show-error --location --output "$runtime" https://nodejs.org/dist/v24.11.0/node-v24.11.0-darwin-arm64.tar.xz
+          curl --fail --silent --show-error --location --output "$runtime" https://nodejs.org/dist/v24.18.0/node-v24.18.0-darwin-arm64.tar.xz
           node scripts/companion-bundle.mjs --out="$bundle"
           pnpm --filter @dusk/studio build
           epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
-          node scripts/companion-build.mjs --target=darwin-arm64 --out="$release" --launcher-bundle="$bundle" --runtime-archive="$runtime" --commit="$GITHUB_SHA" --source-date-epoch="$epoch"
+          node scripts/companion-build.mjs --target=darwin-arm64 --out="$release" --launcher-bundle="$bundle" --runtime-archive="$runtime" --commit="$GITHUB_SHA" --version="$version" --source-date-epoch="$epoch"
           node scripts/companion-verify.mjs --release="$release"
           node scripts/companion-sea-prototype.mjs --release="$release" --target=darwin-arm64 --out="$sea"
-          executable="$(find "$sea" -maxdepth 1 -type f -name 'dusk-developer-studio-local-*' | head -n 1)"
-          node scripts/standalone-macos-app.mjs --executable="$executable" --build-receipt="$sea/prototype-receipt.json" --out="$app_root"
-      - name: Sign, notarize, staple, and verify
+          safe_name="$(node -p "JSON.parse(require('fs').readFileSync('$sea/prototype-receipt.json')).launchers.safe.name")"
+          actions_name="$(node -p "JSON.parse(require('fs').readFileSync('$sea/prototype-receipt.json')).launchers.local_actions.name")"
+          node scripts/standalone-macos-app.mjs --safe-executable="$sea/$safe_name" --local-actions-executable="$sea/$actions_name" --build-receipt="$sea/prototype-receipt.json" --out="$app_root"
+      - name: Sign, notarize, staple, and verify both mode-bound apps
         env:
           APPLE_P12_BASE64: ${{ secrets.STUDIO_APPLE_DEVELOPER_ID_P12_BASE64 }}
           APPLE_P12_PASSWORD: ${{ secrets.STUDIO_APPLE_DEVELOPER_ID_P12_PASSWORD }}
           APPLE_NOTARY_P8_BASE64: ${{ secrets.STUDIO_APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           set -euo pipefail
-          app="$RUNNER_TEMP/studio-macos-app/Dusk Developer Studio.app"
-          executable="$app/Contents/MacOS/dusk-studio"
+          version="${RELEASE_TAG#studio-companion-v}"
+          version="${version%%-rc.*}"
+          app_root="$RUNNER_TEMP/studio-macos-app"
+          safe_app="$app_root/Dusk Developer Studio.app"
+          actions_app="$app_root/Dusk Developer Studio Local Actions.app"
+          safe_executable="$safe_app/Contents/MacOS/dusk-studio"
+          actions_executable="$actions_app/Contents/MacOS/dusk-studio-local-actions"
           keychain="$RUNNER_TEMP/studio-signing.keychain-db"
           p12="$RUNNER_TEMP/studio-developer-id.p12"
           notary_key_path="$RUNNER_TEMP/AuthKey_$STUDIO_APPLE_NOTARY_KEY_ID.p8"
           notary_zip="$RUNNER_TEMP/studio-notary-submission.zip"
           final_dir="$RUNNER_TEMP/studio-macos-final"
-          final_zip="$final_dir/dusk-developer-studio-local-macos-arm64.zip"
+          final_zip="$RUNNER_TEMP/dusk-developer-studio-$version-darwin-arm64-internal-rc.zip"
           mkdir "$final_dir"
           test -n "$STUDIO_APPLE_TEAM_ID"
           test -n "$STUDIO_APPLE_DEVELOPER_IDENTITY"
@@ -327,19 +402,32 @@ jobs:
           security import "$p12" -k "$keychain" -P "$APPLE_P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
           security list-keychains -d user -s "$keychain"
-          codesign --force --options runtime --timestamp --sign "$STUDIO_APPLE_DEVELOPER_IDENTITY" "$executable"
-          codesign --force --options runtime --timestamp --sign "$STUDIO_APPLE_DEVELOPER_IDENTITY" "$app"
-          codesign --verify --deep --strict --verbose=4 "$app"
-          details="$(codesign -d --verbose=4 "$app" 2>&1)"
-          printf '%s\n' "$details" | grep -F "TeamIdentifier=$STUDIO_APPLE_TEAM_ID"
-          ditto -c -k --keepParent "$app" "$notary_zip"
+          for app in "$safe_app" "$actions_app"; do
+            executable="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+            codesign --force --options runtime --timestamp --sign "$STUDIO_APPLE_DEVELOPER_IDENTITY" "$executable"
+            codesign --force --options runtime --timestamp --sign "$STUDIO_APPLE_DEVELOPER_IDENTITY" "$app"
+            codesign --verify --deep --strict --verbose=4 "$app"
+            details="$(codesign -d --verbose=4 "$app" 2>&1)"
+            printf '%s\n' "$details" | grep -F "TeamIdentifier=$STUDIO_APPLE_TEAM_ID"
+          done
+          ditto -c -k "$app_root" "$notary_zip"
           xcrun notarytool submit "$notary_zip" --key "$notary_key_path" --key-id "$STUDIO_APPLE_NOTARY_KEY_ID" --issuer "$STUDIO_APPLE_NOTARY_ISSUER_ID" --wait --output-format json > "$final_dir/notarization.json"
           jq -e '.status == "Accepted"' "$final_dir/notarization.json"
-          xcrun stapler staple "$app"
-          xcrun stapler validate "$app"
-          spctl --assess --type execute --verbose=4 "$app"
-          ditto -c -k --keepParent "$app" "$final_zip"
-          cp "$RUNNER_TEMP/studio-macos-sea/prototype-receipt.json" "$final_dir/prototype-receipt.json"
+          for app in "$safe_app" "$actions_app"; do
+            xcrun stapler staple "$app"
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=4 "$app"
+          done
+          stage="$RUNNER_TEMP/candidate-macos-stage"
+          mkdir -p "$stage/evidence"
+          ditto "$safe_app" "$stage/Dusk Developer Studio.app"
+          ditto "$actions_app" "$stage/Dusk Developer Studio Local Actions.app"
+          cp "$RUNNER_TEMP/studio-macos-sea/prototype-receipt.json" "$stage/evidence/prototype-receipt.json"
+          cp "$app_root/macos-app-receipt.json" "$stage/evidence/macos-app-receipt.json"
+          cp "$final_dir/notarization.json" "$stage/evidence/notarization.json"
+          node scripts/standalone-signed-launcher-index.mjs --target=darwin-arm64 --safe-launcher="$stage/Dusk Developer Studio.app/Contents/MacOS/dusk-studio" --local-actions-launcher="$stage/Dusk Developer Studio Local Actions.app/Contents/MacOS/dusk-studio-local-actions" --safe-name="Dusk Developer Studio.app/Contents/MacOS/dusk-studio" --local-actions-name="Dusk Developer Studio Local Actions.app/Contents/MacOS/dusk-studio-local-actions" --build-receipt="$stage/evidence/prototype-receipt.json" --out="$stage/signed-launcher-index.json"
+          node scripts/standalone-candidate-package-manifest.mjs --root="$stage" --target=darwin-arm64 --build-receipt="$stage/evidence/prototype-receipt.json" --signed-launcher-index="$stage/signed-launcher-index.json" --out="$stage/candidate-package-manifest.json"
+          node scripts/standalone-safe-zip-extract.mjs --create --root="$stage" --target=darwin-arm64 --ephemeral-root="$RUNNER_TEMP" --out="$final_zip"
       - name: Remove imported signing material
         if: always()
         run: |
@@ -367,10 +455,11 @@ jobs:
           persist-credentials: "false"
       - name: Assert immutable Windows smoke checkout
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           if ((git rev-parse HEAD).Trim() -ne $env:GITHUB_SHA) { throw 'Windows smoke checkout does not match the workflow commit.' }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Stop because private candidate transport is unavailable
         run: throw 'Fresh-runner Windows smoke is disabled until a separately reviewed private candidate transport exists.'
@@ -378,31 +467,37 @@ jobs:
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          $PSNativeCommandUseErrorActionPreference = $true
           $download = Join-Path $env:RUNNER_TEMP 'download-windows'
+          if ($env:RELEASE_TAG -notmatch '^studio-companion-v(\d+\.\d+\.\d+)-rc\.\d+$') { throw 'Release tag version is invalid.' }
+          $version = $Matches[1]
           $policy = Get-Content config/companion-standalone-signing-policy.json -Raw | ConvertFrom-Json
           $publisher = $policy.targets.'windows-x64'.approved_identity
           if (-not $publisher) { throw 'Committed Windows publisher identity is empty.' }
-          $source = @(Get-ChildItem -LiteralPath $download -Filter *.exe -File)
-          if ($source.Count -ne 1) { throw 'Expected one Windows executable.' }
-          $signature = Get-AuthenticodeSignature -LiteralPath $source[0].FullName
-          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -ne $publisher -or $null -eq $signature.TimeStamperCertificate) { throw 'Fresh-runner Authenticode verification failed.' }
-          $before = @(Get-ChildItem -LiteralPath $env:TEMP -Directory -Filter 'dusk-studio-sea-*' -ErrorAction SilentlyContinue | ForEach-Object FullName)
+          $package = Join-Path $download "dusk-developer-studio-$version-windows-x64-internal-rc.zip"
+          if (-not (Test-Path -LiteralPath $package -PathType Leaf)) { throw 'Expected exact Windows candidate package.' }
           $install = Join-Path $env:RUNNER_TEMP 'installed-windows'
-          New-Item -ItemType Directory -Path $install | Out-Null
-          $candidate = Join-Path $install $source[0].Name
-          Copy-Item -LiteralPath $source[0].FullName -Destination $candidate
-          & $candidate --signed-rc-self-test
-          if ($LASTEXITCODE -ne 0) { throw 'Windows signed-RC self-test failed.' }
-          if (Get-NetTCPConnection -State Listen -LocalPort 5173,8788 -ErrorAction SilentlyContinue) { throw 'Local Studio ports remained open.' }
-          $after = @(Get-ChildItem -LiteralPath $env:TEMP -Directory -Filter 'dusk-studio-sea-*' -ErrorAction SilentlyContinue | ForEach-Object FullName)
-          if (@($after | Where-Object { $_ -notin $before }).Count) { throw 'SEA extraction directory remained after shutdown.' }
-          Remove-Item -LiteralPath $install -Recurse -Force
-          if (Test-Path -LiteralPath $install) { throw 'Windows rollback cleanup failed.' }
+          node scripts/standalone-safe-zip-extract.mjs "--archive=$package" --target=windows-x64 "--ephemeral-root=$env:RUNNER_TEMP" "--out=$install"
+          $index = Get-Content (Join-Path $install 'signed-launcher-index.json') -Raw | ConvertFrom-Json
+          $safe = Join-Path $install $index.launchers.safe.name
+          $actions = Join-Path $install $index.launchers.local_actions.name
+          $scanner = Get-ChildItem "$env:ProgramFiles\Windows Defender\MpCmdRun.exe", "$env:ProgramData\Microsoft\Windows Defender\Platform\*\MpCmdRun.exe" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if ($null -eq $scanner) { throw 'Microsoft Defender scanner is unavailable.' }
+          foreach ($candidate in @($safe, $actions)) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $candidate
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -ne $publisher -or $null -eq $signature.TimeStamperCertificate) { throw "Fresh-runner Authenticode verification failed for $candidate." }
+            & $scanner.FullName -Scan -ScanType 3 -File $candidate
+            if ($LASTEXITCODE -ne 0) { throw "Fresh-runner Defender scan failed for $candidate." }
+          }
+          $receiptCopy = Join-Path $env:RUNNER_TEMP 'windows-build-receipt.json'
+          Copy-Item -LiteralPath (Join-Path $install 'evidence/prototype-receipt.json') -Destination $receiptCopy
+          $lifecycle = Join-Path $env:RUNNER_TEMP 'windows-lifecycle.json'
+          node scripts/companion-standalone-self-test.mjs --target=windows-x64 "--candidate-package=$package" "--safe-launcher=$safe" "--local-actions-launcher=$actions" "--build-receipt=$(Join-Path $install 'evidence/prototype-receipt.json')" "--signed-launcher-index=$(Join-Path $install 'signed-launcher-index.json')" "--package-manifest=$(Join-Path $install 'candidate-package-manifest.json')" "--ephemeral-root=$env:RUNNER_TEMP" "--cleanup-root=$install" "--workspace=$(Join-Path $env:RUNNER_TEMP 'lifecycle-windows')" "--out=$lifecycle"
           $record = Join-Path $env:RUNNER_TEMP 'windows-x64.json'
-          node scripts/standalone-target-evidence.mjs --target=windows-x64 "--artifact=$($source[0].FullName)" "--build-receipt=$(Join-Path $download 'prototype-receipt.json')" "--release-tag=$env:RELEASE_TAG" "--identity=$publisher" --checks=authenticode_valid,timestamp_valid,publisher_identity_verified,fresh_runner_smoke_passed,cleanup_verified,malware_scan_passed,rollback_verified "--out=$record"
+          node scripts/standalone-target-evidence.mjs --target=windows-x64 "--candidate-package=$package" "--build-receipt=$receiptCopy" "--lifecycle-report=$lifecycle" "--release-tag=$env:RELEASE_TAG" "--identity=$publisher" "--repository=$env:GITHUB_REPOSITORY" "--workflow-ref=https://github.com/$env:GITHUB_WORKFLOW_REF" "--run-id=$env:GITHUB_RUN_ID" "--run-attempt=$env:GITHUB_RUN_ATTEMPT" "--run-actor=github:$env:GITHUB_ACTOR" --checks=authenticode_valid,timestamp_valid,publisher_identity_verified,fresh_runner_smoke_passed,install_cleanup_verified,malware_scan_passed,install_rollback_verified "--out=$record"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: studio-signed-rc-evidence-windows-x64
+          name: studio-signed-rc-target-windows-x64-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/windows-x64.json
           if-no-files-found: error
           retention-days: 14
@@ -426,7 +521,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
@@ -441,33 +536,35 @@ jobs:
         run: |
           set -euo pipefail
           download="$RUNNER_TEMP/download-linux"
-          source="$(find "$download" -maxdepth 1 -type f -name 'dusk-developer-studio-local-*' ! -name '*.json' | head -n 1)"
-          test -n "$source"
-          bundle="$source.sigstore.json"
-          identity="https://github.com/GeorgianDusk/dusk-developer-studio/.github/workflows/studio-companion-signed-rc.yml@refs/tags/$RELEASE_TAG"
-          cosign verify-blob --bundle "$bundle" --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$source"
+          version="${RELEASE_TAG#studio-companion-v}"
+          version="${version%%-rc.*}"
+          package="$download/dusk-developer-studio-$version-linux-x64-internal-rc.zip"
+          test -f "$package"
           install="$RUNNER_TEMP/installed-linux"
-          mkdir "$install"
-          candidate="$install/dusk-studio"
-          cp "$source" "$candidate"
-          chmod 755 "$candidate"
-          XDG_DATA_HOME="$RUNNER_TEMP/test-user-data" "$candidate" --signed-rc-self-test
-          ! curl --fail --silent http://127.0.0.1:5173/healthz
-          ! curl --fail --silent http://127.0.0.1:8788/healthz
-          if find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'dusk-studio-sea-*' -print -quit | grep -q .; then exit 1; fi
-          rm -rf "$install" "$RUNNER_TEMP/test-user-data"
-          test ! -e "$install"
-          node scripts/standalone-target-evidence.mjs --target=linux-x64 --artifact="$source" --build-receipt="$download/prototype-receipt.json" --release-tag="$RELEASE_TAG" --identity="$identity" --oidc-issuer=https://token.actions.githubusercontent.com --checks=cosign_bundle_verified,rekor_inclusion_verified,workflow_identity_verified,fresh_runner_smoke_passed,cleanup_verified,rollback_verified --out="$RUNNER_TEMP/linux-x64.json"
+          node scripts/standalone-safe-zip-extract.mjs --archive="$package" --target=linux-x64 --ephemeral-root="$RUNNER_TEMP" --out="$install"
+          index="$install/signed-launcher-index.json"
+          safe_name="$(node -p "JSON.parse(require('fs').readFileSync('$index')).launchers.safe.name")"
+          actions_name="$(node -p "JSON.parse(require('fs').readFileSync('$index')).launchers.local_actions.name")"
+          safe="$install/$safe_name"
+          actions="$install/$actions_name"
+          safe_bundle="$install/$(node -p "JSON.parse(require('fs').readFileSync('$index')).attestations.safe.name")"
+          actions_bundle="$install/$(node -p "JSON.parse(require('fs').readFileSync('$index')).attestations.local_actions.name")"
+          identity="https://github.com/GeorgianDusk/dusk-developer-studio/.github/workflows/studio-companion-signed-rc.yml@refs/tags/$RELEASE_TAG"
+          cosign verify-blob --bundle "$safe_bundle" --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$safe"
+          cosign verify-blob --bundle "$actions_bundle" --certificate-identity "$identity" --certificate-oidc-issuer https://token.actions.githubusercontent.com "$actions"
+          cp "$install/evidence/prototype-receipt.json" "$RUNNER_TEMP/linux-build-receipt.json"
+          node scripts/companion-standalone-self-test.mjs --target=linux-x64 --candidate-package="$package" --safe-launcher="$safe" --local-actions-launcher="$actions" --build-receipt="$install/evidence/prototype-receipt.json" --signed-launcher-index="$index" --package-manifest="$install/candidate-package-manifest.json" --safe-attestation="$safe_bundle" --local-actions-attestation="$actions_bundle" --ephemeral-root="$RUNNER_TEMP" --cleanup-root="$install" --workspace="$RUNNER_TEMP/lifecycle-linux" --out="$RUNNER_TEMP/linux-lifecycle.json"
+          node scripts/standalone-target-evidence.mjs --target=linux-x64 --candidate-package="$package" --build-receipt="$RUNNER_TEMP/linux-build-receipt.json" --lifecycle-report="$RUNNER_TEMP/linux-lifecycle.json" --release-tag="$RELEASE_TAG" --identity="$identity" --oidc-issuer=https://token.actions.githubusercontent.com --repository="$GITHUB_REPOSITORY" --workflow-ref="https://github.com/$GITHUB_WORKFLOW_REF" --run-id="$GITHUB_RUN_ID" --run-attempt="$GITHUB_RUN_ATTEMPT" --run-actor="github:$GITHUB_ACTOR" --checks=cosign_bundle_verified,rekor_inclusion_verified,workflow_identity_verified,fresh_runner_smoke_passed,install_cleanup_verified,install_rollback_verified --out="$RUNNER_TEMP/linux-x64.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: studio-signed-rc-evidence-linux-x64
+          name: studio-signed-rc-target-linux-x64-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/linux-x64.json
           if-no-files-found: error
           retention-days: 14
   smoke-macos:
     name: Fresh macOS arm64 Gatekeeper and lifecycle smoke
     needs: sign-macos
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 15
     permissions:
       contents: read
@@ -484,7 +581,7 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - name: Stop because private candidate transport is unavailable
         run: |
@@ -497,30 +594,32 @@ jobs:
           set -euo pipefail
           test "$(uname -m)" = arm64
           download="$RUNNER_TEMP/download-macos"
+          version="${RELEASE_TAG#studio-companion-v}"
+          version="${version%%-rc.*}"
           apple_team_id="$(node -p "JSON.parse(require('fs').readFileSync('config/companion-standalone-signing-policy.json')).targets['darwin-arm64'].approved_identity")"
           test -n "$apple_team_id"
-          archive="$download/dusk-developer-studio-local-macos-arm64.zip"
+          archive="$download/dusk-developer-studio-$version-darwin-arm64-internal-rc.zip"
+          test -f "$archive"
           install="$RUNNER_TEMP/installed-macos"
-          mkdir "$install"
-          ditto -x -k "$archive" "$install"
-          app="$install/Dusk Developer Studio.app"
-          executable="$app/Contents/MacOS/dusk-studio"
-          xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");GitHubActions;" "$app"
-          codesign --verify --deep --strict --verbose=4 "$app"
-          details="$(codesign -d --verbose=4 "$app" 2>&1)"
-          printf '%s\n' "$details" | grep -F "TeamIdentifier=$apple_team_id"
-          xcrun stapler validate "$app"
-          spctl --assess --type execute --verbose=4 "$app"
-          HOME="$RUNNER_TEMP/test-home" "$executable" --signed-rc-self-test
-          ! curl --fail --silent http://127.0.0.1:5173/healthz
-          ! curl --fail --silent http://127.0.0.1:8788/healthz
-          if find "${TMPDIR:-/tmp}" -maxdepth 1 -type d -name 'dusk-studio-sea-*' -print -quit | grep -q .; then exit 1; fi
-          rm -rf "$install" "$RUNNER_TEMP/test-home"
-          test ! -e "$install"
-          node scripts/standalone-target-evidence.mjs --target=darwin-arm64 --artifact="$archive" --build-receipt="$download/prototype-receipt.json" --release-tag="$RELEASE_TAG" --identity="$apple_team_id" --checks=developer_id_valid,hardened_runtime,notarized,ticket_stapled,gatekeeper_assessed,fresh_runner_smoke_passed,cleanup_verified,rollback_verified --out="$RUNNER_TEMP/darwin-arm64.json"
+          node scripts/standalone-safe-zip-extract.mjs --archive="$archive" --target=darwin-arm64 --ephemeral-root="$RUNNER_TEMP" --out="$install"
+          safe_app="$install/Dusk Developer Studio.app"
+          actions_app="$install/Dusk Developer Studio Local Actions.app"
+          safe="$safe_app/Contents/MacOS/dusk-studio"
+          actions="$actions_app/Contents/MacOS/dusk-studio-local-actions"
+          for app in "$safe_app" "$actions_app"; do
+            xattr -w com.apple.quarantine "0081;$(printf '%x' "$(date +%s)");GitHubActions;" "$app"
+            codesign --verify --deep --strict --verbose=4 "$app"
+            details="$(codesign -d --verbose=4 "$app" 2>&1)"
+            printf '%s\n' "$details" | grep -F "TeamIdentifier=$apple_team_id"
+            xcrun stapler validate "$app"
+            spctl --assess --type execute --verbose=4 "$app"
+          done
+          cp "$install/evidence/prototype-receipt.json" "$RUNNER_TEMP/darwin-build-receipt.json"
+          node scripts/companion-standalone-self-test.mjs --target=darwin-arm64 --candidate-package="$archive" --safe-launcher="$safe" --local-actions-launcher="$actions" --build-receipt="$install/evidence/prototype-receipt.json" --signed-launcher-index="$install/signed-launcher-index.json" --package-manifest="$install/candidate-package-manifest.json" --ephemeral-root="$RUNNER_TEMP" --cleanup-root="$install" --workspace="$RUNNER_TEMP/lifecycle-macos" --out="$RUNNER_TEMP/darwin-lifecycle.json"
+          node scripts/standalone-target-evidence.mjs --target=darwin-arm64 --candidate-package="$archive" --build-receipt="$RUNNER_TEMP/darwin-build-receipt.json" --lifecycle-report="$RUNNER_TEMP/darwin-lifecycle.json" --release-tag="$RELEASE_TAG" --identity="$apple_team_id" --repository="$GITHUB_REPOSITORY" --workflow-ref="https://github.com/$GITHUB_WORKFLOW_REF" --run-id="$GITHUB_RUN_ID" --run-attempt="$GITHUB_RUN_ATTEMPT" --run-actor="github:$GITHUB_ACTOR" --checks=developer_id_valid,hardened_runtime,notarized,ticket_stapled,gatekeeper_assessed,fresh_runner_smoke_passed,install_cleanup_verified,install_rollback_verified --out="$RUNNER_TEMP/darwin-arm64.json"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: studio-signed-rc-evidence-darwin-arm64
+          name: studio-signed-rc-target-darwin-arm64-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/darwin-arm64.json
           if-no-files-found: error
           retention-days: 14
@@ -544,21 +643,23 @@ jobs:
         run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24.11.0
+          node-version: 24.18.0
           package-manager-cache: "false"
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: studio-signed-rc-evidence-*
+          pattern: studio-signed-rc-target-*-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/signed-rc-records
           merge-multiple: true
       - name: Assemble and evaluate the exact run evidence
+        env:
+          APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
         run: |
-          node scripts/assemble-standalone-signing-evidence.mjs --records="$RUNNER_TEMP/signed-rc-records" --run-id="$GITHUB_RUN_ID" --out="$RUNNER_TEMP/standalone-signing-evidence.json"
+          node scripts/assemble-standalone-signing-evidence.mjs --records="$RUNNER_TEMP/signed-rc-records" --run-id="$GITHUB_RUN_ID" --run-attempt="$GITHUB_RUN_ATTEMPT" --run-actor="github:$GITHUB_ACTOR" --approval-reference-url="$APPROVAL_REFERENCE" --out="$RUNNER_TEMP/standalone-signing-evidence.json"
           node scripts/standalone-signing-evidence.mjs --evidence="$RUNNER_TEMP/standalone-signing-evidence.json"
       - name: Upload internal evidence packet only
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: studio-signed-rc-evidence-${{ inputs.release_tag }}
+          name: studio-signed-rc-aggregate-${{ inputs.release_tag }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/standalone-signing-evidence.json
           if-no-files-found: error
           retention-days: 30

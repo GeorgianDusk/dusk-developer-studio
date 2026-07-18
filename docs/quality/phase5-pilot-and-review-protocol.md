@@ -44,7 +44,7 @@ monitoring, rollback, or product sign-off.
 
 ### Companion security
 
-Reviewer must be independent of the implementation and examine pairing, Origin/Host/PNA/session controls, authentication-before-parsing, disabled-by-default capabilities, rate/concurrency/body bounds, filesystem containment, atomic staging, process-tree termination, diagnostics redaction, distribution/install/cleanup, and the public/static boundary.
+Reviewer must be independent of the implementation and examine pairing, Origin/Host/PNA/session controls, authentication-before-parsing, disabled-by-default capabilities, rate/concurrency/body bounds, filesystem containment, atomic staging, tracked process-group shutdown, the detached-descendant boundary, diagnostics redaction, distribution/install/cleanup, and the public/static boundary.
 
 Evidence: reviewer identity, independence statement, reviewed commit, tests/run links, findings with P0-P3 severity, disposition, accepted exceptions, and dated acceptance.
 

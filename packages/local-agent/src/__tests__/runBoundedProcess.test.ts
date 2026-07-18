@@ -91,7 +91,7 @@ describe("bounded process runner", () => {
     expect(stillRunning).toBe(false);
   });
 
-  it("terminates active process trees through the shutdown helper", async () => {
+  it("terminates active tracked process groups through the shutdown helper", async () => {
     const operation = runBoundedProcess({ command: process.execPath, args: ["-e", "setInterval(() => undefined, 10000)"], timeoutMs: 30_000, maxOutputBytes: 4_096 });
     const failure = operation.catch((error: BoundedProcessError) => error);
     await new Promise((resolve) => setTimeout(resolve, 150));

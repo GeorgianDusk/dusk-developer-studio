@@ -36,7 +36,7 @@ See [SECURITY.md](SECURITY.md), [docs/security/threat-model.md](docs/security/th
 
 ## Local development
 
-Requirements: Node.js 24.11.0 and pnpm 11.7.0.
+Requirements: Node.js 24.18.0 and pnpm 11.7.0.
 
 ```bash
 corepack enable
