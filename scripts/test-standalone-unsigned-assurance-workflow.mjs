@@ -11,6 +11,10 @@ const windowsTaskDriver = fs.readFileSync(
   path.join(root, "scripts", "windows-standard-user-lifecycle.ps1"),
   "utf8"
 );
+const windowsTaskBootstrap = fs.readFileSync(
+  path.join(root, "scripts", "windows-standard-user-task-bootstrap.ps1"),
+  "utf8"
+);
 const windowsLsaRights = fs.readFileSync(
   path.join(root, "scripts", "windows-lsa-account-rights.ps1"),
   "utf8"
@@ -210,7 +214,10 @@ assert.match(workflow, /\$taskDefinition\.Settings\.MultipleInstances = \$TASK_I
 assert.doesNotMatch(workflow, /\$taskDefinition\.Triggers|New-ScheduledTask|Register-ScheduledTask|schtasks\.exe/i);
 assert.doesNotMatch(workflow, /TASK_LOGON_PASSWORD|Principal\.LogonType\s*=\s*1|RegisterTaskDefinition\([\s\S]{0,500}\$TASK_LOGON_PASSWORD/i);
 assert.match(workflow, /\$taskAction\.Path = \$taskPowerShell/);
-assert.match(workflow, /\$taskAction\.Arguments = "[^"\n]*-NoProfile[^"\n]*-File `"\$taskDriver`" -InputFile `"\$taskInput`""/);
+assert.match(
+  workflow,
+  /\$taskAction\.Arguments = "[^"\n]*-NoProfile[^"\n]*-File `"\$taskBootstrap`" -Root `"\$standardUserRoot`" -Driver `"\$taskDriver`" -InputFile `"\$taskInput`" -DiagnosticFile `"\$taskDiagnostic`""/
+);
 assert.doesNotMatch(
   workflow.slice(workflow.indexOf("$taskAction.Arguments ="), workflow.indexOf("$registeredTask =")),
   /password|secure/i
@@ -223,6 +230,11 @@ assert.match(workflow, /\$taskLastResult = \[int64\] \$registeredTask\.LastTaskR
 assert.match(workflow, /\$taskPending = \$taskLastResult -in @\(0x00041301, 0x00041303\)/);
 assert.match(workflow, /last_result=\$taskResultHex, state=\$taskState/);
 assert.match(workflow, /\$taskLastResult -ne 0/);
+assert.match(workflow, /standard-user status: exit_code=\$\(\$failedTaskStatus\.exit_code\)/);
+assert.match(workflow, /standard-user diagnostic: \$diagnosticMessage/);
+assert.doesNotMatch(workflow, /Get-Content -LiteralPath \$taskStdout|Get-Content -LiteralPath \$taskStderr/);
+assert.match(workflow, /\$diagnosticFile\.Length -gt 4096/);
+assert.match(workflow, /Successful standard-user Windows lifecycle left a failure diagnostic/);
 assert.match(workflow, /\$status\.nonce -ne \$taskNonce[\s\S]*?\$status\.sid -ne \$standardUserSid[\s\S]*?\$status\.is_admin -ne \$false[\s\S]*?\$status\.exit_code -ne 0/);
 assert.match(workflow, /Remove-LocalUser -Name \$userName -ErrorAction Stop/);
 const lifecycleBlock = workflow.slice(
@@ -262,6 +274,12 @@ assert.doesNotMatch(
 assert.match(lifecycleBlock, /Get-CimInstance Win32_UserProfile -Filter "SID='\$standardUserSid'"/);
 assert.match(lifecycleBlock, /if \(\$profileMatches\.Count -eq 0\)[\s\S]*?\$profile = \$null[\s\S]*?break/);
 assert.match(lifecycleBlock, /\$profilePath\.StartsWith\(\$usersPrefix, \[System\.StringComparison\]::OrdinalIgnoreCase\)/);
+assert.match(lifecycleBlock, /\$taskService = \$null[\s\S]*?\[GC\]::Collect\(\)/);
+assert.doesNotMatch(lifecycleBlock, /\[GC\]::WaitForPendingFinalizers\(\)/);
+assert.match(lifecycleBlock, /\$profileDeadline = \[DateTime\]::UtcNow\.AddSeconds\(120\)/);
+assert.match(lifecycleBlock, /Temporary assurance profile remained loaded after its release deadline/);
+assert.match(lifecycleBlock, /\$refreshedProfilePath\.Equals\([\s\S]*?\$profilePath/);
+assert.match(lifecycleBlock, /\$finalProfilePath\.Equals\([\s\S]*?\$profilePath/);
 assert.doesNotMatch(lifecycleBlock, /Remove-Item[\s\S]{0,200}(?:C:\\Users|\\Users\\|Join-Path \$env:SystemDrive 'Users')/i);
 
 assert.match(windowsTaskDriver, /\[System\.Security\.Principal\.WindowsIdentity\]::GetCurrent\(\)/);
@@ -300,6 +318,12 @@ assert.doesNotMatch(windowsTaskDriver, /\$process\.WaitForExit\(\)/);
 assert.match(windowsTaskDriver, /\$maximumLogBytes = 65536/);
 assert.match(windowsTaskDriver, /\[System\.IO\.File\]::Move\(\$statusTemporaryPath, \$statusPath\)/);
 assert.doesNotMatch(windowsTaskDriver, /UserName\s*=|Domain\s*=|Password\s*=|credential|TASK_LOGON_PASSWORD/i);
+assert.match(windowsTaskBootstrap, /Assert-BoundedPath/);
+assert.match(windowsTaskBootstrap, /\$item\.Attributes -band \[System\.IO\.FileAttributes\]::ReparsePoint/);
+assert.match(windowsTaskBootstrap, /& \$driverPath -InputFile \$inputPath/);
+assert.match(windowsTaskBootstrap, /\$message\.Length -gt 1024/);
+assert.match(windowsTaskBootstrap, /\[System\.IO\.File\]::Move\(\$temporaryDiagnostic, \$diagnosticPath\)/);
+assert.doesNotMatch(windowsTaskBootstrap, /UserName\s*=|Domain\s*=|Password\s*=|credential/i);
 assert.match(windowsLsaRights, /LsaAddAccountRights/);
 assert.match(windowsLsaRights, /LsaRemoveAccountRights/);
 assert.match(windowsLsaRights, /LsaEnumerateAccountRights/);
