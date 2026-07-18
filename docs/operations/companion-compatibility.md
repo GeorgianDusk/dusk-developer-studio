@@ -35,11 +35,14 @@ package and cannot be inferred from the platform-specific observations above.
   loading and network-only credential behavior, and re-verifies the exact SID
   and non-admin token inside the child. It temporarily grants that exact SID
   folder-traverse access to the hosted runner's otherwise private temporary-root
-  ancestors, then verifies that every added ACL is removed before deleting the
-  account. Before passing, it also requires repeated exact-SID process cleanup,
-  no unresolved live process-owner query, no loaded profile hive, defensive
-  removal of any unloaded exact-SID profile record, and verified account
-  deletion. The harness does not grant or mutate Windows account rights.
+  ancestor chain, including the hosted volume root, then verifies that every
+  added ACL is removed before deleting the account. Pre-existing protected
+  processes with unresolved owners are baselined by PID and creation time before
+  the account exists; any new or changed unresolved process blocks the result.
+  Before passing, the harness also requires repeated exact-SID process cleanup,
+  no loaded profile hive, defensive removal of any unloaded exact-SID profile
+  record, and verified account deletion. The harness does not grant or mutate
+  Windows account rights.
 - Local Actions verifies existing tool prerequisites. It does not silently
   install Foundry, Rust, Dusk Forge, WSL, or related utilities.
 - Dusk Forge must match the exact reviewed Cargo install receipt and source

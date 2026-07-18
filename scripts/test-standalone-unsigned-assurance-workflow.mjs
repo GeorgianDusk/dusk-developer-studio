@@ -316,9 +316,13 @@ assert.ok(
 );
 assert.match(lifecycleBlock, /function Get-SidProcessSnapshot/);
 assert.match(lifecycleBlock, /\$owner\.ReturnValue -ne 0/);
-assert.match(lifecycleBlock, /\$unresolvedProcessIds\.Add\(\[uint32\] \$candidate\.ProcessId\)/);
-assert.match(lifecycleBlock, /\$processSnapshot\.UnresolvedProcessIds/);
-assert.match(lifecycleBlock, /live process-owner queries remained unresolved after cleanup/);
+assert.match(lifecycleBlock, /\$unresolvedProcesses\.Add\(\[pscustomobject\]@\{/);
+assert.match(lifecycleBlock, /\$creationDate\.ToUniversalTime\(\)\.Ticks/);
+assert.match(lifecycleBlock, /function Get-NewUnresolvedProcesses/);
+assert.match(lifecycleBlock, /\$baselineProcessSnapshot = Get-SidProcessSnapshot -Sid 'S-1-0-0'/);
+assert.match(lifecycleBlock, /\$baselineUnresolvedProcessKeys =[\s\S]*?HashSet\[string\]/);
+assert.match(lifecycleBlock, /baseline unresolved process lacked a stable instance identity/i);
+assert.match(lifecycleBlock, /new live process-owner queries remained unresolved after cleanup/);
 assert.match(lifecycleBlock, /\$processCleanupConfirmed = \$true/);
 assert.match(lifecycleBlock, /\$ancestorAclCleanupConfirmed = \$true/);
 assert.match(lifecycleBlock, /\$profileCleanupConfirmed = \$true/);
@@ -347,8 +351,8 @@ assert.ok(
 assert.match(lifecycleBlock, /\$ancestorAclCleanupFailures = \[System\.Collections\.Generic\.List\[string\]\]::new\(\)/);
 assert.match(lifecycleBlock, /\$ancestorAclCleanupFailures\.Add\(/);
 assert.match(lifecycleBlock, /if \(\$ancestorAclCleanupFailures\.Count -ne 0\)/);
-assert.match(lifecycleBlock, /\$volumeRoot = \[System\.IO\.Path\]::GetPathRoot\(\$runnerTempPath\)/);
-assert.match(lifecycleBlock, /while \(-not \$traverseCursor\.Equals\([\s\S]*?\$volumeRoot/);
+assert.match(lifecycleBlock, /\$traverseCursor = \$runnerTempPath[\s\S]*?while \(\$null -ne \$traverseCursor\)/);
+assert.doesNotMatch(lifecycleBlock, /while \(-not \$traverseCursor\.Equals\([\s\S]*?\$volumeRoot/);
 assert.match(lifecycleBlock, /\$remainingAccounts = @\([\s\S]*?Get-LocalUser -ErrorAction Stop/);
 const finalProcessSweep = lifecycleBlock.indexOf(
   "$finalProcessSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid",

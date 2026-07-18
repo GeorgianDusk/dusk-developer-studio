@@ -42,9 +42,11 @@ The harness repeatedly removes exact-SID processes, requires no loaded SID
 profile hive, defensively removes one exact, non-special, unloaded profile
 record if Windows created it, and deletes the account before it can pass. A
 temporary exact-SID folder-traverse ACL makes the hosted runner's private
-temporary-root ancestor chain reachable; that ACL is removed and verified
-before account deletion. Any unresolved live process-owner query or ACL cleanup
-failure blocks cleanup evidence. The parent writes the root-deletion
+temporary-root ancestor chain, including its hosted volume root, reachable;
+that ACL is removed and verified before account deletion. Protected processes
+whose owners are already unresolved are baselined by PID and creation time
+before the temporary account exists; any new or changed unresolved process, or
+any ACL cleanup failure, blocks cleanup evidence. The parent writes the root-deletion
 confirmation into a separate inheritance-stripped control directory that the
 temporary user cannot write. The harness does not modify local account rights
 or install task/service scaffolding. Its Windows limits are deliberately

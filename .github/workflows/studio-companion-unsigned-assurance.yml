@@ -229,7 +229,7 @@ jobs:
           function Get-SidProcessSnapshot {
             param([Parameter(Mandatory = $true)][string] $Sid)
             $owned = [System.Collections.Generic.List[object]]::new()
-            $unresolvedProcessIds = [System.Collections.Generic.List[uint32]]::new()
+            $unresolvedProcesses = [System.Collections.Generic.List[object]]::new()
             foreach ($candidate in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
               try {
                 $owner = Invoke-CimMethod -InputObject $candidate -MethodName GetOwnerSid -ErrorAction Stop
@@ -245,7 +245,16 @@ jobs:
                   throw 'A process identifier unexpectedly matched multiple live processes.'
                 }
                 if ($liveMatch.Count -eq 1) {
-                  [void] $unresolvedProcessIds.Add([uint32] $candidate.ProcessId)
+                  $creationDate = $liveMatch[0].CreationDate
+                  $instanceKey = if ($creationDate -is [DateTime]) {
+                    "$([uint32] $liveMatch[0].ProcessId)|$($creationDate.ToUniversalTime().Ticks)"
+                  } else {
+                    $null
+                  }
+                  [void] $unresolvedProcesses.Add([pscustomobject]@{
+                    ProcessId = [uint32] $liveMatch[0].ProcessId
+                    InstanceKey = $instanceKey
+                  })
                 }
                 continue
               }
@@ -255,8 +264,25 @@ jobs:
             }
             return [pscustomobject]@{
               Owned = @($owned)
-              UnresolvedProcessIds = @($unresolvedProcessIds | Sort-Object -Unique)
+              UnresolvedProcesses = @(
+                $unresolvedProcesses |
+                  Sort-Object ProcessId, InstanceKey -Unique
+              )
             }
+          }
+          function Get-NewUnresolvedProcesses {
+            param(
+              [Parameter(Mandatory = $true)] $Snapshot,
+              [Parameter(Mandatory = $true)]
+              [System.Collections.Generic.HashSet[string]] $BaselineKeys
+            )
+            return @(
+              $Snapshot.UnresolvedProcesses |
+                Where-Object {
+                  $null -eq $_.InstanceKey -or
+                    -not $BaselineKeys.Contains($_.InstanceKey)
+                }
+            )
           }
           function Write-SanitizedDiagnostic {
             param(
@@ -282,6 +308,20 @@ jobs:
             foreach ($line in $lines) {
               Write-Output "standard-user $Label`: $line"
             }
+          }
+          $baselineProcessSnapshot = Get-SidProcessSnapshot -Sid 'S-1-0-0'
+          if (@($baselineProcessSnapshot.Owned).Count -ne 0) {
+            throw 'The Windows null SID unexpectedly owned a live process.'
+          }
+          $baselineUnresolvedProcessKeys =
+            [System.Collections.Generic.HashSet[string]]::new(
+              [System.StringComparer]::Ordinal
+            )
+          foreach ($unresolvedProcess in @($baselineProcessSnapshot.UnresolvedProcesses)) {
+            if ([string]::IsNullOrWhiteSpace([string] $unresolvedProcess.InstanceKey)) {
+              throw 'A baseline unresolved process lacked a stable instance identity.'
+            }
+            [void] $baselineUnresolvedProcessKeys.Add($unresolvedProcess.InstanceKey)
           }
           $driverRoot = Join-Path $standardUserRoot 'driver'
           New-Item -ItemType Directory -Path $driverRoot | Out-Null
@@ -324,12 +364,8 @@ jobs:
             )) {
               throw 'Standard-user lifecycle root is not the exact runner-owned temporary path.'
             }
-            $volumeRoot = [System.IO.Path]::GetPathRoot($runnerTempPath)
             $traverseCursor = $runnerTempPath
-            while (-not $traverseCursor.Equals(
-              $volumeRoot,
-              [System.StringComparison]::OrdinalIgnoreCase
-            )) {
+            while ($null -ne $traverseCursor) {
               if (@(Get-ExactSidAclRules -Path $traverseCursor -Sid $standardUserSid).Count -ne 0) {
                 $ancestorAclSetupValid = $false
                 throw 'Fresh temporary SID unexpectedly had an ancestor ACL before setup.'
@@ -674,15 +710,25 @@ jobs:
                 foreach ($ownedProcess in @($processSnapshot.Owned)) {
                   Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue
                 }
+                $newUnresolvedProcesses = @(
+                  Get-NewUnresolvedProcesses `
+                    -Snapshot $processSnapshot `
+                    -BaselineKeys $baselineUnresolvedProcessKeys
+                )
                 $pendingProcessChecks = @($processSnapshot.Owned).Count +
-                  @($processSnapshot.UnresolvedProcessIds).Count
+                  $newUnresolvedProcesses.Count
                 if ($pendingProcessChecks -ne 0) {
                   Start-Sleep -Milliseconds 500
                 }
               } while ($pendingProcessChecks -ne 0 -and [DateTime]::UtcNow -lt $processDeadline)
               $processSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
-              if (@($processSnapshot.UnresolvedProcessIds).Count -ne 0) {
-                throw 'One or more live process-owner queries remained unresolved after cleanup.'
+              $newUnresolvedProcesses = @(
+                Get-NewUnresolvedProcesses `
+                  -Snapshot $processSnapshot `
+                  -BaselineKeys $baselineUnresolvedProcessKeys
+              )
+              if ($newUnresolvedProcesses.Count -ne 0) {
+                throw 'One or more new live process-owner queries remained unresolved after cleanup.'
               }
               if (@($processSnapshot.Owned).Count -ne 0) {
                 throw 'A process owned by the temporary assurance SID survived cleanup.'
@@ -819,8 +865,13 @@ jobs:
                   foreach ($ownedProcess in @($finalProcessSnapshot.Owned)) {
                     Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue
                   }
+                  $newFinalUnresolvedProcesses = @(
+                    Get-NewUnresolvedProcesses `
+                      -Snapshot $finalProcessSnapshot `
+                      -BaselineKeys $baselineUnresolvedProcessKeys
+                  )
                   $pendingFinalProcessChecks = @($finalProcessSnapshot.Owned).Count +
-                    @($finalProcessSnapshot.UnresolvedProcessIds).Count
+                    $newFinalUnresolvedProcesses.Count
                   if ($pendingFinalProcessChecks -ne 0) {
                     Start-Sleep -Milliseconds 500
                   }
@@ -829,8 +880,13 @@ jobs:
                   [DateTime]::UtcNow -lt $finalProcessDeadline
                 )
                 $finalProcessSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
-                if (@($finalProcessSnapshot.UnresolvedProcessIds).Count -ne 0) {
-                  throw 'A final live process-owner query remained unresolved after account deletion.'
+                $newFinalUnresolvedProcesses = @(
+                  Get-NewUnresolvedProcesses `
+                    -Snapshot $finalProcessSnapshot `
+                    -BaselineKeys $baselineUnresolvedProcessKeys
+                )
+                if ($newFinalUnresolvedProcesses.Count -ne 0) {
+                  throw 'A final new live process-owner query remained unresolved after account deletion.'
                 }
                 if (@($finalProcessSnapshot.Owned).Count -ne 0) {
                   throw 'A process owned by the deleted temporary assurance SID survived final cleanup.'
