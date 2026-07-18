@@ -196,15 +196,50 @@ function parseListeningEndpoint(value: string): string | undefined {
   return Number.isInteger(port) && port > 0 && port <= 65_535 ? `${match[1]}:${port}` : undefined;
 }
 
+export function parseWindowsNetstatListeningEndpoints(output: string, ownerPid: number): string[] {
+  if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0 || ownerPid > 0xffff_ffff
+      || output.length > 1_048_576) {
+    throw new Error("Signed-RC self-test received an invalid Windows socket inventory.");
+  }
+  const values: string[] = [];
+  for (const line of output.split(/\r?\n/)) {
+    const fields = line.trim().split(/\s+/);
+    if (fields[0]?.toUpperCase() !== "TCP") continue;
+    if (fields.length !== 5 || !/^\d+$/.test(fields[4])) {
+      throw new Error("Signed-RC self-test received a malformed Windows socket row.");
+    }
+    const rowPid = Number(fields[4]);
+    if (!Number.isSafeInteger(rowPid) || rowPid < 0 || rowPid > 0xffff_ffff) {
+      throw new Error("Signed-RC self-test received a malformed Windows socket PID.");
+    }
+    if (rowPid !== ownerPid) continue;
+    if (fields[2] === "0.0.0.0:0" || fields[2] === "[::]:0") {
+      values.push(fields[1]);
+    }
+  }
+  return values;
+}
+
 function ownedListeningEndpoints(): string[] {
   let values: string[] = [];
   if (process.platform === "win32") {
-    const powershell = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-    const command = `$ErrorActionPreference='Stop'; @(Get-NetTCPConnection -State Listen | Where-Object { $_.OwningProcess -eq ${process.pid} } | ForEach-Object { "$($_.LocalAddress):$($_.LocalPort)" }) | ConvertTo-Json -Compress`;
-    const result = spawnSync(powershell, ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
-    if (result.status !== 0) throw new Error("Signed-RC self-test could not inspect Windows listening sockets.");
-    const parsed: unknown = result.stdout.trim() ? JSON.parse(result.stdout) : [];
-    values = Array.isArray(parsed) ? parsed.map(String) : [String(parsed)];
+    const netstat = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "netstat.exe");
+    const result = spawnSync(netstat, ["-a", "-n", "-o", "-p", "tcp"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 30_000,
+      maxBuffer: 1_048_576
+    });
+    if (result.status !== 0) {
+      const errorCode = (result.error as NodeJS.ErrnoException | undefined)?.code;
+      const category = errorCode === "ETIMEDOUT"
+        ? "timeout"
+        : result.error
+          ? "spawn_error"
+          : `exit_${result.status}`;
+      throw new Error(`Signed-RC self-test could not inspect Windows listening sockets (${category}).`);
+    }
+    values = parseWindowsNetstatListeningEndpoints(result.stdout, process.pid);
   } else if (process.platform === "linux") {
     const result = spawnSync("ss", ["-H", "-ltnp"], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
     if (result.status !== 0) throw new Error("Signed-RC self-test could not inspect Linux listening sockets.");
