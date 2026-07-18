@@ -77,6 +77,24 @@ for (const [file, workflow] of workflows) {
   }
 }
 
+const requiredWindowsWorkflow = read(".github/workflows/studio-linux-security.yml");
+const elevatedArchiveStepStart = requiredWindowsWorkflow.indexOf(
+  "- name: Build, verify, and reject elevated launch of the extracted Windows companion archive"
+);
+const elevatedArchiveStepEnd = requiredWindowsWorkflow.indexOf(
+  "- name: Validate Windows, WSL, and POSIX command generation",
+  elevatedArchiveStepStart
+);
+assert.ok(
+  elevatedArchiveStepStart >= 0 && elevatedArchiveStepEnd > elevatedArchiveStepStart,
+  "The required Windows archive elevation contract is missing."
+);
+const elevatedArchiveStep = requiredWindowsWorkflow.slice(elevatedArchiveStepStart, elevatedArchiveStepEnd);
+assert.match(elevatedArchiveStep, /Dusk Developer Studio refuses elevated or root execution\./);
+assert.match(elevatedArchiveStep, /\$elevatedStatus -eq 0/);
+assert.match(elevatedArchiveStep, /\$unexpectedListener/);
+assert.doesNotMatch(elevatedArchiveStep, /Start-Process|did not become healthy/);
+
 const signedWorkflow = read(".github/workflows/studio-companion-signed-rc.yml");
 assert.doesNotMatch(signedWorkflow, /^\s+(?:push|pull_request|schedule):/m);
 assert.doesNotMatch(signedWorkflow, /gh release|create-release|softprops\/action-gh-release|release-action/i);

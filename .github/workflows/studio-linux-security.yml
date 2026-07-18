@@ -158,7 +158,7 @@ jobs:
           corepack install --global pnpm@11.7.0
       - name: Restore frozen dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build and smoke the extracted Windows companion archive
+      - name: Build, verify, and reject elevated launch of the extracted Windows companion archive
         env:
           DUSK_STUDIO_ARTIFACT_CHANNEL: portable
           DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
@@ -180,16 +180,18 @@ jobs:
           node scripts/companion-verify.mjs "--release=$releaseRoot"
           $node = Join-Path $releaseRoot 'runtime/node.exe'
           $companion = Join-Path $releaseRoot 'app/companion.mjs'
-          $process = Start-Process -FilePath $node -ArgumentList @($companion, '--no-open') -PassThru -WindowStyle Hidden
-          try {
-            $ready = $false
-            foreach ($attempt in 1..40) {
-              try { Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5173/healthz' | Out-Null; $ready = $true; break } catch { Start-Sleep -Milliseconds 250 }
-            }
-            if (-not $ready) { throw 'Extracted Windows companion did not become healthy.' }
-          } finally {
-            if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          $elevatedOutput = (& $node $companion --no-open 2>&1 | Out-String)
+          $elevatedStatus = $LASTEXITCODE
+          if ($elevatedStatus -eq 0) { throw 'Extracted Windows companion accepted an elevated launch.' }
+          if (-not $elevatedOutput.Contains('Dusk Developer Studio refuses elevated or root execution.')) {
+            throw 'Extracted Windows companion did not report the required elevated-launch denial.'
           }
+          $unexpectedListener = $false
+          try {
+            Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5173/healthz' -TimeoutSec 2 | Out-Null
+            $unexpectedListener = $true
+          } catch {}
+          if ($unexpectedListener) { throw 'Rejected elevated companion launch left the Studio health endpoint reachable.' }
       - name: Validate Windows, WSL, and POSIX command generation
         run: pnpm exec vitest run packages/core/src/__tests__/cli.test.ts packages/local-agent/src/__tests__/safePaths.test.ts packages/local-agent/src/__tests__/preflightFailureKinds.test.ts --reporter=verbose
       - name: Run platform-neutral compile and secret gates

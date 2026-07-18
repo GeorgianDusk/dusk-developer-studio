@@ -540,7 +540,7 @@ export function createCleanupReceipt({ target, scopeRoot, paths }) {
       fs.lstatSync(record.resolved);
       return true;
     } catch (error) {
-      if (error?.code === "ENOENT") return false;
+      if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return false;
       throw error;
     }
   });
