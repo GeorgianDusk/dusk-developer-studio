@@ -140,12 +140,12 @@ function Write-NewBoundedUtf8File {
   return $bytes.Length
 }
 
-$inputPath = Resolve-ContractPath -Value $InputFile -Label 'Task input'
+$inputPath = Resolve-ContractPath -Value $InputFile -Label 'Lifecycle input'
 if (-not (Test-Path -LiteralPath $inputPath -PathType Leaf)) {
-  throw 'Task input is unavailable.'
+  throw 'Lifecycle input is unavailable.'
 }
 $contract = Get-Content -Raw -LiteralPath $inputPath | ConvertFrom-Json
-Assert-ExactProperties -Value $contract -Label 'Task input' -Expected @(
+Assert-ExactProperties -Value $contract -Label 'Lifecycle input' -Expected @(
   'schema_version',
   'nonce',
   'expected_sid',
@@ -162,16 +162,16 @@ Assert-ExactProperties -Value $contract -Label 'Task input' -Expected @(
   'timeout_ms'
 )
 if ($contract.schema_version -ne 1) {
-  throw 'Task input schema version is unsupported.'
+  throw 'Lifecycle input schema version is unsupported.'
 }
 if ($contract.nonce -notmatch '^[0-9a-f]{32}$') {
-  throw 'Task input nonce is invalid.'
+  throw 'Lifecycle input nonce is invalid.'
 }
 if ($contract.expected_sid -notmatch '^S-1-5-21-(?:[0-9]+-){3}[0-9]+$') {
-  throw 'Task input SID is invalid.'
+  throw 'Lifecycle input SID is invalid.'
 }
 if ($contract.timeout_ms -ne 300000) {
-  throw 'Task input timeout is invalid.'
+  throw 'Lifecycle input timeout is invalid.'
 }
 
 $ephemeralRoot = Resolve-ContractPath -Value $contract.ephemeral_root -Label 'Ephemeral root'
@@ -182,19 +182,19 @@ if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [System.IO.File
 $nodePath = Resolve-ContractPath -Value $contract.node_path -Label 'Node executable'
 $workingDirectory = Resolve-ContractPath -Value $contract.working_directory -Label 'Working directory'
 $scriptPath = Resolve-ContractPath -Value $contract.script_path -Label 'Lifecycle script'
-$stdoutPath = Resolve-ContractPath -Value $contract.stdout_path -Label 'Task stdout'
-$stderrPath = Resolve-ContractPath -Value $contract.stderr_path -Label 'Task stderr'
-$statusPath = Resolve-ContractPath -Value $contract.status_path -Label 'Task status'
+$stdoutPath = Resolve-ContractPath -Value $contract.stdout_path -Label 'Lifecycle stdout'
+$stderrPath = Resolve-ContractPath -Value $contract.stderr_path -Label 'Lifecycle stderr'
+$statusPath = Resolve-ContractPath -Value $contract.status_path -Label 'Lifecycle status'
 $lifecycleReportPath = Resolve-ContractPath -Value $contract.lifecycle_report_path -Label 'Lifecycle report'
 foreach ($record in @(
   @{ Path = $nodePath; Label = 'Node executable' },
   @{ Path = $workingDirectory; Label = 'Working directory' },
   @{ Path = $scriptPath; Label = 'Lifecycle script' },
-  @{ Path = $stdoutPath; Label = 'Task stdout' },
-  @{ Path = $stderrPath; Label = 'Task stderr' },
-  @{ Path = $statusPath; Label = 'Task status' },
+  @{ Path = $stdoutPath; Label = 'Lifecycle stdout' },
+  @{ Path = $stderrPath; Label = 'Lifecycle stderr' },
+  @{ Path = $statusPath; Label = 'Lifecycle status' },
   @{ Path = $lifecycleReportPath; Label = 'Lifecycle report' },
-  @{ Path = $inputPath; Label = 'Task input' }
+  @{ Path = $inputPath; Label = 'Lifecycle input' }
 )) {
   Assert-WithinRoot -Root $ephemeralRoot -Candidate $record.Path -Label $record.Label
   Assert-NoReparseComponents -Root $ephemeralRoot -Candidate $record.Path -Label $record.Label
@@ -202,24 +202,24 @@ foreach ($record in @(
 if ((-not (Test-Path -LiteralPath $nodePath -PathType Leaf)) -or
     (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) -or
     (-not (Test-Path -LiteralPath $workingDirectory -PathType Container))) {
-  throw 'Task executable inputs are unavailable.'
+  throw 'Lifecycle executable inputs are unavailable.'
 }
 foreach ($newOutput in @($stdoutPath, $stderrPath, $statusPath, $lifecycleReportPath)) {
   if (Test-Path -LiteralPath $newOutput) {
-    throw 'Task output path must not exist before execution.'
+    throw 'Lifecycle output path must not exist before execution.'
   }
 }
 
-Assert-ExactProperties -Value $contract.environment -Expected $allowedEnvironmentNames -Label 'Task environment'
+Assert-ExactProperties -Value $contract.environment -Expected $allowedEnvironmentNames -Label 'Lifecycle environment'
 foreach ($name in $allowedEnvironmentNames) {
   if ($contract.environment.$name -isnot [string] -or [string]::IsNullOrWhiteSpace($contract.environment.$name)) {
-    throw "Task environment value is invalid: $name."
+    throw "Lifecycle environment value is invalid: $name."
   }
 }
 foreach ($name in @('TEMP', 'TMP', 'USERPROFILE', 'LOCALAPPDATA', 'APPDATA')) {
-  $environmentPath = Resolve-ContractPath -Value $contract.environment.$name -Label "Task environment $name"
+  $environmentPath = Resolve-ContractPath -Value $contract.environment.$name -Label "Lifecycle environment $name"
   if (-not $environmentPath.Equals($ephemeralRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
-    throw "Task environment $name escaped the standard-user root."
+    throw "Lifecycle environment $name escaped the standard-user root."
   }
 }
 
@@ -227,12 +227,12 @@ $arguments = @($contract.arguments)
 if ($arguments.Count -ne 6 -or @(
   $arguments | Where-Object { $_ -isnot [string] -or [string]::IsNullOrWhiteSpace($_) }
 ).Count -ne 0) {
-  throw 'Task lifecycle arguments are invalid.'
+  throw 'Lifecycle arguments are invalid.'
 }
 if (($arguments[0] -ne '--target=windows-x64') -or
     ($arguments[3] -ne "--ephemeral-root=$ephemeralRoot") -or
     ($arguments[5] -ne "--out=$lifecycleReportPath")) {
-  throw 'Task lifecycle arguments do not match the bounded Windows contract.'
+  throw 'Lifecycle arguments do not match the bounded Windows contract.'
 }
 $candidatePackage = Resolve-ArgumentPath -Argument $arguments[1] -Prefix '--candidate-package=' -Label 'Candidate package'
 $installRoot = Resolve-ArgumentPath -Argument $arguments[2] -Prefix '--install-root=' -Label 'Install root'
@@ -248,19 +248,19 @@ foreach ($record in @(
 if ((-not (Test-Path -LiteralPath $candidatePackage -PathType Leaf)) -or
     (-not (Test-Path -LiteralPath $installRoot -PathType Container)) -or
     (Test-Path -LiteralPath $workspace)) {
-  throw 'Task lifecycle argument paths do not match their expected states.'
+  throw 'Lifecycle argument paths do not match their expected states.'
 }
 
 $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 if ($identity.User.Value -ne $contract.expected_sid) {
-  throw 'Scheduled lifecycle did not run as the expected temporary user.'
+  throw 'Standard-user lifecycle did not run as the expected temporary user.'
 }
 $principal = [System.Security.Principal.WindowsPrincipal]::new($identity)
 $isAdministrator = $principal.IsInRole(
   [System.Security.Principal.WindowsBuiltInRole]::Administrator
 )
 if ($isAdministrator) {
-  throw 'Scheduled lifecycle unexpectedly received an administrator token.'
+  throw 'Standard-user lifecycle unexpectedly received an administrator token.'
 }
 
 $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
@@ -300,8 +300,8 @@ try {
   }
 }
 
-$stdoutBytes = Write-NewBoundedUtf8File -Path $stdoutPath -Value $stdout -Label 'Task stdout'
-$stderrBytes = Write-NewBoundedUtf8File -Path $stderrPath -Value $stderr -Label 'Task stderr'
+$stdoutBytes = Write-NewBoundedUtf8File -Path $stdoutPath -Value $stdout -Label 'Lifecycle stdout'
+$stderrBytes = Write-NewBoundedUtf8File -Path $stderrPath -Value $stderr -Label 'Lifecycle stderr'
 $status = [ordered]@{
   schema_version = 1
   nonce = $contract.nonce
@@ -313,7 +313,7 @@ $status = [ordered]@{
 }
 $statusTemporaryPath = "$statusPath.$PID.tmp"
 if (Test-Path -LiteralPath $statusTemporaryPath) {
-  throw 'Task status temporary path already exists.'
+  throw 'Lifecycle status temporary path already exists.'
 }
 [System.IO.File]::WriteAllText(
   $statusTemporaryPath,
