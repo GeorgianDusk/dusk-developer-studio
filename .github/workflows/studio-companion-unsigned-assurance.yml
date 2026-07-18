@@ -195,6 +195,21 @@ jobs:
           if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
             throw 'The isolated assurance account already exists.'
           }
+          function Get-ProcessesOwnedBySid {
+            param([Parameter(Mandatory = $true)][string] $Sid)
+            $owned = @()
+            foreach ($candidate in @(Get-CimInstance Win32_Process -ErrorAction Stop)) {
+              try {
+                $owner = Invoke-CimMethod -InputObject $candidate -MethodName GetOwnerSid -ErrorAction Stop
+              } catch {
+                continue
+              }
+              if ($owner.ReturnValue -eq 0 -and $owner.Sid -eq $Sid) {
+                $owned += $candidate
+              }
+            }
+            return $owned
+          }
           $driverRoot = Join-Path $standardUserRoot 'driver'
           New-Item -ItemType Directory -Path $driverRoot | Out-Null
           Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'scripts') -Destination (Join-Path $driverRoot 'scripts') -Recurse
@@ -204,63 +219,300 @@ jobs:
           $passwordText = "$([guid]::NewGuid().ToString('N'))aA1!"
           Write-Output "::add-mask::$passwordText"
           $securePassword = ConvertTo-SecureString $passwordText -AsPlainText -Force
-          $standardUser = New-LocalUser -Name $userName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword
+          $standardUser = $null
+          $standardUserSid = $null
+          $userCreated = $false
+          $taskName = "DuskStudioUnsigned-$([guid]::NewGuid().ToString('N'))"
+          $taskService = $null
+          $taskFolder = $null
+          $taskRegistrationAttempted = $false
+          $taskRegistered = $false
+          $primaryFailure = $null
           try {
+            $standardUser = New-LocalUser -Name $userName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword
+            $userCreated = $true
             Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $standardUser
             $standardUserSid = $standardUser.SID.Value
             & (Join-Path $env:SystemRoot 'System32/icacls.exe') $standardUserRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${standardUserSid}:(OI)(CI)F" /T /C
             if ($LASTEXITCODE -ne 0) { throw 'Could not isolate the standard-user lifecycle root.' }
 
-            $lifecycleInfo = [System.Diagnostics.ProcessStartInfo]::new()
-            $lifecycleInfo.FileName = (Join-Path $driverRoot 'node.exe')
-            $lifecycleInfo.WorkingDirectory = $driverRoot
-            $lifecycleInfo.UseShellExecute = $false
-            $lifecycleInfo.CreateNoWindow = $true
-            $lifecycleInfo.Domain = $env:COMPUTERNAME
-            $lifecycleInfo.UserName = $userName
-            $lifecycleInfo.Password = $securePassword
-            $lifecycleInfo.LoadUserProfile = $false
-            $lifecycleInfo.Environment.Clear()
-            $lifecycleInfo.Environment['SystemRoot'] = $env:SystemRoot
-            $lifecycleInfo.Environment['WINDIR'] = $env:SystemRoot
-            $lifecycleInfo.Environment['COMSPEC'] = (Join-Path $env:SystemRoot 'System32/cmd.exe')
-            $lifecycleInfo.Environment['SystemDrive'] = $env:SystemDrive
-            $lifecycleInfo.Environment['PATHEXT'] = '.COM;.EXE;.BAT;.CMD'
-            $lifecycleInfo.Environment['PATH'] = "$driverRoot;$(Join-Path $env:SystemRoot 'System32');$env:SystemRoot"
-            $lifecycleInfo.Environment['TEMP'] = $standardUserRoot
-            $lifecycleInfo.Environment['TMP'] = $standardUserRoot
-            $lifecycleInfo.Environment['USERPROFILE'] = $standardUserRoot
-            $lifecycleInfo.Environment['LOCALAPPDATA'] = $standardUserRoot
-            $lifecycleInfo.Environment['APPDATA'] = $standardUserRoot
-            foreach ($argument in @(
-              (Join-Path $driverRoot 'scripts/companion-standalone-unsigned-self-test.mjs'),
+            $lifecycleReport = Join-Path $standardUserRoot 'windows-lifecycle.json'
+            $taskInput = Join-Path $standardUserRoot 'windows-standard-user-task-input.json'
+            $taskStatus = Join-Path $standardUserRoot 'windows-standard-user-task-status.json'
+            $taskStdout = Join-Path $standardUserRoot 'windows-standard-user-task-stdout.log'
+            $taskStderr = Join-Path $standardUserRoot 'windows-standard-user-task-stderr.log'
+            $taskDriver = Join-Path $driverRoot 'scripts/windows-standard-user-lifecycle.ps1'
+            $taskNonce = [guid]::NewGuid().ToString('N')
+            $taskContract = [ordered]@{
+              schema_version = 1
+              nonce = $taskNonce
+              expected_sid = $standardUserSid
+              ephemeral_root = $standardUserRoot
+              node_path = (Join-Path $driverRoot 'node.exe')
+              working_directory = $driverRoot
+              script_path = (Join-Path $driverRoot 'scripts/companion-standalone-unsigned-self-test.mjs')
+              arguments = @(
               '--target=windows-x64',
-              "--candidate-package=$package",
-              "--install-root=$install",
-              "--ephemeral-root=$standardUserRoot",
-              "--workspace=$(Join-Path $standardUserRoot 'unsigned-lifecycle-windows')",
-              "--out=$(Join-Path $standardUserRoot 'windows-lifecycle.json')"
+                "--candidate-package=$package",
+                "--install-root=$install",
+                "--ephemeral-root=$standardUserRoot",
+                "--workspace=$(Join-Path $standardUserRoot 'unsigned-lifecycle-windows')",
+                "--out=$lifecycleReport"
+              )
+              environment = [ordered]@{
+                SystemRoot = $env:SystemRoot
+                WINDIR = $env:SystemRoot
+                COMSPEC = (Join-Path $env:SystemRoot 'System32/cmd.exe')
+                SystemDrive = $env:SystemDrive
+                PATHEXT = '.COM;.EXE;.BAT;.CMD'
+                PATH = "$driverRoot;$(Join-Path $env:SystemRoot 'System32');$env:SystemRoot"
+                TEMP = $standardUserRoot
+                TMP = $standardUserRoot
+                USERPROFILE = $standardUserRoot
+                LOCALAPPDATA = $standardUserRoot
+                APPDATA = $standardUserRoot
+              }
+              stdout_path = $taskStdout
+              stderr_path = $taskStderr
+              status_path = $taskStatus
+              lifecycle_report_path = $lifecycleReport
+              timeout_ms = 300000
+            }
+            $taskContract | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $taskInput -Encoding utf8NoBOM
+
+            $TASK_CREATE = 2
+            $TASK_LOGON_S4U = 2
+            $TASK_RUNLEVEL_LUA = 0
+            $TASK_ACTION_EXEC = 0
+            $TASK_INSTANCES_IGNORE_NEW = 2
+            $taskPrincipal = "$env:COMPUTERNAME\$userName"
+            $taskPowerShell = (Get-Command pwsh).Source
+            foreach ($taskPath in @($taskDriver, $taskInput, $taskPowerShell)) {
+              if ($taskPath.Contains('"')) { throw 'Scheduled-task path contains a forbidden quote.' }
+            }
+            $taskService = New-Object -ComObject 'Schedule.Service'
+            $taskService.Connect()
+            $taskFolder = $taskService.GetFolder('\')
+            $taskDefinition = $taskService.NewTask(0)
+            $taskDefinition.RegistrationInfo.Author = 'Dusk Developer Studio unsigned assurance'
+            $taskDefinition.Principal.UserId = $taskPrincipal
+            $taskDefinition.Principal.LogonType = $TASK_LOGON_S4U
+            $taskDefinition.Principal.RunLevel = $TASK_RUNLEVEL_LUA
+            $taskDefinition.Settings.Enabled = $true
+            $taskDefinition.Settings.AllowDemandStart = $true
+            $taskDefinition.Settings.ExecutionTimeLimit = 'PT6M'
+            $taskDefinition.Settings.MultipleInstances = $TASK_INSTANCES_IGNORE_NEW
+            $taskDefinition.Settings.DisallowStartIfOnBatteries = $false
+            $taskDefinition.Settings.StopIfGoingOnBatteries = $false
+            $taskDefinition.Settings.RunOnlyIfIdle = $false
+            $taskAction = $taskDefinition.Actions.Create($TASK_ACTION_EXEC)
+            $taskAction.Path = $taskPowerShell
+            $taskAction.WorkingDirectory = $driverRoot
+            $taskAction.Arguments = "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$taskDriver`" -InputFile `"$taskInput`""
+            $taskRegistrationAttempted = $true
+            $registeredTask = $taskFolder.RegisterTaskDefinition(
+              $taskName,
+              $taskDefinition,
+              $TASK_CREATE,
+              $taskPrincipal,
+              $passwordText,
+              $TASK_LOGON_S4U,
+              $null
+            )
+            $taskRegistered = $true
+            $passwordText = $null
+            $securePassword.Dispose()
+            $securePassword = $null
+            if (($registeredTask.Definition.Principal.LogonType -ne $TASK_LOGON_S4U) -or
+                ($registeredTask.Definition.Principal.RunLevel -ne $TASK_RUNLEVEL_LUA)) {
+              throw 'Scheduled lifecycle did not retain its S4U limited-token contract.'
+            }
+
+            $lastRunBefore = $registeredTask.LastRunTime
+            $runningTask = $registeredTask.Run($null)
+            if ($null -eq $runningTask) {
+              throw 'Task Scheduler did not return the standard-user lifecycle instance.'
+            }
+            $taskDeadline = [DateTime]::UtcNow.AddMinutes(6)
+            do {
+              Start-Sleep -Milliseconds 500
+              $registeredTask = $taskFolder.GetTask("\$taskName")
+              $taskInstances = @($registeredTask.GetInstances(0))
+              $taskRan = $registeredTask.LastRunTime -gt $lastRunBefore
+              $taskLastResult = [int64] $registeredTask.LastTaskResult
+              $taskPending = $taskLastResult -in @(0x00041301, 0x00041303)
+            } while (($taskInstances.Count -ne 0 -or -not $taskRan -or $taskPending) -and [DateTime]::UtcNow -lt $taskDeadline)
+            if ($taskInstances.Count -ne 0 -or -not $taskRan -or $taskPending) {
+              throw 'Standard-user Windows scheduled lifecycle timed out.'
+            }
+            if ($taskLastResult -ne 0) {
+              if (Test-Path -LiteralPath $taskStdout) { Get-Content -LiteralPath $taskStdout }
+              if (Test-Path -LiteralPath $taskStderr) { Get-Content -LiteralPath $taskStderr }
+              throw "Standard-user Windows scheduled lifecycle failed with result $taskLastResult."
+            }
+            if (-not (Test-Path -LiteralPath $taskStatus -PathType Leaf)) {
+              throw 'Standard-user Windows scheduled lifecycle did not create its bounded status.'
+            }
+            $status = Get-Content -Raw -LiteralPath $taskStatus | ConvertFrom-Json
+            if (($status.nonce -ne $taskNonce) -or
+                ($status.sid -ne $standardUserSid) -or
+                ($status.is_admin -ne $false) -or
+                ($status.exit_code -ne 0)) {
+              throw 'Standard-user Windows scheduled lifecycle status did not match its identity contract.'
+            }
+            foreach ($boundedLog in @(
+              @{ Path = $taskStdout; Bytes = $status.stdout_bytes },
+              @{ Path = $taskStderr; Bytes = $status.stderr_bytes }
             )) {
-              $lifecycleInfo.ArgumentList.Add($argument)
+              $logFile = Get-Item -LiteralPath $boundedLog.Path
+              if ($logFile.Length -gt 65536 -or $logFile.Length -ne $boundedLog.Bytes) {
+                throw 'Standard-user Windows scheduled lifecycle log exceeded its bounded contract.'
+              }
             }
-            $lifecycleProcess = [System.Diagnostics.Process]::Start($lifecycleInfo)
-            if (-not $lifecycleProcess.WaitForExit(300000)) {
-              $lifecycleProcess.Kill($true)
-              throw 'Standard-user Windows lifecycle timed out.'
-            }
-            if ($lifecycleProcess.ExitCode -ne 0) {
-              throw "Standard-user Windows lifecycle failed with exit code $($lifecycleProcess.ExitCode)."
-            }
-            $standardUserReport = Join-Path $standardUserRoot 'windows-lifecycle.json'
-            if (-not (Test-Path -LiteralPath $standardUserReport -PathType Leaf)) {
+            if (-not (Test-Path -LiteralPath $lifecycleReport -PathType Leaf)) {
               throw 'Standard-user Windows lifecycle did not create its bounded report.'
             }
-            Copy-Item -LiteralPath $standardUserReport -Destination (Join-Path $env:RUNNER_TEMP 'windows-lifecycle.json')
+            Copy-Item -LiteralPath $lifecycleReport -Destination (Join-Path $env:RUNNER_TEMP 'windows-lifecycle.json')
+          } catch {
+            $primaryFailure = $_.Exception.Message
           } finally {
-            Remove-LocalUser -Name $userName -ErrorAction Stop
-            if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
-              throw 'The isolated assurance account survived cleanup.'
+            $passwordText = $null
+            if ($null -ne $securePassword) {
+              $securePassword.Dispose()
+              $securePassword = $null
             }
+          }
+
+          $cleanupFailures = [System.Collections.Generic.List[string]]::new()
+          if ($taskRegistrationAttempted -and $null -ne $taskFolder) {
+            try {
+              $cleanupTask = $taskFolder.GetTask("\$taskName")
+              $cleanupTask.Stop(0)
+              $stopDeadline = [DateTime]::UtcNow.AddSeconds(30)
+              do {
+                $cleanupTask = $taskFolder.GetTask("\$taskName")
+                $remainingInstances = @($cleanupTask.GetInstances(0))
+                if ($remainingInstances.Count -ne 0) { Start-Sleep -Milliseconds 500 }
+              } while ($remainingInstances.Count -ne 0 -and [DateTime]::UtcNow -lt $stopDeadline)
+              if ($remainingInstances.Count -ne 0) {
+                throw 'Scheduled lifecycle instance survived its stop deadline.'
+              }
+            } catch {
+              if ($taskRegistered) {
+                $cleanupFailures.Add("task stop: $($_.Exception.Message)")
+              }
+            }
+          }
+          if ($null -ne $standardUserSid) {
+            try {
+              foreach ($ownedProcess in @(Get-ProcessesOwnedBySid -Sid $standardUserSid)) {
+                Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction Stop
+              }
+              $processDeadline = [DateTime]::UtcNow.AddSeconds(30)
+              do {
+                $remainingOwnedProcesses = @(Get-ProcessesOwnedBySid -Sid $standardUserSid)
+                if ($remainingOwnedProcesses.Count -ne 0) { Start-Sleep -Milliseconds 500 }
+              } while ($remainingOwnedProcesses.Count -ne 0 -and [DateTime]::UtcNow -lt $processDeadline)
+              if ($remainingOwnedProcesses.Count -ne 0) {
+                throw 'A process owned by the temporary assurance SID survived cleanup.'
+              }
+            } catch {
+              $cleanupFailures.Add("temporary process cleanup: $($_.Exception.Message)")
+            }
+          }
+          if ($taskRegistrationAttempted -and $null -ne $taskFolder) {
+            try {
+              $matchingTask = @($taskFolder.GetTasks(1) | Where-Object { $_.Name -eq $taskName })
+              if ($matchingTask.Count -ne 0) {
+                $taskFolder.DeleteTask($taskName, 0)
+              }
+              $remainingTask = @($taskFolder.GetTasks(1) | Where-Object { $_.Name -eq $taskName })
+              if ($remainingTask.Count -ne 0) {
+                throw 'Scheduled lifecycle task survived deletion.'
+              }
+            } catch {
+              $cleanupFailures.Add("task deletion: $($_.Exception.Message)")
+            }
+          }
+          if ($null -ne $standardUserSid) {
+            try {
+              $profiles = @(Get-CimInstance Win32_UserProfile -Filter "SID='$standardUserSid'" -ErrorAction Stop)
+              if ($profiles.Count -gt 1) {
+                throw 'Temporary assurance SID unexpectedly matched multiple profiles.'
+              }
+              foreach ($profile in $profiles) {
+                $profileDeadline = [DateTime]::UtcNow.AddSeconds(30)
+                while ($profile.Loaded -and [DateTime]::UtcNow -lt $profileDeadline) {
+                  Start-Sleep -Milliseconds 500
+                  $profileMatches = @(
+                    Get-CimInstance Win32_UserProfile -Filter "SID='$standardUserSid'" -ErrorAction Stop
+                  )
+                  if ($profileMatches.Count -eq 0) {
+                    $profile = $null
+                    break
+                  }
+                  if ($profileMatches.Count -ne 1) {
+                    throw 'Temporary assurance SID unexpectedly matched multiple profiles.'
+                  }
+                  $profile = $profileMatches[0]
+                }
+                if ($null -eq $profile) { continue }
+                if ($profile.Loaded -or $profile.Special) {
+                  throw 'Temporary assurance profile remained loaded or was unexpectedly special.'
+                }
+                $profilePath = [System.IO.Path]::GetFullPath([string] $profile.LocalPath)
+                $usersRoot = [System.IO.Path]::GetFullPath((Join-Path $env:SystemDrive 'Users'))
+                $usersPrefix = $usersRoot.TrimEnd('\') + '\'
+                if (-not $profilePath.StartsWith($usersPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                  throw 'Temporary assurance profile escaped the local Users directory.'
+                }
+                Remove-CimInstance -InputObject $profile -ErrorAction Stop
+                $profilePathDeadline = [DateTime]::UtcNow.AddSeconds(30)
+                while ((Test-Path -LiteralPath $profilePath) -and [DateTime]::UtcNow -lt $profilePathDeadline) {
+                  Start-Sleep -Milliseconds 500
+                }
+                if (Test-Path -LiteralPath $profilePath) {
+                  throw 'Temporary assurance profile path survived provider cleanup.'
+                }
+              }
+              if (Get-CimInstance Win32_UserProfile -Filter "SID='$standardUserSid'" -ErrorAction Stop) {
+                throw 'Temporary assurance profile registration survived cleanup.'
+              }
+            } catch {
+              $cleanupFailures.Add("profile cleanup: $($_.Exception.Message)")
+            }
+          }
+          if ($null -ne $standardUserSid) {
+            $lsaCleanupError = $null
+            foreach ($lsaAttempt in 1..2) {
+              try {
+                & (Join-Path $env:GITHUB_WORKSPACE 'scripts/windows-remove-lsa-account-rights.ps1') -Sid $standardUserSid
+                $lsaCleanupError = $null
+                break
+              } catch {
+                $lsaCleanupError = $_.Exception.Message
+                if ($lsaAttempt -eq 1) { Start-Sleep -Seconds 1 }
+              }
+            }
+            if ($null -ne $lsaCleanupError) {
+              $cleanupFailures.Add("LSA account-right cleanup: $lsaCleanupError")
+            }
+          }
+          if ($userCreated) {
+            try {
+              Remove-LocalUser -Name $userName -ErrorAction Stop
+              if (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue) {
+                throw 'The isolated assurance account survived cleanup.'
+              }
+            } catch {
+              $cleanupFailures.Add("account cleanup: $($_.Exception.Message)")
+            }
+          }
+          if ($null -ne $primaryFailure -or $cleanupFailures.Count -ne 0) {
+            $failureMessages = @()
+            if ($null -ne $primaryFailure) { $failureMessages += "execution: $primaryFailure" }
+            if ($cleanupFailures.Count -ne 0) { $failureMessages += $cleanupFailures }
+            throw ($failureMessages -join ' | ')
           }
           node scripts/standalone-unsigned-assurance.mjs --operation=platform-observations --target=windows-x64 --checks=host_target_verified,publisher_signature_absent,defender_scan_command_completed "--out=$(Join-Path $env:RUNNER_TEMP 'windows-platform.json')"
       - name: Delete every workflow-owned unsigned Windows candidate path before recording evidence
