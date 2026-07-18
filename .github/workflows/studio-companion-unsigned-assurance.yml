@@ -65,6 +65,8 @@ jobs:
     needs: preflight
     runs-on: windows-2025
     timeout-minutes: 45
+    env:
+      WINDOWS_ASSURANCE_ROOT: C:\Users\Public\DuskStudioUnsignedAssurance
     defaults:
       run:
         shell: pwsh
@@ -101,28 +103,51 @@ jobs:
           DUSK_STUDIO_RELEASE_COMMIT: ${{ env.EXPECTED_COMMIT }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
+          $windowsScopeRoot = [System.IO.Path]::GetFullPath($env:WINDOWS_ASSURANCE_ROOT)
+          $expectedScopeRoot = [System.IO.Path]::GetFullPath(
+            (Join-Path $env:PUBLIC 'DuskStudioUnsignedAssurance')
+          )
+          if (-not $windowsScopeRoot.Equals(
+            $expectedScopeRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+          )) {
+            throw 'Windows assurance scope is not the exact reviewed public-root path.'
+          }
+          if (Test-Path -LiteralPath $windowsScopeRoot) {
+            throw 'Windows assurance scope already exists.'
+          }
+          New-Item -ItemType Directory -Path $windowsScopeRoot | Out-Null
+          $runnerSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          & (Join-Path $env:SystemRoot 'System32/icacls.exe') $windowsScopeRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${runnerSid}:(OI)(CI)F"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not isolate the Windows assurance scope.' }
           $version = node -p "JSON.parse(require('fs').readFileSync('package.json')).version"
           $epoch = (git show -s --format=%ct $env:EXPECTED_COMMIT).Trim()
-          $runtime = Join-Path $env:RUNNER_TEMP 'node-v24.18.0-win-x64.zip'
+          $runtime = Join-Path $windowsScopeRoot 'node-v24.18.0-win-x64.zip'
           Invoke-WebRequest -UseBasicParsing -Uri 'https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip' -OutFile $runtime
           pnpm --filter @dusk/studio build
           foreach ($attempt in 1, 2) {
-            $bundle = Join-Path $env:RUNNER_TEMP "unsigned-windows-bundle-$attempt"
-            $release = Join-Path $env:RUNNER_TEMP "unsigned-windows-release-$attempt"
-            $sea = Join-Path $env:RUNNER_TEMP "unsigned-windows-sea-$attempt"
+            $bundle = Join-Path $windowsScopeRoot "unsigned-windows-bundle-$attempt"
+            $release = Join-Path $windowsScopeRoot "unsigned-windows-release-$attempt"
+            $sea = Join-Path $windowsScopeRoot "unsigned-windows-sea-$attempt"
             node scripts/companion-bundle.mjs "--out=$bundle"
             node scripts/companion-build.mjs --target=windows-x64 "--out=$release" "--launcher-bundle=$bundle" "--runtime-archive=$runtime" "--commit=$env:EXPECTED_COMMIT" "--version=$version" "--source-date-epoch=$epoch"
             node scripts/companion-verify.mjs "--release=$release"
             node scripts/companion-sea-prototype.mjs "--release=$release" --target=windows-x64 "--out=$sea"
           }
-          node scripts/standalone-unsigned-assurance.mjs --operation=reproducibility --target=windows-x64 "--first-receipt=$(Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1/prototype-receipt.json')" "--second-receipt=$(Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-2/prototype-receipt.json')" "--out=$(Join-Path $env:RUNNER_TEMP 'windows-reproducibility.json')"
+          node scripts/standalone-unsigned-assurance.mjs --operation=reproducibility --target=windows-x64 "--first-receipt=$(Join-Path $windowsScopeRoot 'unsigned-windows-sea-1/prototype-receipt.json')" "--second-receipt=$(Join-Path $windowsScopeRoot 'unsigned-windows-sea-2/prototype-receipt.json')" "--out=$(Join-Path $windowsScopeRoot 'windows-reproducibility.json')"
       - name: Package, extract, inspect, and exercise both Windows launchers
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          $sea = Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1'
+          $windowsScopeRoot = [System.IO.Path]::GetFullPath($env:WINDOWS_ASSURANCE_ROOT)
+          $scopeItem = Get-Item -Force -LiteralPath $windowsScopeRoot
+          if (-not $scopeItem.PSIsContainer -or
+              ($scopeItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            throw 'Windows assurance scope must be a regular directory.'
+          }
+          $sea = Join-Path $windowsScopeRoot 'unsigned-windows-sea-1'
           $receiptSource = Join-Path $sea 'prototype-receipt.json'
           $receipt = Get-Content -Raw -LiteralPath $receiptSource | ConvertFrom-Json
-          $controlRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-control'
+          $controlRoot = Join-Path $windowsScopeRoot 'control'
           $cleanupConfirmation = Join-Path $controlRoot 'shutdown-confirmed.json'
           $runnerSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
           New-Item -ItemType Directory -Path $controlRoot | Out-Null
@@ -131,7 +156,7 @@ jobs:
           if (Test-Path -LiteralPath $cleanupConfirmation) {
             throw 'Lifecycle cleanup confirmation must not exist before execution.'
           }
-          $standardUserRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user'
+          $standardUserRoot = Join-Path $windowsScopeRoot 'unsigned-windows-standard-user'
           New-Item -ItemType Directory -Path $standardUserRoot | Out-Null
           $stage = Join-Path $standardUserRoot 'package-stage'
           New-Item -ItemType Directory -Path (Join-Path $stage 'launchers'), (Join-Path $stage 'evidence') | Out-Null
@@ -354,18 +379,16 @@ jobs:
             if ($standardUserSid -notmatch '^S-1-5-21-(?:[0-9]+-){3}[0-9]+$') {
               throw 'Temporary standard-user SID was invalid.'
             }
-            $runnerTempPath = [System.IO.Path]::GetFullPath($env:RUNNER_TEMP)
             $expectedStandardUserRoot = [System.IO.Path]::GetFullPath(
-              (Join-Path $runnerTempPath 'unsigned-windows-standard-user')
+              (Join-Path $windowsScopeRoot 'unsigned-windows-standard-user')
             )
             if (-not ([System.IO.Path]::GetFullPath($standardUserRoot)).Equals(
               $expectedStandardUserRoot,
               [System.StringComparison]::OrdinalIgnoreCase
             )) {
-              throw 'Standard-user lifecycle root is not the exact runner-owned temporary path.'
+              throw 'Standard-user lifecycle root is not the exact isolated Windows assurance path.'
             }
-            $traverseCursor = $runnerTempPath
-            while ($null -ne $traverseCursor) {
+            foreach ($traverseCursor in @($windowsScopeRoot)) {
               if (@(Get-ExactSidAclRules -Path $traverseCursor -Sid $standardUserSid).Count -ne 0) {
                 $ancestorAclSetupValid = $false
                 throw 'Fresh temporary SID unexpectedly had an ancestor ACL before setup.'
@@ -401,8 +424,6 @@ jobs:
                 throw 'Temporary lifecycle-root ancestor grant was broader or different than traverse-only.'
               }
               $ancestorAclSetupValid = $true
-              $traverseParent = [System.IO.Directory]::GetParent($traverseCursor)
-              $traverseCursor = if ($null -eq $traverseParent) { $null } else { $traverseParent.FullName }
             }
             if (@(Get-CimInstance Win32_UserProfile -Filter "SID='$standardUserSid'" -ErrorAction Stop).Count -ne 0 -or
                 (Test-Path -LiteralPath "Registry::HKEY_USERS\$standardUserSid") -or
@@ -682,7 +703,7 @@ jobs:
                 (Test-Path -LiteralPath "Registry::HKEY_USERS\${standardUserSid}_Classes")) {
               throw 'Credentialed standard-user launch unexpectedly loaded a Windows profile.'
             }
-            Copy-Item -LiteralPath $lifecycleReport -Destination (Join-Path $env:RUNNER_TEMP 'windows-lifecycle.json')
+            Copy-Item -LiteralPath $lifecycleReport -Destination (Join-Path $windowsScopeRoot 'windows-lifecycle.json')
           } catch {
             $primaryFailure = $_.Exception.Message
           } finally {
@@ -950,26 +971,41 @@ jobs:
             if ($cleanupFailures.Count -ne 0) { $failureMessages += $cleanupFailures }
             throw ($failureMessages -join ' | ')
           }
-          node scripts/standalone-unsigned-assurance.mjs --operation=platform-observations --target=windows-x64 --checks=host_target_verified,publisher_signature_absent,defender_scan_command_completed "--out=$(Join-Path $env:RUNNER_TEMP 'windows-platform.json')"
+          node scripts/standalone-unsigned-assurance.mjs --operation=platform-observations --target=windows-x64 --checks=host_target_verified,publisher_signature_absent,defender_scan_command_completed "--out=$(Join-Path $windowsScopeRoot 'windows-platform.json')"
       - name: Delete every workflow-owned unsigned Windows candidate path before recording evidence
         if: always()
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
-          $paths = [ordered]@{
-            standard_user_root = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user')
-            runtime_archive = (Join-Path $env:RUNNER_TEMP 'node-v24.18.0-win-x64.zip')
-            bundle_1 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-bundle-1')
-            bundle_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-bundle-2')
-            release_1 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-release-1')
-            release_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-release-2')
-            sea_1 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1')
-            sea_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-2')
-            package_stage = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/package-stage')
-            install_root = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/installed-unsigned-windows')
-            lifecycle_workspace = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-lifecycle-windows')
-            candidate_zip = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-windows-engineering.zip')
+          $windowsScopeRoot = [System.IO.Path]::GetFullPath($env:WINDOWS_ASSURANCE_ROOT)
+          $expectedScopeRoot = [System.IO.Path]::GetFullPath(
+            (Join-Path $env:PUBLIC 'DuskStudioUnsignedAssurance')
+          )
+          if (-not $windowsScopeRoot.Equals(
+            $expectedScopeRoot,
+            [System.StringComparison]::OrdinalIgnoreCase
+          )) {
+            throw 'Windows cleanup scope is not the exact reviewed public-root path.'
           }
-          $controlRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-control'
+          $scopeItem = Get-Item -Force -LiteralPath $windowsScopeRoot
+          if (-not $scopeItem.PSIsContainer -or
+              ($scopeItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            throw 'Windows cleanup scope must be a regular directory.'
+          }
+          $paths = [ordered]@{
+            standard_user_root = (Join-Path $windowsScopeRoot 'unsigned-windows-standard-user')
+            runtime_archive = (Join-Path $windowsScopeRoot 'node-v24.18.0-win-x64.zip')
+            bundle_1 = (Join-Path $windowsScopeRoot 'unsigned-windows-bundle-1')
+            bundle_2 = (Join-Path $windowsScopeRoot 'unsigned-windows-bundle-2')
+            release_1 = (Join-Path $windowsScopeRoot 'unsigned-windows-release-1')
+            release_2 = (Join-Path $windowsScopeRoot 'unsigned-windows-release-2')
+            sea_1 = (Join-Path $windowsScopeRoot 'unsigned-windows-sea-1')
+            sea_2 = (Join-Path $windowsScopeRoot 'unsigned-windows-sea-2')
+            package_stage = (Join-Path $windowsScopeRoot 'unsigned-windows-standard-user/package-stage')
+            install_root = (Join-Path $windowsScopeRoot 'unsigned-windows-standard-user/installed-unsigned-windows')
+            lifecycle_workspace = (Join-Path $windowsScopeRoot 'unsigned-windows-standard-user/unsigned-lifecycle-windows')
+            candidate_zip = (Join-Path $windowsScopeRoot 'unsigned-windows-standard-user/unsigned-windows-engineering.zip')
+          }
+          $controlRoot = Join-Path $windowsScopeRoot 'control'
           $cleanupConfirmation = Join-Path $controlRoot 'shutdown-confirmed.json'
           $cleanupConfirmed = $false
           if (Test-Path -LiteralPath $cleanupConfirmation -PathType Leaf) {
@@ -1020,8 +1056,9 @@ jobs:
             Remove-Item -LiteralPath $controlRoot -Recurse -Force -ErrorAction Stop
           }
           $records = $paths.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
-          node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=windows-x64 "--scope-root=$env:RUNNER_TEMP" "--paths=$($records -join '|')" "--out=$(Join-Path $env:RUNNER_TEMP 'windows-cleanup.json')"
-          node scripts/standalone-unsigned-assurance.mjs --operation=target-evidence --target=windows-x64 "--lifecycle-report=$(Join-Path $env:RUNNER_TEMP 'windows-lifecycle.json')" "--reproducibility-report=$(Join-Path $env:RUNNER_TEMP 'windows-reproducibility.json')" "--platform-observations=$(Join-Path $env:RUNNER_TEMP 'windows-platform.json')" "--cleanup-receipt=$(Join-Path $env:RUNNER_TEMP 'windows-cleanup.json')" "--repository=$env:GITHUB_REPOSITORY" "--workflow-ref=$env:GITHUB_WORKFLOW_REF" "--run-id=$env:GITHUB_RUN_ID" "--run-attempt=$env:GITHUB_RUN_ATTEMPT" "--run-actor=github:$env:GITHUB_ACTOR" "--expected-commit=$env:EXPECTED_COMMIT" "--checks=$env:UNSIGNED_ASSURANCE_CHECKS" "--out=$(Join-Path $env:RUNNER_TEMP 'windows-x64.json')"
+          node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=windows-x64 "--scope-root=$windowsScopeRoot" "--paths=$($records -join '|')" "--out=$(Join-Path $windowsScopeRoot 'windows-cleanup.json')"
+          node scripts/standalone-unsigned-assurance.mjs --operation=target-evidence --target=windows-x64 "--lifecycle-report=$(Join-Path $windowsScopeRoot 'windows-lifecycle.json')" "--reproducibility-report=$(Join-Path $windowsScopeRoot 'windows-reproducibility.json')" "--platform-observations=$(Join-Path $windowsScopeRoot 'windows-platform.json')" "--cleanup-receipt=$(Join-Path $windowsScopeRoot 'windows-cleanup.json')" "--repository=$env:GITHUB_REPOSITORY" "--workflow-ref=$env:GITHUB_WORKFLOW_REF" "--run-id=$env:GITHUB_RUN_ID" "--run-attempt=$env:GITHUB_RUN_ATTEMPT" "--run-actor=github:$env:GITHUB_ACTOR" "--expected-commit=$env:EXPECTED_COMMIT" "--checks=$env:UNSIGNED_ASSURANCE_CHECKS" "--out=$(Join-Path $windowsScopeRoot 'windows-x64.json')"
+          Remove-Item -LiteralPath $windowsScopeRoot -Recurse -Force -ErrorAction Stop
   linux:
     name: Unsigned engineering lifecycle (linux-x64)
     needs: preflight

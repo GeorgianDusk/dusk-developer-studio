@@ -62,6 +62,10 @@ for (const [target, runner] of Object.entries(policy.runner_labels)) {
 assert.equal(policy.node_version, runtimeLock.runtime.version);
 assert.match(workflow, new RegExp(`NODE_VERSION: ${policy.node_version.replaceAll(".", "\\.")}`));
 assert.match(workflow, new RegExp(`PNPM_VERSION: ${policy.pnpm_version.replaceAll(".", "\\.")}`));
+assert.match(
+  workflow,
+  /^ {4}env:\n {6}WINDOWS_ASSURANCE_ROOT: C:\\Users\\Public\\DuskStudioUnsignedAssurance$/m
+);
 for (const target of Object.values(runtimeLock.runtime.targets)) {
   assert.ok(workflow.includes(target.archive_url), `Unsigned workflow is missing ${target.archive_url}.`);
 }
@@ -113,7 +117,7 @@ for (const [target, platform] of Object.entries({
   assert.deepEqual(ids, Object.keys(policy.cleanup_paths[target]));
   for (const [id, relative] of Object.entries(policy.cleanup_paths[target])) {
     const expected = target === "windows-x64"
-      ? `${id} = (Join-Path $env:RUNNER_TEMP '${relative}')`
+      ? `${id} = (Join-Path $windowsScopeRoot '${relative}')`
       : `"${id}=$RUNNER_TEMP/${relative}"`;
     assert.ok(block.includes(expected), `${target} cleanup path is not canonical: ${id}.`);
   }
@@ -138,7 +142,7 @@ for (const probe of [
 assert.doesNotMatch(workflow, /HashMismatch|defender_scan_passed/);
 assert.match(
   workflow,
-  /\$standardUserRoot = Join-Path \$env:RUNNER_TEMP 'unsigned-windows-standard-user'[\s\S]*\$stage = Join-Path \$standardUserRoot 'package-stage'/
+  /\$standardUserRoot = Join-Path \$windowsScopeRoot 'unsigned-windows-standard-user'[\s\S]*\$stage = Join-Path \$standardUserRoot 'package-stage'/
 );
 assert.match(
   workflow,
@@ -216,8 +220,22 @@ assert.match(workflow, /\$credentialStartInfo\.Environment\.Clear\(\)/);
 assert.match(workflow, /foreach \(\$environmentName in \$launchContract\.environment\.Keys\)/);
 assert.match(
   workflow,
-  /\$controlRoot = Join-Path \$env:RUNNER_TEMP 'unsigned-windows-control'[\s\S]*?\$runnerSid = \[System\.Security\.Principal\.WindowsIdentity\]::GetCurrent\(\)\.User\.Value[\s\S]*?icacls\.exe'\) \$controlRoot \/inheritance:r \/grant:r "\*S-1-5-18:\(OI\)\(CI\)F" "\*S-1-5-32-544:\(OI\)\(CI\)F" "\*\$\{runnerSid\}:\(OI\)\(CI\)F"/
+  /\$controlRoot = Join-Path \$windowsScopeRoot 'control'[\s\S]*?\$runnerSid = \[System\.Security\.Principal\.WindowsIdentity\]::GetCurrent\(\)\.User\.Value[\s\S]*?icacls\.exe'\) \$controlRoot \/inheritance:r \/grant:r "\*S-1-5-18:\(OI\)\(CI\)F" "\*S-1-5-32-544:\(OI\)\(CI\)F" "\*\$\{runnerSid\}:\(OI\)\(CI\)F"/
 );
+const windowsBuildBlock = workflow.slice(
+  workflow.indexOf("- name: Build two unsigned reproducibility attempts"),
+  workflow.indexOf("- name: Package, extract, inspect, and exercise both Windows launchers")
+);
+assert.match(
+  windowsBuildBlock,
+  /\$windowsScopeRoot = \[System\.IO\.Path\]::GetFullPath\(\$env:WINDOWS_ASSURANCE_ROOT\)[\s\S]*?\$expectedScopeRoot = \[System\.IO\.Path\]::GetFullPath\([\s\S]*?Join-Path \$env:PUBLIC 'DuskStudioUnsignedAssurance'/
+);
+assert.match(windowsBuildBlock, /if \(Test-Path -LiteralPath \$windowsScopeRoot\)[\s\S]*?throw 'Windows assurance scope already exists\.'/);
+assert.match(
+  windowsBuildBlock,
+  /New-Item -ItemType Directory -Path \$windowsScopeRoot[\s\S]*?icacls\.exe'\) \$windowsScopeRoot \/inheritance:r \/grant:r "\*S-1-5-18:\(OI\)\(CI\)F" "\*S-1-5-32-544:\(OI\)\(CI\)F" "\*\$\{runnerSid\}:\(OI\)\(CI\)F"/
+);
+assert.doesNotMatch(windowsBuildBlock, /\$env:RUNNER_TEMP/);
 const credentialEnvironment = workflow.slice(
   workflow.indexOf("environment = [ordered]@{"),
   workflow.indexOf("stdout_path = $launchStdout")
@@ -388,8 +406,8 @@ assert.ok(
 assert.match(lifecycleBlock, /\$ancestorAclCleanupFailures = \[System\.Collections\.Generic\.List\[string\]\]::new\(\)/);
 assert.match(lifecycleBlock, /\$ancestorAclCleanupFailures\.Add\(/);
 assert.match(lifecycleBlock, /if \(\$ancestorAclCleanupFailures\.Count -ne 0\)/);
-assert.match(lifecycleBlock, /\$traverseCursor = \$runnerTempPath[\s\S]*?while \(\$null -ne \$traverseCursor\)/);
-assert.doesNotMatch(lifecycleBlock, /while \(-not \$traverseCursor\.Equals\([\s\S]*?\$volumeRoot/);
+assert.match(lifecycleBlock, /foreach \(\$traverseCursor in @\(\$windowsScopeRoot\)\)/);
+assert.doesNotMatch(lifecycleBlock, /\$runnerTempPath|\$volumeRoot|while \(\$null -ne \$traverseCursor\)/);
 assert.match(lifecycleBlock, /\$remainingAccounts = @\([\s\S]*?Get-LocalUser -ErrorAction Stop/);
 const finalProcessSweep = lifecycleBlock.indexOf(
   "$finalProcessSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid",
@@ -411,6 +429,19 @@ assert.ok(
 );
 assert.match(lifecycleBlock, /\[System\.IO\.File\]::Move\(\$temporaryConfirmation, \$cleanupConfirmation\)/);
 assert.match(workflow, /Standard-user shutdown and exact-SID cleanup were not confirmed; preserving its entire writable root/);
+const windowsCleanupBlock = workflow.slice(
+  workflow.indexOf("- name: Delete every workflow-owned unsigned Windows candidate path before recording evidence"),
+  workflow.indexOf("  linux:")
+);
+assert.doesNotMatch(windowsCleanupBlock, /\$env:RUNNER_TEMP/);
+assert.match(
+  windowsCleanupBlock,
+  /--operation=cleanup --target=windows-x64 "--scope-root=\$windowsScopeRoot"/
+);
+assert.match(
+  windowsCleanupBlock,
+  /--operation=target-evidence --target=windows-x64[\s\S]*?Remove-Item -LiteralPath \$windowsScopeRoot -Recurse -Force -ErrorAction Stop/
+);
 const confirmationValidation = workflow.slice(
   workflow.lastIndexOf("$cleanupConfirmation ="),
   workflow.indexOf("$records = $paths.GetEnumerator()")
