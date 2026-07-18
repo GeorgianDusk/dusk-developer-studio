@@ -126,6 +126,14 @@ for (const probe of [
   "Microsoft Defender scan failed"
 ]) assertProbeBefore(probe, windowsObservation);
 assert.doesNotMatch(workflow, /HashMismatch|defender_scan_passed/);
+assert.match(
+  workflow,
+  /\$standardUserRoot = Join-Path \$env:RUNNER_TEMP 'unsigned-windows-standard-user'[\s\S]*\$stage = Join-Path \$standardUserRoot 'package-stage'/
+);
+assert.match(
+  workflow,
+  /standalone-safe-zip-extract\.mjs --create "--root=\$stage" --target=windows-x64 "--ephemeral-root=\$standardUserRoot" "--out=\$package"/
+);
 
 const linuxObservation = "--operation=platform-observations --target=linux-x64";
 for (const probe of [
@@ -143,7 +151,8 @@ for (const probe of [
   'codesign --verify --strict --verbose=4 "$source_executable"',
   'codesign -d --verbose=4 "$source_executable" 2>&1',
   'test "$gatekeeper_status" -ne 0',
-  "rejected([[:space:]]|$)"
+  "rejected([[:space:]]|$)",
+  "code has no resources but signature indicates they must be present"
 ]) assertProbeBefore(probe, macosObservation);
 assert.doesNotMatch(workflow, /codesign --verify --strict --verbose=4 "\$executable"/);
 

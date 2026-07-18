@@ -122,7 +122,9 @@ jobs:
           $sea = Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1'
           $receiptSource = Join-Path $sea 'prototype-receipt.json'
           $receipt = Get-Content -Raw -LiteralPath $receiptSource | ConvertFrom-Json
-          $stage = Join-Path $env:RUNNER_TEMP 'unsigned-windows-stage'
+          $standardUserRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user'
+          New-Item -ItemType Directory -Path $standardUserRoot | Out-Null
+          $stage = Join-Path $standardUserRoot 'package-stage'
           New-Item -ItemType Directory -Path (Join-Path $stage 'launchers'), (Join-Path $stage 'evidence') | Out-Null
           $safeSource = Join-Path $sea $receipt.launchers.safe.name
           $actionsSource = Join-Path $sea $receipt.launchers.local_actions.name
@@ -132,10 +134,8 @@ jobs:
           $index = Join-Path $stage 'unsigned-launcher-index.json'
           node scripts/standalone-unsigned-assurance.mjs --operation=index --target=windows-x64 "--safe-launcher=$safeSource" "--local-actions-launcher=$actionsSource" "--safe-name=launchers/$($receipt.launchers.safe.name)" "--local-actions-name=launchers/$($receipt.launchers.local_actions.name)" "--build-receipt=$receiptCopy" "--out=$index"
           node scripts/standalone-unsigned-assurance.mjs --operation=manifest "--root=$stage" --target=windows-x64 "--build-receipt=$receiptCopy" "--launcher-index=$index" "--out=$(Join-Path $stage 'unsigned-candidate-manifest.json')"
-          $standardUserRoot = Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user'
-          New-Item -ItemType Directory -Path $standardUserRoot | Out-Null
           $package = Join-Path $standardUserRoot 'unsigned-windows-engineering.zip'
-          node scripts/standalone-safe-zip-extract.mjs --create "--root=$stage" --target=windows-x64 "--ephemeral-root=$env:RUNNER_TEMP" "--out=$package" --profile=unsigned-engineering
+          node scripts/standalone-safe-zip-extract.mjs --create "--root=$stage" --target=windows-x64 "--ephemeral-root=$standardUserRoot" "--out=$package" --profile=unsigned-engineering
           $install = Join-Path $standardUserRoot 'installed-unsigned-windows'
           node scripts/standalone-safe-zip-extract.mjs "--archive=$package" --target=windows-x64 "--ephemeral-root=$standardUserRoot" "--out=$install" --profile=unsigned-engineering
           $installedIndex = Get-Content -Raw -LiteralPath (Join-Path $install 'unsigned-launcher-index.json') | ConvertFrom-Json
@@ -276,7 +276,7 @@ jobs:
             release_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-release-2')
             sea_1 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-1')
             sea_2 = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-sea-2')
-            package_stage = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-stage')
+            package_stage = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/package-stage')
             install_root = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/installed-unsigned-windows')
             lifecycle_workspace = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-lifecycle-windows')
             candidate_zip = (Join-Path $env:RUNNER_TEMP 'unsigned-windows-standard-user/unsigned-windows-engineering.zip')
@@ -516,7 +516,7 @@ jobs:
             set -e
             printf '%s\n' "$gatekeeper_output"
             test "$gatekeeper_status" -ne 0
-            printf '%s\n' "$gatekeeper_output" | grep -Eiq '(^|: )[[:space:]]*rejected([[:space:]]|$)'
+            printf '%s\n' "$gatekeeper_output" | grep -Eiq '(^|: )[[:space:]]*rejected([[:space:]]|$)|code has no resources but signature indicates they must be present'
             xattr -dr com.apple.quarantine "$app"
           done
           safe="$safe_app/Contents/MacOS/dusk-studio"

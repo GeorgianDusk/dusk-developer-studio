@@ -21,7 +21,7 @@
       "release_2": "unsigned-windows-release-2",
       "sea_1": "unsigned-windows-sea-1",
       "sea_2": "unsigned-windows-sea-2",
-      "package_stage": "unsigned-windows-stage",
+      "package_stage": "unsigned-windows-standard-user/package-stage",
       "install_root": "unsigned-windows-standard-user/installed-unsigned-windows",
       "lifecycle_workspace": "unsigned-windows-standard-user/unsigned-lifecycle-windows",
       "candidate_zip": "unsigned-windows-standard-user/unsigned-windows-engineering.zip"
