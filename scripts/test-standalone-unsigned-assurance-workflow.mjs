@@ -222,13 +222,23 @@ const credentialEnvironment = workflow.slice(
   workflow.indexOf("environment = [ordered]@{"),
   workflow.indexOf("stdout_path = $launchStdout")
 );
+const credentialEnvironmentLines = credentialEnvironment
+  .split("\n")
+  .slice(1)
+  .map((line) => line.trim())
+  .filter((line) => line && line !== "}");
+assert.equal(credentialEnvironmentLines.length, 11);
 assert.deepEqual(
-  [...credentialEnvironment.matchAll(
-    /^ {16}(?:'([^']+)'|"([^"]+)"|([A-Za-z][A-Za-z0-9_]*))\s*=/gm
-  )].map((match) => match[1] ?? match[2] ?? match[3]),
+  credentialEnvironmentLines.map((line) => {
+    const match = line.match(
+      /^(?:'([^']+)'|"([^"]+)"|([A-Za-z][A-Za-z0-9_]*))\s*=/
+    );
+    assert.ok(match, `Credential bootstrap environment entry is not a literal key: ${line}`);
+    return (match[1] ?? match[2] ?? match[3]).toLowerCase();
+  }),
   [
-    "SystemRoot", "WINDIR", "COMSPEC", "SystemDrive", "PATHEXT", "PATH",
-    "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA"
+    "systemroot", "windir", "comspec", "systemdrive", "pathext", "path",
+    "temp", "tmp", "userprofile", "localappdata", "appdata"
   ]
 );
 assert.doesNotMatch(credentialEnvironment, /GITHUB_|TOKEN|SECRET|PASSWORD|CREDENTIAL/i);
@@ -236,29 +246,21 @@ const credentialEnvironmentPopulation = workflow.slice(
   workflow.indexOf("$credentialStartInfo.Environment.Clear()"),
   workflow.indexOf("$launchArguments = @(")
 );
-assert.equal(
-  (credentialEnvironmentPopulation.match(/\$credentialStartInfo\.Environment\.Clear\(\)/g) ?? []).length,
-  1
+assert.equal((credentialEnvironmentPopulation.match(/\$credentialstartinfo\b/gi) ?? []).length, 2);
+assert.match(
+  credentialEnvironmentPopulation,
+  /\$credentialstartinfo\s*\.\s*environment\s*\.\s*clear\s*\(\s*\)/i
 );
-assert.equal(
-  (credentialEnvironmentPopulation.match(/\$credentialStartInfo\.Environment\[\$environmentName\] =/g) ?? []).length,
-  1
-);
-assert.doesNotMatch(
-  credentialEnvironmentPopulation
-    .replace("$credentialStartInfo.Environment.Clear()", "")
-    .replace(
-      "$credentialStartInfo.Environment[$environmentName] = $launchContract.environment[$environmentName]",
-      ""
-    ),
-  /\$credentialStartInfo\.Environment/
+assert.match(
+  credentialEnvironmentPopulation,
+  /\$credentialstartinfo\s*\.\s*environment\s*\[\s*\$environmentname\s*\]\s*=\s*\$launchcontract\s*\.\s*environment\s*\[\s*\$environmentname\s*\]/i
 );
 assert.doesNotMatch(
   workflow.slice(
     workflow.indexOf("$launchArguments = @("),
     workflow.indexOf("$credentialProcess = [System.Diagnostics.Process]::Start($credentialStartInfo)")
   ),
-  /\$credentialStartInfo\.Environment/
+  /\$credentialstartinfo\s*\.\s*environment/i
 );
 assert.match(workflow, /\$credentialStartInfo\.ArgumentList\.Add\(\$launchArgument\)/);
 assert.match(workflow, /\$launchCommandLengthBound -gt 900/);
@@ -324,6 +326,27 @@ assert.match(lifecycleBlock, /\$accountCleanupConfirmed = \$true/);
 assert.match(lifecycleBlock, /icacls\.exe'\) \$traverseCursor \/grant:r "\*\$\{standardUserSid\}:\(X\)"/);
 assert.match(lifecycleBlock, /icacls\.exe'\) \$traversePath \/remove:g "\*\$standardUserSid"/);
 assert.match(lifecycleBlock, /Temporary lifecycle-root ancestor traversal survived ACL cleanup/);
+assert.match(lifecycleBlock, /\$allowedAncestorRights = \([\s\S]*?FileSystemRights\]::Traverse -bor[\s\S]*?FileSystemRights\]::Synchronize/);
+assert.match(lifecycleBlock, /\$actualAncestorRights -band \(-bnot \$allowedAncestorRights\)/);
+const trackAncestorMutation = lifecycleBlock.indexOf(
+  "[void] $traverseAclRoots.Add($traverseCursor)"
+);
+const grantAncestorTraversal = lifecycleBlock.indexOf(
+  'icacls.exe\') $traverseCursor /grant:r "*${standardUserSid}:(X)"'
+);
+const validateAncestorTraversal = lifecycleBlock.indexOf(
+  "$grantedRules = @(Get-ExactSidAclRules",
+  grantAncestorTraversal
+);
+assert.ok(
+  trackAncestorMutation >= 0
+    && grantAncestorTraversal > trackAncestorMutation
+    && validateAncestorTraversal > grantAncestorTraversal,
+  "Every attempted ancestor ACL mutation must be tracked before post-grant validation."
+);
+assert.match(lifecycleBlock, /\$ancestorAclCleanupFailures = \[System\.Collections\.Generic\.List\[string\]\]::new\(\)/);
+assert.match(lifecycleBlock, /\$ancestorAclCleanupFailures\.Add\(/);
+assert.match(lifecycleBlock, /if \(\$ancestorAclCleanupFailures\.Count -ne 0\)/);
 assert.match(lifecycleBlock, /\$volumeRoot = \[System\.IO\.Path\]::GetPathRoot\(\$runnerTempPath\)/);
 assert.match(lifecycleBlock, /while \(-not \$traverseCursor\.Equals\([\s\S]*?\$volumeRoot/);
 assert.match(lifecycleBlock, /\$remainingAccounts = @\([\s\S]*?Get-LocalUser -ErrorAction Stop/);

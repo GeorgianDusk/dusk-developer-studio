@@ -334,15 +334,23 @@ jobs:
                 $ancestorAclSetupValid = $false
                 throw 'Fresh temporary SID unexpectedly had an ancestor ACL before setup.'
               }
+              [void] $traverseAclRoots.Add($traverseCursor)
               & (Join-Path $env:SystemRoot 'System32/icacls.exe') $traverseCursor /grant:r "*${standardUserSid}:(X)"
               if ($LASTEXITCODE -ne 0) {
-                if (@(Get-ExactSidAclRules -Path $traverseCursor -Sid $standardUserSid).Count -ne 0) {
-                  [void] $traverseAclRoots.Add($traverseCursor)
-                }
                 $ancestorAclSetupValid = $false
                 throw 'Could not grant temporary traversal to a lifecycle-root ancestor.'
               }
+              $ancestorAclSetupValid = $false
               $grantedRules = @(Get-ExactSidAclRules -Path $traverseCursor -Sid $standardUserSid)
+              $allowedAncestorRights = (
+                [int] [System.Security.AccessControl.FileSystemRights]::Traverse -bor
+                [int] [System.Security.AccessControl.FileSystemRights]::Synchronize
+              )
+              $actualAncestorRights = if ($grantedRules.Count -eq 1) {
+                [int] $grantedRules[0].FileSystemRights
+              } else {
+                -1
+              }
               if ($grantedRules.Count -ne 1 -or $grantedRules[0].IsInherited -or
                   $grantedRules[0].AccessControlType -ne
                     [System.Security.AccessControl.AccessControlType]::Allow -or
@@ -350,12 +358,13 @@ jobs:
                     [System.Security.AccessControl.InheritanceFlags]::None -or
                   $grantedRules[0].PropagationFlags -ne
                     [System.Security.AccessControl.PropagationFlags]::None -or
-                  (([int] $grantedRules[0].FileSystemRights -band
-                    [int] [System.Security.AccessControl.FileSystemRights]::Traverse) -eq 0)) {
+                  (($actualAncestorRights -band
+                    [int] [System.Security.AccessControl.FileSystemRights]::Traverse) -eq 0) -or
+                  (($actualAncestorRights -band (-bnot $allowedAncestorRights)) -ne 0)) {
                 $ancestorAclSetupValid = $false
                 throw 'Temporary lifecycle-root ancestor grant was broader or different than traverse-only.'
               }
-              [void] $traverseAclRoots.Add($traverseCursor)
+              $ancestorAclSetupValid = $true
               $traverseParent = [System.IO.Directory]::GetParent($traverseCursor)
               $traverseCursor = if ($null -eq $traverseParent) { $null } else { $traverseParent.FullName }
             }
@@ -686,17 +695,25 @@ jobs:
           }
           if ($null -ne $standardUserSid) {
             try {
+              $ancestorAclCleanupFailures = [System.Collections.Generic.List[string]]::new()
               foreach ($traversePath in @($traverseAclRoots | Sort-Object Length -Descending)) {
-                & (Join-Path $env:SystemRoot 'System32/icacls.exe') $traversePath /remove:g "*$standardUserSid"
-                if ($LASTEXITCODE -ne 0) {
-                  throw 'Could not revoke temporary lifecycle-root ancestor traversal.'
+                try {
+                  & (Join-Path $env:SystemRoot 'System32/icacls.exe') $traversePath /remove:g "*$standardUserSid"
+                  if ($LASTEXITCODE -ne 0) {
+                    throw 'Could not revoke temporary lifecycle-root ancestor traversal.'
+                  }
+                  $remainingSidRules = @(
+                    Get-ExactSidAclRules -Path $traversePath -Sid $standardUserSid
+                  )
+                  if ($remainingSidRules.Count -ne 0) {
+                    throw 'Temporary lifecycle-root ancestor traversal survived ACL cleanup.'
+                  }
+                } catch {
+                  $ancestorAclCleanupFailures.Add("$traversePath`: $($_.Exception.Message)")
                 }
-                $remainingSidRules = @(
-                  Get-ExactSidAclRules -Path $traversePath -Sid $standardUserSid
-                )
-                if ($remainingSidRules.Count -ne 0) {
-                  throw 'Temporary lifecycle-root ancestor traversal survived ACL cleanup.'
-                }
+              }
+              if ($ancestorAclCleanupFailures.Count -ne 0) {
+                throw ($ancestorAclCleanupFailures -join ' | ')
               }
               $ancestorAclCleanupConfirmed = $true
             } catch {
