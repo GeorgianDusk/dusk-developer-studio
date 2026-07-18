@@ -12,7 +12,7 @@ clean-machine-tested package exists.
 
 | Target | Intended package | Current verification scope | DuskDS execution note | Missing publication evidence |
 | --- | --- | --- | --- | --- |
-| Windows x64 | ZIP with separate Safe and Local Actions executables | Ephemeral Windows 2025 same-runner unsigned reproducibility, elevated-launch rejection, one-use limited S4U standard-user exact-package lifecycle, exact-SID task/profile/LSA-right/account teardown, required `NotSigned` Authenticode state, completed Defender scan command, and cleanup diagnostics | The reviewed automated VM-test lane runs on GitHub-hosted Ubuntu 24.04. No native Windows or WSL VM-test evidence is recorded | Authenticode identity and timestamp, reviewed candidate transport, exact-package clean-machine lifecycle, and withdrawal drill |
+| Windows x64 | ZIP with separate Safe and Local Actions executables | Ephemeral Windows 2025 same-runner unsigned reproducibility, elevated-launch rejection, one-use limited S4U standard-user exact-package lifecycle, exact-SID batch-logon grant plus task/profile/LSA-right/account teardown, required `NotSigned` Authenticode state, completed Defender scan command, and cleanup diagnostics | The reviewed automated VM-test lane runs on GitHub-hosted Ubuntu 24.04. No native Windows or WSL VM-test evidence is recorded | Authenticode identity and timestamp, reviewed candidate transport, exact-package clean-machine lifecycle, and withdrawal drill |
 | Linux x64 | ZIP with separate Safe and Local Actions ELF launchers and Sigstore bundles | Ephemeral Ubuntu 24.04 same-runner unsigned reproducibility, privileged-launch rejection, ELF/NX/mode checks, exact-package lifecycle, and cleanup diagnostics; exact native DuskDS smoke | Native Ubuntu 24.04 is the reviewed DuskDS build and VM-test lane | Final tag-bound signed package, reviewed candidate transport, exact-package clean-machine lifecycle, and withdrawal drill |
 | macOS arm64 | ZIP containing separate Safe and Local Actions app bundles | Ephemeral macOS 15 arm64 same-runner unsigned reproducibility, privileged-launch rejection, ad-hoc executable integrity, expected Gatekeeper rejection, exact-package lifecycle, and cleanup diagnostics | Use a Linux VM or container for the reviewed DuskDS VM test; a native macOS VM-test pass is not recorded | Developer ID, hardened runtime, notarization, stapling, Gatekeeper acceptance, reviewed transport, exact-package clean-machine lifecycle, and withdrawal drill |
 
@@ -31,9 +31,10 @@ package and cannot be inferred from the platform-specific observations above.
   effective, or ambient capabilities.
 - The companion installs no service, daemon, registry entry, scheduled task, or
   developer tool. The Windows assurance harness registers one temporary
-  scheduled task solely to obtain a noninteractive limited test token and
-  requires verified task, process, profile, LSA account-right, and account
-  cleanup before passing.
+  scheduled task solely to obtain a noninteractive limited test token. The
+  harness grants the exact temporary SID only the batch-logon right required
+  for S4U execution, then requires verified task, process, profile, all
+  exact-SID LSA account-right, and account cleanup before passing.
 - Local Actions verifies existing tool prerequisites. It does not silently
   install Foundry, Rust, Dusk Forge, WSL, or related utilities.
 - Dusk Forge must match the exact reviewed Cargo install receipt and source

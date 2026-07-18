@@ -233,6 +233,7 @@ jobs:
             $userCreated = $true
             Add-LocalGroupMember -SID 'S-1-5-32-545' -Member $standardUser
             $standardUserSid = $standardUser.SID.Value
+            & (Join-Path $env:GITHUB_WORKSPACE 'scripts/windows-lsa-account-rights.ps1') -Sid $standardUserSid -Action GrantBatchLogon
             & (Join-Path $env:SystemRoot 'System32/icacls.exe') $standardUserRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "*${standardUserSid}:(OI)(CI)F" /T /C
             if ($LASTEXITCODE -ne 0) { throw 'Could not isolate the standard-user lifecycle root.' }
 
@@ -333,17 +334,19 @@ jobs:
             if ($null -eq $runningTask) {
               throw 'Task Scheduler did not return the standard-user lifecycle instance.'
             }
-            $taskDeadline = [DateTime]::UtcNow.AddMinutes(6)
+            $taskDeadline = [DateTime]::UtcNow.AddMinutes(7)
             do {
               Start-Sleep -Milliseconds 500
               $registeredTask = $taskFolder.GetTask("\$taskName")
               $taskInstances = @($registeredTask.GetInstances(0))
               $taskRan = $registeredTask.LastRunTime -gt $lastRunBefore
               $taskLastResult = [int64] $registeredTask.LastTaskResult
+              $taskState = [int64] $registeredTask.State
               $taskPending = $taskLastResult -in @(0x00041301, 0x00041303)
             } while (($taskInstances.Count -ne 0 -or -not $taskRan -or $taskPending) -and [DateTime]::UtcNow -lt $taskDeadline)
             if ($taskInstances.Count -ne 0 -or -not $taskRan -or $taskPending) {
-              throw 'Standard-user Windows scheduled lifecycle timed out.'
+              $taskResultHex = '0x{0:X8}' -f ($taskLastResult -band 0xFFFFFFFFL)
+              throw "Standard-user Windows scheduled lifecycle timed out (instances=$($taskInstances.Count), last_run_advanced=$taskRan, last_result=$taskResultHex, state=$taskState)."
             }
             if ($taskLastResult -ne 0) {
               if (Test-Path -LiteralPath $taskStdout) { Get-Content -LiteralPath $taskStdout }
@@ -486,7 +489,7 @@ jobs:
             $lsaCleanupError = $null
             foreach ($lsaAttempt in 1..2) {
               try {
-                & (Join-Path $env:GITHUB_WORKSPACE 'scripts/windows-remove-lsa-account-rights.ps1') -Sid $standardUserSid
+                & (Join-Path $env:GITHUB_WORKSPACE 'scripts/windows-lsa-account-rights.ps1') -Sid $standardUserSid -Action RemoveAll
                 $lsaCleanupError = $null
                 break
               } catch {

@@ -11,8 +11,8 @@ const windowsTaskDriver = fs.readFileSync(
   path.join(root, "scripts", "windows-standard-user-lifecycle.ps1"),
   "utf8"
 );
-const windowsLsaCleanup = fs.readFileSync(
-  path.join(root, "scripts", "windows-remove-lsa-account-rights.ps1"),
+const windowsLsaRights = fs.readFileSync(
+  path.join(root, "scripts", "windows-lsa-account-rights.ps1"),
   "utf8"
 );
 const policy = JSON.parse(
@@ -200,10 +200,12 @@ assert.match(workflow, /\$taskName = "DuskStudioUnsigned-\$\(\[guid\]::NewGuid\(
 assert.match(workflow, /New-Object -ComObject 'Schedule\.Service'/);
 assert.match(workflow, /\$TASK_LOGON_S4U = 2/);
 assert.match(workflow, /\$TASK_RUNLEVEL_LUA = 0/);
+assert.match(workflow, /timeout_ms = 300000/);
 assert.match(workflow, /\$taskDefinition\.Principal\.LogonType = \$TASK_LOGON_S4U/);
 assert.match(workflow, /\$taskDefinition\.Principal\.RunLevel = \$TASK_RUNLEVEL_LUA/);
 assert.match(workflow, /\$taskDefinition\.Settings\.AllowDemandStart = \$true/);
 assert.match(workflow, /\$taskDefinition\.Settings\.ExecutionTimeLimit = 'PT6M'/);
+assert.match(workflow, /\$taskDeadline = \[DateTime\]::UtcNow\.AddMinutes\(7\)/);
 assert.match(workflow, /\$taskDefinition\.Settings\.MultipleInstances = \$TASK_INSTANCES_IGNORE_NEW/);
 assert.doesNotMatch(workflow, /\$taskDefinition\.Triggers|New-ScheduledTask|Register-ScheduledTask|schtasks\.exe/i);
 assert.doesNotMatch(workflow, /TASK_LOGON_PASSWORD|Principal\.LogonType\s*=\s*1|RegisterTaskDefinition\([\s\S]{0,500}\$TASK_LOGON_PASSWORD/i);
@@ -219,6 +221,7 @@ assert.match(workflow, /\$runningTask = \$registeredTask\.Run\(\$null\)/);
 assert.match(workflow, /\$registeredTask\.GetInstances\(0\)/);
 assert.match(workflow, /\$taskLastResult = \[int64\] \$registeredTask\.LastTaskResult/);
 assert.match(workflow, /\$taskPending = \$taskLastResult -in @\(0x00041301, 0x00041303\)/);
+assert.match(workflow, /last_result=\$taskResultHex, state=\$taskState/);
 assert.match(workflow, /\$taskLastResult -ne 0/);
 assert.match(workflow, /\$status\.nonce -ne \$taskNonce[\s\S]*?\$status\.sid -ne \$standardUserSid[\s\S]*?\$status\.is_admin -ne \$false[\s\S]*?\$status\.exit_code -ne 0/);
 assert.match(workflow, /Remove-LocalUser -Name \$userName -ErrorAction Stop/);
@@ -233,7 +236,13 @@ assert.ok(removeUser >= 0 && verifyUserAbsent > removeUser, "Standard-user accou
 const stopTask = lifecycleBlock.indexOf("$cleanupTask.Stop(0)");
 const deleteTask = lifecycleBlock.indexOf("$taskFolder.DeleteTask($taskName, 0)");
 const removeProfile = lifecycleBlock.indexOf("Remove-CimInstance -InputObject $profile");
-const removeLsaRights = lifecycleBlock.indexOf("windows-remove-lsa-account-rights.ps1");
+const grantLsaRights = lifecycleBlock.indexOf("windows-lsa-account-rights.ps1') -Sid $standardUserSid -Action GrantBatchLogon");
+const registerTask = lifecycleBlock.indexOf("$taskFolder.RegisterTaskDefinition(");
+const removeLsaRights = lifecycleBlock.indexOf("windows-lsa-account-rights.ps1') -Sid $standardUserSid -Action RemoveAll");
+assert.ok(
+  grantLsaRights >= 0 && registerTask > grantLsaRights,
+  "The exact temporary SID must receive and verify its batch-logon right before S4U task registration."
+);
 assert.ok(
   stopTask >= 0
     && deleteTask > stopTask
@@ -282,17 +291,25 @@ assert.deepEqual(
   ]
 );
 assert.match(windowsTaskDriver, /\$processInfo\.ArgumentList\.Add\(\$scriptPath\)/);
+assert.match(windowsTaskDriver, /if \(\$contract\.timeout_ms -ne 300000\)/);
 assert.match(windowsTaskDriver, /\$process\.StandardOutput\.ReadToEndAsync\(\)/);
 assert.match(windowsTaskDriver, /\$process\.StandardError\.ReadToEndAsync\(\)/);
+assert.match(windowsTaskDriver, /\$process\.WaitForExit\(\[int\] \$contract\.timeout_ms\)/);
+assert.match(windowsTaskDriver, /\$process\.Kill\(\$true\)[\s\S]*?\$process\.WaitForExit\(15000\)/);
+assert.doesNotMatch(windowsTaskDriver, /\$process\.WaitForExit\(\)/);
 assert.match(windowsTaskDriver, /\$maximumLogBytes = 65536/);
 assert.match(windowsTaskDriver, /\[System\.IO\.File\]::Move\(\$statusTemporaryPath, \$statusPath\)/);
 assert.doesNotMatch(windowsTaskDriver, /UserName\s*=|Domain\s*=|Password\s*=|credential|TASK_LOGON_PASSWORD/i);
-assert.match(windowsLsaCleanup, /LsaRemoveAccountRights/);
-assert.match(windowsLsaCleanup, /LsaEnumerateAccountRights/);
-assert.match(windowsLsaCleanup, /RemoveAllAndVerify/);
-assert.match(windowsLsaCleanup, /\[System\.Security\.Principal\.WindowsBuiltInRole\]::Administrator/);
-assert.match(windowsLsaCleanup, /ErrorFileNotFound = 2/);
-assert.doesNotMatch(windowsLsaCleanup, /SeBatchLogonRight|secedit|\bntrights(?:\.exe)?\b|Remove-LocalUser/i);
+assert.match(windowsLsaRights, /LsaAddAccountRights/);
+assert.match(windowsLsaRights, /LsaRemoveAccountRights/);
+assert.match(windowsLsaRights, /LsaEnumerateAccountRights/);
+assert.match(windowsLsaRights, /GrantBatchAndVerify/);
+assert.match(windowsLsaRights, /RemoveAllAndVerify/);
+assert.match(windowsLsaRights, /SeBatchLogonRight/);
+assert.match(windowsLsaRights, /rights\.Length != 1/);
+assert.match(windowsLsaRights, /\[System\.Security\.Principal\.WindowsBuiltInRole\]::Administrator/);
+assert.match(windowsLsaRights, /ErrorFileNotFound = 2/);
+assert.doesNotMatch(windowsLsaRights, /secedit|\bntrights(?:\.exe)?\b|Remove-LocalUser/i);
 assert.doesNotMatch(workflow, /ALLOW_ELEVATED|SKIP_(?:ELEVATION|PRIVILEGE)|elevation[_-]bypass/i);
 
 console.log("Unsigned companion workflow static security contract passed.");

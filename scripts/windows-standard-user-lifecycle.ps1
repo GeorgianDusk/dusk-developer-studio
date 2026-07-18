@@ -286,7 +286,9 @@ try {
   $stderrTask = $process.StandardError.ReadToEndAsync()
   if (-not $process.WaitForExit([int] $contract.timeout_ms)) {
     $process.Kill($true)
-    $process.WaitForExit()
+    if (-not $process.WaitForExit(15000)) {
+      throw 'Standard-user Windows lifecycle timed out and tracked shutdown could not be confirmed.'
+    }
     throw 'Standard-user Windows lifecycle timed out.'
   }
   $stdout = $stdoutTask.GetAwaiter().GetResult()
