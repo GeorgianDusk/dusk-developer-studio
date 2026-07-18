@@ -524,6 +524,10 @@ assert.match(windowsLifecycleDriver, /\$process\.WaitForExit\(\[int\] \$contract
 assert.match(windowsLifecycleDriver, /\$process\.Kill\(\$true\)[\s\S]*?\$process\.WaitForExit\(15000\)/);
 assert.doesNotMatch(windowsLifecycleDriver, /\$process\.WaitForExit\(\)/);
 assert.match(windowsLifecycleDriver, /\$maximumLogBytes = 65536/);
+assert.match(
+  windowsLifecycleDriver,
+  /function Write-NewBoundedUtf8File[\s\S]*?\[Parameter\(Mandatory = \$true\)\] \[AllowEmptyString\(\)\] \[string\] \$Value/
+);
 assert.match(windowsLifecycleDriver, /\[System\.IO\.File\]::Move\(\$statusTemporaryPath, \$statusPath\)/);
 assert.doesNotMatch(windowsLifecycleDriver, /UserName\s*=|Domain\s*=|Password\s*=|credential|TASK_LOGON_PASSWORD/i);
 assert.match(windowsBootstrap, /Assert-BoundedPath/);

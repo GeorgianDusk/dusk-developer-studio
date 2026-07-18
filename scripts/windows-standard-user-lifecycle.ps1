@@ -117,7 +117,7 @@ function Resolve-ArgumentPath {
 function Write-NewBoundedUtf8File {
   param(
     [Parameter(Mandatory = $true)] [string] $Path,
-    [Parameter(Mandatory = $true)] [string] $Value,
+    [Parameter(Mandatory = $true)] [AllowEmptyString()] [string] $Value,
     [Parameter(Mandatory = $true)] [string] $Label
   )
 
