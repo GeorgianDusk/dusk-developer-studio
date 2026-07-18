@@ -11,8 +11,41 @@ import {
 
 const source = fs.readFileSync("scripts/standalone-candidate-lifecycle-core.mjs", "utf8");
 assert.match(source, /return error[?][.]code === "ESRCH" && !rejectIfFound;/);
+assert.match(
+  source,
+  /if \(rejectIfFound && waitForWindowsProcessTreeExit\(pid\)\) return true;[\s\S]*?return waitForWindowsProcessTreeExit\(pid\) && !rejectIfFound;/
+);
+const windowsProcessExistsSource = source.slice(
+  source.indexOf("function windowsProcessExists"),
+  source.indexOf("function waitForWindowsProcessTreeExit")
+);
+assert.match(windowsProcessExistsSource, /\$ErrorActionPreference='Stop'/);
+assert.match(
+  windowsProcessExistsSource,
+  /Get-CimInstance Win32_Process -Filter "ProcessId = \$\{pid\}" -ErrorAction Stop/
+);
+assert.match(
+  windowsProcessExistsSource,
+  /if\(\$items\.Count -eq 0\)\{'false'\}elseif\(\$items\.Count -eq 1\)\{'true'\}else\{throw/
+);
+assert.doesNotMatch(windowsProcessExistsSource, /SilentlyContinue/);
 
 if (process.platform === "win32") {
+  await assert.doesNotReject(
+    runCandidate(process.execPath, ["-e", ""], { ...process.env }, process.cwd())
+  );
+  await assert.rejects(
+    runCandidate(process.execPath, [
+      "-e",
+      [
+        'const { spawn } = require("node:child_process");',
+        'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });',
+        "child.unref();"
+      ].join("\n")
+    ], { ...process.env }, process.cwd()),
+    (error) => error?.cleanupSafe === false
+      && /left a live tracked process group/.test(error.message)
+  );
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     stdio: "ignore",
     windowsHide: true

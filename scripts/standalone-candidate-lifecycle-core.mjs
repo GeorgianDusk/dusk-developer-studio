@@ -145,7 +145,11 @@ function windowsProcessExists(pid) {
     process.env.SystemRoot ?? "C:\\Windows",
     "System32", "WindowsPowerShell", "v1.0", "powershell.exe"
   );
-  const command = `$item=Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction SilentlyContinue; if($null -eq $item){'false'}else{'true'}`;
+  const command = [
+    "$ErrorActionPreference='Stop'",
+    `$items=@(Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction Stop)`,
+    "if($items.Count -eq 0){'false'}elseif($items.Count -eq 1){'true'}else{throw 'Process identifier matched multiple instances.'}"
+  ].join("; ");
   const result = spawnSync(
     powershell,
     ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
@@ -173,6 +177,7 @@ function waitForWindowsProcessTreeExit(pid, timeoutMs = 5_000) {
 export function forceKillProcessGroup(pid, rejectIfFound = false) {
   if (!pid) return true;
   if (process.platform === "win32") {
+    if (rejectIfFound && waitForWindowsProcessTreeExit(pid)) return true;
     const descendants = windowsDescendantPids(pid);
     const rootExists = windowsProcessExists(pid);
     if (!descendants || rootExists === undefined) return false;
