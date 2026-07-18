@@ -112,7 +112,7 @@ function windowsDescendantPids(rootPid) {
   );
   const command = [
     "$ErrorActionPreference='Stop'",
-    "$all=@(Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId)",
+    "$all=@(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId,ParentProcessId)",
     `$frontier=@([uint32]${rootPid})`,
     "$seen=@{}",
     "$descendants=@()",
@@ -134,7 +134,11 @@ function windowsDescendantPids(rootPid) {
   try {
     const parsed = JSON.parse(result.stdout);
     const values = Array.isArray(parsed) ? parsed : [parsed];
-    return values.filter((value) => Number.isSafeInteger(value) && value > 0);
+    if (values.length > 65_536
+        || values.some((value) => !Number.isSafeInteger(value) || value <= 0)) {
+      return undefined;
+    }
+    return [...new Set(values)];
   } catch {
     return undefined;
   }
@@ -267,7 +271,25 @@ export function runCandidate(candidate, args, env, cwd) {
       clearTimeout(timer);
       if (settled) return;
       settled = true;
-      if (!forceKillProcessGroup(child.pid, true)) {
+      if (process.platform === "win32") {
+        // The close event proves the exact root handle exited. Re-querying that
+        // bare PID can observe WMI lag or a reused PID, so only inventory
+        // descendants here. The outer Windows assurance lane independently
+        // rejects any process still owned by its one-use standard-user SID.
+        const descendants = windowsDescendantPids(child.pid);
+        if (!descendants) {
+          const error = new Error("Candidate closed, but Windows descendant inventory was unavailable.");
+          error.cleanupSafe = false;
+          reject(error);
+          return;
+        }
+        if (descendants.length !== 0) {
+          const error = new Error("Candidate left a live tracked descendant process.");
+          error.cleanupSafe = false;
+          reject(error);
+          return;
+        }
+      } else if (!forceKillProcessGroup(child.pid, true)) {
         const error = new Error("Candidate left a live tracked process group or its shutdown could not be confirmed.");
         error.cleanupSafe = false;
         reject(error);

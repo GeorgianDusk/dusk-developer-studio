@@ -182,8 +182,23 @@ jobs:
             if ($signature.Status -ne 'NotSigned') {
               throw "Unexpected Authenticode state for an engineering launcher: $($signature.Status)."
             }
-            & $scanner.FullName -Scan -ScanType 3 -File $candidate
-            if ($LASTEXITCODE -ne 0) { throw "Microsoft Defender scan failed with exit code $LASTEXITCODE." }
+            $scanOutput = [string] (
+              & $scanner.FullName -Scan -ScanType 3 -File $candidate -DisableRemediation 2>&1 |
+                Out-String
+            )
+            $scanExitCode = $LASTEXITCODE
+            if ($scanOutput.Length -gt 65536) {
+              throw 'Microsoft Defender scan output exceeded its diagnostic bound.'
+            }
+            if ($scanExitCode -ne 0) {
+              throw "Microsoft Defender scan failed with exit code $scanExitCode."
+            }
+            if ($scanOutput -match '(?i)\bwas skipped\b') {
+              throw 'Microsoft Defender skipped an engineering launcher instead of scanning it.'
+            }
+            if ($scanOutput -notmatch '(?i)\bfound no threats\b') {
+              throw 'Microsoft Defender did not return an explicit no-threat scan result.'
+            }
           }
 
           $beforeExtractionRoots = @(
@@ -420,6 +435,8 @@ jobs:
           $ancestorAclCleanupConfirmed = $false
           $profileCleanupConfirmed = $false
           $accountCleanupConfirmed = $false
+          $unexpectedPostLifecycleProcessDetected = $false
+          $unexpectedPostLifecycleOwnerResolutionFailure = $false
           try {
             $standardUser = New-LocalUser -Name $userName -Password $securePassword -AccountNeverExpires -PasswordNeverExpires -UserMayNotChangePassword
             $userCreated = $true
@@ -783,9 +800,35 @@ jobs:
           $accountRemovalSafe = $ancestorAclSetupValid
           if ($null -ne $standardUserSid) {
             try {
+              $processQuiescenceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+              do {
+                $processQuiescenceSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
+                $newQuiescenceUnresolvedProcesses = @(
+                  Get-NewUnresolvedProcesses `
+                    -Snapshot $processQuiescenceSnapshot `
+                    -BaselineKeys $baselineUnresolvedProcessKeys
+                )
+                $pendingQuiescenceChecks = @($processQuiescenceSnapshot.Owned).Count +
+                  $newQuiescenceUnresolvedProcesses.Count
+                if ($pendingQuiescenceChecks -ne 0) {
+                  Start-Sleep -Milliseconds 250
+                }
+              } while (
+                $pendingQuiescenceChecks -ne 0 -and
+                [DateTime]::UtcNow -lt $processQuiescenceDeadline
+              )
+              if (@($processQuiescenceSnapshot.Owned).Count -ne 0) {
+                $unexpectedPostLifecycleProcessDetected = $true
+              }
+              if ($newQuiescenceUnresolvedProcesses.Count -ne 0) {
+                $unexpectedPostLifecycleOwnerResolutionFailure = $true
+              }
               $processDeadline = [DateTime]::UtcNow.AddSeconds(30)
               do {
                 $processSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
+                if (@($processSnapshot.Owned).Count -ne 0) {
+                  $unexpectedPostLifecycleProcessDetected = $true
+                }
                 foreach ($ownedProcess in @($processSnapshot.Owned)) {
                   Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue
                 }
@@ -794,6 +837,9 @@ jobs:
                     -Snapshot $processSnapshot `
                     -BaselineKeys $baselineUnresolvedProcessKeys
                 )
+                if ($newUnresolvedProcesses.Count -ne 0) {
+                  $unexpectedPostLifecycleOwnerResolutionFailure = $true
+                }
                 $pendingProcessChecks = @($processSnapshot.Owned).Count +
                   $newUnresolvedProcesses.Count
                 if ($pendingProcessChecks -ne 0) {
@@ -941,6 +987,9 @@ jobs:
                 $finalProcessDeadline = [DateTime]::UtcNow.AddSeconds(30)
                 do {
                   $finalProcessSnapshot = Get-SidProcessSnapshot -Sid $standardUserSid
+                  if (@($finalProcessSnapshot.Owned).Count -ne 0) {
+                    $unexpectedPostLifecycleProcessDetected = $true
+                  }
                   foreach ($ownedProcess in @($finalProcessSnapshot.Owned)) {
                     Stop-Process -Id $ownedProcess.ProcessId -Force -ErrorAction SilentlyContinue
                   }
@@ -949,6 +998,9 @@ jobs:
                       -Snapshot $finalProcessSnapshot `
                       -BaselineKeys $baselineUnresolvedProcessKeys
                   )
+                  if ($newFinalUnresolvedProcesses.Count -ne 0) {
+                    $unexpectedPostLifecycleOwnerResolutionFailure = $true
+                  }
                   $pendingFinalProcessChecks = @($finalProcessSnapshot.Owned).Count +
                     $newFinalUnresolvedProcesses.Count
                   if ($pendingFinalProcessChecks -ne 0) {
@@ -994,6 +1046,24 @@ jobs:
               } catch {
                 $cleanupFailures.Add("account cleanup: $($_.Exception.Message)")
               }
+            }
+          }
+          if ($unexpectedPostLifecycleProcessDetected) {
+            $processLeakFailure =
+              'A process owned by the temporary assurance SID remained live after the lifecycle shutdown grace.'
+            $primaryFailure = if ($null -eq $primaryFailure) {
+              $processLeakFailure
+            } else {
+              "$primaryFailure | $processLeakFailure"
+            }
+          }
+          if ($unexpectedPostLifecycleOwnerResolutionFailure) {
+            $ownerResolutionFailure =
+              'A new live process-owner query remained unresolved after the lifecycle shutdown grace.'
+            $primaryFailure = if ($null -eq $primaryFailure) {
+              $ownerResolutionFailure
+            } else {
+              "$primaryFailure | $ownerResolutionFailure"
             }
           }
           if ($processCleanupConfirmed -and $ancestorAclCleanupConfirmed -and
@@ -1096,27 +1166,59 @@ jobs:
             }
             $cleanupConfirmed = $true
           }
-          foreach ($externalKey in @('runtime_archive', 'bundle_1', 'bundle_2', 'release_1', 'release_2', 'sea_1', 'sea_2')) {
-            if (Test-Path -LiteralPath $paths[$externalKey]) {
-              Remove-Item -LiteralPath $paths[$externalKey] -Recurse -Force -ErrorAction Stop
-            }
-          }
           if (-not $cleanupConfirmed) {
             if (Test-Path -LiteralPath $controlRoot) {
               Remove-Item -LiteralPath $controlRoot -Recurse -Force -ErrorAction SilentlyContinue
             }
             throw 'Standard-user shutdown and exact-SID cleanup were not confirmed; preserving its entire writable root for ephemeral-runner disposal.'
           }
-          if (Test-Path -LiteralPath $paths.standard_user_root) {
-            Remove-Item -LiteralPath $paths.standard_user_root -Recurse -Force -ErrorAction Stop
+          $postConfirmationFailures = [System.Collections.Generic.List[string]]::new()
+          try {
+            foreach ($externalKey in @('runtime_archive', 'bundle_1', 'bundle_2', 'release_1', 'release_2', 'sea_1', 'sea_2')) {
+              if (Test-Path -LiteralPath $paths[$externalKey]) {
+                Remove-Item -LiteralPath $paths[$externalKey] -Recurse -Force -ErrorAction Stop
+              }
+            }
+            if (Test-Path -LiteralPath $paths.standard_user_root) {
+              Remove-Item -LiteralPath $paths.standard_user_root -Recurse -Force -ErrorAction Stop
+            }
+            if (Test-Path -LiteralPath $controlRoot) {
+              Remove-Item -LiteralPath $controlRoot -Recurse -Force -ErrorAction Stop
+            }
+            $records = $paths.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
+            $cleanupReceipt = Join-Path $windowsScopeRoot 'windows-cleanup.json'
+            node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=windows-x64 "--scope-root=$windowsScopeRoot" "--paths=$($records -join '|')" "--out=$cleanupReceipt"
+            $targetEvidenceInputs = @(
+              (Join-Path $windowsScopeRoot 'windows-lifecycle.json'),
+              (Join-Path $windowsScopeRoot 'windows-reproducibility.json'),
+              (Join-Path $windowsScopeRoot 'windows-platform.json'),
+              $cleanupReceipt
+            )
+            $missingTargetEvidenceInputs = @(
+              $targetEvidenceInputs |
+                Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
+            )
+            if ($missingTargetEvidenceInputs.Count -eq 0) {
+              node scripts/standalone-unsigned-assurance.mjs --operation=target-evidence --target=windows-x64 "--lifecycle-report=$(Join-Path $windowsScopeRoot 'windows-lifecycle.json')" "--reproducibility-report=$(Join-Path $windowsScopeRoot 'windows-reproducibility.json')" "--platform-observations=$(Join-Path $windowsScopeRoot 'windows-platform.json')" "--cleanup-receipt=$cleanupReceipt" "--repository=$env:GITHUB_REPOSITORY" "--workflow-ref=$env:GITHUB_WORKFLOW_REF" "--run-id=$env:GITHUB_RUN_ID" "--run-attempt=$env:GITHUB_RUN_ATTEMPT" "--run-actor=github:$env:GITHUB_ACTOR" "--expected-commit=$env:EXPECTED_COMMIT" "--checks=$env:UNSIGNED_ASSURANCE_CHECKS" "--out=$(Join-Path $windowsScopeRoot 'windows-x64.json')"
+            } else {
+              throw 'Windows success evidence was not assembled because a prerequisite report is absent.'
+            }
+          } catch {
+            [void] $postConfirmationFailures.Add($_.Exception.Message)
+          } finally {
+            try {
+              if (Test-Path -LiteralPath $windowsScopeRoot) {
+                Remove-Item -LiteralPath $windowsScopeRoot -Recurse -Force -ErrorAction Stop
+              }
+            } catch {
+              [void] $postConfirmationFailures.Add(
+                "final assurance-scope cleanup: $($_.Exception.Message)"
+              )
+            }
           }
-          if (Test-Path -LiteralPath $controlRoot) {
-            Remove-Item -LiteralPath $controlRoot -Recurse -Force -ErrorAction Stop
+          if ($postConfirmationFailures.Count -ne 0) {
+            throw ($postConfirmationFailures -join ' | ')
           }
-          $records = $paths.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }
-          node scripts/standalone-unsigned-assurance.mjs --operation=cleanup --target=windows-x64 "--scope-root=$windowsScopeRoot" "--paths=$($records -join '|')" "--out=$(Join-Path $windowsScopeRoot 'windows-cleanup.json')"
-          node scripts/standalone-unsigned-assurance.mjs --operation=target-evidence --target=windows-x64 "--lifecycle-report=$(Join-Path $windowsScopeRoot 'windows-lifecycle.json')" "--reproducibility-report=$(Join-Path $windowsScopeRoot 'windows-reproducibility.json')" "--platform-observations=$(Join-Path $windowsScopeRoot 'windows-platform.json')" "--cleanup-receipt=$(Join-Path $windowsScopeRoot 'windows-cleanup.json')" "--repository=$env:GITHUB_REPOSITORY" "--workflow-ref=$env:GITHUB_WORKFLOW_REF" "--run-id=$env:GITHUB_RUN_ID" "--run-attempt=$env:GITHUB_RUN_ATTEMPT" "--run-actor=github:$env:GITHUB_ACTOR" "--expected-commit=$env:EXPECTED_COMMIT" "--checks=$env:UNSIGNED_ASSURANCE_CHECKS" "--out=$(Join-Path $windowsScopeRoot 'windows-x64.json')"
-          Remove-Item -LiteralPath $windowsScopeRoot -Recurse -Force -ErrorAction Stop
   linux:
     name: Unsigned engineering lifecycle (linux-x64)
     needs: preflight

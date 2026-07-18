@@ -15,6 +15,14 @@ assert.match(
   source,
   /if \(rejectIfFound && waitForWindowsProcessTreeExit\(pid\)\) return true;[\s\S]*?return waitForWindowsProcessTreeExit\(pid\) && !rejectIfFound;/
 );
+assert.match(
+  source,
+  /The close event proves the exact root handle exited[\s\S]*?const descendants = windowsDescendantPids\(child\.pid\);/
+);
+assert.match(
+  source,
+  /if \(process\.platform === "win32"\) \{[\s\S]*?const descendants = windowsDescendantPids\(child\.pid\);[\s\S]*?\} else if \(!forceKillProcessGroup\(child\.pid, true\)\)/
+);
 const windowsProcessExistsSource = source.slice(
   source.indexOf("function windowsProcessExists"),
   source.indexOf("function waitForWindowsProcessTreeExit")
@@ -34,18 +42,46 @@ if (process.platform === "win32") {
   await assert.doesNotReject(
     runCandidate(process.execPath, ["-e", ""], { ...process.env }, process.cwd())
   );
-  await assert.rejects(
-    runCandidate(process.execPath, [
-      "-e",
-      [
-        'const { spawn } = require("node:child_process");',
-        'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });',
-        "child.unref();"
-      ].join("\n")
-    ], { ...process.env }, process.cwd()),
-    (error) => error?.cleanupSafe === false
-      && /left a live tracked process group/.test(error.message)
-  );
+  const markerRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dusk-windows-detached-child-"));
+  const detachedPidFile = path.join(markerRoot, "pid.txt");
+  let detachedPid;
+  try {
+    await assert.rejects(
+      runCandidate(process.execPath, [
+        "-e",
+        [
+          'const { spawn } = require("node:child_process");',
+          'const fs = require("node:fs");',
+          'const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { detached: true, stdio: "ignore" });',
+          'fs.writeFileSync(process.argv[1], String(child.pid), { flag: "wx" });',
+          "child.unref();"
+        ].join("\n"),
+        detachedPidFile
+      ], { ...process.env }, process.cwd()),
+      (error) => error?.cleanupSafe === false
+        && /left a live tracked descendant process/.test(error.message)
+    );
+    detachedPid = Number(fs.readFileSync(detachedPidFile, "utf8"));
+    assert.equal(Number.isSafeInteger(detachedPid) && detachedPid > 0, true);
+    process.kill(detachedPid, "SIGKILL");
+    let detachedChildGone = false;
+    const detachedChildDeadline = Date.now() + 5_000;
+    while (Date.now() < detachedChildDeadline) {
+      try {
+        process.kill(detachedPid, 0);
+        await delay(50);
+      } catch (error) {
+        detachedChildGone = error?.code === "ESRCH";
+        break;
+      }
+    }
+    assert.equal(detachedChildGone, true);
+  } finally {
+    if (detachedPid) {
+      try { process.kill(detachedPid, "SIGKILL"); } catch { /* The process is already gone. */ }
+    }
+    fs.rmSync(markerRoot, { recursive: true, force: true });
+  }
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
     stdio: "ignore",
     windowsHide: true

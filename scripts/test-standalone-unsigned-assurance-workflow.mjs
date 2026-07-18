@@ -131,13 +131,21 @@ for (const [target, platform] of Object.entries({
   }
 }
 assert.doesNotMatch(workflow, /rm -rf -- "\$\{cleanup_records\[@\]\}"/);
+assert.match(workflow, /\$processQuiescenceDeadline = \[DateTime\]::UtcNow\.AddSeconds\(5\)/);
+assert.match(workflow, /\$unexpectedPostLifecycleProcessDetected = \$true/);
+assert.match(workflow, /\$unexpectedPostLifecycleOwnerResolutionFailure = \$true/);
+assert.match(workflow, /remained live after the lifecycle shutdown grace/);
+assert.match(workflow, /process-owner query remained unresolved after the lifecycle shutdown grace/);
 
 const windowsObservation = "--operation=platform-observations --target=windows-x64";
 for (const probe of [
   "Get-AuthenticodeSignature",
   "$signature.Status -ne 'NotSigned'",
   "MpCmdRun.exe",
-  "Microsoft Defender scan failed"
+  "-DisableRemediation",
+  "Microsoft Defender scan failed",
+  "Microsoft Defender skipped an engineering launcher instead of scanning it.",
+  "Microsoft Defender did not return an explicit no-threat scan result."
 ]) assertProbeBefore(probe, windowsObservation);
 assert.doesNotMatch(workflow, /HashMismatch|defender_scan_passed/);
 assert.match(
@@ -380,7 +388,7 @@ assert.equal(
       /-BaselineKeys\s+\$baselineUnresolvedProcessKeys/g
     ) ?? []
   ).length,
-  4
+  5
 );
 const baselineComparisons = [];
 let baselineComparisonCursor = 0;
@@ -393,12 +401,13 @@ while (true) {
   baselineComparisons.push(match);
   baselineComparisonCursor = match + 1;
 }
-assert.equal(baselineComparisons.length, 4);
+assert.equal(baselineComparisons.length, 5);
 assert.ok(
   baselineComparisons[0] < removeUser
     && baselineComparisons[1] < removeUser
-    && baselineComparisons[2] > removeUser
-    && baselineComparisons[3] > removeUser,
+    && baselineComparisons[2] < removeUser
+    && baselineComparisons[3] > removeUser
+    && baselineComparisons[4] > removeUser,
   "Both pre-deletion and post-deletion process sweeps must compare against the immutable baseline."
 );
 assert.match(lifecycleBlock, /\$processCleanupConfirmed = \$true/);
