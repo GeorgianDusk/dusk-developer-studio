@@ -113,7 +113,7 @@ export function DuskDsDeployReadiness({ setRoute }: { setRoute: (route: RouteId)
         </ol>
         <p className="quiet-note">Do not paste a password, mnemonic, seed, private key, wallet profile, or signing request into Studio. It neither needs nor accepts them.</p>
         <div className="button-row">
-          <ExternalLink href="https://docs.dusk.network/developer/duskvm/quickstart/#5-deploy-on-testnet">Official DuskVM deployment guide</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-duskds/#deploying">Official DuskDS deployment guide</ExternalLink>
           <ExternalLink href="https://docs.dusk.network/learn/rusk-wallet/">Official Rusk Wallet guide</ExternalLink>
         </div>
       </div>

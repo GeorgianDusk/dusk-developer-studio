@@ -7,7 +7,7 @@
   "covered_files": [
     {
       "path": "data/dusk/capabilities.json",
-      "sha256": "b696730a66399fd2fa1d656b94c5af91947598276df709fbc88e8db997f62eb5"
+      "sha256": "a8583d8012baecf374cc912d80b2dbde42207abbf9d34a9265791c4f8a6aec4f"
     },
     {
       "path": "data/dusk/networks.evm.json",
@@ -15,17 +15,17 @@
     },
     {
       "path": "data/dusk/resources.json",
-      "sha256": "b74bac764f1cf7e67f87f28127a417eda157b4b98b7ac8e8d14e75b3a910a7d9"
+      "sha256": "2d349b87fd021b19682bb179d3e280adc229e899d2a62764069ee7b2709c98c3"
     },
     {
       "path": "data/dusk/troubleshooting.json",
-      "sha256": "139f365cfafedab09f1f667a7aed7fb5aac3590ed69ff372f332181b1f679091"
+      "sha256": "66ce47504e6d464da479c38ed44aa1fe01938a306dec3a2a1654ed60699aeb64"
     }
   ],
   "sources": [
     {
-      "id": "dusk-docs-duskvm-quickstart",
-      "url": "https://github.com/dusk-network/docs/blob/b9c7f5590619eda127d20889670f78af681930ef/src/content/docs/developer/duskvm/quickstart.md",
+      "id": "dusk-docs-smart-contracts-duskds",
+      "url": "https://docs.dusk.network/developer/smart-contracts-duskds/",
       "checked_at": "2026-07-19",
       "status": "verified"
     },

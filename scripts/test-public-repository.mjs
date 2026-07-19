@@ -327,6 +327,20 @@ assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total
 assert.deepEqual(phase5Policy.companion_distribution.allowed_availability, ["not-published"]);
 assert.deepEqual(phase5Policy.companion_distribution.required_targets, ["windows-x64", "linux-x64", "darwin-arm64"]);
 assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
+assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/smart-contracts-duskds/"));
+assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/duskvm/quickstart")));
+for (const sourceBackedFile of [
+  "data/dusk/capabilities.json",
+  "data/dusk/resources.json",
+  "data/dusk/source-freshness.json",
+  "data/dusk/troubleshooting.json",
+  "apps/studio/src/app/DuskDsDeployReadiness.tsx",
+  "apps/studio/src/app/routes/SystemRoutes.tsx"
+]) {
+  assert.doesNotMatch(read(sourceBackedFile), /\/developer\/duskvm\/quickstart/, `${sourceBackedFile} must not restore the retired DuskDS guide.`);
+}
+assert.match(read("data/dusk/resources.json"), /canonical starting point[\s\S]*Make-based build flow/);
+assert.match(read("data/dusk/troubleshooting.json"), /different project shape[\s\S]*not interchangeable/);
 const stagingSmoke = read("scripts/staging-smoke.mjs");
 assert.doesNotMatch(stagingSmoke, /eth_chainId|checkRpc\(/, "DuskEVM RPC must not be requested while its policy check is deferred.");
 assert.match(stagingSmoke, /checks\.rpc_chain_id = deferredRpcChainId\(options\.policy\)/);

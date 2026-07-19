@@ -101,10 +101,10 @@
     },
     {
         "id":  "duskds-smart-contracts",
-        "title":  "DuskVM contract quickstart",
+        "title":  "Smart Contracts on DuskDS",
         "category":  "Native",
-        "summary":  "Official Forge v0.3.0 path to create, test in DuskVM, build and verify paired WASM artifacts, then manually deploy and call the contract on Testnet with Rusk Wallet.",
-        "url":  "https://docs.dusk.network/developer/duskvm/quickstart/#5-deploy-on-testnet",
+        "summary":  "Official native Rust/WASM guide covering the canonical my-first-contract template, Forge's contract model and data drivers, local build and test commands, Rusk Wallet deployment, and verifiable builds.",
+        "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/",
         "maturity":  "official",
         "tags":  [
                      "duskds",
@@ -126,9 +126,9 @@
         "id":  "my-first-contract",
         "title":  "my-first-contract Template",
         "category":  "Native template",
-        "summary":  "Earlier DuskDS documentation used this repository as its starter template. Keep it as legacy source context; the current canonical route is the Forge v0.3.0 DuskVM quickstart.",
+        "summary":  "The current official DuskDS guide names this repository as the canonical starting point and uses its Make-based build flow. Studio's separately pinned and tested Dusk Forge CLI starter uses different commands and artifact paths.",
         "url":  "https://github.com/dusk-network/my-first-contract",
-        "maturity":  "official-source-legacy",
+        "maturity":  "official-source",
         "tags":  [
                      "duskds",
                      "native",
@@ -136,7 +136,7 @@
                      "my-first-contract",
                      "setup",
                      "build",
-                     "legacy"
+                     "canonical"
                  ]
     },
     {

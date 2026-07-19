@@ -17,15 +17,18 @@ function readCommit(root, environment) {
   const override = process.env.DUSK_STUDIO_RELEASE_COMMIT?.trim();
   if (override) {
     if (!/^[a-f0-9]{40}$/i.test(override)) throw new Error("Release commit override must be a full 40-character Git SHA.");
-    return override.toLowerCase();
+    if (environment !== "production") return override.toLowerCase();
   }
   try {
     const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().toLowerCase();
     const dirty = execFileSync("git", ["status", "--porcelain", "--untracked-files=normal", "--", "."], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim().length > 0;
     if (environment === "production" && dirty) throw new Error("Production release manifests require a clean committed product worktree.");
+    if (environment === "production" && override && override.toLowerCase() !== commit) {
+      throw new Error("Production release commit override must match the clean checked-out commit.");
+    }
     return dirty ? `${commit}-dirty` : commit;
   } catch (error) {
-    if (error instanceof Error && error.message.includes("clean committed")) throw error;
+    if (error instanceof Error && (error.message.includes("clean committed") || error.message.includes("must match"))) throw error;
     if (environment === "production") throw new Error("Production release manifests require a verifiable Git commit.");
     return "unknown";
   }
