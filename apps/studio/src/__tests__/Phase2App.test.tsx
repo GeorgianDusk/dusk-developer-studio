@@ -288,6 +288,8 @@ describe("Phase 2 evidence journeys", () => {
 
     fireEvent.change(screen.getByLabelText("Artifact source identity"), { target: { value: revision } });
     fireEvent.change(screen.getByLabelText("Deployed contract ID"), { target: { value: "b".repeat(64) } });
+    expect(screen.getByText(/cat metadata-response\.bin/)).toBeInTheDocument();
+    expect(screen.getByText(/Get-Content -Raw -LiteralPath '.\\metadata-response\.bin'/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "I observed a non-empty schema" })).toBeDisabled();
     expect(screen.getByLabelText("Schema response SHA-256")).toBeDisabled();
     expect(screen.queryByText(/\/on\/driver:<contract_id>\/get_schema/)).not.toBeInTheDocument();
@@ -296,6 +298,8 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.change(screen.getByLabelText("Metadata response SHA-256"), { target: { value: "d".repeat(64) } });
     fireEvent.click(screen.getByRole("button", { name: "Save availability confirmation" }));
     expect(await screen.findAllByText(/\/on\/driver:<contract_id>\/get_schema/)).toHaveLength(2);
+    expect(screen.getByText(/cat schema-response\.bin/)).toBeInTheDocument();
+    expect(screen.getByText(/Get-Content -Raw -LiteralPath '.\\schema-response\.bin'/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "I observed a non-empty schema" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "I observed a non-empty schema" }));
     fireEvent.change(screen.getByLabelText("Schema response SHA-256"), { target: { value: "c".repeat(64) } });

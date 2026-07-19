@@ -1136,10 +1136,12 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const metadataReadCommands = {
     posix: [
       `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/contract:<contract_id>/metadata" --output metadata-response.bin`,
+      "cat metadata-response.bin",
       "shasum -a 256 metadata-response.bin"
     ].join("\n"),
     windows: [
       `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/contract:<contract_id>/metadata' -OutFile 'metadata-response.bin'`,
+      "Get-Content -Raw -LiteralPath '.\\metadata-response.bin'",
       "(Get-FileHash -Algorithm SHA256 -LiteralPath '.\\metadata-response.bin').Hash"
     ].join("\r\n")
   };
@@ -1148,12 +1150,18 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
       `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema" --output schema-response.bin`,
       `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>" --data-raw '<json_input>' --output encode-response.bin`,
       `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>" --data-raw '0x<encoded_output>' --output decode-response.bin`,
+      "cat schema-response.bin",
+      "cat encode-response.bin",
+      "cat decode-response.bin",
       "shasum -a 256 schema-response.bin encode-response.bin decode-response.bin"
     ].join("\n"),
     windows: [
       `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema' -OutFile 'schema-response.bin'`,
       `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>' -Body '<json_input>' -OutFile 'encode-response.bin'`,
       `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>' -Body '0x<encoded_output>' -OutFile 'decode-response.bin'`,
+      "Get-Content -Raw -LiteralPath '.\\schema-response.bin'",
+      "Get-Content -Raw -LiteralPath '.\\encode-response.bin'",
+      "Get-Content -Raw -LiteralPath '.\\decode-response.bin'",
       "Get-FileHash -Algorithm SHA256 -LiteralPath '.\\schema-response.bin', '.\\encode-response.bin', '.\\decode-response.bin'"
     ].join("\r\n")
   };
@@ -1484,12 +1492,12 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         <p>Use the contract ID only after confirming deployment inclusion and finality outside Studio. First read <code>/on/contract:&lt;contract_id&gt;/metadata</code> and confirm <code>driver_available: true</code>. Deployment alone does not publish a data driver; if that value is false, stop here and use the recovery guidance instead of calling driver routes.</p>
         <button className="secondary-button" type="button" onClick={openDataDriverRecovery}>Open data-driver recovery</button>
         <CommandPair
-          firstTitle="Read + hash metadata on Linux / macOS"
+          firstTitle="Fetch, inspect + hash metadata on Linux / macOS"
           first={metadataReadCommands.posix}
-          secondTitle="Read + hash metadata on Windows"
+          secondTitle="Fetch, inspect + hash metadata on Windows"
           second={metadataReadCommands.windows}
         />
-        <p>Save the exact metadata response body and record its SHA-256. This keeps the receipt useful without storing raw responses or terminal output.</p>
+        <p>Inspect the saved response locally before hashing it. Confirm that metadata explicitly reports <code>driver_available: true</code>, then record only its SHA-256 in Studio. Never paste the response body or terminal output here.</p>
         <div className="evidence-form">
           <label>
             Deployed contract ID
@@ -1506,9 +1514,9 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
           <>
             <AsyncNotice state="success" message="This contract's saved metadata evidence reports driver_available: true. Driver read commands are now available." />
             <CommandPair
-              firstTitle="Read + hash driver responses on Linux / macOS"
+              firstTitle="Fetch, inspect + hash driver responses on Linux / macOS"
               first={driverReadCommands.posix}
-              secondTitle="Read + hash driver responses on Windows"
+              secondTitle="Fetch, inspect + hash driver responses on Windows"
               second={driverReadCommands.windows}
             />
           </>
