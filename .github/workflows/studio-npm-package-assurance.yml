@@ -1,0 +1,477 @@
+name: Studio npm package assurance
+
+"on":
+  workflow_call:
+    outputs:
+      integrity:
+        description: SHA-512 integrity of the exact three-platform tarball
+        value: ${{ jobs.aggregate-assurance.outputs.integrity }}
+      package_inventory_sha256:
+        description: SHA-256 of the exact three-platform package inventory
+        value: ${{ jobs.aggregate-assurance.outputs.package_inventory_sha256 }}
+      candidate_commit:
+        description: Exact commit exercised by all three platform lanes
+        value: ${{ jobs.aggregate-assurance.outputs.candidate_commit }}
+      candidate_artifact_name:
+        description: Run-scoped direct artifact containing the assured tarball
+        value: ${{ jobs.aggregate-assurance.outputs.candidate_artifact_name }}
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-npm-assurance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  NODE_VERSION: 24.18.0
+  PNPM_VERSION: 11.7.0
+  TARBALL: output/npm/dusk-developer-studio-1.0.0.tgz
+  PRIMARY_ENTRY: node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs
+  CANDIDATE_ARTIFACT: dusk-developer-studio-1.0.0.tgz
+
+jobs:
+  build-package:
+    name: Build the exact npm candidate once
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    outputs:
+      integrity: ${{ steps.candidate.outputs.integrity }}
+      package_inventory_sha256: ${{ steps.candidate.outputs.package_inventory_sha256 }}
+      candidate_commit: ${{ steps.candidate.outputs.candidate_commit }}
+      candidate_artifact_name: ${{ steps.candidate.outputs.candidate_artifact_name }}
+      browser_smoke: ${{ steps.browser.outputs.status }}
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+      - name: Bind assurance to the exact checkout
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --short)"
+      - name: Use the verified Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          package-manager-cache: "false"
+      - name: Enable repository-pinned pnpm
+        run: |
+          corepack enable
+          corepack install --global pnpm@$PNPM_VERSION
+      - name: Restore frozen dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build, test, and pack the exact npm candidate
+        run: |
+          pnpm build:npm
+          pnpm test:npm
+          node scripts/npm-package-pack.mjs
+          test -f "$TARBALL"
+      - name: Validate identity, allowlist, unpacked size, and candidate bindings
+        id: candidate
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from "node:child_process";
+          import { createHash } from "node:crypto";
+          import fs from "node:fs";
+          import os from "node:os";
+          import path from "node:path";
+          const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          const manifest = JSON.parse(fs.readFileSync("packages/cli/package.json", "utf8"));
+          const tarball = process.env.TARBALL;
+          if (policy.distribution !== "npm"
+              || manifest.name !== policy.package.name
+              || manifest.version !== policy.package.version
+              || manifest.engines?.node !== policy.package.node_engine
+              || manifest.private === true
+              || Object.keys(manifest.dependencies ?? {}).length
+              || ["preinstall", "install", "postinstall"].some((name) => manifest.scripts?.[name])) {
+            throw new Error("npm package identity, engine, dependency, or lifecycle-script policy failed.");
+          }
+          const archiveEntries = execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" })
+            .split(/\r?\n/u).filter(Boolean);
+          if (archiveEntries.some((entry) => {
+            const normalized = entry.replace(/\/$/u, "");
+            return !normalized.startsWith("package/")
+              || normalized.includes("\\")
+              || normalized.split("/").some((segment) => segment === "." || segment === "..");
+          })) {
+            throw new Error("npm package contains an unsafe archive path.");
+          }
+          const files = archiveEntries
+            .filter((entry) => !entry.endsWith("/"))
+            .map((entry) => entry.slice("package/".length))
+            .sort();
+          const inventory = policy.package_inventory;
+          if (files.length > inventory.maximum_files
+              || new Set(files).size !== files.length
+              || inventory.required_paths.some((required) => !files.includes(required))
+              || files.some((file) => {
+                const root = file.split("/", 1)[0];
+                return !inventory.allowed_root_files.includes(file) && !inventory.allowed_roots.includes(root);
+              })
+              || files.some((file) => /\.(?:exe|dll|dylib|so|node)$/iu.test(file))) {
+            throw new Error("npm package inventory is outside the exact reviewed allowlist.");
+          }
+          const extractionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dusk-studio-npm-"));
+          let unpackedBytes = 0;
+          const extractedFiles = [];
+          try {
+            execFileSync("tar", ["-xzf", tarball, "-C", extractionRoot]);
+            const walk = (directory, prefix = "") => {
+              for (const name of fs.readdirSync(directory).sort()) {
+                const absolute = path.join(directory, name);
+                const relative = prefix ? `${prefix}/${name}` : name;
+                const stats = fs.lstatSync(absolute);
+                if (stats.isSymbolicLink() || (!stats.isDirectory() && !stats.isFile())) {
+                  throw new Error(`npm package contains a non-regular entry: ${relative}`);
+                }
+                if (stats.isDirectory()) walk(absolute, relative);
+                else {
+                  unpackedBytes += stats.size;
+                  extractedFiles.push(relative);
+                }
+              }
+            };
+            walk(path.join(extractionRoot, "package"));
+          } finally {
+            fs.rmSync(extractionRoot, { recursive: true, force: true });
+          }
+          if (unpackedBytes <= 0
+              || unpackedBytes > inventory.maximum_unpacked_bytes
+              || JSON.stringify(extractedFiles.sort()) !== JSON.stringify(files)) {
+            throw new Error("npm package unpacked inventory or size is outside policy.");
+          }
+          const bytes = fs.readFileSync(tarball);
+          const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+          const inventorySha256 = createHash("sha256").update(`${files.join("\n")}\n`, "utf8").digest("hex");
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, [
+            `integrity=${integrity}`,
+            `package_inventory_sha256=${inventorySha256}`,
+            `candidate_commit=${process.env.GITHUB_SHA}`,
+            `candidate_artifact_name=${process.env.CANDIDATE_ARTIFACT}`,
+            ""
+          ].join("\n"));
+          NODE
+      - name: Confirm hosted Chrome is available
+        run: |
+          command -v google-chrome-stable
+          google-chrome-stable --version
+      - name: Render, pair, and verify both modes from the exact tarball
+        id: browser
+        run: |
+          node scripts/npm-package-browser-smoke.mjs \
+            --tarball="$TARBALL" \
+            --receipt=output/npm/npm-browser-ubuntu.json
+          printf '%s\n' 'status=passed' >> "$GITHUB_OUTPUT"
+      - name: Upload the bounded browser assurance receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-browser-ubuntu
+          path: output/npm/npm-browser-ubuntu.json
+          archive: false
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload the direct assured npm candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.CANDIDATE_ARTIFACT }}
+          path: ${{ env.TARBALL }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+  package-assurance:
+    name: npm package assurance (${{ matrix.runner }})
+    needs: build-package
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      EXPECTED_NPM_INTEGRITY: ${{ needs.build-package.outputs.integrity }}
+      EXPECTED_PACKAGE_INVENTORY_SHA256: ${{ needs.build-package.outputs.package_inventory_sha256 }}
+      EXPECTED_CANDIDATE_COMMIT: ${{ needs.build-package.outputs.candidate_commit }}
+    steps:
+      - name: Check out the exact candidate policy
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+      - name: Use the verified Node.js line
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          package-manager-cache: "false"
+      - name: Download the exact once-built npm candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.CANDIDATE_ARTIFACT }}
+          path: output/npm
+      - name: Verify the downloaded candidate bytes and inventory
+        shell: bash
+        run: |
+          test "$EXPECTED_CANDIDATE_COMMIT" = "$GITHUB_SHA"
+          node --input-type=module <<'NODE'
+          import { execFileSync } from "node:child_process";
+          import { createHash } from "node:crypto";
+          import fs from "node:fs";
+          const bytes = fs.readFileSync(process.env.TARBALL);
+          const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+          const files = execFileSync("tar", ["-tzf", process.env.TARBALL], { encoding: "utf8" })
+            .split(/\r?\n/u).filter((entry) => entry && !entry.endsWith("/"))
+            .map((entry) => entry.replace(/^package\//u, "")).sort();
+          const inventorySha256 = createHash("sha256").update(`${files.join("\n")}\n`, "utf8").digest("hex");
+          if (integrity !== process.env.EXPECTED_NPM_INTEGRITY
+              || inventorySha256 !== process.env.EXPECTED_PACKAGE_INVENTORY_SHA256) {
+            throw new Error("Downloaded npm candidate differs from the once-built assured bytes.");
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, `NPM_INTEGRITY=${integrity}\nPACKAGE_INVENTORY_SHA256=${inventorySha256}\n`);
+          NODE
+      - name: Install and exercise npm package on POSIX
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          INSTALL_ROOT="$RUNNER_TEMP/npm-install"
+          npm install --ignore-scripts --prefix "$INSTALL_ROOT" "$TARBALL"
+          PRIMARY="$INSTALL_ROOT/$PRIMARY_ENTRY"
+          NODE_BIN="$(command -v node)"
+          test -f "$PRIMARY"
+          test -x "$NODE_BIN"
+          "$NODE_BIN" "$PRIMARY" --lifecycle-self-test --no-open
+          "$NODE_BIN" "$PRIMARY" local-actions --lifecycle-self-test --no-open
+          set +e
+          ELEVATED_OUTPUT="$(sudo -n "$NODE_BIN" "$PRIMARY" --lifecycle-self-test --no-open 2>&1)"
+          ELEVATED_STATUS=$?
+          set -e
+          test "$ELEVATED_STATUS" -ne 0
+          printf '%s' "$ELEVATED_OUTPUT" | grep -F "Dusk Developer Studio refuses elevated or root execution."
+          printf '%s\n' \
+            'NPM_SAFE_SMOKE=passed' \
+            'NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed' \
+            'NPM_ELEVATED_REFUSAL=passed' >> "$GITHUB_ENV"
+      - name: Install and exercise npm package on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          if (-not $isAdmin) { throw 'Windows assurance runner must provide the separate elevated-refusal lane.' }
+          $publicRoot = Join-Path $env:PUBLIC "dusk-studio-npm-$env:GITHUB_RUN_ID"
+          $dataRoot = Join-Path $env:PUBLIC "dusk-studio-npm-data-$env:GITHUB_RUN_ID"
+          $userName = "dsn$env:GITHUB_RUN_ID"
+          $passwordPlain = "$([Guid]::NewGuid().ToString('N'))Aa1!"
+          $password = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
+          $credential = [PSCredential]::new("$env:COMPUTERNAME\$userName", $password)
+          $userCreated = $false
+          try {
+            if ((Test-Path -LiteralPath $publicRoot) -or (Test-Path -LiteralPath $dataRoot)) {
+              throw 'Windows npm assurance roots must not already exist.'
+            }
+            New-Item -ItemType Directory -Path $publicRoot | Out-Null
+            $profileRoot = Join-Path $dataRoot 'Profile'
+            $localAppData = Join-Path $profileRoot 'AppData\Local'
+            $roamingAppData = Join-Path $profileRoot 'AppData\Roaming'
+            $tempRoot = Join-Path $dataRoot 'Temp'
+            New-Item -ItemType Directory -Path $localAppData, $roamingAppData, $tempRoot -Force | Out-Null
+            $tarball = (Resolve-Path -LiteralPath $env:TARBALL).Path
+            npm install --ignore-scripts --prefix $publicRoot $tarball
+            if ($LASTEXITCODE -ne 0) { throw 'npm package installation failed.' }
+            $publicNode = Join-Path $publicRoot 'node.exe'
+            Copy-Item -LiteralPath (Get-Command node.exe).Source -Destination $publicNode
+            $publicPrimary = Join-Path $publicRoot $env:PRIMARY_ENTRY
+            if (-not (Test-Path -LiteralPath $publicPrimary -PathType Leaf)) { throw 'Installed primary entrypoint is missing.' }
+            New-LocalUser -Name $userName -Password $password -AccountNeverExpires -PasswordNeverExpires | Out-Null
+            $userCreated = $true
+            $userSid = (Get-LocalUser -Name $userName).SID.Value
+            & "$env:SystemRoot\System32\icacls.exe" $publicRoot '/inheritance:r' '/grant:r' `
+              '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "*${userSid}:(OI)(CI)RX" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not bound the public npm assurance root ACL.' }
+            & "$env:SystemRoot\System32\icacls.exe" $dataRoot '/inheritance:r' '/grant:r' `
+              '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "*${userSid}:(OI)(CI)M" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not bound the npm assurance data root ACL.' }
+            $childEnvironment = @{
+              APPDATA = $roamingAppData
+              HOME = $profileRoot
+              LOCALAPPDATA = $localAppData
+              TEMP = $tempRoot
+              TMP = $tempRoot
+              USERPROFILE = $profileRoot
+            }
+            function Invoke-StandardUserSmoke {
+              param([string[]] $Arguments, [string] $Label)
+              $stdout = Join-Path $env:RUNNER_TEMP "$Label.stdout.txt"
+              $stderr = Join-Path $env:RUNNER_TEMP "$Label.stderr.txt"
+              $process = Start-Process -FilePath $publicNode `
+                -ArgumentList (@($publicPrimary) + $Arguments) `
+                -WorkingDirectory $publicRoot `
+                -Credential $credential `
+                -Environment $childEnvironment `
+                -LoadUserProfile `
+                -WindowStyle Hidden `
+                -RedirectStandardOutput $stdout `
+                -RedirectStandardError $stderr `
+                -Wait `
+                -PassThru
+              if ($process.ExitCode -ne 0) {
+                $detail = @(
+                  Get-Content -Raw -ErrorAction SilentlyContinue $stderr
+                  Get-Content -Raw -ErrorAction SilentlyContinue $stdout
+                ) -join "`n"
+                throw "$Label failed as the temporary standard user: $($detail.Trim())"
+              }
+            }
+            Invoke-StandardUserSmoke -Arguments @('--lifecycle-self-test', '--no-open') -Label 'safe-smoke'
+            Invoke-StandardUserSmoke -Arguments @('local-actions', '--lifecycle-self-test', '--no-open') -Label 'local-actions-capability-contract-smoke'
+            $elevatedOutput = & $publicNode $publicPrimary --lifecycle-self-test --no-open 2>&1
+            $elevatedStatus = $LASTEXITCODE
+            if ($elevatedStatus -eq 0 -or -not (($elevatedOutput | Out-String).Contains('Dusk Developer Studio refuses elevated or root execution.'))) {
+              throw 'Elevated Windows launch was not refused.'
+            }
+            @(
+              'NPM_SAFE_SMOKE=passed'
+              'NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed'
+              'NPM_ELEVATED_REFUSAL=passed'
+            ) | Add-Content -LiteralPath $env:GITHUB_ENV
+          } finally {
+            $passwordPlain = $null
+            if ($userCreated) { Remove-LocalUser -Name $userName -ErrorAction SilentlyContinue }
+            if (Test-Path -LiteralPath $publicRoot) { Remove-Item -LiteralPath $publicRoot -Recurse -Force }
+            if (Test-Path -LiteralPath $dataRoot) { Remove-Item -LiteralPath $dataRoot -Recurse -Force }
+          }
+          # GitHub's pwsh wrapper exits with the last native process status.
+          # The non-zero status above is expected and has already been verified.
+          $global:LASTEXITCODE = 0
+      - name: Record the platform package result
+        shell: bash
+        env:
+          RUNNER_LABEL: ${{ matrix.runner }}
+        run: |
+          mkdir -p output/npm/platform
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const runner = process.env.RUNNER_LABEL;
+          if (process.env.NPM_SAFE_SMOKE !== "passed"
+              || process.env.NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE !== "passed"
+              || process.env.NPM_ELEVATED_REFUSAL !== "passed") {
+            throw new Error("Platform receipt cannot be written before all lifecycle smokes execute successfully.");
+          }
+          const receipt = {
+            schema_version: 1,
+            status: "passed",
+            runner,
+            node_version: process.env.NODE_VERSION,
+            safe_smoke: "passed",
+            local_actions_capability_contract_smoke: "passed",
+            elevated_refusal: "passed",
+            candidate_commit: process.env.GITHUB_SHA,
+            integrity: process.env.NPM_INTEGRITY,
+            package_inventory_sha256: process.env.PACKAGE_INVENTORY_SHA256,
+            observed_at: new Date().toISOString()
+          };
+          fs.writeFileSync(`output/npm/platform/npm-platform-${runner}.json`, `${JSON.stringify(receipt, null, 2)}\n`);
+          NODE
+      - name: Upload the bounded platform receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-platform-${{ matrix.runner }}
+          path: output/npm/platform/npm-platform-${{ matrix.runner }}.json
+          archive: false
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate-assurance:
+    name: Aggregate npm package assurance
+    needs: [build-package, package-assurance]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      EXPECTED_NPM_INTEGRITY: ${{ needs.build-package.outputs.integrity }}
+      EXPECTED_PACKAGE_INVENTORY_SHA256: ${{ needs.build-package.outputs.package_inventory_sha256 }}
+      EXPECTED_CANDIDATE_COMMIT: ${{ needs.build-package.outputs.candidate_commit }}
+      EXPECTED_CANDIDATE_ARTIFACT: ${{ needs.build-package.outputs.candidate_artifact_name }}
+      EXPECTED_BROWSER_SMOKE: ${{ needs.build-package.outputs.browser_smoke }}
+    outputs:
+      integrity: ${{ steps.aggregate.outputs.integrity }}
+      package_inventory_sha256: ${{ steps.aggregate.outputs.package_inventory_sha256 }}
+      candidate_commit: ${{ steps.aggregate.outputs.candidate_commit }}
+      candidate_artifact_name: ${{ steps.aggregate.outputs.candidate_artifact_name }}
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+          persist-credentials: "false"
+      - name: Download exact platform receipts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: npm-platform-*
+          path: output/npm/platform
+          merge-multiple: true
+      - name: Aggregate the exact candidate assurance
+        id: aggregate
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          if (process.env.EXPECTED_BROWSER_SMOKE !== "passed") {
+            throw new Error("Exact-tarball browser boot and pairing smoke did not pass.");
+          }
+          const records = Object.fromEntries(policy.assurance.required_runners.map((runner) => {
+            const file = `output/npm/platform/npm-platform-${runner}.json`;
+            return [runner, JSON.parse(fs.readFileSync(file, "utf8"))];
+          }));
+          for (const runner of policy.assurance.required_runners) {
+            const record = records[runner];
+            if (record.status !== "passed"
+                || record.runner !== runner
+                || record.node_version !== process.env.NODE_VERSION
+                || record.safe_smoke !== "passed"
+                || record.local_actions_capability_contract_smoke !== "passed"
+                || record.elevated_refusal !== "passed"
+                || record.candidate_commit !== process.env.EXPECTED_CANDIDATE_COMMIT
+                || record.integrity !== process.env.EXPECTED_NPM_INTEGRITY
+                || record.package_inventory_sha256 !== process.env.EXPECTED_PACKAGE_INVENTORY_SHA256) {
+              throw new Error(`npm platform receipt is not bound to the exact candidate: ${runner}.`);
+            }
+          }
+          const receipt = {
+            schema_version: 1,
+            status: "passed",
+            package_name: policy.package.name,
+            package_version: policy.package.version,
+            node_engine: policy.package.node_engine,
+            candidate_commit: process.env.EXPECTED_CANDIDATE_COMMIT,
+            workflow_path: policy.assurance.workflow_path,
+            observed_at: new Date().toISOString(),
+            integrity: process.env.EXPECTED_NPM_INTEGRITY,
+            package_inventory_sha256: process.env.EXPECTED_PACKAGE_INVENTORY_SHA256,
+            browser_boot_and_pairing_smoke: "passed",
+            platform_smoke: records
+          };
+          fs.mkdirSync("output/npm", { recursive: true });
+          fs.writeFileSync(`output/npm/studio-npm-assurance-receipt-${process.env.GITHUB_RUN_ID}.json`, `${JSON.stringify(receipt, null, 2)}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, [
+            `integrity=${receipt.integrity}`,
+            `package_inventory_sha256=${receipt.package_inventory_sha256}`,
+            `candidate_commit=${receipt.candidate_commit}`,
+            `candidate_artifact_name=${process.env.EXPECTED_CANDIDATE_ARTIFACT}`,
+            ""
+          ].join("\n"));
+          NODE
+      - name: Upload the direct npm assurance receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-npm-assurance-receipt-${{ github.run_id }}.json
+          path: output/npm/studio-npm-assurance-receipt-${{ github.run_id }}.json
+          archive: false
+          if-no-files-found: error
+          retention-days: 90

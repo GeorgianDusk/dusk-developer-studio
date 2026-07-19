@@ -3,7 +3,7 @@ declare const __DUSK_STUDIO_COMMIT__: string;
 declare const __DUSK_STUDIO_ARTIFACT_CHANNEL__: string;
 
 export const STUDIO_PRODUCT = "Dusk Developer Studio" as const;
-export type StudioArtifactChannel = "hosted" | "portable" | "source-dev";
+export type StudioArtifactChannel = "hosted" | "npm" | "source-dev";
 
 export interface StudioRelease {
   product: typeof STUDIO_PRODUCT;
@@ -13,7 +13,7 @@ export interface StudioRelease {
 }
 
 function parseArtifactChannel(value: string | undefined): StudioArtifactChannel {
-  return value === "portable" || value === "source-dev" ? value : "hosted";
+  return value === "npm" || value === "source-dev" ? value : "hosted";
 }
 
 export const STUDIO_RELEASE = Object.freeze({

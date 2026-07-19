@@ -29,7 +29,7 @@
     "maturity": "mainnet-reference",
     "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
     "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
-    "warning": "Reference metadata only. Public preview does not support mainnet deployment UX."
+    "warning": "Reference metadata only. Studio does not support mainnet deployment."
   },
   {
     "id": "dusk-evm-devnet",

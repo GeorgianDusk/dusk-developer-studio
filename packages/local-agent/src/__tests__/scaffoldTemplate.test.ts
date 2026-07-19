@@ -12,10 +12,13 @@ describe("Foundry template scaffold", () => {
     const workspace = await makeTempRoot("dusk-foundry-workspace-"); const templateRoot = await makeTempRoot("dusk-foundry-template-");
     await fs.mkdir(path.join(templateRoot, "src"), { recursive: true }); await fs.mkdir(path.join(templateRoot, "test"), { recursive: true });
     await fs.writeFile(path.join(templateRoot, "foundry.toml"), "[profile.default]\n");
+    await fs.writeFile(path.join(templateRoot, ".gitignore.template"), "broadcast/\n");
     await fs.writeFile(path.join(templateRoot, "src", "Counter.sol"), "contract Counter {}\n");
     await fs.writeFile(path.join(templateRoot, "test", "Counter.t.sol"), "contract CounterTest {}\n");
-    const result = await scaffoldFoundryTemplate({ cwd: workspace, projectName: "portable-counter" }, { templateRoot });
-    expect(result).toMatchObject({ ok: true, structureVerified: true, files: ["foundry.toml", "src/Counter.sol", "test/Counter.t.sol"] });
-    expect(result.path).toBe(path.resolve(workspace, ".generated", "portable-counter"));
+    const result = await scaffoldFoundryTemplate({ cwd: workspace, projectName: "counter-project" }, { templateRoot });
+    expect(result).toMatchObject({ ok: true, structureVerified: true, files: [".gitignore", "foundry.toml", "src/Counter.sol", "test/Counter.t.sol"] });
+    expect(result.path).toBe(path.resolve(workspace, ".generated", "counter-project"));
+    await expect(fs.readFile(path.join(result.path, ".gitignore"), "utf8")).resolves.toBe("broadcast/\n");
+    await expect(fs.access(path.join(result.path, ".gitignore.template"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

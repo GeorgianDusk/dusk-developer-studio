@@ -1,0 +1,44 @@
+{
+  "name": "dusk-developer-studio",
+  "version": "1.0.0",
+  "description": "Local developer Studio for DuskEVM reference and DuskDS workflows.",
+  "author": "GeorgianDusk",
+  "keywords": [
+    "dusk",
+    "duskevm",
+    "duskds",
+    "developer-tools",
+    "blockchain"
+  ],
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GeorgianDusk/dusk-developer-studio.git"
+  },
+  "homepage": "https://github.com/GeorgianDusk/dusk-developer-studio#readme",
+  "bugs": {
+    "url": "https://github.com/GeorgianDusk/dusk-developer-studio/issues"
+  },
+  "engines": {
+    "node": ">=24.18.0 <25"
+  },
+  "bin": {
+    "dusk-developer-studio": "bin/dusk-developer-studio.mjs"
+  },
+  "files": [
+    "app",
+    "bin",
+    "studio",
+    "templates",
+    "package-manifest.json",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "THIRD-PARTY-LICENSES.txt"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

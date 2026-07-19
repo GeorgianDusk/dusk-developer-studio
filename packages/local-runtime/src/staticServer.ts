@@ -116,24 +116,24 @@ class LocalRequestError extends Error {
 
 async function readBootstrapBody(request: http.IncomingMessage): Promise<void> {
   const declaredLength = Number(request.headers["content-length"] ?? 0);
-  if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_BOOTSTRAP_REQUEST_BYTES) throw new LocalRequestError(413, "body_too_large", "Portable bootstrap request exceeded its bound.");
+  if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_BOOTSTRAP_REQUEST_BYTES) throw new LocalRequestError(413, "body_too_large", "Local bootstrap request exceeded its bound.");
   const chunks: Buffer[] = [];
   let bytes = 0;
   for await (const chunk of request) {
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     bytes += buffer.byteLength;
-    if (bytes > MAX_BOOTSTRAP_REQUEST_BYTES) throw new LocalRequestError(413, "body_too_large", "Portable bootstrap request exceeded its bound.");
+    if (bytes > MAX_BOOTSTRAP_REQUEST_BYTES) throw new LocalRequestError(413, "body_too_large", "Local bootstrap request exceeded its bound.");
     chunks.push(buffer);
   }
   let parsed: unknown;
-  try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new LocalRequestError(400, "invalid_json", "Portable bootstrap request was not valid JSON."); }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length !== 0) throw new LocalRequestError(400, "invalid_request", "Portable bootstrap request must be an empty JSON object.");
+  try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new LocalRequestError(400, "invalid_json", "Local bootstrap request was not valid JSON."); }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length !== 0) throw new LocalRequestError(400, "invalid_request", "Local bootstrap request must be an empty JSON object.");
 }
 
 export async function createLocalStudioServer(options: LocalStaticServerOptions): Promise<http.Server> {
   const realRoot = await fs.realpath(path.resolve(options.studioRoot));
   const indexPath = await safeStaticPath(realRoot, "/");
-  if (!indexPath) throw new Error("Portable Studio index is missing or unsafe.");
+  if (!indexPath) throw new Error("Local Studio index is missing or unsafe.");
   const now = options.now ?? Date.now;
   const bootstrapExpiresAt = now() + (options.bootstrapTtlMs ?? 5 * 60 * 1000);
   let bootstrapState: "available" | "in-flight" | "burned" = "available";

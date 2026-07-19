@@ -1,26 +1,31 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { parseWindowsNetstatListeningEndpoints, resolvePortableRuntimeCliMode } from "../main";
+import { parseWindowsNetstatListeningEndpoints, resolveLocalRuntimeCliMode } from "../main";
 
-describe("portable runtime CLI mode", () => {
-  it("defaults to safe interactive mode", () => {
-    expect(resolvePortableRuntimeCliMode([])).toEqual({ capabilitiesEnabled: false, openBrowser: true, signedRcSelfTest: false });
-  });
-
-  it("forces a browser-free safe mode for signed-RC verification", () => {
-    expect(resolvePortableRuntimeCliMode(["--signed-rc-self-test"])).toEqual({ capabilitiesEnabled: false, openBrowser: false, signedRcSelfTest: true });
-    expect(resolvePortableRuntimeCliMode(["--signed-rc-self-test", "--no-open"])).toEqual({ capabilitiesEnabled: false, openBrowser: false, signedRcSelfTest: true });
-  });
-
-  it("rejects unknown and repeated arguments while allowing the mode-bound actions launcher to self-test", () => {
-    expect(() => resolvePortableRuntimeCliMode(["--unknown"])).toThrow(/Unsupported argument/);
-    expect(() => resolvePortableRuntimeCliMode(["--no-open", "--no-open"])).toThrow(/must not be repeated/);
-    expect(resolvePortableRuntimeCliMode(["--signed-rc-self-test", "--enable-local-actions"])).toEqual({
-      capabilitiesEnabled: true,
-      openBrowser: false,
-      signedRcSelfTest: true
+describe("local npm runtime CLI mode", () => {
+  it("defaults to interactive mode", () => {
+    expect(resolveLocalRuntimeCliMode([])).toEqual({
+      openBrowser: true,
+      lifecycleSelfTest: false
     });
+  });
+
+  it("forces a browser-free mode for lifecycle verification", () => {
+    expect(resolveLocalRuntimeCliMode(["--lifecycle-self-test"])).toEqual({
+      openBrowser: false,
+      lifecycleSelfTest: true
+    });
+    expect(resolveLocalRuntimeCliMode(["--lifecycle-self-test", "--no-open"])).toEqual({
+      openBrowser: false,
+      lifecycleSelfTest: true
+    });
+  });
+
+  it("rejects unknown, repeated, and mode-escalation arguments", () => {
+    expect(() => resolveLocalRuntimeCliMode(["--unknown"])).toThrow(/Unsupported argument/);
+    expect(() => resolveLocalRuntimeCliMode(["--no-open", "--no-open"])).toThrow(/must not be repeated/);
+    expect(() => resolveLocalRuntimeCliMode(["--enable-local-actions"])).toThrow(/Unsupported argument/);
   });
 
   it("parses locale-independent Windows netstat listener rows for the exact owner", () => {

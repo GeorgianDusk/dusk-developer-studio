@@ -1,86 +1,61 @@
-# Companion support and incident route
+# Local Studio support and incident route
 
-Date: 2026-07-18
+## Support routes
 
-Status: procedure ready; public companion distribution disabled
+Use the [GitHub bug-report form](https://github.com/GeorgianDusk/dusk-developer-studio/issues/new?template=bug_report.yml) for public, non-sensitive defects in:
 
-Owner: George (`@GeorgianDusk`)
+- the Hosted guide;
+- the `dusk-developer-studio` npm package;
+- Safe or Local Actions;
+- startup, pairing, parity, shutdown, or project handling;
+- documentation or local development; or
+- an allowlisted developer-tool check.
 
-## Supported route
+Use [GitHub private vulnerability reporting](https://github.com/GeorgianDusk/dusk-developer-studio/security/advisories/new) for exploitable behavior, suspected secret exposure, package-integrity or provenance failures, unexpected non-loopback binding, authentication bypass, arbitrary execution, or a credible supply-chain compromise.
 
-The canonical public support route is the repository's
-[bug-report form](https://github.com/GeorgianDusk/dusk-developer-studio/issues/new?template=bug_report.yml).
-It covers public, non-sensitive defects in the hosted Studio, source checkout,
-documentation, build pipeline, and local companion.
+The initial public-triage target is seven calendar days. It is a target for this personal project, not a service-level guarantee.
 
-The canonical confidential route is
-[GitHub private vulnerability reporting](https://github.com/GeorgianDusk/dusk-developer-studio/security/advisories/new).
-Use it for exploitable behavior, suspected secret exposure, signature or
-package-integrity failures, unexpected non-loopback binding, or a credible
-supply-chain compromise.
+## Before reporting
 
-The initial public-triage target is seven calendar days (168 hours). It is a
-target for this personal project, not a service-level guarantee. Security
-reports follow the acknowledgement and disclosure boundary in
-[SECURITY.md](../../SECURITY.md).
+For ordinary startup, session, tool, or shutdown problems, follow [Local Studio recovery](local-companion-recovery.md).
 
-## Current availability
+For suspicious package identity or behavior, stop the package and follow [Package quarantine and withdrawal](companion-quarantine-and-withdrawal.md).
 
-There is no supported public companion executable. Source and documentation
-support can operate now, but no issue, comment, direct message, mirror, draft
-release, or Actions artifact is an approved binary channel.
+## Triage information
 
-A request about a purported public binary is therefore treated as a possible
-distribution incident. Ask for the URL and non-sensitive hashes, not the file
-itself, and follow the
-[quarantine and withdrawal procedure](companion-quarantine-and-withdrawal.md).
+Record:
 
-## Triage
+- hosted URL, npm package version, or full commit;
+- operating system and architecture;
+- Node.js and browser version;
+- Safe or Local Actions mode;
+- expected and actual behavior;
+- sanitized reproduction steps;
+- whether ports 5173 and 8788 opened and closed as expected; and
+- package integrity or provenance metadata when relevant.
 
-1. Confirm whether the report is public-safe. Move exploitable or
-   secret-bearing material to private vulnerability reporting without quoting
-   it publicly.
-2. Record the affected full commit or version, platform and architecture,
-   Studio mode, expected behavior, sanitized symptom, and reproduction status.
-3. Classify the affected boundary:
-   - hosted static Studio;
-   - source checkout or build;
-   - companion bootstrap, session, or parity;
-   - Safe or Local Actions capability;
-   - payload, package, signature, or provenance;
-   - loopback listener, child process, filesystem, or cleanup; or
-   - third-party developer tool.
-4. Assign severity:
-   - **Critical:** credible secret exposure, remote companion exposure,
-     arbitrary execution, or supply-chain compromise;
-   - **High:** integrity, signature, authentication, sandbox, or containment
-     failure without confirmed exploitation;
-   - **Medium:** reproducible unsafe failure or major workflow breakage; or
-   - **Low:** bounded defect, confusing recovery, compatibility, or
-     documentation issue.
-5. For Critical or High findings, stop any candidate work and invoke the
-   [quarantine and withdrawal procedure](companion-quarantine-and-withdrawal.md).
-   Publication remains disabled until the finding is resolved and independently
-   reviewed.
+Do not include wallet secrets, credentials, cookies, pairing values, environment dumps, absolute paths, funded-account information, or suspect package files.
 
-## Safe evidence
+## Severity
 
-Support records may contain:
+- **Critical:** credible secret exposure, public companion exposure, arbitrary execution, authentication bypass with capabilities, or supply-chain compromise.
+- **High:** integrity, provenance, origin, Host, filesystem, process, or containment failure without confirmed exploitation.
+- **Medium:** reproducible unsafe failure or a major supported-workflow break.
+- **Low:** bounded defect, compatibility issue, confusing recovery, or documentation problem.
 
-- repository, issue, workflow-run, or release URLs under the canonical
-  repository;
-- full Git commit, release tag, platform target, and mode;
-- SHA-256 digests, byte sizes, manifest identifiers, and bounded timestamps;
-- sanitized tool versions and reproduction steps; and
-- listener addresses limited to the documented Studio loopback ports.
+Critical and High findings require immediate package quarantine and suspension of affected-version use until the issue is resolved and reviewed.
 
-Support records must not contain wallet secrets, credentials, pairing tokens,
-cookies, environment dumps, private keys, signing material, personal paths,
-funded-account data, or an uploaded suspect executable.
+## Boundary classification
 
-## Route readiness
+Classify the report as one of:
 
-The repository paths and redaction contract are statically validated. A real
-response-time rehearsal and an end-to-end private incident exercise have not
-been recorded for a distributable companion because no signed distributable
-exists. This procedure alone does not satisfy public-release support evidence.
+- Hosted guide or static deployment;
+- npm package identity or contents;
+- local startup, browser bootstrap, session, or parity;
+- Safe or Local Actions capability;
+- loopback listener or request security;
+- child process, environment, filesystem, or cleanup;
+- user project preservation; or
+- third-party developer tool behavior.
+
+This distinction matters because a third-party tool runs with the developer's authority, while the Studio controls only its own allowlisted invocation, tracked process, project scope, and loopback services.

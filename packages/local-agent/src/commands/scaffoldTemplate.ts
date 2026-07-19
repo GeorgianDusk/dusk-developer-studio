@@ -18,6 +18,12 @@ export async function scaffoldFoundryTemplate(
   const plan = buildScaffoldPlan(options.cwd, options.projectName, options.parentDir);
   const target = await runScaffoldTransaction(plan, async ({ stagedTarget }) => {
     await fs.cp(templateRoot, stagedTarget, { recursive: true, force: false, errorOnExist: true });
+    const npmSafeGitignore = path.join(stagedTarget, ".gitignore.template");
+    try {
+      await fs.rename(npmSafeGitignore, path.join(stagedTarget, ".gitignore"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }, runtime);
   const evidence = await collectProjectStructureEvidence(target, ["foundry.toml", "src/Counter.sol", "test/Counter.t.sol"])
     .catch(() => ({ files: [] as string[], structureVerified: false }));

@@ -1,8 +1,20 @@
-# Self-hosting the static Studio
+# Self-host the Hosted guide
 
-The hosted Studio is a static, read-only web application. It must not proxy, start, or expose the local companion.
+The Hosted guide is a static web application. It provides path selection, educational journeys, public read-only checks, resources, and troubleshooting. It must not proxy, start, or connect to a local companion.
+
+Developers who need machine-specific checks or starter creation run the local Studio separately:
+
+```bash
+npx dusk-developer-studio
+npx dusk-developer-studio local-actions
+```
 
 ## Build
+
+Requirements:
+
+- Node.js `>=24.18.0 <25`
+- pnpm `11.7.0`
 
 ```bash
 corepack enable
@@ -13,24 +25,34 @@ pnpm verify:local
 pnpm e2e:public
 ```
 
-The deployable static artifact is `apps/studio/dist`. Deploy only from a clean reviewed commit and preserve `release-manifest.json` plus `assurance-receipt.json` with the exact artifact.
+The deployable static artifact is `apps/studio/dist`.
+
+Deploy from a clean reviewed commit and preserve `release-manifest.json` and `assurance-receipt.json` with the exact artifact.
 
 ## Caddy example
 
-`deploy/caddy/studio.caddy` is the configuration used by the current GeorgianDusk production deployment at `studio.134-122-59-217.nip.io`, with the previous `sslip.io` origin temporarily serving the same release for compatibility. The compatibility origin is not an approved production-assurance target, and browser-local progress does not transfer between origins. Replace its hostnames and document root for another environment. Keep the content-security policy, cache boundaries, `/healthz`, and SPA fallback unless a reviewed change requires otherwise.
+`deploy/caddy/studio.caddy` is the configuration used by the GeorgianDusk deployment at `studio.134-122-59-217.nip.io`.
 
-The fragment deliberately contains no `reverse_proxy`, loopback address, authentication handler, or companion port. CI validates that boundary and parses the configuration with the pinned Caddy version.
+For another environment, replace the hostname and document root. Preserve:
+
+- the Content Security Policy;
+- `/healthz`;
+- SPA fallback;
+- no-cache HTML and receipt behavior;
+- immutable hashed assets;
+- private log handling; and
+- the prohibition on public ports 5173 and 8788.
+
+The fragment deliberately contains no `reverse_proxy`, loopback address, authentication handler, or companion port.
 
 ## Deployment boundary
 
-- Label every deployment with its actual maintainer and source repository.
+- Label the deployment with its actual maintainer and source repository.
 - Link to official Dusk documentation for canonical protocol instructions.
-- Keep mainnet reference-only unless a separately reviewed product decision changes that status.
-- Do not copy development `.env` files, local receipts, diagnostics, test artifacts, or signing material into the web root.
-- Verify TLS, headers, cache behavior, key routes, source links, RPC degradation behavior, and that ports 5173 and 8788 are not publicly reachable.
+- Keep DuskEVM labelled as pre-launch until its real Testnet is verified.
+- Keep mainnet reference-only unless a separately reviewed product change says otherwise.
+- Do not copy `.env` files, local receipts, diagnostics, package caches, test artifacts, or credentials into the web root.
+- Verify TLS, redirects, security headers, cache behavior, key routes, source links, controlled RPC degradation, and closed public ports.
+- Link the deployed artifact to its exact source commit.
 
-A self-hosted copy should link back to its exact source commit and maintainer.
-
-The GeorgianDusk production deployment's scheduled checks, assigned issue-alert channel,
-rehearsal input, and response expectations are documented in
-[public deployment monitoring](../operations/public-monitoring.md).
+See [public deployment monitoring](../operations/public-monitoring.md) for the checks used by the GeorgianDusk deployment.

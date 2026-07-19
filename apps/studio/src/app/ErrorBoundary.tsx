@@ -30,7 +30,7 @@ export class StudioErrorBoundary extends Component<Props, State> {
       <div className="button-row">
         <button className="primary-button" type="button" onClick={this.recover}>Return to paths</button>
         <button className="secondary-button" type="button" onClick={() => window.location.reload()}>Reload Studio</button>
-        <ExternalLink href="https://discord.com/invite/dusk-official">Report the issue</ExternalLink>
+        <ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio/issues/new?template=bug_report.yml">Report the issue</ExternalLink>
       </div>
       <small>{STUDIO_RELEASE_LABEL}</small>
     </main>;

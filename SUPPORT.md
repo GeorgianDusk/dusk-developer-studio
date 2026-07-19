@@ -1,49 +1,44 @@
 # Support
 
-## Current support boundary
+## What is supported
 
-The hosted Dusk Developer Studio and source repository are available for
-developer guidance and source-checkout development.
+Support covers:
 
-No public local-companion binary is currently distributed or supported. Do not
-download a companion executable from an issue, comment, direct message,
-third-party mirror, draft release, or Actions artifact.
+- the [Hosted guide](https://studio.134-122-59-217.nip.io);
+- the `dusk-developer-studio` npm package;
+- Safe and Local Actions behavior;
+- DuskEVM and DuskDS journey content;
+- local development and repository documentation; and
+- the supported platform and Node.js combinations in the [compatibility guide](docs/operations/companion-compatibility.md).
 
 ## Ask for help or report a problem
 
-Use a
-[GitHub bug report](https://github.com/GeorgianDusk/dusk-developer-studio/issues/new?template=bug_report.yml)
-for reproducible product, documentation, source-build, or local-companion
-problems that are safe to discuss publicly.
+Use the [GitHub bug report form](https://github.com/GeorgianDusk/dusk-developer-studio/issues/new?template=bug_report.yml) for a reproducible problem that is safe to discuss publicly.
 
-Include only:
+Include:
 
-- the affected full commit, version, or hosted URL;
-- the operating system, architecture, browser, and runtime mode;
+- the hosted URL, npm package version, or full commit;
+- operating system, architecture, browser, and Node.js version;
+- Safe or Local Actions mode;
 - expected and actual behavior;
 - minimal reproduction steps; and
 - sanitized error text.
 
-Remove usernames, absolute paths, wallet addresses and balances, environment
-dumps, credentials, pairing material, API keys, mnemonics, seed phrases,
-private keys, and funded-account information.
+Remove usernames, absolute paths, wallet addresses and balances, environment dumps, cookies, credentials, pairing material, API keys, mnemonics, seed phrases, private keys, and funded-account information.
 
-This personal project targets initial public triage within seven calendar days.
-That is a response target, not a service-level guarantee.
+This personal project targets initial public triage within seven calendar days. That is a response target, not a service-level guarantee.
 
 ## Report a security vulnerability
 
-Do not open a public issue for an exploitable vulnerability or suspected secret
-exposure. Use
-[GitHub private vulnerability reporting](https://github.com/GeorgianDusk/dusk-developer-studio/security/advisories/new)
-and follow [SECURITY.md](SECURITY.md).
+Do not open a public issue for an exploitable vulnerability, suspected secret exposure, unexpected public listener, or package-integrity concern.
 
-If private vulnerability reporting is unavailable, open a minimal public issue
-requesting private contact. Do not describe the vulnerability in that issue.
+Use [GitHub private vulnerability reporting](https://github.com/GeorgianDusk/dusk-developer-studio/security/advisories/new) and follow [SECURITY.md](SECURITY.md).
 
-## Operational references
+If private reporting is unavailable, open a minimal public issue requesting private contact and omit the vulnerability details.
 
-- [Companion support and incident route](docs/operations/companion-support-and-incident.md)
-- [Companion compatibility](docs/operations/companion-compatibility.md)
-- [Companion quarantine, rollback, and withdrawal](docs/operations/companion-quarantine-and-withdrawal.md)
-- [Local companion recovery](docs/operations/local-companion-recovery.md)
+## Troubleshooting
+
+- [Compatibility and requirements](docs/operations/companion-compatibility.md)
+- [Local Studio recovery](docs/operations/local-companion-recovery.md)
+- [Support and incident route](docs/operations/companion-support-and-incident.md)
+- [Package quarantine and withdrawal](docs/operations/companion-quarantine-and-withdrawal.md)

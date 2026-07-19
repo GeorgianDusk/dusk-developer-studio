@@ -37,7 +37,7 @@
         "id":  "duskevm-bridge",
         "title":  "Bridge DUSK from DuskDS to DuskEVM Testnet",
         "category":  "Funding",
-        "summary":  "Official route for funding an EVM wallet on DuskEVM Testnet. Public preview treats faucet availability as unconfirmed.",
+        "summary":  "Official route for funding an EVM wallet on DuskEVM Testnet. Studio treats faucet availability as unconfirmed until the live Testnet can be verified.",
         "url":  "https://docs.dusk.network/learn/guides/duskevm-bridge/",
         "maturity":  "official",
         "tags":  [
@@ -70,7 +70,7 @@
         "id":  "blockscout-verification",
         "title":  "Blockscout Verification Docs",
         "category":  "Verify",
-        "summary":  "Blockscout verification workflows for UI, Foundry, Hardhat, and API. Public preview links out rather than auto-submitting verification.",
+        "summary":  "Blockscout verification workflows for UI, Foundry, Hardhat, and API. Studio links out rather than auto-submitting verification.",
         "url":  "https://docs.blockscout.com/devs/verification",
         "maturity":  "external-official",
         "tags":  [
@@ -86,7 +86,7 @@
         "id":  "duskevm-faucet-archived",
         "title":  "Archived DuskEVM Faucet Repository",
         "category":  "Funding",
-        "summary":  "Archived/read-only public faucet implementation. Public preview should not assume an active faucet exists.",
+        "summary":  "Archived/read-only public faucet implementation. Do not assume an active faucet exists until a live DuskEVM Testnet faucet is verified.",
         "url":  "https://github.com/dusk-network/duskevm-faucet",
         "maturity":  "archived",
         "tags":  [

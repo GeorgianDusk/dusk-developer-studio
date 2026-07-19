@@ -121,7 +121,7 @@ jobs:
             *) title="Studio public deployment assurance failed" ;;
           esac
           issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "$title in:title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -n 1)"
-          body="Scheduled DuskDS production assurance failed for $TARGET_URL at commit $GITHUB_SHA. Studio status: ${{ steps.classification.outputs.studio_status }}. DuskDS upstream dependency status: ${{ steps.classification.outputs.upstream_status }}. DuskEVM RPC remains an expected non-blocking pre-launch deferral. Monitoring mode: GitHub-only under docs/operations/github-only-monitoring-decision.md. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="Scheduled DuskDS production assurance failed for $TARGET_URL at commit $GITHUB_SHA. Studio status: ${{ steps.classification.outputs.studio_status }}. DuskDS upstream dependency status: ${{ steps.classification.outputs.upstream_status }}. DuskEVM RPC remains an expected non-blocking pre-launch deferral. Monitoring mode: GitHub-only under docs/operations/public-monitoring.md. Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           if [ -n "$issue" ]; then
             gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "$body"
           else

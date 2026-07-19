@@ -1,46 +1,114 @@
 {
-  "schema_version": 1,
-  "product": "Dusk Developer Studio Local",
-  "channel": "portable",
-  "supported_targets": [
-    "windows-x64",
-    "linux-x64",
-    "darwin-arm64"
-  ],
-  "entrypoints": {
-    "windows-x64": "bin/dusk-studio.cmd",
-    "linux-x64": "bin/dusk-studio",
-    "darwin-arm64": "bin/dusk-studio"
+  "schema_version": 2,
+  "product": "Dusk Developer Studio",
+  "distribution": "npm",
+  "package": {
+    "name": "dusk-developer-studio",
+    "version": "1.0.0",
+    "tag": "v1.0.0",
+    "registry": "https://registry.npmjs.org",
+    "access": "public",
+    "node_engine": ">=24.18.0 <25",
+    "package_root": "packages/cli",
+    "tarball_path": "output/npm/dusk-developer-studio-1.0.0.tgz",
+    "primary_entrypoint": "bin/dusk-developer-studio.mjs",
+    "safe_smoke_arguments": [
+      "--lifecycle-self-test",
+      "--no-open"
+    ],
+    "local_actions_capability_contract_smoke_arguments": [
+      "local-actions",
+      "--lifecycle-self-test",
+      "--no-open"
+    ]
   },
-  "action_entrypoints": {
-    "windows-x64": "bin/dusk-studio-local-actions.cmd",
-    "linux-x64": "bin/dusk-studio-local-actions",
-    "darwin-arm64": "bin/dusk-studio-local-actions"
+  "commands": {
+    "build": "pnpm build:npm",
+    "test": "pnpm test:npm",
+    "pack": "pnpm pack:npm"
   },
-  "launcher_entry": "app/companion.mjs",
-  "internal_rc": {
-    "unsigned_allowed": true,
-    "signing_status": "unsigned-rc"
+  "package_inventory": {
+    "required_paths": [
+      "package.json",
+      "package-manifest.json",
+      "LICENSE",
+      "NOTICE",
+      "README.md",
+      "THIRD-PARTY-LICENSES.txt",
+      "app/runtime.mjs",
+      "bin/launch.mjs",
+      "bin/dusk-developer-studio.mjs",
+      "studio/index.html",
+      "templates/foundry-counter-dusk-evm/.env.example",
+      "templates/foundry-counter-dusk-evm/.gitignore.template",
+      "templates/foundry-counter-dusk-evm/README.md",
+      "templates/foundry-counter-dusk-evm/foundry.toml",
+      "templates/foundry-counter-dusk-evm/src/Counter.sol",
+      "templates/foundry-counter-dusk-evm/test/Counter.t.sol"
+    ],
+    "allowed_root_files": [
+      "package.json",
+      "package-manifest.json",
+      "LICENSE",
+      "NOTICE",
+      "README.md",
+      "THIRD-PARTY-LICENSES.txt"
+    ],
+    "allowed_roots": [
+      "app",
+      "bin",
+      "studio",
+      "templates"
+    ],
+    "maximum_files": 10000,
+    "maximum_unpacked_bytes": 67108864,
+    "native_binaries_allowed": false,
+    "install_scripts_allowed": false,
+    "runtime_dependencies_allowed": false
+  },
+  "assurance": {
+    "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+    "required_runners": [
+      "ubuntu-24.04",
+      "windows-2025",
+      "macos-15"
+    ],
+    "required_checks": [
+      "exact-package-inventory",
+      "exact-tarball-browser-boot-and-pairing-smoke",
+      "clean-install",
+      "safe-functional-smoke",
+      "local-actions-capability-contract-smoke",
+      "elevated-refusal"
+    ]
   },
   "publication": {
-    "signature_required": true,
-    "algorithm": "ed25519",
-    "signing_status": "signed"
-  },
-  "payload": {
-    "maximum_files": 10000,
-    "maximum_bytes": 536870912,
-    "forbidden_segments": [
-      ".git",
-      ".agents",
-      ".codex",
-      ".env",
-      "node_modules",
-      "coverage",
-      "playwright-report",
-      "test-results",
-      "tmp",
-      "cache"
-    ]
+    "workflow_path": ".github/workflows/studio-npm-publish.yml",
+    "trigger": "exact-tag",
+    "environment": "npm-initial-publication",
+    "initial_registry_authentication": "short-lived-granular-token",
+    "initial_token_secret_name": "NPM_INITIAL_PUBLISH_TOKEN",
+    "initial_token_max_lifetime_hours": 24,
+    "initial_token_scope": {
+      "permissions": "read-write",
+      "package_access": "all-packages-bootstrap",
+      "bypass_2fa": true
+    },
+    "expected_npm_maintainer": "georgiandusk",
+    "expected_oidc_publisher": "GitHub Actions",
+    "expected_oidc_trusted_publisher_id": "github",
+    "expected_provenance_repository": "https://github.com/GeorgianDusk/dusk-developer-studio",
+    "expected_initial_provenance_workflow": ".github/workflows/studio-npm-publish.yml",
+    "token_revocation_required": true,
+    "environment_secret_removal_required": true,
+    "trusted_publisher_configuration_required": true,
+    "subsequent_registry_authentication": "github-oidc",
+    "subsequent_workflow_path": ".github/workflows/studio-npm-oidc-publish.yml",
+    "provenance_required": true,
+    "long_lived_token_allowed": false,
+    "permissions": {
+      "contents": "read",
+      "id-token": "write"
+    }
   }
 }

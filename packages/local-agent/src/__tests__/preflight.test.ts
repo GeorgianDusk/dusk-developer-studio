@@ -33,11 +33,10 @@ describe("path preflight", () => {
     const runProcess = vi.fn(async (options: BoundedProcessOptions) => ({ stdout: successfulOutput(options), stderr: "", exitCode: 0 }));
     const result = await runPreflightAsync("evm", { runProcess });
     expect(result.path).toBe("evm");
-    expect(result.tools.map((tool) => tool.command)).toEqual(["node", "pnpm", "forge", "cast"]);
+    expect(result.tools.map((tool) => tool.command)).toEqual(["node", "forge", "cast"]);
     expect(result.tools[0]).toMatchObject({ name: "Node.js", ok: true, required: true, version: process.version });
-    expect(result.tools.find((tool) => tool.command === "pnpm")?.required).toBe(false);
     expect(result.ok).toBe(true);
-    expect(runProcess).toHaveBeenCalledTimes(3);
+    expect(runProcess).toHaveBeenCalledTimes(2);
     for (const [options] of runProcess.mock.calls) {
       expect(options).toEqual(expect.objectContaining({ timeoutMs: 5_000, maxOutputBytes: 65_536 }));
     }
@@ -45,7 +44,7 @@ describe("path preflight", () => {
 
   it("uses the packaged Node identity without invoking a global Node command", async () => {
     const runProcess = vi.fn(async (options: BoundedProcessOptions) => ({ stdout: successfulOutput(options), stderr: "", exitCode: 0 }));
-    const result = await runPreflightAsync("evm", { runProcess, bundledNodeVersion: "v24.18.0" });
+    const result = await runPreflightAsync("evm", { runProcess, nodeVersion: "v24.18.0" });
     expect(result.tools.find((tool) => tool.command === "node")).toMatchObject({ ok: true, version: "v24.18.0" });
     expect(runProcess.mock.calls.some(([options]) => logicalCommand(options) === "node")).toBe(false);
   });
@@ -68,7 +67,7 @@ describe("path preflight", () => {
   });
 
   it("does not fail the whole native preflight for optional tools", async () => {
-    const optional = new Set(["pnpm", "make", "wasm-pack", "wasm-tools", "jq", "wasm-opt", "rusk-wallet", "wsl.exe"]);
+    const optional = new Set(["make", "wasm-pack", "wasm-tools", "jq", "wasm-opt", "rusk-wallet", "wsl.exe"]);
     const runProcess = vi.fn(async (options: BoundedProcessOptions) => {
       const command = logicalCommand(options);
       if (options.command === "where.exe" || optional.has(command)) throw new Error("missing optional tool");
@@ -76,7 +75,7 @@ describe("path preflight", () => {
     });
     const result = await runPreflightAsync("duskds", { runProcess, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY });
     const failedOptionalCommands = result.tools.filter((tool) => !tool.required && !tool.ok).map((tool) => tool.command);
-    expect(failedOptionalCommands).toEqual(expect.arrayContaining(["pnpm", "make", "wasm-pack", "wasm-tools", "jq", "wasm-opt", "rusk-wallet"]));
+    expect(failedOptionalCommands).toEqual(expect.arrayContaining(["make", "wasm-pack", "wasm-tools", "jq", "wasm-opt", "rusk-wallet"]));
     if (process.platform === "win32") expect(failedOptionalCommands).toContain("wsl.exe");
     expect(result.ok).toBe(true);
   });

@@ -253,7 +253,7 @@ function DuskDsSetup({
     setState("loading");
     setMessage("Running the bounded allowlisted preflight.");
     try {
-      if (!companionBaseUrl) throw new Error("Portable automation is unavailable.");
+      if (!companionBaseUrl) throw new Error("Local Studio is not connected.");
       const data = await requestJson(companionBaseUrl + "/preflight?path=duskds", {
         init: { credentials: "include" },
         validate: isPreflightResult,
@@ -304,7 +304,7 @@ function DuskDsSetup({
     >
       <div className="focus-card wide">
         <h2>Choose how to check this machine</h2>
-        <p>The complete manual Setup lane is available in Hosted Studio. Portable automation runs the same reviewed identities only when a matching local release is installed and explicitly enabled.</p>
+        <p>Use the complete manual Setup lane in the hosted guide, or run the Studio locally with npm to perform the same allowlisted checks automatically.</p>
         <CompletionMethodPicker
           value={method}
           onChange={setMethod}
@@ -352,12 +352,12 @@ function DuskDsSetup({
         </div>
       ) : (
         <div className="focus-card wide">
-          <StatusPill tone="warn">Not publicly released</StatusPill>
-          <h2>Portable automation is not required</h2>
-          <p>There is no supported public companion binary yet. Hosted Studio cannot inspect your machine, but every required check is available in the manual lane.</p>
+          <StatusPill tone="neutral">Run locally with npm</StatusPill>
+          <h2>Start Local Studio for automatic checks</h2>
+          <p>The hosted guide cannot inspect your machine. Start the npm package for allowlisted automatic checks, or complete every required check in the manual lane.</p>
           <div className="button-row">
             <button className="primary-button" type="button" onClick={() => setMethod("manual")}>Continue manually</button>
-            <button className="secondary-button" type="button" onClick={() => setRoute("companion")}>Review automation status</button>
+            <button className="secondary-button" type="button" onClick={() => setRoute("companion")}>Get the npm command</button>
           </div>
         </div>
       )}
@@ -535,7 +535,7 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
           <div className="focus-card wide">
             <h2>Record exactly what you observed</h2>
             <ManualRecordNotice>
-              Hosted Studio validates the height and 32-byte hash format. It cannot prove that your local script produced them.
+              Studio validates the height and 32-byte hash format. It cannot prove that your local script produced them.
             </ManualRecordNotice>
             <div className="evidence-form">
               <label>
@@ -773,7 +773,7 @@ function DuskDsBuild({
     setScaffoldState("loading");
     setScaffoldMessage("Creating the bounded Forge starter under the approved local root.");
     try {
-      if (!companionBaseUrl) throw new Error("Portable automation is unavailable.");
+      if (!companionBaseUrl) throw new Error("Local Studio is not connected.");
       const data = await requestJson(companionBaseUrl + "/scaffold-duskds-forge", {
         init: {
           method: "POST",
@@ -930,11 +930,11 @@ function DuskDsBuild({
           </div>
         ) : (
           <div className="focus-card wide">
-            <StatusPill tone="warn">{automaticAvailable ? "Manual existing-project lane" : "Automation not published"}</StatusPill>
+            <StatusPill tone={automaticAvailable ? "warn" : "neutral"}>{automaticAvailable ? "Manual existing-project lane" : "Run locally with npm"}</StatusPill>
             <h2>{automaticAvailable ? "Existing repositories stay user-controlled" : "Use the complete manual build lane"}</h2>
             <p>{automaticAvailable
               ? "The companion scaffold endpoint creates a new bounded starter; it does not crawl arbitrary repositories. Continue manually for an existing project."
-              : "Hosted Studio cannot create files. It provides the exact reviewed commands and bounded evidence forms below."}</p>
+              : "The hosted guide cannot create files. It provides the exact reviewed commands and bounded evidence forms below."}</p>
             <button className="primary-button" type="button" onClick={() => setMethod("manual")}>Continue manually</button>
           </div>
         )

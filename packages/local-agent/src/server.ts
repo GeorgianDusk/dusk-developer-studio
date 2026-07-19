@@ -57,6 +57,7 @@ export interface LocalAgentServerOptions {
   releaseIdentity?: LocalAgentReleaseIdentity;
   allowedOrigins?: string[];
   capabilitiesEnabled?: boolean;
+  evmScaffoldEnabled?: boolean;
   allowPrivateNetwork?: boolean;
   sessionTtlMs?: number;
   bodyLimitBytes?: number;
@@ -274,6 +275,7 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   }
 
   const capabilitiesEnabled = options.capabilitiesEnabled ?? false;
+  const evmScaffoldEnabled = options.evmScaffoldEnabled ?? false;
   const allowPrivateNetwork = options.allowPrivateNetwork ?? false;
   const sessionTtlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
   const bodyLimitBytes = options.bodyLimitBytes ?? DEFAULT_BODY_LIMIT_BYTES;
@@ -400,6 +402,13 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
         return;
       }
       if (request.method === "POST" && requestUrl.pathname === "/scaffold-template") {
+        if (!evmScaffoldEnabled) {
+          throw new RequestError(
+            403,
+            "DuskEVM starter creation is not available before Testnet activation.",
+            "evm_scaffold_unavailable"
+          );
+        }
         const release = acquireCapability(sessionId);
         try {
           const body = ScaffoldBodySchema.parse(await readJson(request, bodyLimitBytes, bodyTimeoutMs));

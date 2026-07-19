@@ -309,6 +309,8 @@ export async function verifyPhase5GitHubProvenance(policy, evidence, options = {
   const publicAssurance = evidence?.synthetics?.public_assurance ?? {};
   const heartbeat = evidence?.synthetics?.checks?.monitor_heartbeat ?? {};
   const alertDelivery = evidence?.synthetics?.alert_delivery ?? {};
+  const npmAssurance = evidence?.npm_distribution?.assurance ?? {};
+  const npmPublication = evidence?.npm_distribution?.publication ?? {};
   const requirements = [
     {
       label: "DuskDS production smoke",
@@ -345,6 +347,24 @@ export async function verifyPhase5GitHubProvenance(policy, evidence, options = {
       candidateCommit,
       artifactName: alertDelivery.artifact_name,
       record: alertDelivery
+    },
+    {
+      label: "npm package assurance",
+      repository,
+      workflowPath: ".github/workflows/studio-npm-package-assurance.yml",
+      event: "workflow_dispatch",
+      candidateCommit,
+      artifactName: npmAssurance.artifact_name,
+      record: npmAssurance
+    },
+    {
+      label: "npm package publication",
+      repository,
+      workflowPath: ".github/workflows/studio-npm-publish.yml",
+      event: "push",
+      candidateCommit,
+      artifactName: npmPublication.artifact_name,
+      record: npmPublication
     }
   ];
   const verified = [];

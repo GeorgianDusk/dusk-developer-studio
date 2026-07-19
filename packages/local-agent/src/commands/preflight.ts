@@ -41,10 +41,6 @@ export interface ToolResult {
 
 export type PreflightPath = "evm" | "duskds";
 
-const COMMON_TOOLS: ToolCheck[] = [
-  { name: "pnpm", command: "pnpm", args: ["--version"], required: false, installHint: "Optional for source-checkout package scripts; portable Studio releases include their own runtime." }
-];
-
 const EVM_TOOLS: ToolCheck[] = [
   { name: "Foundry forge", command: "forge", args: ["--version"], required: true, installHint: "Install Foundry before building or testing Solidity projects." },
   { name: "Foundry cast", command: "cast", args: ["--version"], required: true, installHint: "Install Foundry cast for wallet import and chain checks." }
@@ -65,12 +61,12 @@ const DUSKDS_TOOLS: ToolCheck[] = [
   { name: "wasm-tools", command: "wasm-tools", args: ["--version"], required: false, installHint: "Optional for manual WASM inspection and advanced workflows." },
   { name: "jq", command: "jq", args: ["--version"], required: false, installHint: "Optional helper for shell scripts and metadata inspection." },
   { name: "wasm-opt", command: "wasm-opt", args: ["--version"], required: false, installHint: "Optional Binaryen optimizer. On Windows, prefer a native wasm-opt.exe; npm Binaryen shims can confuse Forge." },
-  { name: "Rusk Wallet (deploy)", command: "rusk-wallet", args: ["--version"], required: false, installHint: "Required before native contract deployment; keep signing manual in the public preview." }
+  { name: "Rusk Wallet (deploy)", command: "rusk-wallet", args: ["--version"], required: false, installHint: "Required before native contract deployment; wallet signing stays manual in your terminal." }
 ];
 
 function getToolAllowlist(path: PreflightPath): ToolCheck[] {
   if (path !== "duskds") {
-    return [...COMMON_TOOLS, ...EVM_TOOLS];
+    return [...EVM_TOOLS];
   }
 
   const wslTools: ToolCheck[] = process.platform === "win32"
@@ -101,7 +97,7 @@ function getToolAllowlist(path: PreflightPath): ToolCheck[] {
       }]
     : [];
 
-  return [...COMMON_TOOLS, ...DUSKDS_TOOLS, ...wslTools];
+  return [...DUSKDS_TOOLS, ...wslTools];
 }
 
 function pathAdditionsForTool(tool: ToolCheck): string[] {
@@ -226,11 +222,11 @@ export async function runPreflightAsync(
   path: PreflightPath = "evm",
   runtime: {
     runProcess?: typeof runBoundedProcess;
-    bundledNodeVersion?: string;
+    nodeVersion?: string;
     readDuskForgeIdentity?: () => Promise<DuskForgeInstallIdentity>;
   } = {}
 ): Promise<{ ok: boolean; checkedAt: string; path: PreflightPath; tools: ToolResult[] }> {
-  const tools: ToolResult[] = [{ name: "Node.js", command: "node", required: true, ok: true, version: runtime.bundledNodeVersion?.trim() || process.version, installHint: "Included with the portable Studio runtime." }];
+  const tools: ToolResult[] = [{ name: "Node.js", command: "node", required: true, ok: true, version: runtime.nodeVersion?.trim() || process.version, installHint: "Node.js 24.18 or newer in the Node 24 release line is required to run Local Studio." }];
   const runProcess = runtime.runProcess ?? runBoundedProcess;
   const readDuskForgeIdentity = runtime.readDuskForgeIdentity ?? (() => readReviewedDuskForgeIdentity());
   let duskForgeIdentityVerified = path !== "duskds";

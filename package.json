@@ -1,8 +1,8 @@
 {
   "name": "dusk-developer-testnet-studio",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Independent open-source developer cockpit for DuskEVM and DuskDS.",
+  "description": "Developer cockpit for DuskEVM reference and DuskDS workflows.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -20,7 +20,7 @@
     "preview": "pnpm --filter @dusk/studio preview",
     "lint": "eslint apps packages scripts tests --ext .ts,.tsx,.mjs",
     "typecheck": "tsc -p tsconfig.base.json --noEmit",
-    "test": "vitest run && node scripts/test-public-repository.mjs && node scripts/test-companion-operations.mjs && node scripts/test-source-freshness.mjs && node scripts/test-source-boundary.mjs && node scripts/test-release-manifest.mjs && node scripts/test-assurance.mjs && node scripts/test-github-actions-provenance.mjs && node scripts/test-phase5-evidence.mjs && node scripts/test-staging-smoke.mjs && node scripts/test-monitor-heartbeat.mjs && node scripts/test-companion-release.mjs && node scripts/test-companion-archive.mjs && node scripts/test-companion-distribution-prototypes.mjs && node scripts/test-standalone-signing-evidence.mjs && node scripts/test-standalone-rc-tooling.mjs && node scripts/test-standalone-candidate-lifecycle-core.mjs && node scripts/test-standalone-safe-zip-extract.mjs && node scripts/test-standalone-unsigned-assurance.mjs && node scripts/test-standalone-release-workflow.mjs && node scripts/test-standalone-unsigned-assurance-workflow.mjs",
+    "test": "vitest run && node scripts/test-npm-package.mjs && node scripts/test-public-repository.mjs && node scripts/test-source-freshness.mjs && node scripts/test-source-boundary.mjs && node scripts/test-release-manifest.mjs && node scripts/test-assurance.mjs && node scripts/test-github-actions-provenance.mjs && node scripts/test-phase5-evidence.mjs && node scripts/test-staging-smoke.mjs && node scripts/test-monitor-heartbeat.mjs",
     "e2e": "playwright test",
     "e2e:public": "playwright test tests/e2e/public-release.spec.ts --project=chromium-desktop --project=mobile-chrome",
     "verify:local": "pnpm check:boundary && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:release && pnpm check:assurance",
@@ -32,20 +32,9 @@
     "check:staging": "node scripts/check-staging.mjs",
     "check:phase5": "node scripts/check-phase5-evidence.mjs",
     "fingerprint:artifacts": "node scripts/artifact-fingerprint.mjs",
-    "bundle:companion": "node scripts/companion-bundle.mjs",
-    "build:companion": "node scripts/companion-build.mjs",
-    "verify:companion": "node scripts/companion-verify.mjs",
-    "test:companion": "vitest run packages/local-runtime packages/local-agent/src/__tests__/preflight.test.ts packages/local-agent/src/__tests__/runBoundedProcess.test.ts packages/local-agent/src/__tests__/serverSecurity.test.ts packages/local-agent/src/__tests__/scaffoldTemplate.test.ts && node scripts/test-companion-release.mjs && node scripts/test-companion-archive.mjs",
-    "archive:companion": "node scripts/companion-archive.mjs",
-    "prototype:npm": "node scripts/companion-npm-prototype.mjs",
-    "prototype:sea": "node scripts/companion-sea-prototype.mjs",
-    "test:distribution-prototypes": "node scripts/test-companion-distribution-prototypes.mjs",
-    "verify:standalone-signing": "node scripts/standalone-signing-evidence.mjs",
-    "check:standalone-signing-readiness": "node scripts/standalone-signing-evidence.mjs --readiness",
-    "verify:standalone-unsigned-assurance": "node scripts/standalone-unsigned-assurance.mjs --operation=policy",
-    "build:macos-app": "node scripts/standalone-macos-app.mjs",
-    "record:standalone-target-evidence": "node scripts/standalone-target-evidence.mjs",
-    "assemble:standalone-signing-evidence": "node scripts/assemble-standalone-signing-evidence.mjs"
+    "build:npm": "node scripts/npm-package-build.mjs",
+    "test:npm": "vitest run packages/local-runtime packages/local-agent/src/__tests__/preflight.test.ts packages/local-agent/src/__tests__/runBoundedProcess.test.ts packages/local-agent/src/__tests__/serverSecurity.test.ts packages/local-agent/src/__tests__/scaffoldTemplate.test.ts && node scripts/test-npm-package.mjs",
+    "pack:npm": "node scripts/npm-package-build.mjs --strict && node scripts/npm-package-pack.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
@@ -64,7 +53,6 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "jsdom": "^27.0.1",
     "playwright": "^1.56.1",
-    "postject": "1.0.0-alpha.6",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^7.3.6",
@@ -76,5 +64,12 @@
     "react-dom": "^19.2.0",
     "viem": "^2.38.2",
     "zod": "^4.1.12"
-  }
+  },
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": ""
 }

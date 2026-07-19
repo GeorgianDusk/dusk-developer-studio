@@ -2,6 +2,8 @@
 
 Minimal Foundry starter for DuskEVM Testnet onboarding.
 
+Licensed under Apache-2.0.
+
 ## Safety
 
 - Example only.
