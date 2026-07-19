@@ -118,8 +118,8 @@
         "sourceStatus":  "official-source",
         "links":  [
                       {
-                          "label":  "DuskVM contract quickstart",
-                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/"
+                          "label":  "Smart Contracts on DuskDS",
+                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
                       },
                       {
                           "label":  "Dusk Forge",
@@ -267,8 +267,8 @@
                           "url":  "https://docs.dusk.network/use/wallets/#rusk-wallet"
                       },
                       {
-                          "label":  "DuskVM Testnet deployment quickstart",
-                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/#5-deploy-on-testnet"
+                          "label":  "Official DuskDS deployment guide",
+                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/#deploying"
                       }
                   ],
         "tags":  [
@@ -531,8 +531,8 @@
                           "url":  "https://github.com/dusk-network/dusk-verifiable-builds"
                       },
                       {
-                          "label":  "DuskVM contract quickstart",
-                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/"
+                          "label":  "Smart Contracts on DuskDS",
+                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
                       }
                   ],
         "tags":  [
