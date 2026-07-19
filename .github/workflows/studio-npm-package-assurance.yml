@@ -347,6 +347,9 @@ jobs:
             if (Test-Path -LiteralPath $publicRoot) { Remove-Item -LiteralPath $publicRoot -Recurse -Force }
             if (Test-Path -LiteralPath $dataRoot) { Remove-Item -LiteralPath $dataRoot -Recurse -Force }
           }
+          # GitHub's pwsh wrapper exits with the last native process status.
+          # The non-zero status above is expected and has already been verified.
+          $global:LASTEXITCODE = 0
       - name: Record the platform package result
         shell: bash
         env:

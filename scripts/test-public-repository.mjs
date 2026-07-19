@@ -152,6 +152,7 @@ for (const workflow of [requiredWindowsWorkflow, npmAssuranceWorkflow]) {
   assert.doesNotMatch(workflow, /sudo -n node /);
   assert.match(workflow, /\$dataRoot = Join-Path \$env:PUBLIC[\s\S]*"\*\$\{userSid\}:\(OI\)\(CI\)M"/);
   assert.match(workflow, /\$childEnvironment = @\{[\s\S]*HOME = \$profileRoot[\s\S]*LOCALAPPDATA = \$localAppData[\s\S]*USERPROFILE = \$profileRoot[\s\S]*-Environment \$childEnvironment/);
+  assert.match(workflow, /\$elevatedStatus = \$LASTEXITCODE[\s\S]*?Dusk Developer Studio refuses elevated or root execution\.[\s\S]*?finally \{[\s\S]*?Remove-Item -LiteralPath \$dataRoot -Recurse -Force[\s\S]*?\$global:LASTEXITCODE = 0/);
   assert.match(workflow, /Test-Path -LiteralPath \$dataRoot[\s\S]*Remove-Item -LiteralPath \$dataRoot -Recurse -Force/);
 }
 
