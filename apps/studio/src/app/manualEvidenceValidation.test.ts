@@ -19,6 +19,16 @@ describe("manual evidence validation", () => {
   });
 
   it("binds driver observations to a contract, function, endpoint, and response digest", () => {
+    const availability = validateDriverObservation("availability", {
+      contractId: `0x${"A".repeat(64)}`,
+      functionName: "",
+      responseSha256: "D".repeat(64)
+    });
+    expect(availability.value).toMatchObject({
+      contractId: "a".repeat(64),
+      responseSha256: "d".repeat(64)
+    });
+    expect(availability.value).not.toHaveProperty("functionName");
     const result = validateDriverObservation("encode", {
       contractId: `0x${"A".repeat(64)}`,
       functionName: "increment_by",

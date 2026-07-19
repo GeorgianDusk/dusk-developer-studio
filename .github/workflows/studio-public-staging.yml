@@ -81,7 +81,7 @@ jobs:
       - name: Run receipt, exact-commit, TLS, DuskDS node, source, fallback-cache, and closed-port checks
         id: synthetic
         continue-on-error: true
-        run: node scripts/check-staging.mjs --url="$TARGET_URL" --environment="$EXPECTED_ENVIRONMENT" --commit="$GITHUB_SHA" --rpc-degradation="${{ steps.browser.outcome }}" --out=output/public-synthetic-receipt.json
+        run: node scripts/check-staging.mjs --url="$TARGET_URL" --environment="$EXPECTED_ENVIRONMENT" --commit="$GITHUB_SHA" --rpc-degradation="${{ steps.browser.outcome }}" --out="output/studio-public-synthetic-receipt-$GITHUB_RUN_ID.json"
       - name: Classify Studio and upstream dependency state
         id: classification
         if: always()
@@ -93,7 +93,7 @@ jobs:
           import fs from "node:fs";
           import { selectAssuranceIncidentTitle } from "./scripts/staging-smoke.mjs";
           let receipt = {};
-          try { receipt = JSON.parse(fs.readFileSync("output/public-synthetic-receipt.json", "utf8")); } catch {}
+          try { receipt = JSON.parse(fs.readFileSync(`output/studio-public-synthetic-receipt-${process.env.GITHUB_RUN_ID}.json`, "utf8")); } catch {}
           const normalize = (value) => value === "passed" || value === "failed" ? value : "unknown";
           const classification = {
             studio_status: normalize(receipt.studio_status),
@@ -106,11 +106,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: studio-public-synthetic-receipt-${{ github.run_id }}
-          path: output/public-synthetic-receipt.json
+          path: output/studio-public-synthetic-receipt-${{ github.run_id }}.json
+          archive: false
           if-no-files-found: ignore
           retention-days: 30
-          compression-level: 0
       - name: Open or update the assigned monitor alert
         if: always() && github.event_name == 'schedule' && (steps.synthetic.outcome != 'success' || steps.browser.outcome != 'success')
         env:
@@ -158,16 +157,41 @@ jobs:
           number="${url##*/}"
           gh issue close "$number" --repo "$GITHUB_REPOSITORY" --comment "Alert-delivery rehearsal completed."
           mkdir -p output
-          printf '{"schema_version":1,"status":"passed","channel":"github-assigned-issue","owner":"George","issue_number":%s,"run_id":"%s"}\n' "$number" "$GITHUB_RUN_ID" > output/alert-delivery-receipt.json
+          public_fingerprint="$(node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const receipt = JSON.parse(fs.readFileSync(`output/studio-public-synthetic-receipt-${process.env.GITHUB_RUN_ID}.json`, "utf8"));
+          const fingerprint = receipt?.checks?.release_parity?.artifact_fingerprint_sha256;
+          if (!/^[a-f0-9]{64}$/.test(fingerprint ?? "")) throw new Error("Public assurance receipt lacks a candidate fingerprint.");
+          process.stdout.write(fingerprint);
+          NODE
+          )"
+          export ALERT_ISSUE_NUMBER="$number"
+          export PUBLIC_FINGERPRINT="$public_fingerprint"
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const receipt = {
+            schema_version: 2,
+            status: "passed",
+            channel: "github-assigned-issue",
+            owner: "George",
+            issue_number: Number(process.env.ALERT_ISSUE_NUMBER),
+            issue_closed: true,
+            run_id: process.env.GITHUB_RUN_ID,
+            candidate_commit: process.env.GITHUB_SHA,
+            candidate_public_fingerprint_sha256: process.env.PUBLIC_FINGERPRINT,
+            workflow_path: ".github/workflows/studio-public-staging.yml",
+            observed_at: new Date().toISOString()
+          };
+          fs.writeFileSync(`output/studio-alert-delivery-receipt-${process.env.GITHUB_RUN_ID}.json`, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+          NODE
       - name: Upload alert-delivery rehearsal receipt
         if: always() && github.event_name == 'workflow_dispatch' && inputs.verify_alert_delivery
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: studio-alert-delivery-receipt-${{ github.run_id }}
-          path: output/alert-delivery-receipt.json
+          path: output/studio-alert-delivery-receipt-${{ github.run_id }}.json
+          archive: false
           if-no-files-found: error
           retention-days: 30
-          compression-level: 0
       - name: Enforce synthetic assurance result
         if: always()
         run: |

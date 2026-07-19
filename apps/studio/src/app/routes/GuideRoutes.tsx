@@ -36,6 +36,8 @@ import {
   readLatestDuskDsBlock,
   type DuskDsBlockObservation
 } from "../duskDsNodeRead";
+import { DuskDsDeployReadiness } from "../DuskDsDeployReadiness";
+import { getDuskDsBuildSourceRevision } from "../deployReadiness";
 import { isPreflightResult, isScaffoldEvidence, type PreflightResult } from "../responseSchemas";
 import { requestJson, SafeRequestError, safeRequestMessage } from "../safeRequest";
 import { CompanionActionButton, StepFrame } from "../StudioShell";
@@ -1070,42 +1072,104 @@ function FileEvidence({ files }: { files: string[] }) {
 
 function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const journey = useJourney();
-  const [blockMethod, setBlockMethod] = useState<CompletionMethod>("automatic");
-  const [blockHeight, setBlockHeight] = useState("");
-  const [blockHash, setBlockHash] = useState("");
-  const [blockError, setBlockError] = useState("");
-  const [blockState, setBlockState] = useState<AsyncState>("idle");
-  const [blockMessage, setBlockMessage] = useState("Latest-block inspection has not run.");
-  const [observation, setObservation] = useState<DuskDsBlockObservation | null>(null);
-  const [revision, setRevision] = useState("");
-  const [revisionError, setRevisionError] = useState("");
-  const [driverChecks, setDriverChecks] = useState({ schema: false, encode: false, decode: false });
-  const [driverInput, setDriverInput] = useState({
-    contractId: "",
-    functionName: "",
-    schemaSha256: "",
-    encodeSha256: "",
-    decodeSha256: ""
-  });
-  const [driverError, setDriverError] = useState("");
   const inspectProgress = journey.progress.paths.duskds.inspect;
+  const savedInspectEvidence = new Map(inspectProgress.evidenceEntries.map((entry) => [entry.code, entry]));
+  const savedBlock = savedInspectEvidence.get("duskds-inspect-latest-block");
+  const savedRevision = savedInspectEvidence.get("duskds-inspect-artifact-revision")?.metadata?.revision ?? "";
+  const savedAvailability = savedInspectEvidence.get("duskds-inspect-driver-availability");
+  const savedSchema = savedInspectEvidence.get("duskds-inspect-driver-schema");
+  const savedEncode = savedInspectEvidence.get("duskds-inspect-driver-encode");
+  const savedDecode = savedInspectEvidence.get("duskds-inspect-driver-decode");
+  const savedDriverIdentity = savedAvailability ?? savedSchema ?? savedEncode ?? savedDecode;
+  const restoredBlockObservation = savedBlock
+    && typeof savedBlock.metadata?.blockHeight === "number"
+    && typeof savedBlock.metadata.blockHash === "string"
+    ? {
+        height: savedBlock.metadata.blockHeight,
+        hash: savedBlock.metadata.blockHash,
+        endpoint: savedBlock.metadata.endpoint ?? DUSKDS_TESTNET_NODE,
+        observedAt: savedBlock.observedAt
+      }
+    : null;
+  const [blockMethod, setBlockMethod] = useState<CompletionMethod>(savedBlock?.method ?? "automatic");
+  const [blockHeight, setBlockHeight] = useState(savedBlock?.metadata?.blockHeight?.toString() ?? "");
+  const [blockHash, setBlockHash] = useState(savedBlock?.metadata?.blockHash ?? "");
+  const [blockError, setBlockError] = useState("");
+  const [blockState, setBlockState] = useState<AsyncState>(restoredBlockObservation ? "success" : "idle");
+  const [blockMessage, setBlockMessage] = useState(
+    restoredBlockObservation
+      ? `Saved observation: latest block ${restoredBlockObservation.height} at ${new Date(restoredBlockObservation.observedAt).toLocaleString()}.`
+      : "Latest-block inspection has not run."
+  );
+  const [observation, setObservation] = useState<DuskDsBlockObservation | null>(restoredBlockObservation);
+  const [revision, setRevision] = useState(savedRevision);
+  const [revisionError, setRevisionError] = useState("");
+  const [driverChecks, setDriverChecks] = useState({
+    availability: Boolean(savedAvailability),
+    schema: Boolean(savedSchema),
+    encode: Boolean(savedEncode),
+    decode: Boolean(savedDecode)
+  });
+  const [driverInput, setDriverInput] = useState({
+    contractId: savedDriverIdentity?.metadata?.contractId ?? "",
+    functionName: savedEncode?.metadata?.functionName ?? savedDecode?.metadata?.functionName ?? "",
+    availabilitySha256: savedAvailability?.metadata?.responseSha256 ?? "",
+    schemaSha256: savedSchema?.metadata?.responseSha256 ?? "",
+    encodeSha256: savedEncode?.metadata?.responseSha256 ?? "",
+    decodeSha256: savedDecode?.metadata?.responseSha256 ?? ""
+  });
+  const [driverErrors, setDriverErrors] = useState({
+    availability: "",
+    schema: "",
+    encode: "",
+    decode: ""
+  });
   const manualInspectEvidence = (code: string) => inspectProgress.evidenceEntries
     .some((entry) => entry.code === code && entry.method === "manual");
-  const driverCommands = [
-    `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema"`,
-    `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>" --data-raw '<json_input>'`,
-    `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>" --data-raw '0x<encoded_output>'`
-  ].join("\n");
-  const responseDigestCommands = {
+  const normalizedDriverContractId = driverInput.contractId.trim().replace(/^0x/i, "").toLowerCase();
+  const normalizedInspectRevision = revision.trim().toLowerCase();
+  const driverRoutesAvailable = Boolean(
+    savedAvailability
+      && savedAvailability.metadata?.contractId === normalizedDriverContractId
+      && savedAvailability.metadata.revision === normalizedInspectRevision
+  );
+  const metadataReadCommands = {
     posix: [
-      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/<method>[:<function_name>]" --data-raw '<payload_if_required>' --output response.bin`,
-      "shasum -a 256 response.bin"
+      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/contract:<contract_id>/metadata" --output metadata-response.bin`,
+      "shasum -a 256 metadata-response.bin"
     ].join("\n"),
     windows: [
-      "Invoke-WebRequest -Method Post -Uri '<read_route>' -Body '<payload_if_required>' -OutFile response.bin",
-      "(Get-FileHash -Algorithm SHA256 .\\response.bin).Hash"
-    ].join("\n")
+      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/contract:<contract_id>/metadata' -OutFile 'metadata-response.bin'`,
+      "(Get-FileHash -Algorithm SHA256 -LiteralPath '.\\metadata-response.bin').Hash"
+    ].join("\r\n")
   };
+  const driverReadCommands = {
+    posix: [
+      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema" --output schema-response.bin`,
+      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>" --data-raw '<json_input>' --output encode-response.bin`,
+      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>" --data-raw '0x<encoded_output>' --output decode-response.bin`,
+      "shasum -a 256 schema-response.bin encode-response.bin decode-response.bin"
+    ].join("\n"),
+    windows: [
+      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema' -OutFile 'schema-response.bin'`,
+      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>' -Body '<json_input>' -OutFile 'encode-response.bin'`,
+      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>' -Body '0x<encoded_output>' -OutFile 'decode-response.bin'`,
+      "Get-FileHash -Algorithm SHA256 -LiteralPath '.\\schema-response.bin', '.\\encode-response.bin', '.\\decode-response.bin'"
+    ].join("\r\n")
+  };
+  const driverKinds = ["availability", "schema", "encode", "decode"] as const;
+  const driverEvidenceCodes = [
+    "duskds-inspect-driver-availability",
+    "duskds-inspect-driver-schema",
+    "duskds-inspect-driver-encode",
+    "duskds-inspect-driver-decode"
+  ] as const;
+  const driverDigestKey = {
+    availability: "availabilitySha256",
+    schema: "schemaSha256",
+    encode: "encodeSha256",
+    decode: "decodeSha256"
+  } as const;
 
   async function runLatestBlockRead() {
     setBlockState("loading");
@@ -1163,55 +1227,97 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   }
 
   function changeInspectRevision(next: string) {
-    if (next !== revision && manualInspectEvidence("duskds-inspect-artifact-revision")) {
+    if (next !== revision) {
       journey.removeEvidence("duskds", "inspect", [
         "duskds-inspect-artifact-revision",
-        "duskds-inspect-driver-schema",
-        "duskds-inspect-driver-encode",
-        "duskds-inspect-driver-decode"
+        ...driverEvidenceCodes
       ]);
+      setDriverChecks({ availability: false, schema: false, encode: false, decode: false });
+      setDriverInput((current) => ({
+        ...current,
+        availabilitySha256: "",
+        schemaSha256: "",
+        encodeSha256: "",
+        decodeSha256: ""
+      }));
+      setDriverErrors({ availability: "", schema: "", encode: "", decode: "" });
     }
     setRevision(next);
   }
 
   function driverEvidenceCode(kind: keyof typeof driverChecks) {
-    return kind === "schema"
-      ? "duskds-inspect-driver-schema" as const
-      : kind === "encode"
-        ? "duskds-inspect-driver-encode" as const
-        : "duskds-inspect-driver-decode" as const;
+    if (kind === "availability") return "duskds-inspect-driver-availability" as const;
+    if (kind === "schema") return "duskds-inspect-driver-schema" as const;
+    if (kind === "encode") return "duskds-inspect-driver-encode" as const;
+    return "duskds-inspect-driver-decode" as const;
+  }
+
+  function clearDriverKinds(kinds: readonly (keyof typeof driverChecks)[]) {
+    journey.removeEvidence("duskds", "inspect", kinds.map(driverEvidenceCode));
+    setDriverChecks((current) => {
+      const next = { ...current };
+      for (const kind of kinds) next[kind] = false;
+      return next;
+    });
+    setDriverInput((current) => {
+      const next = { ...current };
+      for (const kind of kinds) next[driverDigestKey[kind]] = "";
+      return next;
+    });
+    setDriverErrors((current) => {
+      const next = { ...current };
+      for (const kind of kinds) next[kind] = "";
+      return next;
+    });
   }
 
   function changeDriverIdentity(field: "contractId" | "functionName", next: string) {
     if (next !== driverInput[field]) {
-      journey.removeEvidence("duskds", "inspect", [
-        "duskds-inspect-driver-schema",
-        "duskds-inspect-driver-encode",
-        "duskds-inspect-driver-decode"
-      ]);
+      clearDriverKinds(field === "contractId" ? driverKinds : ["encode", "decode"]);
     }
     setDriverInput((current) => ({ ...current, [field]: next }));
   }
 
   function toggleDriverCheck(kind: keyof typeof driverChecks) {
-    if (driverChecks[kind] && manualInspectEvidence(driverEvidenceCode(kind))) {
-      journey.removeEvidence("duskds", "inspect", [driverEvidenceCode(kind)]);
+    if (driverChecks[kind]) {
+      clearDriverKinds(kind === "availability" ? driverKinds : [kind]);
+      return;
     }
-    setDriverChecks((current) => ({ ...current, [kind]: !current[kind] }));
+    setDriverChecks((current) => ({ ...current, [kind]: true }));
+    setDriverErrors((current) => ({ ...current, [kind]: "" }));
   }
 
   function changeDriverDigest(kind: keyof typeof driverChecks, next: string) {
-    const key = kind === "schema" ? "schemaSha256" : kind === "encode" ? "encodeSha256" : "decodeSha256";
-    if (next !== driverInput[key] && manualInspectEvidence(driverEvidenceCode(kind))) {
-      journey.removeEvidence("duskds", "inspect", [driverEvidenceCode(kind)]);
+    const key = driverDigestKey[kind];
+    if (next !== driverInput[key]) {
+      const hasRecordedEvidence = inspectProgress.evidenceEntries
+        .some((entry) => entry.code === driverEvidenceCode(kind));
+      if (hasRecordedEvidence) {
+        clearDriverKinds(kind === "availability" ? driverKinds : [kind]);
+      } else {
+        setDriverErrors((current) => ({ ...current, [kind]: "" }));
+      }
     }
     setDriverInput((current) => ({ ...current, [key]: next }));
+  }
+
+  function setDriverError(kind: keyof typeof driverChecks, message: string) {
+    setDriverErrors((current) => ({ ...current, [kind]: message }));
   }
 
   function recordRevision() {
     const result = validateRevision(revision);
     if (!result.value) {
       setRevisionError(result.error ?? "Enter the source identity.");
+      return;
+    }
+    const buildRevision = getDuskDsBuildSourceRevision(journey.progress);
+    if (!buildRevision) {
+      setRevisionError("Return to Build and record matching artifact and VM-test source identities first.");
+      return;
+    }
+    if (result.value !== buildRevision) {
+      setRevisionError("Use the same source identity recorded for both Build artifacts and the VM test.");
       return;
     }
     setRevisionError("");
@@ -1232,40 +1338,50 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   function recordDriverCheck(kind: keyof typeof driverChecks) {
     const checkedRevision = validateRevision(revision);
     if (!checkedRevision.value) {
-      setDriverError("Record the source identity first so every driver observation is tied to the same build.");
+      setDriverError(kind, "Record the source identity first so every driver observation is tied to the same build.");
       return;
     }
     const recordedRevision = journey.progress.paths.duskds.inspect.evidenceEntries
       .find((entry) => entry.code === "duskds-inspect-artifact-revision")
       ?.metadata?.revision;
     if (!recordedRevision || recordedRevision !== checkedRevision.value) {
-      setDriverError("Save this exact source identity before recording driver observations.");
+      setDriverError(kind, "Save this exact source identity before recording driver observations.");
       return;
     }
     if (!driverChecks[kind]) {
-      setDriverError(`Confirm the ${kind} result you observed before saving it.`);
+      setDriverError(kind, `Confirm the ${kind} result you observed before saving it.`);
       return;
     }
-    const digest = kind === "schema"
-      ? driverInput.schemaSha256
-      : kind === "encode"
-        ? driverInput.encodeSha256
-        : driverInput.decodeSha256;
+    const normalizedContractId = driverInput.contractId.trim().replace(/^0x/i, "").toLowerCase();
+    if (kind !== "availability") {
+      const availability = journey.progress.paths.duskds.inspect.evidenceEntries
+        .find((entry) => entry.code === "duskds-inspect-driver-availability");
+      if (
+        availability?.metadata?.contractId !== normalizedContractId
+        || availability.metadata.revision !== checkedRevision.value
+      ) {
+        setDriverError(kind, "First confirm that this contract's metadata reports driver_available: true.");
+        return;
+      }
+    }
+    const digest = kind === "availability"
+      ? driverInput.availabilitySha256
+      : kind === "schema"
+        ? driverInput.schemaSha256
+        : kind === "encode"
+          ? driverInput.encodeSha256
+          : driverInput.decodeSha256;
     const observation = validateDriverObservation(kind, {
       contractId: driverInput.contractId,
       functionName: driverInput.functionName,
       responseSha256: digest
     });
     if (!observation.value) {
-      setDriverError(observation.error ?? `Enter the bounded ${kind} observation.`);
+      setDriverError(kind, observation.error ?? `Enter the bounded ${kind} observation.`);
       return;
     }
-    setDriverError("");
-    const code = kind === "schema"
-      ? "duskds-inspect-driver-schema"
-      : kind === "encode"
-        ? "duskds-inspect-driver-encode"
-        : "duskds-inspect-driver-decode";
+    setDriverError(kind, "");
+    const code = driverEvidenceCode(kind);
     journey.record("duskds", "inspect", [code], {
       method: "manual",
       metadata: {
@@ -1273,6 +1389,56 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         revision: checkedRevision.value
       }
     });
+  }
+
+  function openDataDriverRecovery() {
+    try {
+      window.sessionStorage.setItem("dusk-studio-troubleshooting-focus", "duskds-driver-unavailable-after-deploy");
+    } catch {
+      // The route remains usable when session storage is disabled.
+    }
+    setRoute("troubleshooting");
+  }
+
+  function driverCheckRow(kind: keyof typeof driverChecks) {
+    const disabled = kind !== "availability" && !driverRoutesAvailable;
+    const digest = driverInput[driverDigestKey[kind]];
+    const errorId = `duskds-${kind}-observation-error`;
+    return (
+      <div className="inspection-check" key={kind}>
+        <button
+          className="evidence-toggle"
+          type="button"
+          aria-pressed={driverChecks[kind]}
+          disabled={disabled}
+          onClick={() => toggleDriverCheck(kind)}
+        >
+          {driverChecks[kind] ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
+          {kind === "availability"
+            ? "I observed driver_available: true in contract metadata"
+            : kind === "schema"
+              ? "I observed a non-empty schema"
+              : kind === "encode"
+                ? "I observed valid input encoding"
+                : "I observed valid output decoding"}
+        </button>
+        <label>
+          {kind === "availability" ? "Metadata" : kind === "schema" ? "Schema" : kind === "encode" ? "Encode" : "Decode"} response SHA-256
+          <input
+            value={digest}
+            disabled={disabled}
+            aria-invalid={Boolean(driverErrors[kind]) || undefined}
+            aria-describedby={driverErrors[kind] ? errorId : undefined}
+            onChange={(event) => changeDriverDigest(kind, event.target.value)}
+            placeholder="64 hexadecimal characters"
+          />
+        </label>
+        <button className="secondary-button" type="button" disabled={disabled} onClick={() => recordDriverCheck(kind)}>
+          Save {kind === "availability" ? "availability" : kind} confirmation
+        </button>
+        {driverErrors[kind] ? <p className="validation-message inspection-error" id={errorId} role="alert">{driverErrors[kind]}</p> : null}
+      </div>
+    );
   }
 
   return (
@@ -1305,29 +1471,25 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
           </>
         )}
       </div>
-      <div className="focus-card wide">
+      <div className="focus-card wide" id="duskds-source-identity" tabIndex={-1}>
         <h2>2. Bind inspection to the built source</h2>
-        <p>Use the same Git tree or commit ID recorded during Build. New Studio starters use <code>git write-tree</code>; existing repositories use <code>git rev-parse HEAD</code>. This prevents a schema or encode/decode observation from being attributed to a different build.</p>
+        <p>Use the same Git tree or commit ID recorded during Build. New Studio starters use <code>git write-tree</code>; existing repositories use <code>git rev-parse HEAD</code>. This prevents post-deploy observations from being attributed to a different build.</p>
         <label>Artifact source identity<input value={revision} onChange={(event) => changeInspectRevision(event.target.value)} placeholder="7–64 hexadecimal characters" /></label>
         {revisionError ? <p className="validation-message" role="alert">{revisionError}</p> : null}
         <button className="primary-button" type="button" onClick={recordRevision}>Save source match</button>
       </div>
-      <div className="focus-card wide">
-        <h2>3. Inspect the data-driver behavior separately</h2>
-        <p>The public <code>/on/driver:&lt;contract_id&gt;</code> routes require a contract/data-driver identity already known by that node. They do not execute an undeployed local WASM file. For a local artifact, use the Forge verification and VM-test harness; for a deployed contract, use its real contract ID with the public read-only routes.</p>
+      <DuskDsDeployReadiness setRoute={setRoute} />
+      <div className="focus-card wide" id="duskds-post-deploy-inspection" tabIndex={-1}>
+        <h2>4. Return after deployment and inspect the data driver</h2>
+        <p>Use the contract ID only after confirming deployment inclusion and finality outside Studio. First read <code>/on/contract:&lt;contract_id&gt;/metadata</code> and confirm <code>driver_available: true</code>. Deployment alone does not publish a data driver; if that value is false, stop here and use the recovery guidance instead of calling driver routes.</p>
+        <button className="secondary-button" type="button" onClick={openDataDriverRecovery}>Open data-driver recovery</button>
         <CommandPair
-          firstTitle="Verify local artifact metadata"
-          first="dusk-forge verify --skip-build"
-          secondTitle="Deployed driver read routes"
-          second={driverCommands}
+          firstTitle="Read + hash metadata on Linux / macOS"
+          first={metadataReadCommands.posix}
+          secondTitle="Read + hash metadata on Windows"
+          second={metadataReadCommands.windows}
         />
-        <p>Save each exact response body to a file and record its SHA-256. This keeps the receipt useful without storing raw responses or terminal output.</p>
-        <CommandPair
-          firstTitle="Hash a response on Linux / macOS"
-          first={responseDigestCommands.posix}
-          secondTitle="Hash a response on Windows"
-          second={responseDigestCommands.windows}
-        />
+        <p>Save the exact metadata response body and record its SHA-256. This keeps the receipt useful without storing raw responses or terminal output.</p>
         <div className="evidence-form">
           <label>
             Deployed contract ID
@@ -1339,42 +1501,27 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
           </label>
         </div>
         <p className="quiet-note">Never paste a secret, seed phrase, signing request, private endpoint, credential, raw response, or payload into these fields. Studio stores only the checked result, source identity, contract ID, function name, endpoint origin, and response digest.</p>
-        {(["schema", "encode", "decode"] as const).map((kind) => (
-          <div className="inspection-check" key={kind}>
-            <button
-              className="evidence-toggle"
-              type="button"
-              aria-pressed={driverChecks[kind]}
-              onClick={() => toggleDriverCheck(kind)}
-            >
-              {driverChecks[kind] ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
-              {kind === "schema"
-                ? "I observed a non-empty schema"
-                : kind === "encode"
-                  ? "I observed valid input encoding"
-                  : "I observed valid output decoding"}
-            </button>
-            <label>
-              {kind === "schema" ? "Schema" : kind === "encode" ? "Encode" : "Decode"} response SHA-256
-              <input
-                value={kind === "schema" ? driverInput.schemaSha256 : kind === "encode" ? driverInput.encodeSha256 : driverInput.decodeSha256}
-                onChange={(event) => {
-                  changeDriverDigest(kind, event.target.value);
-                }}
-                placeholder="64 hexadecimal characters"
-              />
-            </label>
-            <button className="secondary-button" type="button" onClick={() => recordDriverCheck(kind)}>
-              Save {kind} confirmation
-            </button>
-          </div>
-        ))}
-        {driverError ? <p className="validation-message" role="alert">{driverError}</p> : null}
+        {driverCheckRow("availability")}
+        {driverRoutesAvailable ? (
+          <>
+            <AsyncNotice state="success" message="This contract's saved metadata evidence reports driver_available: true. Driver read commands are now available." />
+            <CommandPair
+              firstTitle="Read + hash driver responses on Linux / macOS"
+              first={driverReadCommands.posix}
+              secondTitle="Read + hash driver responses on Windows"
+              second={driverReadCommands.windows}
+            />
+          </>
+        ) : (
+          <AsyncNotice state="partial" message="Driver routes stay disabled until you save metadata evidence for this exact contract and source identity with driver_available: true." />
+        )}
+        {(["schema", "encode", "decode"] as const).map(driverCheckRow)}
       </div>
       <MiniSteps items={[
-        "Latest block evidence proves only that the node returned a bounded header.",
-        "The source identity binds the local build and every driver observation.",
-        "Schema, input encoding, and output decoding remain three independent confirmations."
+        "Observe one current block through the hosted read or a bounded manual record.",
+        "Bind Inspect to the exact source identity recorded during Build.",
+        "Review readiness, then run Rusk Wallet manually without giving Studio wallet access.",
+        "Return after finality, confirm driver availability, then record schema, input encoding, and output decoding separately."
       ]} />
     </StepFrame>
   );

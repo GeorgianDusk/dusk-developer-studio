@@ -125,9 +125,13 @@ test("public candidate exposes the complete DuskDS guide without DuskEVM RPC tra
   await expect(page.getByRole("heading", { name: "Create the reviewed starter" })).toBeVisible();
 
   await guide.getByRole("button", { name: /4 Inspect/i }).click();
-  await expect(page.getByRole("heading", { name: "Confirm native state access and data-driver compatibility." })).toBeVisible();
-  await expect(page.getByText(/\/on\/driver:<contract_id>\/get_schema/)).toBeVisible();
-  await expect(page.getByText(/\/on\/driver:<contract_id>\/decode_output_fn:<fn_name>/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prepare the manual deploy and verify post-deploy reads." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "3. Prepare a manual deployment" })).toBeVisible();
+  await expect(page.locator("pre").filter({ hasText: '--address "<PUBLIC_TESTNET_ADDRESS>"' })).toBeVisible();
+  await expect(page.getByText("Manual signing only")).toBeVisible();
+  await expect(page.getByText("/on/contract:<contract_id>/metadata", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Driver routes stay disabled until you save metadata evidence/)).toBeVisible();
+  await expect(page.locator("pre").filter({ hasText: "/on/driver:<contract_id>/get_schema" })).toHaveCount(0);
 
   expect(evmRpcRequests, "DuskDS browsing must not contact the DuskEVM RPC").toEqual([]);
 });

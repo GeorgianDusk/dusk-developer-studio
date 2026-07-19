@@ -13,6 +13,11 @@ name: DuskDS native production smoke
       - packages/**
       - scripts/staging-smoke.mjs
   workflow_dispatch:
+    inputs:
+      candidate_artifact_fingerprint_sha256:
+        description: Exact Phase 5 Studio artifact fingerprint; required for a launch-evidence dispatch
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -30,6 +35,8 @@ jobs:
       CI: "true"
       CARGO_TERM_COLOR: never
       EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+      CANDIDATE_ARTIFACT_FINGERPRINT_SHA256: ${{ inputs.candidate_artifact_fingerprint_sha256 || '' }}
+      EVENT_NAME: ${{ github.event_name }}
     defaults:
       run:
         shell: bash
@@ -181,6 +188,8 @@ jobs:
           SCHEMA_FUNCTIONS="$(printf '%s\n' "$VERIFY_OUTPUT" | sed -n 's/^schema_functions: //p')"
           test "${#CONTRACT_BLAKE3}" = 64
           test "$SCHEMA_FUNCTIONS" -gt 0
+          echo "CONTRACT_SHA256=$CONTRACT_HASH" >> "$GITHUB_ENV"
+          echo "DATA_DRIVER_SHA256=$DRIVER_HASH" >> "$GITHUB_ENV"
           {
             echo "### DuskDS native smoke evidence"
             echo "- Studio commit: \`$EXPECTED_COMMIT\`"
@@ -193,6 +202,44 @@ jobs:
             echo "- Schema functions: \`$SCHEMA_FUNCTIONS\`"
             echo "- VM test: \`passed on ubuntu-24.04\`"
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Write the bounded native-smoke receipt
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          mkdir -p output
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const candidateFingerprint = process.env.CANDIDATE_ARTIFACT_FINGERPRINT_SHA256;
+          if (process.env.EVENT_NAME === "workflow_dispatch" && !/^[a-f0-9]{64}$/.test(candidateFingerprint ?? "")) {
+            throw new Error("Phase 5 native-smoke dispatch requires the exact candidate artifact fingerprint.");
+          }
+          const receipt = {
+            schema_version: 1,
+            status: "passed",
+            candidate_commit: process.env.EXPECTED_COMMIT,
+            candidate_artifact_fingerprint_sha256: candidateFingerprint || "not-phase5-dispatch",
+            workflow_path: ".github/workflows/duskds-native-smoke.yml",
+            observed_at: new Date().toISOString(),
+            contract_sha256: process.env.CONTRACT_SHA256,
+            data_driver_sha256: process.env.DATA_DRIVER_SHA256,
+            native_steps: {
+              preflight: "passed",
+              node_read: "passed",
+              scaffold: "passed",
+              build_artifacts: "passed",
+              vm_test: "passed",
+              inspect: "passed"
+            }
+          };
+          fs.writeFileSync(`output/duskds-native-smoke-receipt-${process.env.GITHUB_RUN_ID}.json`, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+          NODE
+      - name: Upload the bounded native-smoke receipt
+        if: steps.scope.outputs.relevant == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: output/duskds-native-smoke-receipt-${{ github.run_id }}.json
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
       - name: Report scope-only success
         if: steps.scope.outputs.relevant == 'false'
         run: |

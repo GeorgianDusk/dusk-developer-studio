@@ -4,6 +4,11 @@ All notable Dusk Developer Studio changes are recorded here. The release manifes
 
 ## Unreleased
 
+- Add a revision-bound DuskDS manual Testnet deployment gate inside Inspect, with explicit Rusk Wallet settings/help checks, placeholder-only commands, and no wallet or signing access.
+- Separate submission from inclusion/finality, require contract metadata to report `driver_available: true` before driver reads, and add focused recovery guidance when a deployed contract has no available driver.
+- Fail readiness closed on blocked, skipped, future, or expired evidence; gate platform-correct driver commands behind matching metadata; and clear dependent digests and confirmations when identity inputs change.
+- Refresh the DuskVM quickstart, Rusk Wallet, HTTP API, Forge, and troubleshooting catalogue through 2026-08-19.
+- Harden Phase 5 evidence as schema v4 by binding reviews, pilots, smoke, rollback, monitoring, and synthetics to the exact candidate and requiring a controlled failure plus recovery attempt in every pilot.
 - Make `studio.134-122-59-217.nip.io` the canonical production origin after a protected DNS path rewrote the former `sslip.io` hostname; retain the old origin only as a temporary same-release compatibility route.
 - Add a deterministic Windows/Linux portable companion RC pipeline with pinned Node runtime verification, payload manifests, SBOM, provenance, signing gates, and extracted-archive smoke.
 - Keep hosted artifacts docs-only while adding release-bound portable bootstrap, exact Studio/runtime parity, safe-mode default, and separate local-actions launchers.

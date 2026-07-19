@@ -8,6 +8,12 @@ export interface DuskDsCommandSet {
   testEnvironment: "Ubuntu-24.04 WSL" | "native Linux";
 }
 
+export interface DuskDsDeployCommandSet {
+  platform: CommandPlatform;
+  prerequisiteChecks: string;
+  deployTemplate: string;
+}
+
 const WINDOWS_ROOT = "C:\\tmp\\dusk-studio-projects";
 const POSIX_ROOT = ".generated";
 
@@ -80,5 +86,30 @@ export function buildDuskDsCommandSet(options: {
     build: [`cd ${quotePosixArg(projectPath)}`, "dusk-forge check", "dusk-forge build all"].join("\n"),
     test: [`cd ${quotePosixArg(projectPath)}`, "dusk-forge test"].join("\n"),
     testEnvironment: "native Linux"
+  };
+}
+
+/**
+ * Returns a deliberately incomplete manual deployment shape. Placeholder
+ * values keep the command from being a one-click deployment, while quoting
+ * them prevents shell redirection if somebody runs the template unchanged.
+ * Studio must never fill wallet, funding, nonce, fee, or signing values.
+ */
+export function buildDuskDsDeployCommandSet(platform: CommandPlatform): DuskDsDeployCommandSet {
+  const newline = platform === "windows" ? "\r\n" : "\n";
+  const continuation = platform === "windows" ? " `" : " \\";
+  return {
+    platform,
+    prerequisiteChecks: [
+      "rusk-wallet --version",
+      "rusk-wallet --network testnet settings",
+      "rusk-wallet --network testnet contract-deploy --help"
+    ].join(newline),
+    deployTemplate: [
+      `rusk-wallet --network testnet contract-deploy${continuation}`,
+      `  --address "<PUBLIC_TESTNET_ADDRESS>"${continuation}`,
+      `  --code "<PATH_TO_WASM_CONTRACT>"${continuation}`,
+      '  --deploy-nonce "<UNUSED_NONCE>"'
+    ].join(newline)
   };
 }

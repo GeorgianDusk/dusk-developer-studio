@@ -18,6 +18,7 @@ for (const file of [
   "docs/operations/public-monitoring.md",
   "docs/operations/github-only-monitoring-decision.md",
   "docs/security/same-user-tool-boundary-decision.md",
+  "scripts/phase5-candidate-context.mjs",
   "config/companion-unsigned-assurance-policy.json",
   "SUPPORT.md",
   "docs/deployment/project-domain-migration.md"
@@ -117,6 +118,9 @@ assert.match(publicStagingWorkflow, /--rpc-degradation="\$\{\{ steps\.browser\.o
 assert.match(publicStagingWorkflow, /issues: write/);
 assert.match(publicStagingWorkflow, /gh issue create[\s\S]*--assignee GeorgianDusk/);
 assert.match(publicStagingWorkflow, /gh issue close/);
+assert.match(publicStagingWorkflow, /schema_version: 2[\s\S]*candidate_commit: process\.env\.GITHUB_SHA[\s\S]*candidate_public_fingerprint_sha256: process\.env\.PUBLIC_FINGERPRINT/);
+assert.match(publicStagingWorkflow, /issue_closed: true[\s\S]*studio-alert-delivery-receipt-\$\{\{ github\.run_id \}\}/);
+assert.match(publicStagingWorkflow, /studio-public-synthetic-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false/);
 assert.doesNotMatch(publicStagingWorkflow, /STUDIO_MONITOR_HEARTBEAT|EXTERNAL_HEARTBEAT|external_heartbeat|external_failure/);
 assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_URL/);
 assert.match(publicStagingWorkflow, /vars\.DUSK_STUDIO_PUBLIC_ENVIRONMENT/);
@@ -166,13 +170,18 @@ assert.match(duskDsNativeSmokeWorkflow, /dusk-forge check/);
 assert.match(duskDsNativeSmokeWorkflow, /dusk-forge build all/);
 assert.match(duskDsNativeSmokeWorkflow, /dusk-forge test/);
 assert.match(duskDsNativeSmokeWorkflow, /dusk-forge verify --skip-build/);
+assert.match(duskDsNativeSmokeWorkflow, /candidate_artifact_fingerprint_sha256:[\s\S]*CANDIDATE_ARTIFACT_FINGERPRINT_SHA256/);
+assert.match(duskDsNativeSmokeWorkflow, /CONTRACT_SHA256=\$CONTRACT_HASH[\s\S]*DATA_DRIVER_SHA256=\$DRIVER_HASH/);
+assert.match(duskDsNativeSmokeWorkflow, /contract_sha256: process\.env\.CONTRACT_SHA256[\s\S]*data_driver_sha256: process\.env\.DATA_DRIVER_SHA256/);
 assert.match(duskDsNativeSmokeWorkflow, /scripts\/staging-smoke\.mjs/);
 assert.match(duskDsNativeSmokeWorkflow, /checkDuskDsNodeRead\(policy\.duskds_testnet_graphql_url\)/);
 assert.doesNotMatch(duskDsNativeSmokeWorkflow, /curl[\s\S]*DUSKDS_GRAPHQL_URL|\.data\.block\.header|DUSKDS_GRAPHQL_URL/);
 assert.ok(duskDsNativeSmokeWorkflow.indexOf("Read the official DuskDS Testnet node") < duskDsNativeSmokeWorkflow.indexOf("Install the pinned Rust and Dusk Forge toolchain"), "The bounded node read must fail fast before the expensive native toolchain install.");
 assert.match(duskDsNativeSmokeWorkflow, /git\+https:\/\/github\.com\/dusk-network\/rusk\?tag=\$RUSK_TAG#\$RUSK_COMMIT/);
 assert.match(duskDsNativeSmokeWorkflow, /GITHUB_STEP_SUMMARY/);
-assert.doesNotMatch(duskDsNativeSmokeWorkflow, /upload-artifact|contents:\s*write|secrets\./);
+assert.match(duskDsNativeSmokeWorkflow, /output\/duskds-native-smoke-receipt-\$\{process\.env\.GITHUB_RUN_ID\}\.json/);
+assert.match(duskDsNativeSmokeWorkflow, /duskds-native-smoke-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false/);
+assert.doesNotMatch(duskDsNativeSmokeWorkflow, /contents:\s*write|secrets\./);
 const publicReleaseSpec = read("tests/e2e/public-release.spec.ts");
 assert.match(publicReleaseSpec, /request\.get\(expected\.href, \{ maxRedirects: 0 \}\)/);
 assert.match(publicReleaseSpec, /context\.route\("\*\*\/\*"/);
@@ -262,10 +271,21 @@ assert.match(watchdogWorkflow, /^"on":\n {2}schedule:\n {4}- cron: "47 4,16 \* \
 assert.match(watchdogWorkflow, /actions: read/);
 assert.match(watchdogWorkflow, /issues: write/);
 assert.match(watchdogWorkflow, /node scripts\/monitor-heartbeat\.mjs --max-age-hours=15/);
+assert.match(watchdogWorkflow, /studio-monitor-heartbeat-\$GITHUB_RUN_ID\.json[\s\S]*archive: false/);
 assert.match(watchdogWorkflow, /gh issue create[\s\S]*--assignee GeorgianDusk/);
 assert.match(watchdogWorkflow, /ref: \$\{\{ github\.sha \}\}[\s\S]*git rev-parse HEAD/);
 
 const phase5Policy = JSON.parse(read("config/phase5-policy.json"));
+const phase5Checker = read("scripts/check-phase5-evidence.mjs");
+const phase5CandidateContext = read("scripts/phase5-candidate-context.mjs");
+const phase5ProvenanceVerifier = read("scripts/github-actions-provenance.mjs");
+assert.match(phase5Checker, /GH_TOKEN[\s\S]*GITHUB_TOKEN[\s\S]*evaluatePhase5EvidenceOnline/);
+assert.match(phase5Checker, /verifyCandidateBoundPhase5Context[\s\S]*policyBytes[\s\S]*candidateContext/);
+assert.match(phase5CandidateContext, /rev-parse[\s\S]*status[\s\S]*--untracked-files=no[\s\S]*cat-file/);
+assert.match(phase5ProvenanceVerifier, /run_attempt !== 1/);
+assert.match(phase5ProvenanceVerifier, /redirect: "manual"[\s\S]*redirect: "error"/);
+assert.match(phase5ProvenanceVerifier, /does not have exactly one run-scoped receipt artifact/);
+assert.match(read("package.json"), /scripts\/test-github-actions-provenance\.mjs/);
 assert.deepEqual(phase5Policy.production_paths, ["duskds"]);
 assert.deepEqual(phase5Policy.preview_paths, ["evm"]);
 assert.deepEqual(phase5Policy.candidate_hosts, [
@@ -274,6 +294,26 @@ assert.deepEqual(phase5Policy.candidate_hosts, [
 assert.deepEqual(phase5Policy.compatibility_hosts, [
   "studio.134-122-59-217.sslip.io"
 ]);
+assert.equal(phase5Policy.minimum_tls_days_remaining, 14);
+assert.deepEqual(phase5Policy.required_owners, [
+  "product", "engineering", "protocol_docs", "security", "platform", "brand", "accessibility", "devrel_support"
+]);
+assert.deepEqual(phase5Policy.required_reviews, ["companion_security", "platform", "accessibility"]);
+assert.deepEqual(phase5Policy.pilot, {
+  minimum_total: 8,
+  minimum_duskds: 8,
+  required_experience: ["novice", "experienced"],
+  required_contexts: ["windows", "wsl", "linux", "macos"],
+  minimum_completion_rate: 0.83,
+  minimum_recovery_rate: 0.8,
+  minimum_average_trust_score: 4,
+  maximum_blocking_confusion: 0
+});
+assert.deepEqual(phase5Policy.required_synthetic_checks, [
+  "public_health", "release_parity", "key_routes", "source_links", "duskds_node_read",
+  "rpc_degradation", "tls_expiry", "companion_port_closed", "development_port_closed", "monitor_heartbeat"
+]);
+assert.deepEqual(phase5Policy.rollback_targets_seconds, { product: 300, platform: 600 });
 assert.equal(phase5Policy.duskds_testnet_graphql_url, "https://testnet.nodes.dusk.network/on/graphql/query");
 assert.ok(phase5Policy.duskds_node_read_evidence.max_age_hours > 0);
 assert.ok(phase5Policy.duskds_node_read_evidence.max_receipt_skew_minutes > 0);
@@ -284,6 +324,8 @@ assert.ok(!phase5Policy.required_synthetic_checks.includes("rpc_chain_id"));
 assert.ok(phase5Policy.required_synthetic_checks.includes("duskds_node_read"));
 assert.deepEqual(phase5Policy.required_native_smoke_steps, ["preflight", "node_read", "scaffold", "build_artifacts", "vm_test", "inspect"]);
 assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total);
+assert.deepEqual(phase5Policy.companion_distribution.allowed_availability, ["not-published"]);
+assert.deepEqual(phase5Policy.companion_distribution.required_targets, ["windows-x64", "linux-x64", "darwin-arm64"]);
 assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
 const stagingSmoke = read("scripts/staging-smoke.mjs");
 assert.doesNotMatch(stagingSmoke, /eth_chainId|checkRpc\(/, "DuskEVM RPC must not be requested while its policy check is deferred.");
@@ -297,13 +339,49 @@ assert.equal(phase5Policy.monitoring_evidence.accepted_risk.owner, "George");
 assert.equal(phase5Policy.monitoring_evidence.accepted_risk.authority_reference, "docs/operations/github-only-monitoring-decision.md");
 assert.ok(phase5Policy.monitoring_evidence.accepted_risk.revisit_triggers.length >= 2);
 const phase5Template = JSON.parse(read("config/phase5-evidence.template.json"));
-assert.equal(phase5Template.schema_version, 2);
+assert.equal(phase5Template.schema_version, 4);
+assert.ok(Array.isArray(phase5Template.candidate.implementation_identities));
+assert.ok(Object.hasOwn(phase5Template.candidate, "release_id"));
+assert.ok(Object.hasOwn(phase5Template.candidate, "policy_sha256"));
+assert.ok(Object.hasOwn(phase5Template.candidate, "evaluator_commit"));
 assert.equal(phase5Template.synthetics.checks.rpc_chain_id.status, "deferred");
 assert.equal(phase5Template.synthetics.checks.rpc_chain_id.reason, phase5Policy.deferred_synthetic_checks.rpc_chain_id.reason);
 assert.ok(!Object.hasOwn(phase5Template.live_smoke, "evm_steps"));
 assert.deepEqual(Object.keys(phase5Template.live_smoke.native_steps), phase5Policy.required_native_smoke_steps);
+assert.equal(phase5Template.live_smoke.workflow_path, ".github/workflows/duskds-native-smoke.yml");
+assert.ok(Object.hasOwn(phase5Template.live_smoke, "candidate_commit"));
+assert.ok(Object.hasOwn(phase5Template.live_smoke, "candidate_artifact_fingerprint_sha256"));
+assert.ok(Object.hasOwn(phase5Template.live_smoke, "receipt_json"));
+assert.ok(Object.hasOwn(phase5Template.live_smoke, "provenance"));
 assert.equal(phase5Template.synthetics.monitoring.mode, "github-only");
 assert.equal(phase5Template.synthetics.monitoring.owner, "George");
+assert.equal(phase5Template.synthetics.public_assurance.workflow_path, ".github/workflows/studio-public-staging.yml");
+assert.ok(Object.hasOwn(phase5Template.synthetics.public_assurance, "receipt_json"));
+assert.ok(Object.hasOwn(phase5Template.synthetics.public_assurance, "provenance"));
+for (const requiredCheck of phase5Policy.required_synthetic_checks) {
+  assert.ok(Object.hasOwn(phase5Template.synthetics.checks, requiredCheck), `Phase 5 template is missing synthetic check ${requiredCheck}.`);
+  assert.ok(Object.hasOwn(phase5Template.synthetics.checks[requiredCheck], "candidate_commit"));
+  assert.ok(Object.hasOwn(phase5Template.synthetics.checks[requiredCheck], "candidate_public_fingerprint_sha256"));
+}
+assert.ok(!Object.hasOwn(phase5Template.synthetics, "alert_delivery_verified"));
+assert.equal(phase5Template.synthetics.alert_delivery.workflow_path, ".github/workflows/studio-public-staging.yml");
+assert.ok(Object.hasOwn(phase5Template.synthetics.alert_delivery, "receipt_json"));
+assert.ok(Object.hasOwn(phase5Template.synthetics.alert_delivery, "provenance"));
+assert.ok(Object.hasOwn(phase5Template.synthetics.checks.monitor_heartbeat, "receipt_json"));
+assert.ok(Object.hasOwn(phase5Template.synthetics.checks.monitor_heartbeat, "provenance"));
+for (const reviewName of phase5Policy.required_reviews) {
+  assert.equal(phase5Template.reviews[reviewName].independent, false);
+  assert.ok(Object.hasOwn(phase5Template.reviews[reviewName], "candidate_commit"));
+  assert.ok(Object.hasOwn(phase5Template.reviews[reviewName], "candidate_artifact_fingerprint_sha256"));
+}
+for (const rollbackKind of ["product", "platform"]) {
+  assert.ok(Object.hasOwn(phase5Template.rollback[rollbackKind], "candidate_commit"));
+  assert.ok(Object.hasOwn(phase5Template.rollback[rollbackKind], "candidate_artifact_fingerprint_sha256"));
+  assert.ok(Object.hasOwn(phase5Template.rollback[rollbackKind], "evidence_reference"));
+  assert.ok(Object.hasOwn(phase5Template.rollback[rollbackKind], "receipt_sha256"));
+  assert.ok(Object.hasOwn(phase5Template.rollback[rollbackKind], "receipt_json"));
+  assert.equal(phase5Template.rollback[rollbackKind].target, rollbackKind);
+}
 assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_dead_man"));
 assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_direct_health"));
 assert.match(read("docs/operations/public-monitoring.md"), /https:\/\/studio\.134-122-59-217\.nip\.io\/healthz/);

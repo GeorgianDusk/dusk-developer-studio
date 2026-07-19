@@ -1,17 +1,35 @@
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import { URL } from "node:url";
+import { verifyPhase5GitHubProvenance } from "./github-actions-provenance.mjs";
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
 const DUSKDS_BLOCK_HASH_RE = /^[a-f0-9]{64}$/i;
+const ISO_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
+const PSEUDONYMOUS_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const UNASSIGNED_RE = /^(?:tbd|todo|unknown|unassigned|pending)$/i;
-const SECRET_KEY_RE = /(?:private[_-]?key|mnemonic|seed(?:er|phrase)?|profile[_-]?entropy|wallet[_-]?password|pairing[_-]?token|api[_-]?key|secret)/i;
+const SECRET_KEY_RE = /(?:private[_-]?key|mnemonic|seed(?:er|phrase)?|recovery[_-]?phrase|profile[_-]?entropy|wallet[_-]?password|pairing[_-]?token|api[_-]?key|access[_-]?token|client[_-]?secret)/i;
+const SECRET_VALUE_RE = /(?:mnemonic|seed phrase|recovery phrase|private key|wallet password|pairing token|api key|client secret|access token)(?:\s*(?::|=|\bis\b)\s*|\s+)\S+/i;
+const GITHUB_TOKEN_RE = /\bgh[pousr]_[A-Za-z0-9_]{10,}\b/;
+const URL_TOKEN_RE = /(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s<>"']+/gi;
+const NATIVE_SMOKE_WORKFLOW = ".github/workflows/duskds-native-smoke.yml";
+const PUBLIC_ASSURANCE_WORKFLOW = ".github/workflows/studio-public-staging.yml";
+const EXTERNAL_SYNTHETIC_CHECKS = new Set(["external_dead_man", "external_direct_health"]);
+const CLOSED_PORT_OBSERVATIONS = new Set(["filtered-or-closed", "econnrefused", "etimedout", "ehostunreach", "enetunreach"]);
+const MAX_RECEIPT_BYTES = 512_000;
+const EXCEPTION_FIELDS = ["owner", "rationale", "compensating_control", "residual_risk", "monitoring", "expiry", "revalidation_trigger", "accepted_by", "accepted_at"];
 
 function present(value) {
   return typeof value === "string" && value.trim().length > 0 && !UNASSIGNED_RE.test(value.trim());
 }
 
 function validDate(value) {
-  return typeof value === "string" && Number.isFinite(Date.parse(value));
+  if (typeof value !== "string" || !ISO_UTC_RE.test(value)) return false;
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return false;
+  const canonical = parsed.toISOString();
+  return value === canonical || value === canonical.replace(".000Z", "Z");
 }
 
 function freshDate(value, now, maxAgeMilliseconds) {
@@ -25,7 +43,37 @@ function expectedActionsRunUrl(value, repository) {
   try {
     const url = new URL(value);
     const prefix = `/${repository}/actions/runs/`;
-    return url.protocol === "https:" && url.hostname === "github.com" && url.pathname.startsWith(prefix) && /^\d+\/?$/.test(url.pathname.slice(prefix.length));
+    return url.protocol === "https:"
+      && url.hostname === "github.com"
+      && !url.username
+      && !url.password
+      && !url.port
+      && !url.search
+      && !url.hash
+      && url.pathname.startsWith(prefix)
+      && /^\d+\/?$/.test(url.pathname.slice(prefix.length));
+  } catch {
+    return false;
+  }
+}
+
+function actionsRunId(value, repository) {
+  if (!expectedActionsRunUrl(value, repository)) return undefined;
+  const url = new URL(value);
+  return url.pathname.replace(/\/$/, "").split("/").at(-1);
+}
+
+function expectedManifestUrl(value, approvedHosts) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && approvedHosts.includes(url.hostname)
+      && !url.username
+      && !url.password
+      && !url.port
+      && !url.search
+      && !url.hash
+      && url.pathname === "/release-manifest.json";
   } catch {
     return false;
   }
@@ -50,15 +98,248 @@ function expectedDirectHealthTarget(value, manifestUrl) {
   }
 }
 
-function checkForSecretFields(value, path = "evidence", findings = []) {
-  if (Array.isArray(value)) value.forEach((item, index) => checkForSecretFields(item, `${path}[${index}]`, findings));
+function checkForSecretMaterial(value, path = "evidence", findings = []) {
+  if (typeof value === "string") {
+    if (SECRET_VALUE_RE.test(value) || GITHUB_TOKEN_RE.test(value)) findings.push(path);
+    for (const [matched] of value.matchAll(URL_TOKEN_RE)) {
+      if (matched.startsWith("//")) {
+        findings.push(path);
+        continue;
+      }
+      try {
+        const url = new URL(matched);
+        if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash) findings.push(path);
+      } catch {
+        findings.push(path);
+      }
+    }
+  }
+  else if (Array.isArray(value)) value.forEach((item, index) => checkForSecretMaterial(item, `${path}[${index}]`, findings));
   else if (value && typeof value === "object") {
     for (const [key, item] of Object.entries(value)) {
       if (SECRET_KEY_RE.test(key)) findings.push(`${path}.${key}`);
-      checkForSecretFields(item, `${path}.${key}`, findings);
+      checkForSecretMaterial(item, `${path}.${key}`, findings);
     }
   }
   return findings;
+}
+
+function exactKeys(blockers, label, value, expectedKeys) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    blockers.push(`${label} must be one object with the reviewed fields.`);
+    return false;
+  }
+  const expected = new Set(expectedKeys);
+  const actual = Object.keys(value);
+  const unknown = actual.filter((key) => !expected.has(key));
+  const missing = expectedKeys.filter((key) => !Object.hasOwn(value, key));
+  if (unknown.length || missing.length) {
+    blockers.push(`${label} fields are invalid (unknown: ${unknown.join(", ") || "none"}; missing: ${missing.join(", ") || "none"}).`);
+    return false;
+  }
+  return true;
+}
+
+function timestampAfterBuild(blockers, label, value, candidateBuiltAt, now) {
+  if (!validDate(value)
+      || Date.parse(value) < Date.parse(candidateBuiltAt)
+      || Date.parse(value) > now.getTime()) {
+    blockers.push(`${label} must be dated at or after the candidate build and no later than now.`);
+    return false;
+  }
+  return true;
+}
+
+function normalizeReference(value) {
+  return typeof value === "string" ? value.normalize("NFKC").trim().toLowerCase() : "";
+}
+
+function identityAliases(value) {
+  if (!present(value)) return new Set();
+  const normalized = normalizeReference(value);
+  const aliases = new Set();
+  const canonicalName = (candidate) => candidate.replace(/[^\p{L}\p{N}]+/gu, "");
+  const emails = normalized.match(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/g) ?? [];
+  for (const email of emails) {
+    aliases.add(email);
+    const localPart = email.split("@")[0];
+    aliases.add(localPart);
+    aliases.add(canonicalName(localPart));
+  }
+  const display = normalized.replace(/[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9.-]+\.[a-z]{2,}/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
+  if (display) aliases.add(display);
+  if (!emails.length) aliases.add(canonicalName(normalized));
+  aliases.delete("");
+  return aliases;
+}
+
+function aliasesOverlap(left, right) {
+  for (const alias of left) if (right.has(alias)) return true;
+  return false;
+}
+
+function aliasSetsOverlap(aliasSets) {
+  for (let index = 0; index < aliasSets.length; index += 1) {
+    if (aliasSets.slice(index + 1).some((other) => aliasesOverlap(aliasSets[index], other))) return true;
+  }
+  return false;
+}
+
+function containsAsciiControl(value) {
+  return [...value].some((character) => character.codePointAt(0) <= 0x1f);
+}
+
+function validEvidenceReference(value) {
+  if (!present(value) || containsAsciiControl(value)) return false;
+  const normalized = value.normalize("NFKC").trim();
+  if (/^https:\/\//i.test(normalized)) {
+    try {
+      const url = new URL(normalized);
+      return url.protocol === "https:" && !url.username && !url.password && !url.port && !url.search && !url.hash;
+    } catch {
+      return false;
+    }
+  }
+  if (/^(?:[\\/]|~(?:[\\/]|$))/u.test(normalized)
+      || normalized.includes("\\")
+      || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/iu.test(normalized)
+      || normalized.includes("://")
+      || /[?#]/u.test(normalized)) return false;
+  const segments = normalized.split("/");
+  return segments.every((segment) => segment && segment !== "." && segment !== "..");
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function parseBoundReceipt(blockers, label, record) {
+  if (typeof record?.receipt_json !== "string"
+      || Buffer.byteLength(record.receipt_json, "utf8") > MAX_RECEIPT_BYTES
+      || !SHA256_RE.test(record?.receipt_sha256 ?? "")
+      || sha256(record.receipt_json ?? "") !== record?.receipt_sha256) {
+    blockers.push(`${label} receipt bytes are missing, oversized, or do not match the recorded SHA-256.`);
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(record.receipt_json);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("not an object");
+    const receiptSecrets = checkForSecretMaterial(parsed, `${label}.receipt`);
+    if (receiptSecrets.length) blockers.push(`${label} parsed receipt contains forbidden secret-shaped or unsafe URL values: ${receiptSecrets.join(", ")}.`);
+    return parsed;
+  } catch {
+    blockers.push(`${label} receipt JSON is invalid.`);
+    return {};
+  }
+}
+
+function expectedArtifactApiUrl(value, repository, artifactId) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:"
+      && url.hostname === "api.github.com"
+      && !url.username
+      && !url.password
+      && !url.port
+      && !url.search
+      && !url.hash
+      && url.pathname === `/repos/${repository}/actions/artifacts/${artifactId}`;
+  } catch {
+    return false;
+  }
+}
+
+function checkActionsProvenance(blockers, label, record, candidate, repository, allowedEvents, expectedReceiptPath, now, gatingTimestamps) {
+  const provenance = record?.provenance;
+  exactKeys(blockers, `${label} provenance`, provenance, [
+    "schema_version", "repository", "workflow_path", "run_id", "run_url", "run_attempt",
+    "run_event", "run_commit", "run_conclusion", "artifact_id", "artifact_name",
+    "artifact_api_url", "artifact_digest_sha256", "artifact_sha256",
+    "artifact_expired", "receipt_path", "receipt_sha256", "downloaded_at"
+  ]);
+  const runId = actionsRunId(record?.run_url, repository);
+  if (provenance?.schema_version !== 1
+      || provenance.repository !== repository
+      || provenance.workflow_path !== record?.workflow_path
+      || String(provenance.run_id) !== runId
+      || provenance.run_url !== record?.run_url
+      || provenance.run_attempt !== 1
+      || !allowedEvents.includes(provenance.run_event)
+      || provenance.run_commit !== candidate.commit
+      || provenance.run_conclusion !== "success"
+      || !Number.isSafeInteger(provenance.artifact_id)
+      || provenance.artifact_id <= 0
+      || provenance.artifact_name !== record?.artifact_name
+      || !expectedArtifactApiUrl(provenance.artifact_api_url, repository, provenance.artifact_id)
+      || !SHA256_RE.test(provenance.artifact_digest_sha256 ?? "")
+      || provenance.artifact_sha256 !== provenance.artifact_digest_sha256
+      || provenance.artifact_sha256 !== record?.receipt_sha256
+      || provenance.artifact_expired !== false
+      || provenance.receipt_path !== expectedReceiptPath
+      || provenance.receipt_sha256 !== record?.receipt_sha256
+      || !validDate(provenance.downloaded_at)
+      || Date.parse(provenance.downloaded_at) < Date.parse(record?.observed_at)
+      || Date.parse(provenance.downloaded_at) > now.getTime()) {
+    blockers.push(`${label} lacks complete downloaded GitHub run/artifact provenance bound to the candidate, successful run, artifact digest, and receipt.`);
+  } else {
+    gatingTimestamps.push(Date.parse(provenance.downloaded_at));
+  }
+}
+
+function checkPublicReceiptShape(blockers, receipt, policy, previewPaths) {
+  exactKeys(blockers, "Public assurance receipt JSON", receipt, [
+    "schema_version", "checked_at", "target", "expected_environment", "status",
+    "studio_status", "upstream_dependency_status", "checks", "errors"
+  ]);
+  const expectedChecks = (policy.required_synthetic_checks ?? [])
+    .filter((check) => check !== "monitor_heartbeat" && !EXTERNAL_SYNTHETIC_CHECKS.has(check));
+  if (previewPaths.includes("evm") && !expectedChecks.includes("rpc_chain_id")) expectedChecks.push("rpc_chain_id");
+  exactKeys(blockers, "Public assurance receipt checks", receipt?.checks, expectedChecks);
+  const checkKeys = {
+    public_health: ["status"],
+    release_parity: ["status", "commit", "version", "artifact_fingerprint_sha256"],
+    key_routes: ["status", "spa_fallback_cache"],
+    source_links: ["status", "urls"],
+    duskds_node_read: ["status", "endpoint", "height", "hash", "observed_at"],
+    rpc_chain_id: ["status", "path", "reason"],
+    rpc_degradation: ["status", "evidence"],
+    tls_expiry: ["status", "days_remaining", "expires_at"],
+    companion_port_closed: ["status", "observed"],
+    development_port_closed: ["status", "observed"]
+  };
+  for (const check of expectedChecks) exactKeys(blockers, `Public assurance receipt check ${check}`, receipt?.checks?.[check], checkKeys[check] ?? ["status"]);
+  for (const check of expectedChecks) {
+    const expectedStatus = check === "rpc_chain_id" && previewPaths.includes("evm") ? "deferred" : "passed";
+    if (receipt?.checks?.[check]?.status !== expectedStatus) blockers.push(`Public assurance receipt check ${check} does not have the required ${expectedStatus} status.`);
+  }
+  if (receipt?.checks?.source_links?.urls) {
+    exactKeys(blockers, "Public assurance source-link statuses", receipt.checks.source_links.urls, policy.key_source_urls ?? []);
+    if (Object.values(receipt.checks.source_links.urls).some((status) => !Number.isInteger(status) || status < 200 || status >= 400)) {
+      blockers.push("Public assurance source-link receipt contains an invalid HTTP status.");
+    }
+  }
+  const keyRoutes = receipt?.checks?.key_routes ?? {};
+  const rpcDegradation = receipt?.checks?.rpc_degradation ?? {};
+  const tlsExpiry = receipt?.checks?.tls_expiry ?? {};
+  const checkedAt = Date.parse(receipt?.checked_at);
+  const expiresAt = Date.parse(tlsExpiry.expires_at);
+  const actualTlsDays = (expiresAt - checkedAt) / 86_400_000;
+  if (keyRoutes.spa_fallback_cache !== "no-cache") blockers.push("Public assurance key-route receipt does not prove the exact no-cache SPA fallback.");
+  if (rpcDegradation.evidence !== "hosted-browser-offline-recovery") blockers.push("Public assurance RPC degradation receipt does not prove the reviewed hosted-browser recovery behavior.");
+  if (!validDate(receipt?.checked_at)
+      || !validDate(tlsExpiry.expires_at)
+      || !Number.isFinite(tlsExpiry.days_remaining)
+      || tlsExpiry.days_remaining < policy.minimum_tls_days_remaining
+      || !Number.isFinite(actualTlsDays)
+      || actualTlsDays < policy.minimum_tls_days_remaining
+      || Math.abs(actualTlsDays - tlsExpiry.days_remaining) > 1) {
+    blockers.push("Public assurance TLS receipt does not prove the reviewed minimum lifetime and expiry chronology.");
+  }
+  for (const portCheck of ["companion_port_closed", "development_port_closed"]) {
+    if (!CLOSED_PORT_OBSERVATIONS.has(receipt?.checks?.[portCheck]?.observed)) {
+      blockers.push(`Public assurance ${portCheck} receipt does not contain an accepted closed-port observation.`);
+    }
+  }
 }
 
 function checkSteps(blockers, label, steps, required) {
@@ -69,28 +350,50 @@ function checkSteps(blockers, label, steps, required) {
   for (const step of required) if (steps[step] !== "passed") blockers.push(`${label} step ${step} has not passed.`);
 }
 
-function checkException(blockers, issue, now) {
+function checkCandidateBinding(blockers, label, record, candidate, fingerprintKind) {
+  const fingerprintField = fingerprintKind === "public"
+    ? "candidate_public_fingerprint_sha256"
+    : "candidate_artifact_fingerprint_sha256";
+  const expectedFingerprint = fingerprintKind === "public"
+    ? candidate.public_fingerprint_sha256
+    : candidate.artifact_fingerprint_sha256;
+  if (record?.candidate_commit !== candidate.commit || record?.[fingerprintField] !== expectedFingerprint) {
+    blockers.push(`${label} is not bound to the exact candidate commit and ${fingerprintKind} fingerprint.`);
+  }
+}
+
+function checkActionsReference(blockers, label, record, repository, expectedWorkflow) {
+  if (record?.workflow_path !== expectedWorkflow
+      || !expectedActionsRunUrl(record?.run_url, repository)
+      || !validDate(record?.observed_at)) {
+    blockers.push(`${label} lacks a dated reference bound to the exact canonical Actions workflow and run.`);
+  }
+}
+
+function checkException(blockers, issue, candidateBuiltAt, now, gatingTimestamps) {
   const exception = issue.exception;
-  const required = ["owner", "rationale", "compensating_control", "residual_risk", "monitoring", "expiry", "revalidation_trigger", "accepted_by"];
-  if (!exception || required.some((field) => !present(exception[field]))) {
+  exactKeys(blockers, `Open P1 ${issue.id ?? "unknown"} exception`, exception, EXCEPTION_FIELDS);
+  if (!exception || EXCEPTION_FIELDS.some((field) => !present(exception[field]))) {
     blockers.push(`Open P1 ${issue.id ?? "unknown"} has no complete exception.`);
     return;
   }
-  if (exception.accepted_by !== "George" || !validDate(exception.expiry)) {
+  if (exception.accepted_by !== "George" || !validDate(exception.expiry)
+      || !timestampAfterBuild(blockers, `Open P1 ${issue.id ?? "unknown"} exception acceptance`, exception.accepted_at, candidateBuiltAt, now)) {
     blockers.push(`Open P1 ${issue.id ?? "unknown"} has an invalid product-owner acceptance or expiry.`);
     return;
   }
+  gatingTimestamps.push(Date.parse(exception.accepted_at));
   const expiry = Date.parse(exception.expiry);
   if (expiry <= now.getTime() || expiry > now.getTime() + 30 * 24 * 60 * 60 * 1000) {
     blockers.push(`Open P1 ${issue.id ?? "unknown"} exception must be active and expire within 30 days.`);
   }
 }
 
-export function evaluatePhase5Evidence(policy, evidence, options = {}) {
+function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const now = options.now ?? new Date();
   const blockers = [];
   if (!policy || policy.schema_version !== 1) blockers.push("Phase 5 policy schema is unsupported.");
-  if (!evidence || evidence.schema_version !== 2) blockers.push("Phase 5 evidence schema is unsupported.");
+  if (!evidence || evidence.schema_version !== 4) blockers.push("Phase 5 evidence schema is unsupported.");
   if (blockers.length) return { decision: "no-go", blockers };
 
   const productionPaths = Array.isArray(policy.production_paths) ? policy.production_paths : [];
@@ -118,57 +421,126 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
     blockers.push("DuskDS production requires the native Testnet node-read synthetic check.");
   }
 
-  const secretFields = checkForSecretFields(evidence);
-  if (secretFields.length) blockers.push(`Evidence contains forbidden secret-shaped fields: ${secretFields.join(", ")}.`);
+  exactKeys(blockers, "Phase 5 evidence", evidence, [
+    "schema_version", "candidate", "owners", "reviews", "pilot", "live_smoke", "synthetics",
+    "rollback", "issues", "support", "product_signoff", "companion_distribution"
+  ]);
+  const secretMaterial = checkForSecretMaterial(evidence);
+  if (secretMaterial.length) blockers.push(`Evidence contains forbidden secret-shaped fields or values: ${secretMaterial.join(", ")}.`);
 
   const candidate = evidence.candidate ?? {};
+  exactKeys(blockers, "Candidate evidence", candidate, [
+    "artifact_fingerprint_sha256", "public_fingerprint_sha256", "commit", "release_id", "implementation_identities",
+    "policy_sha256", "evaluator_commit", "manifest_url", "built_at", "source_checked_at", "source_expires_at"
+  ]);
   if (!SHA256_RE.test(candidate.artifact_fingerprint_sha256 ?? "")) blockers.push("Candidate artifact fingerprint is invalid.");
   if (!SHA256_RE.test(candidate.public_fingerprint_sha256 ?? "")) blockers.push("Public artifact fingerprint is invalid.");
   if (candidate.artifact_fingerprint_sha256 !== candidate.public_fingerprint_sha256) blockers.push("Candidate and public artifact fingerprints differ.");
   if (!COMMIT_RE.test(candidate.commit ?? "")) blockers.push("Candidate must identify one clean full Git commit.");
-  if (!present(candidate.manifest_url) || !candidate.manifest_url.startsWith("https://")) blockers.push("Candidate manifest URL must be HTTPS.");
-  else {
-    try {
-      const host = new URL(candidate.manifest_url).hostname;
-      if (!policy.candidate_hosts.includes(host)) blockers.push(`Candidate host ${host} is not approved by policy.`);
-    } catch {
-      blockers.push("Candidate manifest URL is invalid.");
-    }
+  if (!present(candidate.release_id) || candidate.release_id.length > 128) blockers.push("Candidate release id is missing or invalid.");
+  if (!SHA256_RE.test(candidate.policy_sha256 ?? "")
+      || candidate.policy_sha256 !== options.policySha256
+      || candidate.evaluator_commit !== candidate.commit
+      || candidate.evaluator_commit !== options.evaluatorCommit) {
+    blockers.push("Candidate is not bound to the exact reviewed policy bytes and evaluator commit.");
   }
-  if (!validDate(candidate.built_at)) blockers.push("Candidate build time is invalid.");
+  const implementationIdentities = Array.isArray(candidate.implementation_identities) ? candidate.implementation_identities : [];
+  const normalizedImplementers = implementationIdentities.map(normalizeReference);
+  const implementationAliasSets = implementationIdentities.map(identityAliases);
+  if (!implementationIdentities.length
+      || implementationIdentities.some((identity) => !present(identity))
+      || new Set(normalizedImplementers).size !== implementationIdentities.length
+      || aliasSetsOverlap(implementationAliasSets)) {
+    blockers.push("Candidate implementation identities are missing, invalid, or duplicated.");
+  }
+  if (!expectedManifestUrl(candidate.manifest_url, policy.candidate_hosts ?? [])) blockers.push("Candidate manifest URL must be the exact credential-free approved HTTPS release-manifest URL.");
+  const candidateBuiltAt = Date.parse(candidate.built_at);
+  const sourceCheckedAt = Date.parse(candidate.source_checked_at);
+  const sourceExpiresAt = Date.parse(candidate.source_expires_at);
+  if (!validDate(candidate.built_at) || candidateBuiltAt > now.getTime()) blockers.push("Candidate build time is invalid or in the future.");
   if (!validDate(candidate.source_checked_at) || !validDate(candidate.source_expires_at)) blockers.push("Candidate source receipt dates are invalid.");
-  else if (Date.parse(candidate.source_expires_at) <= now.getTime()) blockers.push("Candidate source receipt is expired.");
+  else if (sourceCheckedAt > now.getTime()
+      || sourceExpiresAt <= now.getTime()
+      || sourceExpiresAt <= sourceCheckedAt
+      || sourceExpiresAt - sourceCheckedAt > 31 * 24 * 60 * 60 * 1_000) {
+    blockers.push("Candidate source receipt is future-dated, expired, chronologically invalid, or exceeds the 31-day horizon.");
+  }
+  const gatingTimestamps = [candidateBuiltAt, sourceCheckedAt].filter(Number.isFinite);
 
   const distributionPolicy = policy.companion_distribution ?? {};
   const distribution = evidence.companion_distribution ?? {};
+  exactKeys(blockers, "Companion distribution evidence", distribution, ["hosted_mode", "availability", "targets"]);
   if (distribution.hosted_mode !== distributionPolicy.hosted_mode || distribution.hosted_mode !== "docs-only") {
     blockers.push("Hosted Studio companion mode must remain docs-only.");
+  }
+  if (distribution.availability === "signed-downloads") {
+    blockers.push("Signed companion downloads require a separate cryptographic signature, notarization, and clean-machine verifier before Phase 5 can return go.");
   }
   if (!distributionPolicy.allowed_availability?.includes(distribution.availability)) {
     blockers.push("Companion distribution availability is not allowed by policy.");
   } else if (distribution.availability === "signed-downloads") {
+    exactKeys(blockers, "Signed companion targets", distribution.targets, distributionPolicy.required_targets ?? []);
     for (const target of distributionPolicy.required_targets ?? []) {
       const record = distribution.targets?.[target];
+      exactKeys(blockers, `Signed companion target ${target}`, record, [
+        "signing_status", "signature_algorithm", "signature_verified", "clean_machine_smoke",
+        "archive_sha256", "manifest_sha256", "verified_at"
+      ]);
       if (!record || record.signing_status !== "signed" || record.signature_algorithm !== distributionPolicy.required_signatures?.[target]
           || record.signature_verified !== true || record.clean_machine_smoke !== distributionPolicy.clean_machine_smoke_status
           || !SHA256_RE.test(record.archive_sha256 ?? "") || !SHA256_RE.test(record.manifest_sha256 ?? "")) {
         blockers.push(`Signed companion distribution evidence is incomplete for ${target}.`);
       }
+      if (timestampAfterBuild(blockers, `Signed companion target ${target}`, record?.verified_at, candidate.built_at, now)) {
+        gatingTimestamps.push(Date.parse(record.verified_at));
+      }
     }
+  } else if (distribution.targets && Object.keys(distribution.targets).length) {
+    blockers.push("Unpublished companion distribution must not contain target evidence.");
   }
 
   const owners = evidence.owners ?? {};
+  exactKeys(blockers, "Owner assignments", owners, policy.required_owners);
   for (const owner of policy.required_owners) if (!present(owners[owner])) blockers.push(`Required owner ${owner} is unassigned.`);
+  const ownerAliasSets = Object.values(owners).filter(present).map(identityAliases);
+  if (aliasSetsOverlap(ownerAliasSets)) blockers.push("Owner assignments must use distinct people under normalized identity matching.");
+  const disallowedReviewerAliases = [
+    ...ownerAliasSets,
+    ...implementationAliasSets
+  ];
 
   const reviews = evidence.reviews ?? {};
+  exactKeys(blockers, "Independent reviews", reviews, policy.required_reviews);
+  const acceptedReviewerAliases = [];
+  const reviewEvidenceReferences = [];
   for (const reviewName of policy.required_reviews) {
     const review = reviews[reviewName];
+    exactKeys(blockers, `Independent review ${reviewName}`, review, [
+      "status", "reviewer", "reviewed_at", "independent", "evidence_reference",
+      "candidate_commit", "candidate_artifact_fingerprint_sha256"
+    ]);
     if (!review || review.status !== "accepted" || !present(review.reviewer) || !validDate(review.reviewed_at)) {
       blockers.push(`Independent review ${reviewName} is not accepted with reviewer/date evidence.`);
     }
-    if (reviewName === "companion_security" && review?.independent !== true) blockers.push("Companion security reviewer is not recorded as independent.");
+    const reviewerAliases = identityAliases(review?.reviewer);
+    if (review?.independent !== true || disallowedReviewerAliases.some((identity) => aliasesOverlap(reviewerAliases, identity))) {
+      blockers.push(`Reviewer for ${reviewName} is not independent from every owner and implementation identity.`);
+    }
+    if (reviewerAliases.size) acceptedReviewerAliases.push(reviewerAliases);
+    if (timestampAfterBuild(blockers, `Independent review ${reviewName}`, review?.reviewed_at, candidate.built_at, now)) {
+      gatingTimestamps.push(Date.parse(review.reviewed_at));
+    }
+    if (!validEvidenceReference(review?.evidence_reference)) blockers.push(`Independent review ${reviewName} lacks a safe redacted evidence reference.`);
+    reviewEvidenceReferences.push(normalizeReference(review?.evidence_reference));
+    checkCandidateBinding(blockers, `Independent review ${reviewName}`, review, candidate, "artifact");
+  }
+  if (aliasSetsOverlap(acceptedReviewerAliases)) blockers.push("Security, platform, and accessibility reviews must have distinct independent reviewers.");
+  if (reviewEvidenceReferences.some((reference) => !reference) || new Set(reviewEvidenceReferences).size !== reviewEvidenceReferences.length) {
+    blockers.push("Security, platform, and accessibility reviews must use distinct evidence references.");
   }
 
+  exactKeys(blockers, "Pilot evidence", evidence.pilot, ["sessions"]);
+  if (!Array.isArray(evidence.pilot?.sessions)) blockers.push("Pilot sessions must be an array.");
   const sessions = Array.isArray(evidence.pilot?.sessions) ? evidence.pilot.sessions : [];
   if (sessions.length < policy.pilot.minimum_total) blockers.push(`Pilot has ${sessions.length}/${policy.pilot.minimum_total} required sessions.`);
   const duskds = sessions.filter((session) => session.path === "duskds");
@@ -190,18 +562,180 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
   if (averageTrust < policy.pilot.minimum_average_trust_score) blockers.push(`Pilot trust score ${averageTrust.toFixed(2)} is below ${policy.pilot.minimum_average_trust_score}.`);
   const blockingConfusion = sessions.filter((session) => session.blocking_confusion === true).length;
   if (blockingConfusion > policy.pilot.maximum_blocking_confusion) blockers.push(`Pilot recorded ${blockingConfusion} blocking confusion events.`);
-  if (sessions.some((session) => !present(session.id) || !Number.isFinite(session.duration_minutes) || session.duration_minutes <= 0)) blockers.push("Every pilot session needs a pseudonymous id and positive duration.");
+  if (sessions.some((session) => !PSEUDONYMOUS_ID_RE.test(session.id ?? "") || !Number.isFinite(session.duration_minutes) || session.duration_minutes <= 0)) blockers.push("Every pilot session needs a non-identifying pseudonymous id and positive duration.");
+  if (new Set(sessions.map((session) => normalizeReference(session.id))).size !== sessions.length) blockers.push("Pilot session ids must be unique.");
+  const attemptedRecoveryReferences = sessions
+    .filter((session) => session.recovery_attempted === true)
+    .map((session) => normalizeReference(session.recovery_evidence_reference));
+  if (attemptedRecoveryReferences.some((reference) => !reference)
+      || new Set(attemptedRecoveryReferences).size !== attemptedRecoveryReferences.length) {
+    blockers.push("Every attempted pilot recovery must use its own unique evidence reference.");
+  }
+  const sessionRecordReferences = sessions.map((session) => normalizeReference(session.session_record_reference));
+  if (sessionRecordReferences.some((reference) => !reference)
+      || new Set(sessionRecordReferences).size !== sessionRecordReferences.length
+      || sessionRecordReferences.some((reference) => attemptedRecoveryReferences.includes(reference))) {
+    blockers.push("Every pilot session must use its own unique canonical session record reference.");
+  }
+  for (const session of sessions) {
+    exactKeys(blockers, `Pilot session ${session.id ?? "unknown"}`, session, [
+      "id", "path", "experience", "context", "completed", "controlled_failure", "failure_scenario",
+      "recovery_attempted", "recovered", "recovery_evidence_reference", "started_at", "completed_at",
+      "candidate_commit", "candidate_artifact_fingerprint_sha256", "trust_score",
+      "blocking_confusion", "duration_minutes", "session_record_reference"
+    ]);
+    checkCandidateBinding(blockers, `Pilot session ${session.id ?? "unknown"}`, session, candidate, "artifact");
+    if (!productionPaths.includes(session.path)
+        || !policy.pilot.required_experience.includes(session.experience)
+        || !policy.pilot.required_contexts.includes(session.context)
+        || typeof session.completed !== "boolean"
+        || typeof session.blocking_confusion !== "boolean"
+        || !Number.isFinite(session.trust_score)
+        || session.trust_score < 1
+        || session.trust_score > 5) {
+      blockers.push(`Pilot session ${session.id ?? "unknown"} has invalid path, cohort, outcome, confusion, or 1-5 trust evidence.`);
+    }
+    const startedAt = Date.parse(session.started_at);
+    const completedAt = Date.parse(session.completed_at);
+    const exactDurationMinutes = (completedAt - startedAt) / 60_000;
+    if (session.controlled_failure !== true
+        || session.recovery_attempted !== true
+        || typeof session.recovered !== "boolean"
+        || !present(session.failure_scenario)
+        || !validEvidenceReference(session.recovery_evidence_reference)
+        || !validEvidenceReference(session.session_record_reference)
+        || !Number.isSafeInteger(session.duration_minutes)
+        || session.duration_minutes !== exactDurationMinutes
+        || !timestampAfterBuild(blockers, `Pilot session ${session.id ?? "unknown"} start`, session.started_at, candidate.built_at, now)
+        || !timestampAfterBuild(blockers, `Pilot session ${session.id ?? "unknown"} completion`, session.completed_at, candidate.built_at, now)
+        || completedAt <= startedAt) {
+      blockers.push(`Pilot session ${session.id ?? "unknown"} lacks its own dated canonical session, controlled-failure, and recovery-attempt evidence.`);
+    } else {
+      gatingTimestamps.push(completedAt);
+    }
+  }
 
   const liveSmoke = evidence.live_smoke ?? {};
+  exactKeys(blockers, "DuskDS production smoke", liveSmoke, [
+    "status", "authority_reference", "redacted", "candidate_commit",
+    "candidate_artifact_fingerprint_sha256", "receipt_sha256", "receipt_json",
+    "workflow_path", "run_url", "artifact_name", "observed_at", "native_steps", "provenance"
+  ]);
   if (liveSmoke.status !== "passed" || !present(liveSmoke.authority_reference) || liveSmoke.redacted !== true) blockers.push("DuskDS production smoke lacks passed status, explicit authority reference, or redaction evidence.");
+  checkCandidateBinding(blockers, "DuskDS production smoke", liveSmoke, candidate, "artifact");
+  checkActionsReference(blockers, "DuskDS production smoke", liveSmoke, policy.monitoring_evidence?.canonical_repository, NATIVE_SMOKE_WORKFLOW);
+  const nativeRunId = actionsRunId(liveSmoke.run_url, policy.monitoring_evidence?.canonical_repository);
+  if (liveSmoke.artifact_name !== `duskds-native-smoke-receipt-${nativeRunId ?? "invalid"}.json`) blockers.push("DuskDS production smoke artifact name is not bound to its Actions run.");
+  const nativeReceipt = parseBoundReceipt(blockers, "DuskDS production smoke", liveSmoke);
+  exactKeys(blockers, "DuskDS production smoke receipt", nativeReceipt, [
+    "schema_version", "status", "candidate_commit", "candidate_artifact_fingerprint_sha256",
+    "workflow_path", "observed_at", "contract_sha256", "data_driver_sha256", "native_steps"
+  ]);
+  if (nativeReceipt.schema_version !== 1
+      || nativeReceipt.status !== "passed"
+      || nativeReceipt.candidate_commit !== candidate.commit
+      || nativeReceipt.candidate_artifact_fingerprint_sha256 !== candidate.artifact_fingerprint_sha256
+      || nativeReceipt.workflow_path !== NATIVE_SMOKE_WORKFLOW
+      || nativeReceipt.observed_at !== liveSmoke.observed_at
+      || !SHA256_RE.test(nativeReceipt.contract_sha256 ?? "")
+      || !SHA256_RE.test(nativeReceipt.data_driver_sha256 ?? "")
+      || nativeReceipt.contract_sha256 === nativeReceipt.data_driver_sha256
+      || JSON.stringify(nativeReceipt.native_steps) !== JSON.stringify(liveSmoke.native_steps)) {
+    blockers.push("DuskDS production smoke receipt does not prove the exact candidate, workflow, timestamp, and native steps.");
+  }
+  if (timestampAfterBuild(blockers, "DuskDS production smoke", liveSmoke.observed_at, candidate.built_at, now)) {
+    gatingTimestamps.push(Date.parse(liveSmoke.observed_at));
+  }
+  checkActionsProvenance(
+    blockers,
+    "DuskDS production smoke",
+    liveSmoke,
+    candidate,
+    policy.monitoring_evidence?.canonical_repository,
+    ["workflow_dispatch"],
+    `duskds-native-smoke-receipt-${nativeRunId ?? "invalid"}.json`,
+    now,
+    gatingTimestamps
+  );
   checkSteps(blockers, "DuskDS production smoke", liveSmoke.native_steps, policy.required_native_smoke_steps);
   if (productionPaths.includes("evm")) checkSteps(blockers, "EVM production smoke", liveSmoke.evm_steps, policy.required_evm_smoke_steps);
 
   const synthetics = evidence.synthetics ?? {};
+  exactKeys(blockers, "Synthetic evidence", synthetics, ["public_assurance", "checks", "monitoring", "alert_delivery", "checked_at"]);
+  const monitoringPolicy = policy.monitoring_evidence ?? {};
+  const publicAssurance = synthetics.public_assurance ?? {};
+  exactKeys(blockers, "Public assurance receipt", publicAssurance, [
+    "candidate_commit", "candidate_public_fingerprint_sha256", "receipt_sha256", "receipt_json",
+    "workflow_path", "run_url", "artifact_name", "observed_at", "provenance"
+  ]);
+  checkCandidateBinding(blockers, "Public assurance receipt", publicAssurance, candidate, "public");
+  checkActionsReference(blockers, "Public assurance receipt", publicAssurance, monitoringPolicy.canonical_repository, PUBLIC_ASSURANCE_WORKFLOW);
+  const publicRunId = actionsRunId(publicAssurance.run_url, monitoringPolicy.canonical_repository);
+  if (publicAssurance.artifact_name !== `studio-public-synthetic-receipt-${publicRunId ?? "invalid"}.json`) blockers.push("Public assurance artifact name is not bound to its Actions run.");
+  const publicReceipt = parseBoundReceipt(blockers, "Public assurance", publicAssurance);
+  checkPublicReceiptShape(blockers, publicReceipt, policy, previewPaths);
+  const publicReleaseParity = publicReceipt.checks?.release_parity ?? {};
+  let expectedPublicOrigin = "";
+  try {
+    expectedPublicOrigin = new URL(candidate.manifest_url).origin;
+  } catch {
+    expectedPublicOrigin = "";
+  }
+  if (publicReceipt.schema_version !== 1
+      || publicReceipt.status !== "passed"
+      || publicReceipt.expected_environment !== "production"
+      || publicReceipt.studio_status !== "passed"
+      || publicReceipt.upstream_dependency_status !== "passed"
+      || publicReceipt.checked_at !== publicAssurance.observed_at
+      || synthetics.checked_at !== publicAssurance.observed_at
+      || publicReceipt.target !== expectedPublicOrigin
+      || !Array.isArray(publicReceipt.errors)
+      || publicReceipt.errors.length
+      || publicReleaseParity.status !== "passed"
+      || publicReleaseParity.commit !== candidate.commit
+      || publicReleaseParity.version !== candidate.release_id
+      || publicReleaseParity.artifact_fingerprint_sha256 !== candidate.public_fingerprint_sha256) {
+    blockers.push("Public assurance receipt does not prove the exact public candidate, origin, passed checks, and receipt timestamp.");
+  }
+  if (timestampAfterBuild(blockers, "Public assurance receipt", publicAssurance.observed_at, candidate.built_at, now)) {
+    gatingTimestamps.push(Date.parse(publicAssurance.observed_at));
+  }
+  checkActionsProvenance(
+    blockers,
+    "Public assurance receipt",
+    publicAssurance,
+    candidate,
+    monitoringPolicy.canonical_repository,
+    ["schedule"],
+    `studio-public-synthetic-receipt-${publicRunId ?? "invalid"}.json`,
+    now,
+    gatingTimestamps
+  );
+
   const checks = synthetics.checks ?? {};
+  const expectedCheckNames = [...policy.required_synthetic_checks];
+  if (previewPaths.includes("evm") && !expectedCheckNames.includes("rpc_chain_id")) expectedCheckNames.push("rpc_chain_id");
+  exactKeys(blockers, "Synthetic checks", checks, expectedCheckNames);
   for (const check of policy.required_synthetic_checks) {
     const result = checks[check];
+    const commonKeys = ["status", "owner", "candidate_commit", "candidate_public_fingerprint_sha256"];
+    const checkKeys = check === "duskds_node_read"
+      ? [...commonKeys, "endpoint", "height", "hash", "observed_at"]
+      : check === "monitor_heartbeat"
+        ? [...commonKeys, "receipt_sha256", "receipt_json", "workflow_path", "guard_run_url", "artifact_name", "observed_at", "observed_public_run_url", "provenance"]
+        : check === "external_dead_man"
+          ? [...commonKeys, "evidence_reference", "outside_github", "success_endpoint_configured", "provider", "check_id", "alert_channel", "alert_delivery_verified", "latest_success_at", "missed_ping_rehearsed_at", "rehearsal_reference"]
+          : check === "external_direct_health"
+            ? [...commonKeys, "evidence_reference", "outside_github", "provider", "check_id", "target_url", "response_status", "body_match", "tls_verified", "alert_channel", "alert_delivery_verified", "latest_success_at", "alert_rehearsed_at", "recovery_verified", "recovered_at", "rehearsal_reference"]
+            : commonKeys;
+    exactKeys(blockers, `Synthetic check ${check}`, result, checkKeys);
     if (!result || result.status !== "passed" || !present(result.owner)) blockers.push(`Synthetic check ${check} is not passed with an owner.`);
+    checkCandidateBinding(blockers, `Synthetic check ${check}`, result, candidate, "public");
+    if (EXTERNAL_SYNTHETIC_CHECKS.has(check)) {
+      if (!validEvidenceReference(result?.evidence_reference)) blockers.push(`Synthetic check ${check} lacks a safe independent evidence reference.`);
+    } else if (check !== "monitor_heartbeat" && publicReceipt.checks?.[check]?.status !== "passed") {
+      blockers.push(`Synthetic check ${check} is not passed in the bound public-assurance receipt.`);
+    }
   }
   const duskDsNodeRead = checks.duskds_node_read ?? {};
   const nodeReadEvidencePolicy = policy.duskds_node_read_evidence ?? {};
@@ -209,6 +743,7 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
   const nodeReadReceiptSkew = nodeReadEvidencePolicy.max_receipt_skew_minutes * 60 * 1_000;
   const nodeReadObservedAt = Date.parse(duskDsNodeRead.observed_at);
   const syntheticCheckedAt = Date.parse(synthetics.checked_at);
+  const receiptNodeRead = publicReceipt.checks?.duskds_node_read ?? {};
   const nodeReadBoundToReceipt = Number.isFinite(nodeReadObservedAt)
     && Number.isFinite(syntheticCheckedAt)
     && nodeReadObservedAt <= syntheticCheckedAt
@@ -216,19 +751,34 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
   if (duskDsNodeRead.endpoint !== policy.duskds_testnet_graphql_url
       || !Number.isSafeInteger(duskDsNodeRead.height) || duskDsNodeRead.height <= 0
       || !DUSKDS_BLOCK_HASH_RE.test(duskDsNodeRead.hash ?? "")
+      || receiptNodeRead.endpoint !== duskDsNodeRead.endpoint
+      || receiptNodeRead.height !== duskDsNodeRead.height
+      || receiptNodeRead.hash !== duskDsNodeRead.hash
+      || receiptNodeRead.observed_at !== duskDsNodeRead.observed_at
       || !freshDate(duskDsNodeRead.observed_at, now, nodeReadMaxAge)
       || !freshDate(synthetics.checked_at, now, nodeReadMaxAge)
       || !nodeReadBoundToReceipt) {
     blockers.push("DuskDS node-read evidence lacks the exact Testnet endpoint, positive bounded height, 64-hex hash, fresh observation, or binding to the synthetic receipt.");
   }
+  timestampAfterBuild(blockers, "DuskDS node-read synthetic", duskDsNodeRead.observed_at, candidate.built_at, now);
   if (previewPaths.includes("evm")) {
     const deferredRpc = checks.rpc_chain_id;
+    exactKeys(blockers, "Deferred DuskEVM RPC record", deferredRpc, [
+      "status", "path", "reason", "authority_reference", "candidate_commit", "candidate_public_fingerprint_sha256"
+    ]);
     if (deferredRpc?.status !== "deferred" || deferredRpc.path !== "evm" || deferredRpc.reason !== rpcDeferralPolicy?.reason) {
       blockers.push("DuskEVM RPC is not recorded as the exact reviewed pre-launch deferral.");
     }
+    if (publicReceipt.checks?.rpc_chain_id?.status !== deferredRpc?.status
+        || publicReceipt.checks?.rpc_chain_id?.path !== deferredRpc?.path
+        || publicReceipt.checks?.rpc_chain_id?.reason !== deferredRpc?.reason) {
+      blockers.push("DuskEVM RPC deferral does not match the bound public-assurance receipt.");
+    }
+    checkCandidateBinding(blockers, "Deferred DuskEVM RPC record", deferredRpc, candidate, "public");
+    if (!present(deferredRpc?.authority_reference)) blockers.push("Deferred DuskEVM RPC record lacks its reviewed policy reference.");
   }
-  const monitoringPolicy = policy.monitoring_evidence ?? {};
   const monitoringEvidence = synthetics.monitoring ?? {};
+  exactKeys(blockers, "Monitoring-mode evidence", monitoringEvidence, ["mode", "owner", "authority_reference"]);
   const monitoringMode = monitoringPolicy.mode;
   if (!["github-only", "external"].includes(monitoringMode)) {
     blockers.push("Monitoring policy mode must be github-only or external.");
@@ -240,12 +790,55 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
   }
   const heartbeat = checks.monitor_heartbeat ?? {};
   const heartbeatMaxAge = monitoringPolicy.monitor_heartbeat_max_age_hours * 60 * 60 * 1_000;
-  if (!SHA256_RE.test(heartbeat.receipt_sha256 ?? "")
-      || heartbeat.workflow_path !== monitoringPolicy.schedule_guard_workflow
-      || !freshDate(heartbeat.observed_at, now, heartbeatMaxAge)
-      || !expectedActionsRunUrl(heartbeat.run_url, monitoringPolicy.canonical_repository)) {
-    blockers.push("Monitor heartbeat evidence lacks a fresh bound receipt, exact schedule-guard workflow, or canonical Actions run.");
+  const heartbeatActionRecord = { ...heartbeat, run_url: heartbeat.guard_run_url };
+  checkActionsReference(blockers, "Monitor heartbeat", heartbeatActionRecord, monitoringPolicy.canonical_repository, monitoringPolicy.schedule_guard_workflow);
+  const guardRunId = actionsRunId(heartbeat.guard_run_url, monitoringPolicy.canonical_repository);
+  if (heartbeat.artifact_name !== `studio-monitor-heartbeat-${guardRunId ?? "invalid"}.json`) blockers.push("Monitor heartbeat artifact name is not bound to its schedule-guard run.");
+  const heartbeatReceipt = parseBoundReceipt(blockers, "Monitor heartbeat", heartbeat);
+  exactKeys(blockers, "Monitor heartbeat receipt", heartbeatReceipt, [
+    "schema_version", "status", "workflow_path", "checked_at", "max_age_seconds",
+    "workflow_id", "workflow_state", "last_run_id", "last_run_url", "last_run_status",
+    "last_run_conclusion", "last_run_created_at", "age_seconds"
+  ]);
+  const heartbeatCheckedAt = Date.parse(heartbeatReceipt.checked_at);
+  const heartbeatLastRunCreatedAt = Date.parse(heartbeatReceipt.last_run_created_at);
+  const heartbeatAgeSeconds = Math.floor((heartbeatCheckedAt - heartbeatLastRunCreatedAt) / 1_000);
+  if (heartbeatReceipt.schema_version !== 1
+      || heartbeatReceipt.status !== "passed"
+      || heartbeatReceipt.workflow_path !== PUBLIC_ASSURANCE_WORKFLOW
+      || heartbeatReceipt.checked_at !== heartbeat.observed_at
+      || !validDate(heartbeatReceipt.checked_at)
+      || !validDate(heartbeatReceipt.last_run_created_at)
+      || !Number.isSafeInteger(heartbeatReceipt.max_age_seconds)
+      || heartbeatReceipt.max_age_seconds <= 0
+      || heartbeatReceipt.max_age_seconds > monitoringPolicy.monitor_heartbeat_max_age_hours * 60 * 60
+      || !Number.isSafeInteger(heartbeatReceipt.age_seconds)
+      || heartbeatReceipt.age_seconds !== heartbeatAgeSeconds
+      || heartbeatReceipt.age_seconds < 0
+      || heartbeatReceipt.age_seconds > heartbeatReceipt.max_age_seconds
+      || heartbeatLastRunCreatedAt > Date.parse(publicAssurance.observed_at)
+      || heartbeatReceipt.last_run_url !== publicAssurance.run_url
+      || heartbeat.observed_public_run_url !== publicAssurance.run_url
+      || heartbeatReceipt.last_run_status !== "completed"
+      || heartbeatReceipt.last_run_conclusion !== "success"
+      || Date.parse(heartbeat.observed_at) < Date.parse(publicAssurance.observed_at)
+      || !freshDate(heartbeat.observed_at, now, heartbeatMaxAge)) {
+    blockers.push("Monitor heartbeat receipt does not prove a fresh successful scheduled run of the bound public assurance.");
   }
+  if (timestampAfterBuild(blockers, "Monitor heartbeat", heartbeat.observed_at, candidate.built_at, now)) {
+    gatingTimestamps.push(Date.parse(heartbeat.observed_at));
+  }
+  checkActionsProvenance(
+    blockers,
+    "Monitor heartbeat",
+    heartbeatActionRecord,
+    candidate,
+    monitoringPolicy.canonical_repository,
+    ["schedule"],
+    `studio-monitor-heartbeat-${guardRunId ?? "invalid"}.json`,
+    now,
+    gatingTimestamps
+  );
   if (monitoringMode === "github-only") {
     const acceptedRisk = monitoringPolicy.accepted_risk ?? {};
     const externalRequired = ["external_dead_man", "external_direct_health"].filter((check) => policy.required_synthetic_checks.includes(check));
@@ -263,6 +856,8 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
         || acceptedRisk.revisit_triggers.length < 2
         || acceptedRisk.revisit_triggers.some((trigger) => !present(trigger))) {
       blockers.push("GitHub-only monitoring lacks a complete George-approved accepted-risk record and matching evidence binding.");
+    } else {
+      gatingTimestamps.push(acceptedAt);
     }
   }
   if (monitoringMode === "external") {
@@ -280,8 +875,14 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
         || external.alert_delivery_verified !== true
         || !freshDate(external.latest_success_at, now, externalSuccessMaxAge)
         || !freshDate(external.missed_ping_rehearsed_at, now, externalRehearsalMaxAge)
-        || !present(external.rehearsal_reference)) {
+        || !validEvidenceReference(external.rehearsal_reference)) {
       blockers.push("External dead-man evidence lacks an outside-GitHub provider/check, fresh success, verified out-of-band alert, or recent missed-ping rehearsal.");
+    }
+    for (const [label, value] of [
+      ["External dead-man success", external.latest_success_at],
+      ["External dead-man rehearsal", external.missed_ping_rehearsed_at]
+    ]) {
+      if (timestampAfterBuild(blockers, label, value, candidate.built_at, now)) gatingTimestamps.push(Date.parse(value));
     }
     const directHealth = checks.external_direct_health ?? {};
     const directHealthMaxAge = monitoringPolicy.direct_health_max_age_hours * 60 * 60 * 1_000;
@@ -307,32 +908,170 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
         || directHealth.recovery_verified !== true
         || !freshDate(directHealth.recovered_at, now, externalRehearsalMaxAge)
         || !directRecoveryChronology
-        || !present(directHealth.rehearsal_reference)) {
+        || !validEvidenceReference(directHealth.rehearsal_reference)) {
       blockers.push("External direct health evidence lacks a separate outside-GitHub /healthz check, exact target, fresh 200/ok/TLS success, or chronological verified alert-to-recovery proof.");
     }
+    for (const [label, value] of [
+      ["External direct-health success", directHealth.latest_success_at],
+      ["External direct-health alert", directHealth.alert_rehearsed_at],
+      ["External direct-health recovery", directHealth.recovered_at]
+    ]) {
+      if (timestampAfterBuild(blockers, label, value, candidate.built_at, now)) gatingTimestamps.push(Date.parse(value));
+    }
   }
-  if (synthetics.alert_delivery_verified !== true || !freshDate(synthetics.checked_at, now, nodeReadMaxAge)) blockers.push("Synthetic alert delivery is not verified with a fresh timestamp.");
+  if (!freshDate(synthetics.checked_at, now, nodeReadMaxAge)) blockers.push("Synthetic receipt timestamp is missing or stale.");
+  const alertDelivery = synthetics.alert_delivery ?? {};
+  exactKeys(blockers, "Synthetic alert delivery", alertDelivery, [
+    "candidate_commit", "candidate_public_fingerprint_sha256", "receipt_sha256", "receipt_json",
+    "workflow_path", "run_url", "artifact_name", "observed_at", "provenance"
+  ]);
+  checkCandidateBinding(blockers, "Synthetic alert delivery", alertDelivery, candidate, "public");
+  checkActionsReference(blockers, "Synthetic alert delivery", alertDelivery, monitoringPolicy.canonical_repository, PUBLIC_ASSURANCE_WORKFLOW);
+  const alertRunId = actionsRunId(alertDelivery.run_url, monitoringPolicy.canonical_repository);
+  if (alertDelivery.artifact_name !== `studio-alert-delivery-receipt-${alertRunId ?? "invalid"}.json`) blockers.push("Synthetic alert-delivery artifact name is not bound to its Actions run.");
+  const alertReceipt = parseBoundReceipt(blockers, "Synthetic alert delivery", alertDelivery);
+  exactKeys(blockers, "Synthetic alert-delivery receipt", alertReceipt, [
+    "schema_version", "status", "channel", "owner", "issue_number", "issue_closed", "run_id",
+    "candidate_commit", "candidate_public_fingerprint_sha256", "workflow_path", "observed_at"
+  ]);
+  if (alertReceipt.schema_version !== 2
+      || alertReceipt.status !== "passed"
+      || alertReceipt.channel !== "github-assigned-issue"
+      || alertReceipt.owner !== "George"
+      || !Number.isSafeInteger(alertReceipt.issue_number)
+      || alertReceipt.issue_number <= 0
+      || alertReceipt.issue_closed !== true
+      || String(alertReceipt.run_id) !== alertRunId
+      || alertReceipt.candidate_commit !== candidate.commit
+      || alertReceipt.candidate_public_fingerprint_sha256 !== candidate.public_fingerprint_sha256
+      || alertReceipt.workflow_path !== PUBLIC_ASSURANCE_WORKFLOW
+      || alertReceipt.observed_at !== alertDelivery.observed_at
+      || !freshDate(alertDelivery.observed_at, now, nodeReadMaxAge)) {
+    blockers.push("Synthetic alert-delivery receipt does not prove the exact candidate, workflow run, assigned issue, closure, and timestamp.");
+  }
+  if (timestampAfterBuild(blockers, "Synthetic alert delivery", alertDelivery.observed_at, candidate.built_at, now)) {
+    gatingTimestamps.push(Date.parse(alertDelivery.observed_at));
+  }
+  checkActionsProvenance(
+    blockers,
+    "Synthetic alert delivery",
+    alertDelivery,
+    candidate,
+    monitoringPolicy.canonical_repository,
+    ["workflow_dispatch"],
+    `studio-alert-delivery-receipt-${alertRunId ?? "invalid"}.json`,
+    now,
+    gatingTimestamps
+  );
 
+  exactKeys(blockers, "Rollback evidence", evidence.rollback, ["product", "platform"]);
   for (const kind of ["product", "platform"]) {
     const rollback = evidence.rollback?.[kind];
-    if (!rollback || rollback.status !== "passed" || !present(rollback.owner) || !Number.isFinite(rollback.duration_seconds) || rollback.duration_seconds > policy.rollback_targets_seconds[kind]) {
+    exactKeys(blockers, `${kind} rollback`, rollback, [
+      "owner", "target", "result", "duration_seconds",
+      "prior_release_id", "prior_commit", "prior_fingerprint_sha256",
+      "candidate_release_id", "candidate_commit", "candidate_artifact_fingerprint_sha256",
+      "restored_fingerprint_sha256", "started_at", "completed_at",
+      "evidence_reference", "health_proof", "data_cache_effects", "receipt_sha256", "receipt_json"
+    ]);
+    const startedAt = Date.parse(rollback?.started_at);
+    const completedAt = Date.parse(rollback?.completed_at);
+    const measuredDuration = (completedAt - startedAt) / 1_000;
+    if (!rollback || rollback.target !== kind || rollback.result !== "passed" || !present(rollback.owner)
+        || !Number.isSafeInteger(rollback.duration_seconds)
+        || rollback.duration_seconds <= 0 || rollback.duration_seconds > policy.rollback_targets_seconds[kind]
+        || rollback.duration_seconds !== measuredDuration) {
       blockers.push(`${kind} rollback has not passed within ${policy.rollback_targets_seconds[kind]} seconds with an owner.`);
     }
-    if (!SHA256_RE.test(rollback?.restored_fingerprint_sha256 ?? "") || !present(rollback?.health_proof) || !present(rollback?.data_cache_effects)) blockers.push(`${kind} rollback evidence is incomplete.`);
+    checkCandidateBinding(blockers, `${kind} rollback`, rollback, candidate, "artifact");
+    if (!present(rollback?.prior_release_id)
+        || !present(rollback?.candidate_release_id)
+        || normalizeReference(rollback?.prior_release_id) === normalizeReference(rollback?.candidate_release_id)
+        || rollback?.candidate_release_id !== candidate.release_id
+        || !COMMIT_RE.test(rollback?.prior_commit ?? "")
+        || rollback?.prior_commit === candidate.commit
+        || !SHA256_RE.test(rollback?.prior_fingerprint_sha256 ?? "")
+        || rollback?.prior_fingerprint_sha256 !== rollback?.restored_fingerprint_sha256
+        || !SHA256_RE.test(rollback?.restored_fingerprint_sha256 ?? "")
+        || rollback?.restored_fingerprint_sha256 === candidate.artifact_fingerprint_sha256
+        || !validEvidenceReference(rollback?.evidence_reference)
+        || !validEvidenceReference(rollback?.health_proof)
+        || !present(rollback?.data_cache_effects)) blockers.push(`${kind} rollback evidence is incomplete or not a distinct dated restore.`);
+    const rollbackReceipt = parseBoundReceipt(blockers, `${kind} rollback`, rollback);
+    const rollbackReceiptFields = [
+      "owner", "target", "result", "duration_seconds",
+      "prior_release_id", "prior_commit", "prior_fingerprint_sha256",
+      "candidate_release_id", "candidate_commit", "candidate_artifact_fingerprint_sha256",
+      "restored_fingerprint_sha256", "started_at", "completed_at",
+      "evidence_reference", "health_proof", "data_cache_effects"
+    ];
+    exactKeys(blockers, `${kind} rollback receipt`, rollbackReceipt, ["schema_version", ...rollbackReceiptFields]);
+    if (rollbackReceipt.schema_version !== 1
+        || rollbackReceiptFields.some((field) => rollbackReceipt[field] !== rollback?.[field])) {
+      blockers.push(`${kind} rollback receipt does not prove the exact A-to-B-to-A release restoration and evidence reference.`);
+    }
+    const startedValid = timestampAfterBuild(blockers, `${kind} rollback start`, rollback?.started_at, candidate.built_at, now);
+    const completedValid = timestampAfterBuild(blockers, `${kind} rollback completion`, rollback?.completed_at, candidate.built_at, now);
+    if (!startedValid || !completedValid || completedAt <= startedAt) {
+      blockers.push(`${kind} rollback chronology is invalid.`);
+    } else {
+      gatingTimestamps.push(completedAt);
+    }
+  }
+  const productRollback = evidence.rollback?.product ?? {};
+  const platformRollback = evidence.rollback?.platform ?? {};
+  if ((normalizeReference(productRollback.evidence_reference)
+        && normalizeReference(productRollback.evidence_reference) === normalizeReference(platformRollback.evidence_reference))
+      || (normalizeReference(productRollback.health_proof)
+        && normalizeReference(productRollback.health_proof) === normalizeReference(platformRollback.health_proof))) {
+    blockers.push("Product and platform rollback must use distinct evidence and health references.");
   }
 
+  if (!Array.isArray(evidence.issues)) blockers.push("Issue evidence must be an array.");
   const issues = Array.isArray(evidence.issues) ? evidence.issues : [];
-  for (const issue of issues.filter((item) => item.status === "open")) {
-    if (issue.severity === "P0") blockers.push(`Open P0 ${issue.id ?? "unknown"} blocks launch.`);
-    if (issue.severity === "P1") checkException(blockers, issue, now);
+  const normalizedIssueIds = issues.map((issue) => normalizeReference(issue?.id));
+  if (normalizedIssueIds.some((id) => !id) || new Set(normalizedIssueIds).size !== issues.length) blockers.push("Issue ids must be present and unique.");
+  for (const issue of issues) {
+    const closedHighSeverity = ["P0", "P1"].includes(issue?.severity) && issue?.status === "closed";
+    const issueKeys = closedHighSeverity
+      ? ["id", "severity", "status", "owner", "resolution_evidence", "closed_at", "candidate_commit", "candidate_artifact_fingerprint_sha256"]
+      : Object.hasOwn(issue ?? {}, "exception")
+        ? ["id", "severity", "status", "exception"]
+        : ["id", "severity", "status"];
+    exactKeys(blockers, `Issue ${issue?.id ?? "unknown"}`, issue, issueKeys);
+    if (!["P0", "P1", "P2", "P3"].includes(issue?.severity)) blockers.push(`Issue ${issue?.id ?? "unknown"} has an invalid severity.`);
+    if (!["open", "closed"].includes(issue?.status)) blockers.push(`Issue ${issue?.id ?? "unknown"} has an invalid status.`);
+    if (Object.hasOwn(issue ?? {}, "exception")) {
+      exactKeys(blockers, `Issue ${issue?.id ?? "unknown"} exception`, issue.exception, EXCEPTION_FIELDS);
+      if (issue?.severity !== "P1") blockers.push(`Issue ${issue?.id ?? "unknown"} may not carry a P1 exception.`);
+    }
+    if (issue?.severity === "P0" && issue?.status !== "closed") blockers.push(`Non-closed P0 ${issue.id ?? "unknown"} blocks launch.`);
+    if (issue?.severity === "P1" && issue?.status !== "closed") checkException(blockers, issue, candidate.built_at, now, gatingTimestamps);
+    if (closedHighSeverity) {
+      checkCandidateBinding(blockers, `Closed ${issue.severity} ${issue.id ?? "unknown"}`, issue, candidate, "artifact");
+      if (!present(issue.owner) || !validEvidenceReference(issue.resolution_evidence)) {
+        blockers.push(`Closed ${issue.severity} ${issue.id ?? "unknown"} lacks an owner and safe resolution evidence.`);
+      }
+      if (timestampAfterBuild(blockers, `Closed ${issue.severity} ${issue.id ?? "unknown"}`, issue.closed_at, candidate.built_at, now)) {
+        gatingTimestamps.push(Date.parse(issue.closed_at));
+      }
+    }
   }
 
   const support = evidence.support ?? {};
+  exactKeys(blockers, "Support evidence", support, ["on_call_owner", "support_channel_confirmed", "launch_message_owner", "incident_message_owner"]);
   if (!present(support.on_call_owner) || support.support_channel_confirmed !== true || !present(support.launch_message_owner) || !present(support.incident_message_owner)) blockers.push("Support/on-call/status communication ownership is incomplete.");
 
   const signoff = evidence.product_signoff ?? {};
+  exactKeys(blockers, "Product sign-off", signoff, ["decision", "owner", "signed_at", "artifact_fingerprint_sha256"]);
   if (signoff.decision !== "go" || signoff.owner !== "George" || !validDate(signoff.signed_at) || signoff.artifact_fingerprint_sha256 !== candidate.artifact_fingerprint_sha256) {
     blockers.push("Product go/no-go sign-off is missing or does not bind the exact candidate fingerprint.");
+  }
+  const latestGatingTimestamp = Math.max(...gatingTimestamps);
+  if (!validDate(signoff.signed_at)
+      || Date.parse(signoff.signed_at) < latestGatingTimestamp
+      || Date.parse(signoff.signed_at) > now.getTime()) {
+    blockers.push("Product go/no-go sign-off must be no earlier than every gating record and no later than now.");
   }
 
   return {
@@ -344,8 +1083,47 @@ export function evaluatePhase5Evidence(policy, evidence, options = {}) {
       completion_rate: completionRate,
       recovery_rate: recoveryRate,
       average_trust_score: averageTrust,
-      open_p0: issues.filter((issue) => issue.status === "open" && issue.severity === "P0").length,
-      open_p1: issues.filter((issue) => issue.status === "open" && issue.severity === "P1").length
+      open_p0: issues.filter((issue) => issue.status !== "closed" && issue.severity === "P0").length,
+      open_p1: issues.filter((issue) => issue.status !== "closed" && issue.severity === "P1").length
     }
   };
+}
+
+const ONLINE_PROVENANCE_BLOCKER = "Online GitHub Actions run, artifact, and receipt provenance has not been verified.";
+
+export function evaluatePhase5Evidence(policy, evidence, options = {}) {
+  const result = evaluatePhase5EvidenceTrusted(policy, evidence, options);
+  return {
+    ...result,
+    decision: "no-go",
+    blockers: result.blockers.includes(ONLINE_PROVENANCE_BLOCKER)
+      ? result.blockers
+      : [...result.blockers, ONLINE_PROVENANCE_BLOCKER]
+  };
+}
+
+export async function evaluatePhase5EvidenceOnline(policy, evidence, options = {}) {
+  const result = evaluatePhase5EvidenceTrusted(policy, evidence, options);
+  if (result.decision !== "go") return result;
+  try {
+    const verified = await verifyPhase5GitHubProvenance(policy, evidence, options);
+    return {
+      ...result,
+      assurance_scope: "policy-complete-under-trusted-operator-assembly",
+      trusted_human_attestations: ["reviews", "pilots", "support", "rollback", "product_signoff"],
+      github_actions: {
+        verified_at: (options.now ?? new Date()).toISOString(),
+        records: verified
+      }
+    };
+  } catch (error) {
+    return {
+      ...result,
+      decision: "no-go",
+      blockers: [
+        ...result.blockers,
+        error instanceof Error ? error.message : "Online GitHub Actions provenance verification failed."
+      ]
+    };
+  }
 }
