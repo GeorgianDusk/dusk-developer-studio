@@ -1,33 +1,45 @@
 # Product
 
-## Register
-
-product
-
 ## Users
 
-Dusk developers and curious builders who are choosing between DuskEVM and DuskDS. They may be experienced Solidity/Rust developers or first-time Dusk builders who need a clear path, safe setup checks, source-backed docs, and beginner-friendly context without being buried in panels.
+Dusk developers and curious builders choosing between DuskEVM and DuskDS. They may be experienced Solidity or Rust developers, or first-time Dusk builders who need a clear path, safe setup checks, source-backed guidance, and enough context to understand each decision.
 
-## Product Purpose
+## Product purpose
 
-Dusk Developer Studio helps a builder choose the right Dusk path, then move through Setup, Access, Build, and Inspect with confidence. The public Studio is a read-only guide and docs map; machine-specific checks and starter scaffolding run only through the local companion on the developer's own machine. For DuskDS, Inspect is intentionally two-pass: verify one exact build, prepare a Testnet-only manual Rusk Wallet handoff, then return after finality to confirm contract metadata and data-driver reads. Success means a developer understands which path fits their project, what to do next, which tools/sources matter, and which actions remain deliberately manual or unsafe to automate.
+Dusk Developer Studio helps a builder choose the right Dusk path and move through Setup, Access, Build, and Inspect with confidence.
 
-## Brand Personality
+The product has two complementary surfaces:
+
+- the **Hosted guide**, a static browser experience for path selection, education, public read-only checks, resources, and troubleshooting; and
+- the **local Studio**, started with the `dusk-developer-studio` npm package for a paired local session, prerequisite checks, constrained starter creation, and local evidence.
+
+Safe mode starts with `npx dusk-developer-studio`. Local Actions starts with `npx dusk-developer-studio local-actions`.
+
+For DuskDS, Inspect is intentionally two-pass: verify one exact build, prepare a Testnet-only manual Rusk Wallet handoff, then return after finality to confirm contract metadata and data-driver reads. Success means a developer understands which path fits the project, what to do next, which tools and sources matter, and which actions remain deliberately manual.
+
+DuskEVM Testnet is not live yet, so its journey remains educational and must not present live RPC, wallet, balance, deployment, or inspection evidence.
+
+## Brand personality
 
 Calm, precise, and capable. The interface should feel like a polished developer product: quiet enough to trust, structured enough for beginners, and technically clear enough for experienced builders.
 
+## Product principles
+
+- **Lead with path clarity.** Make DuskEVM versus DuskDS the primary decision before showing detailed tooling.
+- **Teach by sequence.** Every path should make the next Setup, Access, Build, or Inspect task obvious.
+- **Explain before asking.** Dusk-specific terms, evidence, and failure categories need plain-language context.
+- **Keep advanced detail available, not overwhelming.** Use collapsible explanations, grouped rows, and source labels.
+- **Make local capability deliberate.** The Hosted guide never implies machine access. Safe and Local Actions remain visibly distinct.
+- **Preserve wallet control.** Wallet settings, funding, signing, submission, and finality stay with the developer.
+- **Show evidence, not confidence theatre.** Ready, blocked, verified, expired, and unavailable states must reflect real inputs.
+- **Favor trustworthy restraint.** The UI should feel refined, fast, and source-backed rather than decorative or noisy.
+
 ## Anti-references
 
-Avoid admin-console layouts, dense card walls, generic SaaS dashboards, marketing fluff, fake deployment success states, unsupported faucet claims, and UI that makes public preview features feel like production automation. Do not expose wallet secrets, browser signing, mainnet shortcuts, VPS scaffolding, or local companion actions as if they run from the public site.
+Avoid admin-console layouts, dense card walls, generic SaaS dashboards, marketing fluff, fake deployment success, unsupported faucet claims, or UI that makes educational features look like live automation.
 
-## Design Principles
+Do not expose wallet secrets, browser signing, mainnet shortcuts, VPS scaffolding, arbitrary commands, hidden local access, or local actions from the Hosted guide.
 
-- Lead with path clarity: make DuskEVM vs DuskDS the primary decision before detailed tooling. Keep that decision on the Overview; elsewhere show the active journey as context and return users to Paths before switching.
-- Teach by sequence: every build path should make the next step obvious and numbered.
-- Keep advanced context available, not overwhelming: use collapsible explanations, grouped rows, and source labels.
-- Preserve safety as product design: public preview, local-only companion, no secrets, no signing automation, and no mainnet actions must be visible and consistent.
-- Favor trustworthy restraint: the UI should feel refined, fast, and source-backed rather than decorative or noisy.
+## Accessibility and inclusion
 
-## Accessibility & Inclusion
-
-Target WCAG AA contrast for body text and controls. Support keyboard navigation, visible focus states, reduced motion preferences, large tap targets on mobile, no horizontal overflow, and beginner-friendly labels that explain Dusk-specific terms without assuming prior ecosystem knowledge.
+Target WCAG 2.2 AA contrast for body text and controls. Support keyboard navigation, visible focus states, reduced motion, large tap targets, mobile reflow without horizontal overflow, and beginner-friendly labels that do not assume prior Dusk knowledge.

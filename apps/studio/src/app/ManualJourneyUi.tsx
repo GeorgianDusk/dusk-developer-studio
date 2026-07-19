@@ -14,7 +14,7 @@ export function CompletionMethodPicker({
   value,
   onChange,
   automaticAvailable,
-  automaticLabel = "Portable Studio"
+  automaticLabel = "Local Studio"
 }: {
   value: CompletionMethod;
   onChange: (method: CompletionMethod) => void;
@@ -41,7 +41,7 @@ export function CompletionMethodPicker({
       >
         <ShieldCheck size={18} aria-hidden="true" />
         <span><strong>{automaticLabel}</strong><small>Allowlisted local checks with bounded, redacted results.</small></span>
-        <StatusPill tone={automaticAvailable ? "good" : "warn"}>{automaticAvailable ? "available locally" : "not published"}</StatusPill>
+        <StatusPill tone={automaticAvailable ? "good" : "neutral"}>{automaticAvailable ? "available locally" : "start with npm"}</StatusPill>
       </button>
     </div>
   );
@@ -79,7 +79,7 @@ export function ManualToolChecklist({
       <div className="checklist-heading">
         <div>
           <h3>{scope === "setup" ? "Required tool checks" : "Tools used in this step"}</h3>
-          <p>Run each command yourself. Hosted Studio records only your confirmation and the bounded details you provide.</p>
+          <p>Run each command yourself. Studio records only your confirmation and the bounded details you provide.</p>
         </div>
         <strong>{required.filter((tool) => confirmed.has(tool.id)).length}/{required.length} required checked</strong>
       </div>
@@ -155,7 +155,7 @@ export function ManualRecordNotice({ children }: { children?: ReactNode }) {
   return (
     <div className="manual-record-notice">
       <StatusPill tone="neutral">manual confirmation</StatusPill>
-      <p>{children ?? "Hosted Studio validates the form and stores a browser-local confirmation. It cannot prove that the terminal command ran."}</p>
+      <p>{children ?? "Studio validates the form and stores a browser-local confirmation. It cannot prove that the terminal command ran."}</p>
     </div>
   );
 }

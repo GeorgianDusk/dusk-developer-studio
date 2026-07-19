@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: Version or commit
-      placeholder: v0.1.0 or 40-character commit
+      placeholder: v1.0.0 or 40-character commit
     validations:
       required: true
   - type: dropdown
@@ -18,9 +18,9 @@ body:
     attributes:
       label: Surface
       options:
-        - Hosted static Studio
-        - Source-checkout Studio
-        - Local companion
+        - Hosted guide
+        - Local Studio (npm)
+        - Local Actions
         - DuskEVM journey
         - DuskDS journey
         - Build or CI
@@ -43,7 +43,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Operating system, browser, Node/pnpm versions, and runtime mode. Remove usernames, paths, addresses, balances, and tokens.
+      description: Operating system, browser, Node/npm versions, and whether you used the hosted or local Studio. Remove usernames, paths, addresses, balances, and tokens.
     validations:
       required: true
   - type: checkboxes

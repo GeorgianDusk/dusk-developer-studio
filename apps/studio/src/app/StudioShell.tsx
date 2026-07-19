@@ -81,7 +81,6 @@ export function Shell({ route, setRoute, builderPath, companionStatus, children 
       </header>
       <main className="studio-main" id="studio-main" tabIndex={-1}>{children}</main>
       <footer className="studio-footer">
-        <span>Independent community project</span>
         <span>{STUDIO_RELEASE_LABEL}</span>
         <ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio/issues">Support</ExternalLink>
         <ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio">Source</ExternalLink>
@@ -97,6 +96,8 @@ function WorkstationScene() {
 
 export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendingRoute?: StepRoute | null; setBuilderPath: (path: BuilderPath) => void; setRoute: (route: RouteId) => void }) {
   const { progress } = useJourney();
+  const { runtime: studioRuntime } = useStudioRuntime();
+  const isLocalStudio = studioRuntime.companionAvailable;
   const pendingStep = pendingRoute ? steps.evm.find((step) => step.id === pendingRoute) : undefined;
   const previewSteps = [
     ["1", "Setup", "Follow the reviewed prerequisites manually."],
@@ -112,11 +113,13 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
           <h1 data-route-heading tabIndex={-1}>{pendingStep ? `Choose a path to continue to ${pendingStep.label}.` : "Pick the execution model your app actually needs."}</h1>
           <p>{pendingStep
             ? `Choose DuskDS to continue to ${pendingStep.label}. DuskEVM opens its single pre-launch reference because live tasks are not active yet.`
-            : "Hosted Studio can guide you, provide reviewed commands, and record manual confirmations. It cannot inspect your machine or create files. DuskDS is usable manually today; DuskEVM is a single pre-launch reference."}</p>
+            : isLocalStudio
+              ? "Local Studio provides reviewed commands, records manual or automatic results, and can use its allowlisted companion for DuskDS tool checks and starter creation. DuskEVM remains a single pre-launch reference."
+              : "The hosted guide provides reviewed commands and records manual confirmations without accessing your machine. Run Local Studio through npm when you want DuskDS tool checks or starter creation. DuskEVM remains a single pre-launch reference."}</p>
           <div className="mission-flags">
-            <span className="active"><i aria-hidden="true" />DUSKDS MANUAL GUIDE AVAILABLE</span>
+            <span className="active"><i aria-hidden="true" />{isLocalStudio ? "DUSKDS LOCAL TOOLS AVAILABLE" : "DUSKDS GUIDE AVAILABLE"}</span>
             <span className="preview"><i aria-hidden="true" />DUSKEVM PRE-LAUNCH REFERENCE</span>
-            <span className="docs-only"><i aria-hidden="true" />HOSTED · NO MACHINE ACCESS</span>
+            <span className="hosted-guide"><i aria-hidden="true" />{isLocalStudio ? "LOCAL · SAFE / ACTIONS MODES" : "HOSTED · NO MACHINE ACCESS"}</span>
           </div>
         </div>
         <WorkstationScene />
@@ -125,6 +128,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
         {(["evm", "duskds"] as BuilderPath[]).map((path) => {
           const counts = getJourneyCompletionCounts(progress, path);
           const hasActivity = Object.values(progress.paths[path]).some((step) => step.evidence.length > 0 || Boolean(step.blocker) || step.status === "skipped" || step.status === "skipped-with-reason");
+          const pathStart = path === "duskds" ? "Start DuskDS" : pathText[path].start;
           const availabilityId = `path-${path}-availability`;
           const summaryId = `path-${path}-summary`;
           const resultId = `path-${path}-result`;
@@ -134,7 +138,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
               key={path}
               type="button"
               className={"path-card path-card-" + path}
-              aria-label={`${pathText[path].label}. ${pathText[path].start}`}
+              aria-label={`${pathText[path].label}. ${pathStart}`}
               aria-describedby={`${availabilityId} ${summaryId} ${resultId} ${progressId}`}
               onClick={() => {
                 setBuilderPath(path);
@@ -151,7 +155,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
               <p id={summaryId}>{pathText[path].summary}</p>
               <span className="path-card-result" id={resultId}><span>First useful result</span>{pathText[path].result}</span>
               <span className="path-card-progress" id={progressId}><span className="state-sprite" aria-hidden="true" />{path === "evm" ? "One pre-launch reference · no completion score" : `${counts.completed}/4 complete · ${counts.automatic} automatic · ${counts.manual} manual · ${hasActivity ? "progress saved" : "not started"}`}</span>
-              <em>{pathText[path].start}<ArrowRight size={16} /></em>
+              <em>{pathStart}<ArrowRight size={16} /></em>
             </button>
           );
         })}
@@ -161,9 +165,9 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
           <caption>Quick comparison of the two Dusk builder paths</caption>
           <thead><tr><th scope="col">Decision</th><th scope="col">DuskEVM</th><th scope="col">DuskDS</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Status</th><td>Single pre-launch reference; no completion score</td><td>Manual guide available now</td></tr>
-            <tr><th scope="row">What can I do today?</th><td>Review the planned architecture, tooling, and launch requirements</td><td>Check prerequisites, run read-only queries, build locally, and record manual results</td></tr>
-            <tr><th scope="row">Requires local software?</th><td>No for the pre-launch reference</td><td>Yes for commands and builds; hosted Studio itself never accesses your machine</td></tr>
+            <tr><th scope="row">Status</th><td>Single pre-launch reference; no completion score</td><td>Hosted guide and npm-powered local tools available</td></tr>
+            <tr><th scope="row">What can I do today?</th><td>Review the planned architecture, tooling, and launch requirements</td><td>Check prerequisites, run read-only queries, create a starter, build locally, and record results</td></tr>
+            <tr><th scope="row">Requires local software?</th><td>No for the pre-launch reference</td><td>Yes for commands and builds; use the hosted guide manually or run Local Studio with Node/npm</td></tr>
             <tr><th scope="row">Language</th><td>Solidity</td><td>Rust + WASM</td></tr>
             <tr><th scope="row">Execution</th><td>EVM compatibility</td><td>Native DuskVM</td></tr>
             <tr><th scope="row">Tooling</th><td>Foundry / EVM wallets</td><td>Dusk Forge / W3sper</td></tr>

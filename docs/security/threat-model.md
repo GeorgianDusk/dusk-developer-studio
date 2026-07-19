@@ -1,107 +1,155 @@
-# Threat Model
+# Threat model
 
 ## Scope
 
-Dusk Developer Studio is an independent open-source project: a static public
-Studio plus optional local-companion source for each developer's own machine.
-The hosted production scope is DuskDS guidance and read-only public-node
-verification. DuskEVM remains an educational pre-launch preview until its
-Testnet is live and independently verified. Product, self-hosting, and release
-boundaries are documented in `../../README.md` and `../deployment/`.
+Dusk Developer Studio has two trust boundaries:
 
-## Assets To Protect
+- the static Hosted guide at `studio.134-122-59-217.nip.io`; and
+- the functional local Studio started from the `dusk-developer-studio` npm package.
 
-- Wallet private keys, mnemonics, seeders, profile entropy, wallet passwords, and API secrets.
-- User filesystem outside the selected project/template destination.
-- Local wallet approval boundaries.
-- Local diagnostics that may include wallet addresses or host paths.
-- Dusk-specific product status claims.
-- The public VPS host, which must not become a command-execution surface.
+The Hosted guide provides path selection, education, public read-only checks, resources, and troubleshooting. It does not connect to the developer's machine.
 
-## Primary Risks
+The local Studio runs on the developer's machine with Node.js `>=24.18.0 <25`, opens a paired browser session, and can perform allowlisted checks or starter creation only when Local Actions was explicitly selected.
 
-1. UI asks for or stores private keys.
-2. Local companion runs arbitrary commands or writes outside allowed paths.
-3. Local companion is accidentally exposed on a public interface.
-4. Malicious RPC/network metadata tricks users into wrong-chain actions.
-5. Remote docs/content injection causes XSS.
-6. Mainnet flow is mistaken for a testnet flow.
-7. Example contracts are misread as audited or production-ready.
-8. Diagnostics leak secrets or personal local paths.
-9. Public copy overclaims Hedger, native deployment, faucet, or production status.
-10. A malicious browser origin or DNS-rebinding request reaches the loopback companion.
-11. An unauthenticated request triggers body parsing, process execution, or filesystem writes.
-12. Request floods exhaust local CPU, memory, subprocess, or filesystem capacity.
+DuskDS is the active development journey. DuskEVM remains an educational pre-launch journey until its Testnet endpoints and behavior can be verified.
 
-## Public Hosted Controls
+## Assets to protect
 
-- Public VPS serves only the static Studio.
-- Local companion binds to `127.0.0.1` only, validates the exact loopback Host and Origin, and rejects missing origins.
-- Hosted origins are never trusted. Pairing is available only from a locally opened Studio.
-- A 32+ character startup token creates a short-lived, origin-bound HttpOnly session; the token is never returned or logged.
-- Health, preflight, and scaffold routes require the paired session. Authentication happens before request-body parsing.
-- Process and filesystem capabilities are disabled in the Safe executable and exist only in the separately named, mode-bound Local Actions executable.
-- Request bodies, time, rate, and concurrency are bounded; errors and diagnostics omit workspace paths and raw process output.
-- CORS preflight and Private Network Access are validated explicitly. Private Network Access is denied by default.
-- Filesystem parents are materialized beneath canonical approved roots, checked for symlinks/junctions/reparse points, and revalidated by real path and directory identity immediately before promotion.
-- Scaffolds populate a private sibling stage and become visible only through one atomic rename; existing targets are rejected and failed stages are removed only while their parent identity remains trusted.
-- External tool execution uses exact allowlisted commands and arguments,
-  bounded output/time, and termination of tracked direct processes or ordinary
-  process groups; fixed reviewed wrappers for Windows command shims and the
-  bounded optional WSL probe expose no user-controlled shell text, and the
-  request server no longer runs blocking `spawnSync` paths.
-- Source freshness and tracked-source boundary checks fail the product gate when provenance is stale/unverified or generated/provider/sensitive paths enter the release scope.
-- No private key fields anywhere.
-- No browser-based transaction signing.
-- Mainnet disabled by default.
-- Network metadata is schema-validated and source-labeled.
-- Template generation uses safe path checks.
-- Remote Markdown/MDX rendering is not supported.
-- Docs/resources are curated local data.
-- Diagnostics are redacted before export.
-- Example templates are labeled unaudited and not production-ready.
-- Security headers, CSP, `/healthz`, and cache controls are included for static hosting.
+- Private keys, mnemonics, seed phrases, seeders, profile entropy, wallet passwords, API secrets, credentials, cookies, and pairing material.
+- The user filesystem outside the approved project destination.
+- Existing user projects.
+- Wallet approval, funding, signing, nonce, fee, submission, and finality decisions.
+- Local diagnostics that may contain user paths, addresses, or tool output.
+- Dusk-specific source, network, maturity, and product-status claims.
+- The public web host, which must not become a command-execution surface.
+- npm package identity, integrity, provenance, and repository ownership.
 
-The portable supervisor verifies its exact payload before binding, keeps the pairing secret in memory only, bootstraps one same-origin browser session without URLs or environment variables, requires exact frontend/runtime release parity, defaults to safe mode, strips secret-shaped child environments, terminates active tracked children on shutdown, and closes both Studio-owned loopback services.
+## Trust boundaries
 
-The standalone bootstrap rejects elevated Windows and privileged Linux/macOS
-execution before extracting its embedded candidate. POSIX real/effective user
-or group mismatches and nonzero Linux permitted, effective, or ambient
-capabilities are rejected as well. The
-portable runtime repeats the same fail-closed check before payload verification,
-filesystem creation, listeners, browser launch, or developer tools. The check
-prevents accidental privileged execution; it is not OS containment against an
-administrator or root user who can alter an unsigned program or its execution
-environment.
+### Hosted guide
 
-Release packaging rejects unsafe paths, reparse entries, undeclared files, secret-like material, and absolute build-host paths; binds a pinned Node binary, SBOM, personal-project provenance identifiers, and checksums; and produces deterministic engineering inputs. Every OS candidate is one exact forward-slash ZIP with two distinct mode-bound launchers and a complete allowlisted package manifest. Before extraction, the central directory, local headers, paths, collisions, file types, sizes, compression ratios, CRCs, modes, and manifest are validated under strict bounds. Candidate processes run from isolated directories with a minimal credential-free environment. Lifecycle cleanup is permitted only beneath a pre-existing runner-owned ephemeral root after Studio-owned listener closure and directory-identity and symlink revalidation. Drive roots, parent paths, symlinks, reparse boundaries, unexpected package files, output collisions, and unconfirmed Studio shutdown fail closed before removal.
+The web host serves only static files. It has no companion route, reverse proxy, local token, or machine-action capability.
 
-The lifecycle harness assumes a fresh, isolated hosted runner without a hostile same-account process mutating `RUNNER_TEMP`. Node does not expose a portable handle-relative `openat`/`unlinkat` tree API, and Windows does not expose `O_NOFOLLOW`; an adversary already executing as the runner account could therefore attempt a junction or pathname race between validation and use. Random private siblings, exclusive creation, atomic final rename, filesystem-identity checks, and revalidation make this non-exploitable by a malicious ZIP alone, but they do not replace OS-level account isolation.
+### npm registry and package
 
-The companion invokes already installed developer tools with the developer's
-own account authority. A hostile or compromised tool can use that authority for
-filesystem, network, and process effects while active and can deliberately
-detach a daemon outside Node's portable child/process-group tracking.
-Signed-candidate evidence is therefore scoped to Studio-owned loopback shutdown
-and runner-owned install-file rollback; it never claims OS-level containment of
-the invoked tool or machine-wide process cleanup. George accepts that residual
-risk for the current source-only and internal companion scope in
-[the same-user tool boundary decision](same-user-tool-boundary-decision.md).
-The recorded compensating controls and revisit triggers do not constitute an
-independent security review or publication approval.
+Users trust the exact `dusk-developer-studio` package, its GeorgianDusk repository metadata, strict file inventory, integrity, provenance, Node range, and lack of dependencies and install lifecycle scripts.
 
-Unsigned RCs are internal-only. Candidate transport remains disabled, every enabled transport shape is rejected by policy schema 2, and candidate binaries are forbidden from GitHub Actions artifacts and draft releases until a private transport is separately implemented and reviewed. Candidate acceptance is intentionally independent of publication, but it remains bound to the protected tag, full commit, workflow run, attempt, actor, creation window, exact package hashes, launcher indexes, package manifest, retained lifecycle reports, and platform checks. Publication separately requires a digest-bound, time-bounded dossier and an explicit switch. Schema 2 can validate dossier shape but cannot authenticate referenced bytes or actor identities, so it rejects every publication dossier rather than treating URLs, names, or caller-supplied hashes as proof. The standalone channel then requires post-injection maintainer platform trust: Authenticode with timestamp on Windows, tag-bound keyless Sigstore on Linux, and Developer ID with hardened runtime, notarization, stapling, and Gatekeeper on macOS. Windows and Apple identities are intentionally unconfigured. Separate fresh runners would verify scoped Studio lifecycle and install rollback, while independent download/quarantine, reputation, compatibility, and security review remain external publication gates. The maintainer's same-user boundary decision does not replace that candidate-specific review. The hosted artifact remains docs-only and never becomes a loopback client.
+### Local browser bootstrap
 
-The precise boundary and configuration contract is documented in local-companion-boundary.md.
+The local Studio and companion communicate only through fixed IPv4 loopback ports. A one-time in-memory pairing value establishes an origin-bound session.
 
-## Release Gate
+### Local Actions
 
-Before claiming any builder path production-ready: approved production origin;
-exact release-manifest parity; supported companion distribution or enforced
-docs-only mode; Dusk source freshness; dependency and secret gates; browser,
-accessibility, and representative developer QA; independent companion security
-review; separate platform/Caddy review; approved copy and visible release
-identity; assigned support/monitoring owners; rehearsed Studio/platform
-rollback; and explicit confirmation that no VPS-exposed companion exists.
+The companion accepts a small reviewed set of commands and filesystem operations. External developer tools run with the user's account authority.
 
-No P0 may remain. A P1 is no-go unless George explicitly accepts a time-limited exception containing the owner, rationale, compensating control, residual risk, monitoring, expiry, and revalidation trigger.
+### Wallet and network
+
+Wallet secrets and funded actions remain outside the Studio. Public network data is untrusted input and must be validated, source-labelled, and treated according to the selected network.
+
+## Primary risks
+
+1. The UI requests or leaks wallet secrets.
+2. The companion runs an arbitrary command or writes outside an approved project root.
+3. A local service is exposed through a public interface, tunnel, proxy, or VPS.
+4. A malicious browser origin or DNS-rebinding request reaches the companion.
+5. An unauthenticated request triggers body parsing, process work, or filesystem changes.
+6. Request floods exhaust CPU, memory, subprocess, output, or filesystem capacity.
+7. A package-name, owner, registry, dependency, script, file, integrity, or provenance substitution compromises local execution.
+8. Frontend and companion versions do not match.
+9. A malicious or compromised developer tool abuses the user's authority or leaves a detached process.
+10. A path race, symlink, junction, or reparse point redirects project creation or cleanup.
+11. RPC or network metadata tricks a user into the wrong network or a false readiness state.
+12. Mainnet behavior is mistaken for Testnet guidance.
+13. Remote or stale content causes cross-site scripting or incorrect Dusk guidance.
+14. Example contracts are mistaken for audited production code.
+15. Diagnostics expose secrets, personal paths, or funded-account data.
+16. DuskEVM pre-launch material is mistaken for live Testnet capability.
+
+## Controls
+
+### Hosted guide controls
+
+- Serve only static assets.
+- Do not include a companion route or loopback client.
+- Use CSP, frame denial, MIME-sniffing protection, restrictive permissions, `/healthz`, and deliberate cache boundaries.
+- Curate resources as local validated data; do not render remote Markdown or MDX.
+- Label network, source, maturity, and freshness.
+- Keep DuskEVM live checks unavailable until real Testnet verification.
+
+### Package controls
+
+- Use the exact package name `dusk-developer-studio`.
+- Require Node.js `>=24.18.0 <25`.
+- Keep the package free of additional install-time runtime dependencies.
+- Define no install lifecycle scripts.
+- Publish through the canonical GeorgianDusk repository workflow.
+- Use a strict file allowlist and include `LICENSE` and `NOTICE`.
+- Record package integrity and provenance.
+- Test the exact packed bytes before publication.
+- Run clean Safe and Local Actions lifecycles on every supported platform.
+
+### Local service controls
+
+- Bind only to `127.0.0.1:5173` and `127.0.0.1:8788`.
+- Reject administrator, root, mismatched POSIX identities, and active Linux process capabilities.
+- Use fixed ports and fail closed on collision.
+- Generate pairing material from at least 32 random bytes and keep it in memory.
+- Accept bootstrap and session requests only from exact loopback Host and Origin values.
+- Use an origin-bound `HttpOnly`, `SameSite=Strict` session.
+- Authenticate before request-body parsing.
+- Validate CORS and Private Network Access explicitly.
+- Require exact frontend and companion package identity.
+
+### Capability controls
+
+- Safe mode is the default and cannot escalate through a request or hidden flag.
+- Local Actions requires an explicit startup argument.
+- Validate every request against an exact schema.
+- Use exact command and argument allowlists.
+- Bound request size, time, output, rate, concurrency, filesystem files, bytes, and depth.
+- Give child tools a minimal environment without secret-shaped values.
+- Terminate the tracked child or ordinary process group on timeout, overflow, error, and shutdown.
+- Never install or update developer tools.
+- Verify Dusk Forge through its Cargo receipt and reviewed source revision.
+
+### Filesystem controls
+
+- Constrain projects to a platform user-data root outside the npm cache.
+- Normalize project names and reject traversal, device, UNC, drive-relative, and other unsafe forms.
+- Reject symlink, junction, and reparse components.
+- Populate one private sibling stage under resource bounds.
+- Revalidate parent identity and target absence before one atomic promotion.
+- Never merge into or overwrite an existing project.
+- Remove temporary data only while the approved parent identity remains trusted.
+
+### Wallet and network controls
+
+- Define no private-key or seed fields.
+- Do not read, unlock, or sign through a wallet.
+- Keep funded deployment and calls in the developer's trusted terminal.
+- Keep mainnet reference-only.
+- Validate and source-label network metadata.
+- Separate readiness, submission, inclusion, finality, metadata, and data-driver availability.
+- Label example templates as unaudited and not production-ready.
+
+## Same-user developer-tool limitation
+
+Local Actions invokes installed developer tools with the developer's user authority. A hostile tool can use that authority for filesystem, network, and process effects and may deliberately detach a process outside the Studio's tracked process group.
+
+The Studio reduces exposure through Safe mode by default, explicit Local Actions startup, exact command and argument shapes, reviewed tool identity where available, a minimal environment, bounded effects, normal-user execution, and tracked shutdown.
+
+These controls do not provide operating-system containment and cannot make an untrusted tool safe. Developers must install tools themselves, review their origin and version, and stop or remove unexpected detached processes using platform tools.
+
+## Assumptions
+
+- The operating system, Node.js installation, npm client, browser, and developer account are not already compromised.
+- The user obtains `dusk-developer-studio` from the public npm registry and verifies its canonical repository metadata.
+- The user runs the Studio as a normal account without a public tunnel or proxy.
+- Tools used by Local Actions are intentionally installed and trusted by the developer.
+- The Hosted guide and local Studio remain separate origins.
+
+## Security expectations
+
+No release or deployment should proceed with an unresolved critical vulnerability, secret exposure, package-identity mismatch, public companion listener, arbitrary execution path, wallet-secret path, or broken Safe versus Local Actions boundary.
+
+Changes to package identity, install behavior, local commands, filesystem scope, wallet boundaries, public hosting, or network activation require focused security review and the relevant checks in [security-test-matrix.md](security-test-matrix.md).

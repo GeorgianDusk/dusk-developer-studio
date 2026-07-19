@@ -10,114 +10,149 @@ import { createLocalAgentServer } from "@dusk/local-agent/server";
 import { terminateAllBoundedProcesses } from "@dusk/local-agent/process";
 import { assertNonElevatedLaunch } from "./launchPrivilege";
 import { createLocalStudioServer } from "./staticServer";
-import { verifyPayload, type PayloadManifest, type PayloadVerificationOptions } from "./verifyPayload";
+import {
+  assertSupportedNodeVersion,
+  verifyNpmPackage,
+  type NpmPackageManifest,
+  type NpmPackageVerificationOptions
+} from "./verifyPackage";
 
 const HOST = "127.0.0.1";
 const STUDIO_PORT = 5173;
 const COMPANION_PORT = 8788;
 
-export interface PortableRuntimeOptions {
-  distributionRoot: string;
+export interface LocalRuntimeOptions {
+  packageRoot: string;
   capabilitiesEnabled: boolean;
   openBrowser: boolean;
   projectRoot?: string;
   studioPort?: number;
   companionPort?: number;
-  verification?: PayloadVerificationOptions;
+  verification?: NpmPackageVerificationOptions;
 }
 
-export interface PortableRuntimeCliOptions {
-  distributionRoot?: string;
+export interface LocalRuntimeCliOptions {
+  packageRoot?: string;
   args?: string[];
-  verification?: PayloadVerificationOptions;
-}
-export interface PortableRuntimeCliMode {
   capabilitiesEnabled: boolean;
+  verification?: NpmPackageVerificationOptions;
+}
+
+export interface LocalRuntimeCliMode {
   openBrowser: boolean;
-  signedRcSelfTest: boolean;
+  lifecycleSelfTest: boolean;
 }
 
-const PORTABLE_RUNTIME_FLAGS = new Set(["--enable-local-actions", "--no-open", "--signed-rc-self-test"]);
+const LOCAL_RUNTIME_FLAGS = new Set(["--no-open", "--lifecycle-self-test"]);
 
-export function resolvePortableRuntimeCliMode(args: string[]): PortableRuntimeCliMode {
-  const unknown = args.filter((arg) => !PORTABLE_RUNTIME_FLAGS.has(arg));
+export function resolveLocalRuntimeCliMode(args: string[]): LocalRuntimeCliMode {
+  const unknown = args.filter((arg) => !LOCAL_RUNTIME_FLAGS.has(arg));
   if (unknown.length) throw new Error(`Unsupported argument: ${unknown[0]}`);
-  if (new Set(args).size !== args.length) throw new Error("Portable Studio arguments must not be repeated.");
-  const capabilitiesEnabled = args.includes("--enable-local-actions");
-  const signedRcSelfTest = args.includes("--signed-rc-self-test");
-  return { capabilitiesEnabled, openBrowser: !signedRcSelfTest && !args.includes("--no-open"), signedRcSelfTest };
+  if (new Set(args).size !== args.length) throw new Error("Local Studio arguments must not be repeated.");
+  const lifecycleSelfTest = args.includes("--lifecycle-self-test");
+  return {
+    openBrowser: !lifecycleSelfTest && !args.includes("--no-open"),
+    lifecycleSelfTest
+  };
 }
-
 
 function defaultProjectRoot(): string {
   if (process.platform === "win32") {
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
     return path.join(localAppData, "Dusk", "DeveloperStudio", "projects");
   }
-  if (process.platform === "darwin") return path.join(os.homedir(), "Library", "Application Support", "Dusk", "DeveloperStudio", "projects");
+  if (process.platform === "darwin") {
+    return path.join(os.homedir(), "Library", "Application Support", "Dusk", "DeveloperStudio", "projects");
+  }
   const dataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
   return path.join(dataHome, "dusk", "developer-studio", "projects");
-}
-
-function currentTarget(): PayloadManifest["target"] | "unsupported" {
-  if (process.platform === "win32" && process.arch === "x64") return "windows-x64";
-  if (process.platform === "linux" && process.arch === "x64") return "linux-x64";
-  if (process.platform === "darwin" && process.arch === "arm64") return "darwin-arm64";
-  return "unsupported";
 }
 
 function listen(server: http.Server, port: number): Promise<void> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, HOST, () => { server.off("error", reject); resolve(); });
+    server.listen(port, HOST, () => {
+      server.off("error", reject);
+      resolve();
+    });
   });
 }
 
 function close(server: http.Server): Promise<void> {
   return new Promise((resolve) => {
-    if (!server.listening) { resolve(); return; }
-    const timer = setTimeout(() => { server.closeAllConnections(); }, 2_000);
-    server.close(() => { clearTimeout(timer); resolve(); });
+    if (!server.listening) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => server.closeAllConnections(), 2_000);
+    server.close(() => {
+      clearTimeout(timer);
+      resolve();
+    });
   });
 }
 
 function openLocalBrowser(url: string): void {
-  const command = process.platform === "win32" ? "explorer.exe" : process.platform === "darwin" ? "open" : "xdg-open";
-  const child = spawn(command, [url], { detached: true, stdio: "ignore", windowsHide: true, shell: false });
+  const command = process.platform === "win32"
+    ? "explorer.exe"
+    : process.platform === "darwin"
+      ? "open"
+      : "xdg-open";
+  const child = spawn(command, [url], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    shell: false
+  });
   child.once("error", () => undefined);
   child.unref();
 }
 
-export async function startPortableRuntime(options: PortableRuntimeOptions): Promise<{
-  manifest: PayloadManifest;
+export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
+  manifest: NpmPackageManifest;
   studioServer: http.Server;
   companionServer: http.Server;
   projectRoot: string;
   shutdown: () => Promise<void>;
 }> {
+  assertSupportedNodeVersion(options.verification?.nodeVersion ?? process.versions.node);
   assertNonElevatedLaunch();
-  const distributionRoot = path.resolve(options.distributionRoot);
-  const manifest = await verifyPayload(distributionRoot, options.verification);
-  if (manifest.target !== currentTarget()) throw new Error("This portable archive does not match the current platform and architecture.");
+  const packageRoot = path.resolve(options.packageRoot);
+  const manifest = await verifyNpmPackage(packageRoot, options.verification);
   const studioPort = options.studioPort ?? STUDIO_PORT;
   const companionPort = options.companionPort ?? COMPANION_PORT;
-  if (studioPort !== STUDIO_PORT || companionPort !== COMPANION_PORT) throw new Error("Portable Studio ports are fixed by the security contract.");
+  if (studioPort !== STUDIO_PORT || companionPort !== COMPANION_PORT) {
+    throw new Error("Local Studio ports are fixed by the security contract.");
+  }
+
   const pairingToken = randomBytes(32).toString("base64url");
   const projectRoot = path.resolve(options.projectRoot ?? defaultProjectRoot());
   await fs.mkdir(projectRoot, { recursive: true, mode: 0o700 });
-  const releaseIdentity = { product: "Dusk Developer Studio", version: manifest.version, commit: manifest.commit, channel: "portable" as const };
+  const releaseIdentity = {
+    product: "Dusk Developer Studio",
+    version: manifest.version,
+    commit: manifest.commit,
+    channel: "npm" as const
+  };
   const companionServer = createLocalAgentServer({
     pairingToken,
     port: companionPort,
     workspaceRoot: projectRoot,
-    foundryTemplateRoot: path.join(distributionRoot, "templates", "foundry-counter-dusk-evm"),
+    foundryTemplateRoot: path.join(packageRoot, "templates", "foundry-counter-dusk-evm"),
     duskDsProjectRoot: path.join(projectRoot, "duskds"),
     allowedOrigins: [`http://${HOST}:${studioPort}`, `http://localhost:${studioPort}`],
     capabilitiesEnabled: options.capabilitiesEnabled,
+    evmScaffoldEnabled: false,
     allowPrivateNetwork: false,
     releaseIdentity
   });
-  const studioServer = await createLocalStudioServer({ studioRoot: path.join(distributionRoot, "studio"), port: studioPort, companionPort, pairingToken });
+  const studioServer = await createLocalStudioServer({
+    studioRoot: path.join(packageRoot, "studio"),
+    port: studioPort,
+    companionPort,
+    pairingToken
+  });
+
   try {
     await listen(companionServer, companionPort);
     await listen(studioServer, studioPort);
@@ -125,6 +160,7 @@ export async function startPortableRuntime(options: PortableRuntimeOptions): Pro
     await Promise.all([close(studioServer), close(companionServer)]);
     throw error;
   }
+
   let shuttingDown = false;
   const shutdown = async () => {
     if (shuttingDown) return;
@@ -135,16 +171,22 @@ export async function startPortableRuntime(options: PortableRuntimeOptions): Pro
   if (options.openBrowser) openLocalBrowser(`http://${HOST}:${studioPort}/#companion`);
   return { manifest, studioServer, companionServer, projectRoot, shutdown };
 }
+
 interface SelfTestResponse {
   status: number;
   headers: http.IncomingHttpHeaders;
   body: string;
 }
 
-interface SignedRcLifecycleResult {
+interface LifecycleSelfTestResult {
   schema_version: 1;
   mode: "safe" | "local-actions";
-  release: { product: string; version: string; commit: string; channel: "portable" };
+  release: {
+    product: string;
+    version: string;
+    commit: string;
+    channel: "npm";
+  };
   bootstrap_succeeded: true;
   bootstrap_replay_denied: true;
   authenticated_session_verified: true;
@@ -156,9 +198,13 @@ interface SignedRcLifecycleResult {
   studio_loopback_services_stopped: true;
 }
 
-const SELF_TEST_RESULT_PREFIX = "DUSK_STUDIO_SIGNED_RC_LIFECYCLE=";
+const SELF_TEST_RESULT_PREFIX = "DUSK_STUDIO_LIFECYCLE=";
 
-function selfTestRequest(options: http.RequestOptions, body = "", timeoutMs = 5_000): Promise<SelfTestResponse> {
+function selfTestRequest(
+  options: http.RequestOptions,
+  body = "",
+  timeoutMs = 5_000
+): Promise<SelfTestResponse> {
   return new Promise((resolve, reject) => {
     const request = http.request({ ...options, timeout: timeoutMs }, (response) => {
       const chunks: Buffer[] = [];
@@ -169,11 +215,15 @@ function selfTestRequest(options: http.RequestOptions, body = "", timeoutMs = 5_
         if (bytes <= 64 * 1024) chunks.push(buffer);
       });
       response.on("end", () => {
-        if (bytes > 64 * 1024) reject(new Error("Signed-RC self-test response exceeded its bound."));
-        else resolve({ status: response.statusCode ?? 0, headers: response.headers, body: Buffer.concat(chunks).toString("utf8") });
+        if (bytes > 64 * 1024) reject(new Error("Lifecycle self-test response exceeded its bound."));
+        else resolve({
+          status: response.statusCode ?? 0,
+          headers: response.headers,
+          body: Buffer.concat(chunks).toString("utf8")
+        });
       });
     });
-    request.once("timeout", () => request.destroy(new Error("Signed-RC self-test request timed out.")));
+    request.once("timeout", () => request.destroy(new Error("Lifecycle self-test request timed out.")));
     request.once("error", reject);
     request.end(body);
   });
@@ -185,7 +235,7 @@ function parseSelfTestJson(response: SelfTestResponse, label: string): Record<st
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
     return parsed as Record<string, unknown>;
   } catch {
-    throw new Error(`Signed-RC ${label} response was not bounded JSON.`);
+    throw new Error(`Lifecycle ${label} response was not bounded JSON.`);
   }
 }
 
@@ -193,29 +243,33 @@ function parseListeningEndpoint(value: string): string | undefined {
   const match = value.trim().match(/^(?:\[)?(127[.]0[.]0[.]1)(?:\])?:(\d+)$/);
   if (!match) return undefined;
   const port = Number(match[2]);
-  return Number.isInteger(port) && port > 0 && port <= 65_535 ? `${match[1]}:${port}` : undefined;
+  return Number.isInteger(port) && port > 0 && port <= 65_535
+    ? `${match[1]}:${port}`
+    : undefined;
 }
 
 export function parseWindowsNetstatListeningEndpoints(output: string, ownerPid: number): string[] {
-  if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0 || ownerPid > 0xffff_ffff
-      || output.length > 1_048_576) {
-    throw new Error("Signed-RC self-test received an invalid Windows socket inventory.");
+  if (
+    !Number.isSafeInteger(ownerPid)
+    || ownerPid <= 0
+    || ownerPid > 0xffff_ffff
+    || output.length > 1_048_576
+  ) {
+    throw new Error("Lifecycle self-test received an invalid Windows socket inventory.");
   }
   const values: string[] = [];
   for (const line of output.split(/\r?\n/)) {
     const fields = line.trim().split(/\s+/);
     if (fields[0]?.toUpperCase() !== "TCP") continue;
     if (fields.length !== 5 || !/^\d+$/.test(fields[4])) {
-      throw new Error("Signed-RC self-test received a malformed Windows socket row.");
+      throw new Error("Lifecycle self-test received a malformed Windows socket row.");
     }
     const rowPid = Number(fields[4]);
     if (!Number.isSafeInteger(rowPid) || rowPid < 0 || rowPid > 0xffff_ffff) {
-      throw new Error("Signed-RC self-test received a malformed Windows socket PID.");
+      throw new Error("Lifecycle self-test received a malformed Windows socket PID.");
     }
     if (rowPid !== ownerPid) continue;
-    if (fields[2] === "0.0.0.0:0" || fields[2] === "[::]:0") {
-      values.push(fields[1]);
-    }
+    if (fields[2] === "0.0.0.0:0" || fields[2] === "[::]:0") values.push(fields[1]);
   }
   return values;
 }
@@ -237,22 +291,41 @@ function ownedListeningEndpoints(): string[] {
         : result.error
           ? "spawn_error"
           : `exit_${result.status}`;
-      throw new Error(`Signed-RC self-test could not inspect Windows listening sockets (${category}).`);
+      throw new Error(`Lifecycle self-test could not inspect Windows listening sockets (${category}).`);
     }
     values = parseWindowsNetstatListeningEndpoints(result.stdout, process.pid);
   } else if (process.platform === "linux") {
-    const result = spawnSync("ss", ["-H", "-ltnp"], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
-    if (result.status !== 0) throw new Error("Signed-RC self-test could not inspect Linux listening sockets.");
-    values = result.stdout.split(/\r?\n/).filter((line) => line.includes(`pid=${process.pid},`)).map((line) => line.trim().split(/\s+/)[3] ?? "");
+    const result = spawnSync("ss", ["-H", "-ltnp"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 10_000
+    });
+    if (result.status !== 0) throw new Error("Lifecycle self-test could not inspect Linux listening sockets.");
+    values = result.stdout
+      .split(/\r?\n/)
+      .filter((line) => line.includes(`pid=${process.pid},`))
+      .map((line) => line.trim().split(/\s+/)[3] ?? "");
   } else if (process.platform === "darwin") {
-    const result = spawnSync("lsof", ["-nP", "-a", "-p", String(process.pid), "-iTCP", "-sTCP:LISTEN", "-Fn"], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
-    if (result.status !== 0) throw new Error("Signed-RC self-test could not inspect macOS listening sockets.");
-    values = result.stdout.split(/\r?\n/).filter((line) => line.startsWith("n")).map((line) => line.slice(1));
+    const result = spawnSync(
+      "lsof",
+      ["-nP", "-a", "-p", String(process.pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
+      { encoding: "utf8", windowsHide: true, timeout: 10_000 }
+    );
+    if (result.status !== 0) throw new Error("Lifecycle self-test could not inspect macOS listening sockets.");
+    values = result.stdout
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("n"))
+      .map((line) => line.slice(1));
   } else {
-    throw new Error("Signed-RC self-test does not support this operating system.");
+    throw new Error("Lifecycle self-test does not support this operating system.");
   }
-  const endpoints = values.map(parseListeningEndpoint).filter((value): value is string => Boolean(value)).sort();
-  if (endpoints.length !== values.length) throw new Error("Signed-RC self-test found a non-loopback listening endpoint.");
+  const endpoints = values
+    .map(parseListeningEndpoint)
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  if (endpoints.length !== values.length) {
+    throw new Error("Lifecycle self-test found a non-loopback listening endpoint.");
+  }
   return endpoints;
 }
 
@@ -263,95 +336,157 @@ async function assertStudioLoopbackServicesStopped(): Promise<void> {
       socket.setTimeout(5_000);
       socket.once("connect", () => {
         socket.destroy();
-        reject(new Error(`Signed-RC self-test left port ${port} reachable.`));
+        reject(new Error(`Lifecycle self-test left port ${port} reachable.`));
       });
       socket.once("timeout", () => {
         socket.destroy();
-        reject(new Error(`Signed-RC self-test could not prove port ${port} is closed.`));
+        reject(new Error(`Lifecycle self-test could not prove port ${port} is closed.`));
       });
       socket.once("error", (error: NodeJS.ErrnoException) => {
         if (error.code === "ECONNREFUSED") resolve();
-        else reject(new Error(`Signed-RC self-test could not prove port ${port} is closed (${error.code ?? "unknown"}).`));
+        else reject(new Error(
+          `Lifecycle self-test could not prove port ${port} is closed (${error.code ?? "unknown"}).`
+        ));
       });
     });
   }
 }
 
-async function runSignedRcLifecycleSelfTest(
-  runtime: Awaited<ReturnType<typeof startPortableRuntime>>,
+async function runLifecycleSelfTest(
+  runtime: Awaited<ReturnType<typeof startLocalRuntime>>,
   capabilitiesEnabled: boolean
-): Promise<Omit<SignedRcLifecycleResult, "studio_loopback_services_stopped">> {
+): Promise<Omit<LifecycleSelfTestResult, "studio_loopback_services_stopped">> {
   const expectedEndpoints = [`${HOST}:${STUDIO_PORT}`, `${HOST}:${COMPANION_PORT}`] as const;
-  const serverEndpoints = [runtime.studioServer.address(), runtime.companionServer.address()].map((address) => {
-    if (!address || typeof address === "string") throw new Error("Signed-RC self-test could not inspect a local server address.");
-    return `${address.address}:${address.port}`;
-  }).sort();
+  const serverEndpoints = [runtime.studioServer.address(), runtime.companionServer.address()]
+    .map((address) => {
+      if (!address || typeof address === "string") {
+        throw new Error("Lifecycle self-test could not inspect a local server address.");
+      }
+      return `${address.address}:${address.port}`;
+    })
+    .sort();
   const socketEndpoints = ownedListeningEndpoints();
-  if (JSON.stringify(serverEndpoints) !== JSON.stringify([...expectedEndpoints].sort())
-      || JSON.stringify(socketEndpoints) !== JSON.stringify([...expectedEndpoints].sort())) {
-    throw new Error("Signed-RC self-test found an unexpected listening endpoint.");
+  if (
+    JSON.stringify(serverEndpoints) !== JSON.stringify([...expectedEndpoints].sort())
+    || JSON.stringify(socketEndpoints) !== JSON.stringify([...expectedEndpoints].sort())
+  ) {
+    throw new Error("Lifecycle self-test found an unexpected listening endpoint.");
   }
 
   const origin = `http://${HOST}:${STUDIO_PORT}`;
   const firstBootstrap = await selfTestRequest({
-    host: HOST, port: STUDIO_PORT, path: "/__dusk/bootstrap", method: "POST",
-    headers: { host: `${HOST}:${STUDIO_PORT}`, origin, "content-type": "application/json", "sec-fetch-site": "same-origin", "content-length": "2" }
+    host: HOST,
+    port: STUDIO_PORT,
+    path: "/__dusk/bootstrap",
+    method: "POST",
+    headers: {
+      host: `${HOST}:${STUDIO_PORT}`,
+      origin,
+      "content-type": "application/json",
+      "sec-fetch-site": "same-origin",
+      "content-length": "2"
+    }
   }, "{}");
-  if (firstBootstrap.status !== 200) throw new Error(`Signed-RC bootstrap failed (${firstBootstrap.status}).`);
+  if (firstBootstrap.status !== 200) {
+    throw new Error(`Lifecycle bootstrap failed (${firstBootstrap.status}).`);
+  }
   const bootstrapBody = parseSelfTestJson(firstBootstrap, "bootstrap");
-  if (bootstrapBody.ok !== true || bootstrapBody.paired !== true) throw new Error("Signed-RC bootstrap response was invalid.");
+  if (bootstrapBody.ok !== true || bootstrapBody.paired !== true) {
+    throw new Error("Lifecycle bootstrap response was invalid.");
+  }
   const setCookie = firstBootstrap.headers["set-cookie"];
   const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(";", 1)[0] ?? "";
-  if (!cookie.startsWith("dusk_studio_session=") || !String(setCookie).includes("HttpOnly") || !String(setCookie).includes("SameSite=Strict")) {
-    throw new Error("Signed-RC bootstrap did not issue the required session cookie.");
+  if (
+    !cookie.startsWith("dusk_studio_session=")
+    || !String(setCookie).includes("HttpOnly")
+    || !String(setCookie).includes("SameSite=Strict")
+  ) {
+    throw new Error("Lifecycle bootstrap did not issue the required session cookie.");
   }
 
   const replay = await selfTestRequest({
-    host: HOST, port: STUDIO_PORT, path: "/__dusk/bootstrap", method: "POST",
-    headers: { host: `${HOST}:${STUDIO_PORT}`, origin, "content-type": "application/json", "sec-fetch-site": "same-origin", "content-length": "2" }
+    host: HOST,
+    port: STUDIO_PORT,
+    path: "/__dusk/bootstrap",
+    method: "POST",
+    headers: {
+      host: `${HOST}:${STUDIO_PORT}`,
+      origin,
+      "content-type": "application/json",
+      "sec-fetch-site": "same-origin",
+      "content-length": "2"
+    }
   }, "{}");
   const replayBody = parseSelfTestJson(replay, "bootstrap replay");
-  if (replay.status !== 410 || replayBody.code !== "bootstrap_expired") throw new Error("Signed-RC one-time bootstrap was replayable.");
+  if (replay.status !== 410 || replayBody.code !== "bootstrap_expired") {
+    throw new Error("Lifecycle one-time bootstrap was replayable.");
+  }
 
   const health = await selfTestRequest({
-    host: HOST, port: COMPANION_PORT, path: "/healthz", method: "GET",
+    host: HOST,
+    port: COMPANION_PORT,
+    path: "/healthz",
+    method: "GET",
     headers: { host: `${HOST}:${COMPANION_PORT}`, origin, cookie }
   });
   const healthBody = parseSelfTestJson(health, "companion health");
   const release = healthBody.release as Record<string, unknown> | undefined;
-  if (health.status !== 200 || healthBody.ok !== true || healthBody.paired !== true
-      || healthBody.capabilitiesEnabled !== capabilitiesEnabled || !release
-      || release.product !== "Dusk Developer Studio" || release.version !== runtime.manifest.version
-      || release.commit !== runtime.manifest.commit || release.channel !== "portable") {
-    throw new Error("Signed-RC authenticated health or release parity check failed.");
+  if (
+    health.status !== 200
+    || healthBody.ok !== true
+    || healthBody.paired !== true
+    || healthBody.capabilitiesEnabled !== capabilitiesEnabled
+    || !release
+    || release.product !== "Dusk Developer Studio"
+    || release.version !== runtime.manifest.version
+    || release.commit !== runtime.manifest.commit
+    || release.channel !== "npm"
+  ) {
+    throw new Error("Lifecycle authenticated health or release parity check failed.");
   }
 
   const preflight = await selfTestRequest({
-    host: HOST, port: COMPANION_PORT, path: "/preflight?path=evm", method: "GET",
+    host: HOST,
+    port: COMPANION_PORT,
+    path: "/preflight?path=duskds",
+    method: "GET",
     headers: { host: `${HOST}:${COMPANION_PORT}`, origin, cookie }
   }, "", 60_000);
   const preflightBody = parseSelfTestJson(preflight, "capability");
   if (capabilitiesEnabled) {
-    if (preflight.status !== 200 || typeof preflightBody.ok !== "boolean"
-        || preflightBody.path !== "evm" || !Array.isArray(preflightBody.tools)) {
-      throw new Error("Signed-RC local-actions preflight did not complete.");
+    if (
+      preflight.status !== 200
+      || typeof preflightBody.ok !== "boolean"
+      || preflightBody.path !== "duskds"
+      || !Array.isArray(preflightBody.tools)
+    ) {
+      throw new Error("Lifecycle Local Actions preflight did not complete.");
     }
   } else if (preflight.status !== 403 || preflightBody.code !== "capabilities_disabled") {
-    throw new Error("Signed-RC safe mode did not deny a local action.");
+    throw new Error("Lifecycle Safe mode did not deny a local action.");
   }
   if (JSON.stringify(ownedListeningEndpoints()) !== JSON.stringify([...expectedEndpoints].sort())) {
-    throw new Error("Signed-RC preflight changed the Studio-owned listening endpoint set.");
+    throw new Error("Lifecycle preflight changed the Studio-owned listening endpoint set.");
   }
 
   const expectedProjectRoot = path.resolve(defaultProjectRoot());
-  if (runtime.projectRoot !== expectedProjectRoot) throw new Error("Signed-RC project root did not use the isolated platform user-data root.");
+  if (runtime.projectRoot !== expectedProjectRoot) {
+    throw new Error("Lifecycle project root did not use the isolated platform user-data root.");
+  }
   const projectStat = await fs.lstat(runtime.projectRoot);
-  if (!projectStat.isDirectory() || projectStat.isSymbolicLink()) throw new Error("Signed-RC isolated project root is unsafe.");
+  if (!projectStat.isDirectory() || projectStat.isSymbolicLink()) {
+    throw new Error("Lifecycle isolated project root is unsafe.");
+  }
 
   return {
     schema_version: 1,
     mode: capabilitiesEnabled ? "local-actions" : "safe",
-    release: { product: "Dusk Developer Studio", version: runtime.manifest.version, commit: runtime.manifest.commit, channel: "portable" },
+    release: {
+      product: "Dusk Developer Studio",
+      version: runtime.manifest.version,
+      commit: runtime.manifest.commit,
+      channel: "npm"
+    },
     bootstrap_succeeded: true,
     bootstrap_replay_denied: true,
     authenticated_session_verified: true,
@@ -363,41 +498,72 @@ async function runSignedRcLifecycleSelfTest(
   };
 }
 
-
-export async function runPortableRuntimeCli(options: PortableRuntimeCliOptions = {}): Promise<void> {
-  const mode = resolvePortableRuntimeCliMode(options.args ?? process.argv.slice(2));
-  const distributionRoot = path.resolve(options.distributionRoot ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."));
-  const runtime = await startPortableRuntime({ distributionRoot, capabilitiesEnabled: mode.capabilitiesEnabled, openBrowser: mode.openBrowser, verification: options.verification });
-  console.log(`Dusk Developer Studio Local ${runtime.manifest.version} (${runtime.manifest.commit.slice(0, 8)})`);
-  console.log(`Mode: ${mode.capabilitiesEnabled ? "local tool checks and starter creation enabled" : "safe mode; machine actions disabled"}`);
+export async function runLocalRuntimeCli(options: LocalRuntimeCliOptions): Promise<void> {
+  const mode = resolveLocalRuntimeCliMode(options.args ?? process.argv.slice(2));
+  const packageRoot = path.resolve(
+    options.packageRoot ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+  );
+  const runtime = await startLocalRuntime({
+    packageRoot,
+    capabilitiesEnabled: options.capabilitiesEnabled,
+    openBrowser: mode.openBrowser,
+    verification: options.verification
+  });
+  console.log(
+    `Dusk Developer Studio ${runtime.manifest.version} (${runtime.manifest.commit.slice(0, 8)})`
+  );
+  console.log(
+    `Mode: ${options.capabilitiesEnabled
+      ? "local tool checks and starter creation enabled"
+      : "safe mode; machine actions disabled"}`
+  );
   console.log(`Open http://${HOST}:${STUDIO_PORT}/`);
-  if (mode.signedRcSelfTest) {
-    let result: Omit<SignedRcLifecycleResult, "studio_loopback_services_stopped">;
+
+  if (mode.lifecycleSelfTest) {
+    let result: Omit<LifecycleSelfTestResult, "studio_loopback_services_stopped">;
     try {
-      result = await runSignedRcLifecycleSelfTest(runtime, mode.capabilitiesEnabled);
+      result = await runLifecycleSelfTest(runtime, options.capabilitiesEnabled);
     } finally {
       await runtime.shutdown();
     }
-    if (runtime.studioServer.listening || runtime.companionServer.listening) throw new Error("Signed-RC local servers still report a listening state.");
+    if (runtime.studioServer.listening || runtime.companionServer.listening) {
+      throw new Error("Lifecycle local servers still report a listening state.");
+    }
     await assertStudioLoopbackServicesStopped();
-    const completed: SignedRcLifecycleResult = { ...result, studio_loopback_services_stopped: true };
+    const completed: LifecycleSelfTestResult = {
+      ...result,
+      studio_loopback_services_stopped: true
+    };
     console.log(`${SELF_TEST_RESULT_PREFIX}${JSON.stringify(completed)}`);
-    console.log("Signed-RC lifecycle self-test passed; one-time bootstrap, session, release parity, capabilities, and shutdown verified.");
+    console.log(
+      "Lifecycle self-test passed; bootstrap, session, release parity, capabilities, and shutdown verified."
+    );
     return;
   }
+
   console.log("Press Ctrl+C to stop. Projects remain in your user data folder.");
   await new Promise<void>((resolve, reject) => {
     const onSignal = async () => {
-      process.off("SIGINT", onSignal); process.off("SIGTERM", onSignal);
-      try { await runtime.shutdown(); resolve(); }
-      catch (error) { reject(error); }
+      process.off("SIGINT", onSignal);
+      process.off("SIGTERM", onSignal);
+      try {
+        await runtime.shutdown();
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
     };
-    process.on("SIGINT", onSignal); process.on("SIGTERM", onSignal);
+    process.on("SIGINT", onSignal);
+    process.on("SIGTERM", onSignal);
   });
 }
 
-const isMainModule = process.argv[1] ? path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url)) : false;
-if (isMainModule) runPortableRuntimeCli().catch((error) => {
-  console.error(error instanceof Error ? error.message : "Portable Studio could not start.");
-  process.exitCode = 1;
-});
+const isMainModule = process.argv[1]
+  ? path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+  : false;
+if (isMainModule) {
+  runLocalRuntimeCli({ capabilitiesEnabled: false }).catch((error) => {
+    console.error(error instanceof Error ? error.message : "Local Studio could not start.");
+    process.exitCode = 1;
+  });
+}

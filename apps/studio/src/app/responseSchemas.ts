@@ -31,7 +31,7 @@ export interface CompanionRelease {
   product: string;
   version: string;
   commit: string;
-  channel: "hosted" | "portable" | "source-dev";
+  channel: "hosted" | "npm" | "source-dev";
 }
 
 export interface PairingResult { ok: boolean; paired: boolean; expiresInSeconds: number; }
@@ -71,7 +71,7 @@ export function isCompanionHealth(value: unknown): value is CompanionHealth {
       && boundedString(value.release.product, 64)
       && boundedString(value.release.version, 64)
       && boundedString(value.release.commit, 64)
-      && ["hosted", "portable", "source-dev"].includes(String(value.release.channel))));
+      && ["hosted", "npm", "source-dev"].includes(String(value.release.channel))));
 }
 
 export function isPairingResult(value: unknown): value is PairingResult {

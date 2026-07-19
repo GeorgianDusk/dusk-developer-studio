@@ -1,65 +1,124 @@
-# Local Companion Recovery
+# Local Studio recovery
 
-Date: 2026-07-18
+## Start again safely
 
-## Startup Failure
+Safe mode:
 
-- Payload verification failure: stop. Re-extract a freshly verified archive; do not repair individual files or bypass the manifest.
-- Wrong platform or architecture: stop. The intended targets are Windows x64,
-  Linux x64, and macOS arm64, but no public archive is currently distributed.
-  A future archive must come from an approved canonical release.
-- Port 5173 or 8788 already in use: stop the conflicting local process, then restart. The companion never chooses a different port silently.
-- Browser did not open: leave the foreground process running and open http://127.0.0.1:5173 manually. No pairing token belongs in the URL.
-- Privileged launch rejected: restart the exact launcher from one normal,
-  non-elevated developer identity with matching real/effective user and group
-  IDs and no Linux permitted, effective, or ambient capabilities. Do not add a
-  bypass or run Local Actions as administrator/root.
+```bash
+npx dusk-developer-studio
+```
 
-## Session Or Parity Failure
+Local Actions:
 
-- Expired or consumed bootstrap: stop and restart the foreground companion to generate a new in-memory secret and session.
-- Release mismatch: close the process, remove the mixed extraction, and extract one complete archive. Never combine Studio assets, runtime files, or manifests from different builds.
-- Hosted docs-only message: this is expected for a hosted artifact, including
-  one copied to localhost. Current public users should stay with the hosted
-  manual/source workflow because no public archive is approved. Only separately
-  authorized internal testers may use an exact internal candidate; after a
-  future publication approval, use only the canonical approved release.
+```bash
+npx dusk-developer-studio local-actions
+```
 
-## Local Action Failure
+Keep the terminal open while using the Studio. Press `Ctrl+C` before changing modes or restarting.
 
-- Safe mode blocks preflight/scaffold requests by design. Stop it and deliberately use the local-actions launcher if those capabilities are required.
-- Missing Foundry, Rust, Dusk Forge, WSL, or optional utilities: follow the bounded preflight result. External toolchains are not silently installed.
-- Existing project target: choose a new project name or move the existing directory yourself. The companion never merges or overwrites it.
-- Interrupted scaffold: the final target should remain absent. Stop the process before inspecting any private stage; do not follow or delete a stage beneath an untrusted/replaced parent.
+## Startup problems
 
-## Shutdown And Cleanup
+### Unsupported Node.js version
 
-Press Ctrl+C in the foreground window. For a macOS app opened from Finder,
-quit the exact **Dusk Developer Studio** or **Dusk Developer Studio Local
-Actions** app normally; if it does not quit, use Activity Monitor to send Quit
-to that exact app or PID. Shutdown terminates active tracked child processes,
-invalidates in-memory sessions, closes both Studio-owned loopback servers, and
-leaves user projects in the platform user-data directory. Confirm ports 5173
-and 8788 are closed before removing the extracted archive. The Studio installs
-no service, registry entry, scheduled task, or daemon. A separate developer tool
-invoked by Local Actions runs with your account authority; if that tool is
-compromised, its deliberately detached processes are outside the Studio's
-portable cleanup guarantee.
+The local Studio requires Node.js `>=24.18.0 <25`.
 
-If a process survives an abnormal host crash, identify the exact bundled Node process listening on 5173 or 8788 before terminating it. Do not kill unrelated Node processes by name.
+```bash
+node --version
+```
 
-## Incident Boundary
+Install a compatible Node.js version, open a new terminal, and run the command again.
 
-Quarantine the archive and preserve its archive SHA-256, target, version,
-commit, signing status, sanitized symptom, and any candidate-manifest,
-launcher-index, or build-receipt identifiers and hashes already emitted by a
-trusted verifier. Preserve an embedded payload fingerprint only when that
-trusted verifier already reported it; do not execute or unpack a suspect
-launcher merely to derive one. Never include wallet secrets, environment dumps,
-pairing material, absolute user paths, or funded-account data in a support
-report. A suspected signature, payload, or runtime mismatch is a release
-incident and blocks publication.
+### Port 5173 or 8788 is already in use
 
-Follow the canonical
-[support and incident route](companion-support-and-incident.md) and
-[quarantine, rollback, and withdrawal procedure](companion-quarantine-and-withdrawal.md).
+The Studio uses fixed loopback ports and does not silently select alternatives.
+
+Stop the local process that owns the conflicting port, then restart the Studio. Identify the process by listener and command before stopping it; do not kill every Node.js process by name.
+
+### Browser did not open
+
+Leave the foreground command running and open:
+
+```text
+http://127.0.0.1:5173
+```
+
+Do not place pairing values in the URL.
+
+### Administrator or root launch was rejected
+
+Open a normal, non-elevated terminal under your developer account and run the command again. Do not add a bypass or run Local Actions with elevated privileges.
+
+## Pairing or identity problems
+
+### Session expired or bootstrap was consumed
+
+Stop the foreground process with `Ctrl+C`, then restart it. A new in-memory pairing value and browser session will be created.
+
+### Frontend/runtime identity mismatch
+
+Stop the process. Run one complete package version instead of combining cached or copied files:
+
+```bash
+npx dusk-developer-studio@<version>
+```
+
+If the mismatch persists, record the package version and `dist.integrity`, then follow the [package quarantine procedure](companion-quarantine-and-withdrawal.md).
+
+### You opened the Hosted guide
+
+The Hosted guide provides browser guidance and public read-only checks but never connects to localhost. Start the npm package and use the browser window opened from that foreground process for local checks and starter creation.
+
+## Local Actions problems
+
+### Safe mode blocked a check or scaffold
+
+That is expected. Stop Safe mode and deliberately start Local Actions:
+
+```bash
+npx dusk-developer-studio local-actions
+```
+
+### A required tool is missing
+
+Follow the exact preflight category and installation link shown by the Studio. Local Actions does not install or update Foundry, Rust, Dusk Forge, WSL, or related tools.
+
+Restart the Studio after installing or updating a prerequisite so the preflight reads a fresh environment.
+
+### Dusk Forge revision does not match
+
+Follow the reviewed Forge installation command shown by the Studio. The DuskDS check reads Cargo's local install receipt and rejects an absent, malformed, or different source revision.
+
+### The project target already exists
+
+Choose a new project name or move the existing directory yourself. The Studio never merges into or overwrites an existing project.
+
+### Starter creation was interrupted
+
+The final target should remain absent. Stop the Studio before inspecting temporary work. Do not follow or remove a temporary directory beneath a parent whose path or ownership changed unexpectedly.
+
+## Shutdown and projects
+
+Press `Ctrl+C` in the foreground terminal.
+
+Shutdown:
+
+- invalidates in-memory sessions;
+- closes ports 5173 and 8788;
+- terminates active tracked child processes or their ordinary process group; and
+- preserves user projects.
+
+Project locations:
+
+- Windows: `%LOCALAPPDATA%\Dusk\DeveloperStudio\projects`
+- macOS: `~/Library/Application Support/Dusk/DeveloperStudio/projects`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/dusk/developer-studio/projects`
+
+An external developer tool invoked by Local Actions runs with your account authority. A deliberately detached process can outlive the Studio's tracked process group. If that occurs, identify the exact tool and process before stopping it; do not terminate unrelated processes by name.
+
+## Suspected package incident
+
+Stop and report an unexpected package owner, repository, dependency, install lifecycle script, integrity value, non-loopback listener, or capability.
+
+Preserve only the safe metadata listed in [Package quarantine and withdrawal](companion-quarantine-and-withdrawal.md). Never include wallet secrets, environment dumps, pairing material, absolute paths, or funded-account data.
+
+Use the [support and incident route](companion-support-and-incident.md) for the report.

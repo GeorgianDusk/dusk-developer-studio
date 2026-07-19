@@ -7,7 +7,7 @@ test("guided builder flow stays clear", async ({ page }) => {
   await expect(page.getByText("Choose your path")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
   await expect(page.getByRole("button", { name: /Explore pre-launch reference/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Start DuskDS manually/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start DuskDS/i })).toBeVisible();
   await expect(page.getByLabel("Builder path selector")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "DuskEVM", exact: true })).toHaveCount(0);
 
@@ -18,7 +18,7 @@ test("guided builder flow stays clear", async ({ page }) => {
   await expect(page.getByText(/0\/4/)).toHaveCount(0);
 
   await page.getByRole("button", { name: "Paths" }).click();
-  await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
   await expect(page.getByRole("heading", { name: "Record the native toolchain checks you ran." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Run the required checks yourself" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save manual setup confirmation" })).toBeVisible();
@@ -32,7 +32,10 @@ test("guided builder flow stays clear", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Fix the blocker in front of you." })).toBeVisible();
 
   await page.getByRole("button", { name: /Automation/i }).click();
-  await expect(page.getByRole("heading", { name: "Use the hosted DuskDS guide manually today." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Run the full Studio locally with npm." })).toBeVisible();
   await expect(page.getByLabel("Pairing token")).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Choose the DuskDS manual path" })).toBeVisible();
+  const returnToJourney = page.getByRole("button", { name: "Return to DuskDS at Access" });
+  await expect(returnToJourney).toBeVisible();
+  await returnToJourney.click();
+  await expect(page.getByRole("heading", { name: "Check a read-only Dusk node query." })).toBeVisible();
 });

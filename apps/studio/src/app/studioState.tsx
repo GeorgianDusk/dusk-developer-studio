@@ -18,7 +18,7 @@ import {
   type StepRoute
 } from "./journeyProgress";
 import { isCompanionHealth, isPairingResult } from "./responseSchemas";
-import { hasPortableReleaseParity, type StudioRuntime } from "./runtime";
+import { hasLocalReleaseParity, type StudioRuntime } from "./runtime";
 import { requestJson, safeRequestMessage } from "./safeRequest";
 import { localAgentUrl, studioRuntime } from "./studioConfig";
 import type { CompanionStatus, RouteId } from "./types";
@@ -35,7 +35,7 @@ const StudioRuntimeContext = createContext<StudioRuntimeContextValue | undefined
 
 export function RuntimeProvider({ runtime = studioRuntime, release = STUDIO_RELEASE, children }: { runtime?: StudioRuntime; release?: StudioRelease; children: ReactNode }) {
   const companionBaseUrl = runtime.companionAvailable
-    ? runtime.channel === "portable" ? `http://${window.location.hostname}:8788` : localAgentUrl
+    ? runtime.channel === "npm" ? `http://${window.location.hostname}:8788` : localAgentUrl
     : null;
   const value = useMemo(() => ({ runtime, release, companionBaseUrl }), [runtime, release, companionBaseUrl]);
   return <StudioRuntimeContext.Provider value={value}>{children}</StudioRuntimeContext.Provider>;
@@ -81,7 +81,7 @@ export function useBuilderPath(): [BuilderPath | null, (path: BuilderPath | null
 
 export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
   const { runtime, release, companionBaseUrl } = useStudioRuntime();
-  const portableBootstrapStarted = useRef(false);
+  const localBootstrapStarted = useRef(false);
   const [status, setStatus] = useState<CompanionStatus>({
     state: "unavailable",
     message: runtime.companionAvailable
@@ -98,7 +98,7 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
       const data = await requestJson(companionBaseUrl + "/health", {
         init: { credentials: "include" }, timeoutMs: 1_200, validate: isCompanionHealth
       });
-      if (runtime.channel === "portable" && !hasPortableReleaseParity(release, data.release)) {
+      if (runtime.channel === "npm" && !hasLocalReleaseParity(release, data.release)) {
         setStatus({
           state: "mismatch",
           message: "Local actions are blocked because the Studio and local runtime release identities do not match.",
@@ -117,10 +117,10 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
     }
   }, [companionBaseUrl, release, runtime.channel, runtime.companionAvailable]);
   useEffect(() => {
-    if (runtime.channel !== "portable" || !runtime.companionAvailable || !companionBaseUrl || portableBootstrapStarted.current) return;
-    portableBootstrapStarted.current = true;
+    if (runtime.channel !== "npm" || !runtime.companionAvailable || !companionBaseUrl || localBootstrapStarted.current) return;
+    localBootstrapStarted.current = true;
     const bootstrap = async () => {
-      setStatus({ state: "checking", message: "Starting the portable local session..." });
+      setStatus({ state: "checking", message: "Starting the local session..." });
       try {
         await requestJson(window.location.origin + "/__dusk/bootstrap", {
           init: { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}" },

@@ -21,12 +21,12 @@ describe("Phase 3 interaction semantics", () => {
     expect(within(globalNavigation).queryByRole("button", { name: /Setup|Access|Build|Inspect/i })).not.toBeInTheDocument();
 
     const evmPath = screen.getByRole("button", { name: /Explore pre-launch reference/i });
-    const nativePath = screen.getByRole("button", { name: /Start DuskDS manually/i });
+    const nativePath = screen.getByRole("button", { name: /Start DuskDS/i });
     expect(evmPath).toHaveAccessibleName("DuskEVM. Explore pre-launch reference");
     expect(evmPath).toHaveAccessibleDescription(/Explore one source-backed pre-launch reference/);
     expect(evmPath).toHaveAccessibleDescription(/does not provide a completion score/);
-    expect(nativePath).toHaveAccessibleName("DuskDS. Start DuskDS manually");
-    expect(nativePath).toHaveAccessibleDescription(/Follow the complete hosted instructions manually now/);
+    expect(nativePath).toHaveAccessibleName("DuskDS. Start DuskDS");
+    expect(nativePath).toHaveAccessibleDescription(/Follow every step manually, or run the Local Studio with npm/);
     expect(evmPath).not.toHaveAttribute("aria-pressed");
     expect(nativePath).not.toHaveAttribute("aria-pressed");
     expect(screen.getByRole("table", { name: "Quick comparison of the two Dusk builder paths" })).toBeInTheDocument();

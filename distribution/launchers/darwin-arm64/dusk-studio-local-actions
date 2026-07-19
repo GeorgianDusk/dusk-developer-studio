@@ -1,7 +1,0 @@
-#!/usr/bin/env sh
-set -eu
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-RELEASE_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
-printf '%s\n' 'Dusk Developer Studio will be allowed to check local tools and create starter files.'
-printf '%s\n' 'No wallet signing or funded-account action is enabled.'
-exec "$RELEASE_ROOT/runtime/node" "$RELEASE_ROOT/app/companion.mjs" --enable-local-actions

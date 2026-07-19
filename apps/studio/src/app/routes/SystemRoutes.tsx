@@ -3,7 +3,7 @@ import { safeJsonExport } from "@dusk/core/safe-export";
 import { JOURNEY_PROGRESS_STORAGE_KEY, type BuilderPath } from "../journeyProgress";
 import { expiryDate, sourceDate, sourceFreshness, sourceIsStale } from "../studioConfig";
 import { useJourney, useStudioRuntime } from "../studioState";
-import { AsyncNotice, ExternalLink, PageIntro, StatusPill } from "../StudioUi";
+import { AsyncNotice, CommandPair, CopyButton, ExternalLink, PageIntro, StatusPill } from "../StudioUi";
 import type { CompanionStatus } from "../types";
 
 export function LocalCompanionPage({ companionStatus, refreshCompanion }: { companionStatus: CompanionStatus; refreshCompanion: () => Promise<void> }) {
@@ -13,31 +13,36 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
     return (
       <section className="reference-page narrow">
         <PageIntro
-          kicker="Automation"
-          title="Use the hosted DuskDS guide manually today."
-          copy="Hosted Studio provides reviewed instructions, commands, expected results, and manual confirmations. It cannot inspect your machine or create files. Portable automation is optional and is not publicly released yet."
+          kicker="Local Studio"
+          title="Run the full Studio locally with npm."
+          copy="The hosted guide cannot inspect your machine or create files. The npm package opens the same Studio on your computer and pairs it with a loopback-only companion for tool checks and starter creation."
         />
         <div className="focus-card wide">
-          <StatusPill tone="good">Available now</StatusPill>
-          <h2>Continue without installing Studio software</h2>
-          <p>Choose DuskDS, follow each prerequisite and command on your own machine, then save only the results you actually observed. Manual confirmations stay visibly different from automated checks.</p>
+          <StatusPill tone="good">Available through npm</StatusPill>
+          <h2>Choose how much local access this session needs</h2>
+          <p>Use Node.js 24.18 or newer in the Node 24 release line. Safe mode opens the local Studio without machine actions. Local Actions additionally enables the reviewed tool checks and starter scaffolds.</p>
+          <CommandPair
+            firstTitle="Safe mode"
+            first="npx dusk-developer-studio"
+            secondTitle="Local Actions"
+            second="npx dusk-developer-studio local-actions"
+          />
           <ol>
-            <li>Choose the DuskDS path.</li>
-            <li>Open Setup and follow the manual prerequisites.</li>
-            <li>Return to the same step after using any external documentation.</li>
+            <li>Run one command in your terminal. npm downloads the package and starts it in the foreground.</li>
+            <li>Your browser opens <strong>127.0.0.1:5173</strong> and pairs automatically. Keep the terminal open while you use the local Studio.</li>
+            <li>Press <strong>Ctrl+C</strong> in that terminal to stop both local services. Your projects remain in your user data folder.</li>
           </ol>
-          <div className="button-row"><a className="primary-button" href="#overview">Choose the DuskDS manual path</a></div>
+          <div className="button-row">
+            <ExternalLink href="https://nodejs.org/en/download">Get Node.js</ExternalLink>
+            <a className="secondary-button" href="#overview">Continue in the hosted guide</a>
+          </div>
         </div>
         <div className="focus-card wide secondary">
-          <StatusPill tone="warn">Not published</StatusPill>
-          <h2>Portable automation is being prepared</h2>
-          <p>When a verified release is available, it will include separate Safe and Local Actions launchers. Only the clearly named Local Actions launcher will run allowlisted tool checks or create approved starter files through a loopback-only session. The public website will never connect directly to your machine.</p>
-          <p className="quiet-note">You do not need the source repository to use the manual guide. The source link below is provided only for advanced review and contribution.</p>
-          <div className="button-row">
-            <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-duskds/">Open the DuskDS contract guide</ExternalLink>
-            <ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio">View source repository — advanced</ExternalLink>
-          </div>
-          <p className="quiet-note">External links open in a new tab; your Studio journey stays here.</p>
+          <StatusPill tone="neutral">Local boundary</StatusPill>
+          <h2>What the npm package does</h2>
+          <p>It serves the Studio only on <strong>127.0.0.1:5173</strong> and its companion only on <strong>127.0.0.1:8788</strong>. It installs no service, requests no administrator access, and never asks for wallet secrets.</p>
+          <p>Local Actions can run only the allowlisted prerequisite checks and create approved starter projects. Wallet signing, funded transactions, deployment, arbitrary commands, and writes outside the managed project root remain unavailable.</p>
+          <p className="quiet-note">The hosted website never connects to the local companion. Starting the npm package opens a separate local Studio session.</p>
         </div>
       </section>
     );
@@ -51,21 +56,21 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
     <section className="reference-page narrow">
       <PageIntro
         kicker="Automation"
-        title="Portable Studio is paired to this release."
-        copy="This local Studio pairs with its bundled runtime automatically. The Safe launcher cannot be escalated with a command-line flag; machine work starts only from the separately named Local Actions launcher."
+        title="Local Studio is paired and ready."
+        copy="This npm-launched Studio pairs with its local companion automatically. Safe mode cannot perform machine actions; those are available only when you start the separately named Local Actions mode."
       />
       <div className="focus-card wide">
-        <h2>Portable session</h2>
+        <h2>Local session</h2>
         <StatusPill tone={statusTone}>{companionStatus.state === "available" ? companionStatus.capabilitiesEnabled ? "Actions ready" : "Safe mode" : companionStatus.state}</StatusPill>
         <p>{companionStatus.message}</p>
         <button className="secondary-button" type="button" onClick={refreshCompanion} disabled={companionStatus.state === "checking"}>Refresh status</button>
       </div>
-      <div className="release-grid portable-release-grid">
-        <div><span>Studio</span><strong>v{release.version}</strong><small>{releaseCommit} · portable</small></div>
+      <div className="release-grid local-release-grid">
+        <div><span>Studio</span><strong>v{release.version}</strong><small>{releaseCommit} · npm</small></div>
         <div><span>Local automation</span><strong>{companionRelease ? `v${companionRelease.version}` : "Not verified"}</strong><small>{companionRelease ? `${companionRelease.commit.slice(0, 12)} · ${companionRelease.channel}` : "Waiting for an exact release match"}</small></div>
       </div>
       {companionStatus.state === "mismatch" ? (
-        <AsyncNotice state="error" message="Do not use local actions. Close this tab and restart the matching Portable Studio release." />
+        <AsyncNotice state="error" message="Do not use local actions. Stop this session and start the matching npm package version." />
       ) : companionStatus.state === "available" && companionStatus.capabilitiesEnabled ? (
         <div className="focus-card wide">
           <StatusPill tone="good">Local actions ready</StatusPill>
@@ -79,11 +84,16 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           <h2>Start Local Actions only when you need machine work</h2>
           <p>Safe mode can show instructions and read public Testnet data but cannot run tool checks or create starter files.</p>
           <ol>
-            <li>Close this Portable Studio window.</li>
-            <li>Start the separate file or app whose name includes <strong>Local Actions</strong> or <strong>local-actions</strong>. It is included beside the Safe launcher in the same verified release.</li>
-            <li>Return here and confirm the status reads “Actions ready” before creating files.</li>
+            <li>Press <strong>Ctrl+C</strong> in the terminal that started this Studio.</li>
+            <li>Start the same package in Local Actions mode:</li>
+            <li>Use the Studio tab that opens and confirm the status reads “Actions ready” before creating files.</li>
           </ol>
-          <p className="quiet-note">Do not add <strong>--enable-local-actions</strong> to the Safe launcher; it will refuse to start. No token, Node installation, package-manager command, or source checkout is required.</p>
+          <div className="tool-command">
+            <span>Local Actions</span>
+            <pre>npx dusk-developer-studio local-actions</pre>
+            <CopyButton value="npx dusk-developer-studio local-actions" label="Copy Local Actions command" />
+          </div>
+          <p className="quiet-note">Keep the terminal open while you work. Press <strong>Ctrl+C</strong> to stop the local Studio and companion.</p>
         </div>
       )}
     </section>
@@ -93,8 +103,8 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
 export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: BuilderPath | null; setBuilderPath: (path: BuilderPath | null) => void }) {
   const journey = useJourney();
   const { runtime: studioRuntime, release, companionBaseUrl } = useStudioRuntime();
-  const releaseChannelLabel = release.channel === "portable"
-    ? "Bundled local release"
+  const releaseChannelLabel = release.channel === "npm"
+    ? "npm package"
     : release.channel === "source-dev"
       ? "Source development build"
       : "Public website";
@@ -163,7 +173,7 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
       {sourceIsStale ? <AsyncNotice state="stale" message="The reference review has expired. Check linked official sources because some details may have changed." /> : null}
       <div className="release-grid">
         <div><span>Studio version</span><strong>{`v${release.version}`}</strong><small>commit {release.commit.slice(0, 8)}</small></div>
-        <div><span>Runtime</span><strong>{studioRuntime.companionAvailable ? "Portable Studio" : "Hosted manual guide"}</strong><small>{releaseChannelLabel}</small></div>
+        <div><span>Runtime</span><strong>{studioRuntime.companionAvailable ? "Local Studio" : "Hosted guide"}</strong><small>{releaseChannelLabel}</small></div>
         <div><span>Sources reviewed</span><strong>{sourceDate}</strong><small>{sourceIsStale ? "Review expired" : "Review current"}</small></div>
         <div><span>Review valid through</span><strong>{expiryDate}</strong><small>Open the official source when accuracy is critical</small></div>
       </div>

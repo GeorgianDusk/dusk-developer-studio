@@ -53,7 +53,7 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Fund the EVM wallet with testnet DUSK. Public preview routes to the official DuskEVM bridge guide and does not dispense faucet tokens.",
+        "fix":  "Fund the EVM wallet with testnet DUSK. Studio routes to the official DuskEVM bridge guide and does not dispense faucet tokens.",
         "safeNextStep":  "Open Access and follow the official bridge route."
     },
     {
@@ -126,7 +126,7 @@
                      ],
         "severity":  "low",
         "fix":  "Confirm compiler version, optimizer settings, constructor args, and exact contract path match the deployed bytecode.",
-        "safeNextStep":  "Use Blockscout UI first; API automation is not enabled in the public preview."
+        "safeNextStep":  "Use Blockscout UI first; Studio does not automate verification submission."
     },
     {
         "id":  "dusk-forge-windows-wasm-opt-shim",
@@ -241,7 +241,7 @@
                          "native"
                      ],
         "severity":  "medium",
-        "fix":  "Native Dusk contract deployment is currently a manual Rusk Wallet path in the public preview. Install and review wallet commands before signing.",
+        "fix":  "Native Dusk contract deployment uses a manual Rusk Wallet path outside Studio. Install and review wallet commands before signing.",
         "safeNextStep":  "Do not automate signing until wallet setup, fee estimation, and deploy policy are reviewed."
     },
     {
@@ -330,7 +330,7 @@
                      ],
         "severity":  "medium",
         "fix":  "Align Rusk Wallet state, prover, and optional archiver URLs with the node you are testing against. Use CLI overrides or a wallet config file deliberately.",
-        "safeNextStep":  "Check wallet settings before contract-call or contract-deploy, and keep signing manual in the public preview."
+        "safeNextStep":  "Check wallet settings before contract-call or contract-deploy, and keep signing manual in your trusted terminal."
     },
     {
         "id":  "evm-no-public-mempool-assumption",

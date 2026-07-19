@@ -1,68 +1,44 @@
-# Studio Security Test Matrix
+# Studio security test matrix
 
-Date: 2026-07-18
-Scope: static public Studio and optional loopback companion
-
-The protected whole-system audit defined ST-01 through ST-16. These cases are now durable product checks rather than one-off audit probes.
+The matrix defines the durable security behaviors expected from the Hosted guide, npm package, local runtime, and companion.
 
 | Case | Permanent coverage | Expected result |
-|---|---|---|
-| ST-01 Authentication | `serverSecurity.test.ts`: unauthenticated health and malformed scaffold body | Session rejection occurs before body parsing or capability work. |
-| ST-02 Token/session lifecycle | wrong pairing value, second-pair rotation, old-session replay, and expiry tests | Wrong, expired, revoked, and replayed sessions have no capability. |
-| ST-03 Origin | missing, `null`, malicious, hosted, and allowlisted local origins | Only an exact allowlisted local Studio origin receives CORS or a session. |
-| ST-04 Host | malicious, missing-port, IPv6, and expected IPv4/localhost authorities | Only the exact configured loopback authority and listening port pass. |
-| ST-05 PNA | unpaired/paired OPTIONS and Private Network Access cases | Preflight is validated; PNA is absent and denied unless separately enabled. |
-| ST-06 Body | content-type, declared/chunked oversize, invalid JSON/schema, and slow-body cases | Requests fail with bounded 400/408/413/415 responses before allocation or work. |
-| ST-07 Rate/concurrency | pairing limit, per-session capability limit, and overlapping preflight cases | Deterministic 429 responses bound attempts and allow only one active capability. |
-| ST-08 Lexical path | traversal, outside absolute, drive-relative, UNC, reserved device, trailing-dot, and Unicode project-name cases | Only portable names and paths lexically contained by an approved root pass. |
-| ST-09 Reparse containment | existing parent junction/symlink, staged reparse entry, and injected target swap | Reparse components are rejected and target absence is revalidated before promotion. |
-| ST-10 Existing/concurrent target | empty, non-empty, and two-request same-target cases | Existing content is never merged; concurrent calls produce one atomic winner. |
-| ST-11 Partial template copy | population failures injected after entries 1, 2, and 3 | No final target is visible and the trusted private stage is removed. |
-| ST-12 Dusk Forge/process failure | nonzero exit, timeout, process-output overflow, staged-tree resource overflow, ordinary descendant survival, and Forge-stage cleanup | Output/time/filesystem growth stay bounded, the tracked direct process or ordinary process group is terminated, and no target/stage remains. Deliberately detached same-user daemons remain outside this portable guarantee. |
-| ST-13 Diagnostics | synthetic absolute paths/raw failures plus minimal health/scaffold responses and bounded Forge receipt assertions | Responses contain allowlisted fields only; local paths and raw output are removed, while Forge identity is limited to package, version, repository, and full revision. |
-| ST-14 Capability allowlist | strict request schema, portable project-name validation, exact Dusk Forge command/argument assertion, and Cargo install-receipt revision mismatch fixtures | Added command fields, shell metacharacter names, modified tool shapes, or unreviewed Forge revisions do not execute. |
-| ST-15 Source freshness | versioned receipt validator plus expired/future/unreachable/missing-coverage/content-drift fixtures | Build fails closed when provenance is stale, future-dated, unverified, incomplete, or no longer matches covered data bytes. |
-| ST-16 Release scope | canonical tracked-source classifier plus provider/generated/sensitive fixtures | Product gates remain scoped; provider/generated material is rejected from Git and metadata-counted only as quarantine. |
-| ST-17 Portable distribution | payload/runtime verifier, deterministic archive fixtures, release signing fixtures, extracted target smoke, release-parity UI tests, and child-environment regression | Wrong target, tampering, undeclared files, mixed releases, unsafe paths, secrets, untrusted signatures, inherited credentials, and non-runnable archives fail closed. |
-| ST-18 Exact signed candidate lifecycle | adversarial ZIP directory/local-header fixtures, strict dual-launcher index and package manifest, required macOS staple-ticket files, one-time bootstrap/session probes, safe/action mode parity, Studio-owned listener inspection before and after preflight, minimal child environment, isolated user-data roots, fixed-port closure, and identity-revalidated install cleanup | Traversal, collisions, bombs, bad CRCs/modes, extra entries, symlink/reparse boundaries, inherited credentials, mode substitution, missing staple tickets, unexpected Studio listeners, hardcoded install-cleanup claims, or cleanup outside the runner-owned ephemeral root fail closed. It does not claim machine-wide process containment. |
-| ST-19 Staged publication decision | run-bound target records, retained lifecycle evidence, signing/transport/candidate/publication fixtures, exact-key schemas, raw-evidence digest binding, strict timestamps, maximum age, and monitoring-revisit bounds | Candidate evidence can be accepted while publication is disabled, but schema 2 rejects every transport and publication dossier because gate artifacts and actor identities are not authenticated; stale, future, caller-digested, self-reviewed, incomplete, or mixed-run evidence also fails closed. |
-| ST-20 Unsigned engineering assurance | native Windows x64, Linux x64, and macOS arm64 hosted runners; elevated/root rejection before extraction; one-use credential-backed Windows lifecycle under a temporary standard user with profile loading and network-only credentials disabled; runtime exact-SID/non-admin verification; repeated exact-SID process sweep plus profile/account teardown; two-build receipt and launcher-digest comparison; unsigned exact-inventory ZIP creation/extraction; both mode lifecycles; platform observations; point-in-time verified absence of every exact workflow-owned candidate path; no retained workflow artifacts | Engineering regressions, privileged-launch acceptance, substituted launchers, non-reproducible builds, unsafe packages, lifecycle failures, unconfirmed tracked shutdown, inherited credentials, wrong or administrative Windows identity, unexpected Windows profile loading, process/profile/account cleanup failure, any Windows publisher signature, executable Linux stacks or special modes, macOS ad-hoc-integrity failures, unexpected Gatekeeper acceptance, retained workflow-owned candidate paths, attempted workflow-artifact transfer, or publication-trust claims fail closed. On unconfirmed shutdown, lifecycle-owned roots are preserved for ephemeral-runner disposal rather than recursively deleted. A pass remains same-runner, unsigned, unauthenticated diagnostic evidence only; the elevation guard and final SID sweep are not hostile-admin/root containment, and pull-request code can modify the lane and its validators. |
+| --- | --- | --- |
+| ST-01 Authentication | Unauthenticated health and capability requests; malformed scaffold body | Session rejection occurs before body parsing or capability work. |
+| ST-02 Session lifecycle | Wrong pairing value, second-pair rotation, old-session replay, and expiry | Wrong, expired, revoked, and replayed sessions have no capability. |
+| ST-03 Origin | Missing, `null`, malicious, hosted, and allowlisted local origins | Only an exact allowlisted local Studio origin receives CORS or a session. |
+| ST-04 Host | Malicious, missing-port, IPv6, and expected IPv4 or localhost authorities | Only the exact configured loopback authority and port pass. |
+| ST-05 Private Network Access | Unpaired and paired OPTIONS cases | Preflight is validated; Private Network Access is denied unless separately reviewed and enabled. |
+| ST-06 Request body | Content type, declared or chunked oversize, invalid JSON or schema, and slow-body cases | Requests fail with bounded responses before allocation or work. |
+| ST-07 Rate and concurrency | Pairing limit, per-session capability limit, and overlapping requests | Deterministic rejection bounds attempts and allows only the documented active capability count. |
+| ST-08 Lexical path | Traversal, outside absolute, drive-relative, UNC, device, trailing-dot, and Unicode names | Only cross-platform-safe names and paths contained by an approved root pass. |
+| ST-09 Link and reparse containment | Parent junction or symlink, staged link, and target-swap fixtures | Link and reparse components are rejected; parent and target are revalidated before promotion. |
+| ST-10 Existing or concurrent target | Empty, non-empty, and two-request same-target cases | Existing content is never merged; concurrent calls produce one atomic winner. |
+| ST-11 Partial project creation | Population failures injected at multiple stages | No final target is visible and a trusted temporary stage is removed. |
+| ST-12 Tool and process failure | Nonzero exit, timeout, output overflow, filesystem growth, descendant survival, and cleanup | Effects remain bounded, tracked processes stop, and no final target appears. A deliberately detached same-user process remains outside this guarantee. |
+| ST-13 Diagnostics | Synthetic paths, raw failures, minimal responses, and bounded tool identity | Responses contain allowlisted fields only; user paths and raw output are removed. |
+| ST-14 Capability allowlist | Strict request schema, project-name validation, exact command and argument assertions, and tool-identity mismatch | Added fields, shell text, modified tool shapes, and unreviewed tool identities do not execute. |
+| ST-15 Source freshness | Expired, future, unreachable, missing-coverage, and content-drift fixtures | Product checks fail closed when Dusk provenance is stale, unverified, incomplete, or changed. |
+| ST-16 Source scope | Tracked-source classifier with generated, provider, secret, and cache fixtures | Provider, generated, local-state, credential, and secret material is excluded from release scope. |
+| ST-17 npm package contract | Package metadata, Node range, dependency and lifecycle-script absence, strict file inventory, license, repository, integrity, and provenance | Unexpected package identity, contents, dependencies, scripts, or provenance fail the package gate. |
+| ST-18 Mode and lifecycle | Clean Safe and Local Actions runs, startup, pairing, identity parity, tool denial or enablement, project preservation, shutdown, and port closure | Safe cannot escalate; Local Actions exposes only reviewed capabilities; both modes close cleanly without deleting projects. |
+| ST-19 Cross-platform behavior | Windows x64, Linux x64, and macOS arm64 package execution under a normal user | The same package contract and security behavior holds on every supported platform. |
+| ST-20 Published-byte identity | Pack once, inspect, test the exact package archive, and publish that same digest | The package selected for publication is byte-for-byte the package that passed the checks. |
 
 ## Platform behavior
 
-The reparse test creates a Windows directory junction on Windows and a directory
-symlink on POSIX. Tracked process-group shutdown uses `taskkill /T /F` on
-Windows and a detached process group on POSIX; it does not claim containment of
-a deliberately detached same-user tool daemon. The unsigned lane rejects the
-hosted runner's elevated Windows token, then uses a temporary standard local
-user through a one-use, credential-backed primary process for lifecycle checks.
-Profile loading and network-only credential behavior are explicitly disabled;
-the child then verifies its exact temporary SID and non-admin token at runtime.
-The harness repeatedly removes exact-SID processes, requires no loaded SID
-profile hive, defensively removes one exact, non-special, unloaded profile
-record if Windows created it, and deletes the account before it can pass. A
-temporary exact-SID folder-traverse ACL makes the hosted runner's private
-temporary-root ancestor chain, including its hosted volume root, reachable;
-that ACL is removed and verified before account deletion. Protected processes
-whose owners are already unresolved are baselined by PID and creation time
-before the temporary account exists; any new or changed unresolved process, or
-any ACL cleanup failure, blocks cleanup evidence. The parent writes the root-deletion
-confirmation into a separate inheritance-stripped control directory that the
-temporary user cannot write. The harness does not modify local account rights
-or install task/service scaffolding. Its Windows limits are deliberately
-staggered: a five-minute child lifecycle, a bounded 15-second child post-kill
-confirmation, a seven-minute credentialed parent wait, a bounded 15-second
-parent shutdown confirmation, and a bounded 15-second redirected-output drain.
-Linux and macOS use `sudo` only to prove privileged launch rejection before
-running lifecycles normally. The required
-`.github/workflows/studio-linux-security.yml` lane asserts
-`process.platform === "linux"`, runs the POSIX filesystem/process tests
-explicitly on Ubuntu 24.04, then runs the complete source/product gate. The
-production helper stays bound to IPv4 loopback; IPv6 origins/authorities are
-rejected rather than partially supported.
+Windows path tests use directory junctions and reparse points. POSIX tests use symbolic links and mismatched user or group identities. Linux also tests active process capabilities.
+
+Tracked shutdown uses the platform's bounded process-tree or process-group mechanism. It does not claim containment of a deliberately detached tool running under the same user.
+
+The local Studio rejects administrator or root execution before listeners, filesystem work, or developer-tool invocation. This protects against accidental privileged use; it is not a defense against an administrator who can alter the program or its environment.
+
+The companion binds to IPv4 loopback. IPv6 origins and authorities are rejected rather than partially supported.
 
 ## Failure handling
 
-The private staging directory is removed only after its parent real path and directory identity are revalidated. If parent identity becomes untrusted, cleanup refuses to follow that path; an operator may quarantine the stage after restoring the approved root. This favors containment over aggressive cleanup.
+Temporary project data is removed only after the approved parent real path and directory identity are revalidated. If that identity becomes untrusted, cleanup refuses to follow the path. This favors containment over aggressive deletion.
 
-No security test invokes a funded wallet, signing flow, live RPC mutation, public companion, or real Dusk Forge generation. Process and filesystem effects use isolated temporary roots and fixed local child-process fixtures.
+Package checks reject unexpected files, links, paths, metadata, dependencies, install lifecycle scripts, and repository identity before the local runtime starts.
+
+Security tests use isolated temporary roots and unfunded fixtures. They do not invoke a funded wallet, sign a transaction, submit a deployment, mutate a live RPC endpoint, or treat a DuskEVM pre-launch endpoint as live.

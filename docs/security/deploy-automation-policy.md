@@ -1,40 +1,59 @@
-# Deploy Automation Policy
-
-Date: 2026-07-19
-Status: hosted-production guardrail; DuskEVM remains pre-launch
+# Deployment automation boundary
 
 ## Position
 
-The public Studio may automate local checks, scaffolding, build commands, read-only inspection, and command-shape generation only through the user's loopback companion. It must not automate signing, funded wallet use, or native contract deployment until a product owner approves an explicit policy.
+Dusk Developer Studio may prepare and verify a deployment workflow, but it does not control a funded wallet or submit a contract deployment.
 
-## Allowed Now
+The local Studio may perform allowlisted local checks, constrained scaffolding, build guidance, read-only inspection, and command-shape generation. Wallet settings, funding, wallet signing, nonces, optional arguments, gas choices, submission, inclusion, and finality remain in the developer's trusted terminal.
 
-- Show DuskDS deploy command shapes and clearly labeled educational DuskEVM
-  command shapes that do not imply a live Testnet.
-- Generate local starter projects through allowlisted local-agent routes.
-- Run preflight checks for required and optional tooling.
-- Link to official docs and explorers.
-- Capture non-secret transaction hashes, contract addresses, contract IDs, artifact paths, and diagnostics when the user provides them.
+## Supported assistance
 
-## Not Allowed Yet
+The Studio may:
 
-- Asking the user to paste private keys or seed material into the Studio.
-- Browser-based contract signing.
-- Local-agent commands that read wallet secrets, unlock accounts, or sign transactions.
-- Automated Rusk Wallet `contract-deploy` or `contract-call` execution.
-- Mainnet deployment shortcuts.
+- show DuskDS Testnet deployment command shapes;
+- show clearly labelled educational DuskEVM command shapes without implying a live Testnet;
+- run allowlisted prerequisite checks through Local Actions;
+- create constrained starter projects through Local Actions;
+- verify build artifacts, VM-test evidence, and source identity;
+- link to official wallet, network, tool, and explorer documentation;
+- capture non-secret transaction hashes, contract addresses, contract IDs, artifact paths, and sanitized diagnostics supplied by the developer; and
+- perform read-only post-deployment checks.
 
-## Minimum Approval Gates Before Automation
+## Actions kept outside the Studio
 
-1. Wallet profile policy: which profile type is allowed, where it lives, and how it is selected without exposing secrets.
-2. Funding policy: how the Studio detects testnet-only balance and prevents accidental mainnet use.
-3. Fee and nonce policy: how fees, deploy nonce, retries, and duplicate-submit protection are explained and confirmed.
-4. Network policy: which node URLs are allowed and how mismatched wallet/node state is detected.
-5. Audit policy: what local deployment metadata may be saved, how it avoids secrets, and how a user can delete it.
-6. Human confirmation policy: every signing action must require a deliberate, visible confirmation outside the Studio unless a separate reviewed signer integration is approved.
+The Studio must not:
 
-## Next Safe Product Step
+- ask for a private key, mnemonic, seed phrase, wallet password, seeder, profile entropy, or API secret;
+- read or unlock a wallet profile;
+- sign a browser transaction;
+- execute Rusk Wallet `contract-deploy` or `contract-call`;
+- select fees, nonces, optional arguments, gas overrides, or funded accounts;
+- submit, retry, or replace a transaction; or
+- provide a mainnet deployment shortcut.
 
-The deploy readiness assistant is implemented. It derives readiness from the exact recorded Setup, Access, Build, VM-test, and source-identity evidence; rejects blocked, skipped, future-dated, or expired evidence; fixes the command shape to DuskDS Testnet; and leaves all wallet, funding, nonce, optional argument, gas, signing, submission, inclusion, and finality decisions in the user's terminal. Access evidence is valid for 24 hours; Setup, Build, and source binding are valid for 30 days.
+## DuskDS manual handoff
 
-The next safe step is evidence collection, not more automation: verify the final candidate through the Phase 5 independent reviews and genuine pilot sessions. Any future wallet or deployment execution still requires every approval gate above and a separate reviewed implementation.
+Deploy readiness derives from matching Setup, Access, Build, VM-test, and source-identity evidence.
+
+The readiness result fails closed when required evidence is blocked, skipped, future-dated, expired, or bound to a different build. Access evidence is valid for 24 hours. Setup, Build, and source-binding evidence is valid for 30 days.
+
+When readiness passes, the Studio presents a Testnet-only command shape with placeholders. The developer reviews and completes it in a trusted terminal, approves the wallet action there, waits for inclusion and finality, and returns to the Studio for read-only inspection.
+
+Readiness is not proof of deployment, inclusion, finality, or data-driver availability.
+
+## Requirements for any future wallet integration
+
+Any proposal to expand this boundary requires a separate security and product review covering:
+
+1. allowed wallet profile types and selection without secret exposure;
+2. Testnet-only funding and network mismatch prevention;
+3. fees, nonce handling, retries, and duplicate-submit protection;
+4. node allowlists and wallet/node state consistency;
+5. the exact non-secret deployment metadata stored locally and its deletion path;
+6. deliberate human confirmation for every funded action;
+7. failure, cancellation, timeout, and recovery behavior; and
+8. independent testing with unfunded isolated accounts before any wider use.
+
+## DuskEVM
+
+DuskEVM Testnet is not live yet. Its deployment material remains educational and must not show live RPC, wallet, balance, submission, or inspection evidence until the real Testnet can be verified.

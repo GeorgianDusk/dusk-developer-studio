@@ -1,86 +1,155 @@
-# Local Companion Security Boundary
+# Local companion security boundary
 
-Date: 2026-07-18
-Status: portable payload and standalone-v3 dual-launcher runtime boundary
+## Product boundary
 
-## Product Boundary
+The Hosted guide is a static website. It never calls loopback services, enables machine actions, or serves a pairing bootstrap.
 
-The hosted Studio is always a static docs-only artifact. It never calls loopback services, enables machine actions, or serves the pairing bootstrap. Local actions exist only in a separately compiled portable artifact whose release identity is bound to the companion runtime.
+The functional local Studio is started through the self-contained `dusk-developer-studio` npm package with Node.js `>=24.18.0 <25`. The package installs no additional runtime dependencies:
 
-The portable product runs one foreground supervisor on the developer machine.
-It serves the Studio on 127.0.0.1:5173 and the companion on 127.0.0.1:8788. It
-installs no service, requires no administrator privileges, changes no registry
-keys, and stops when the foreground process exits. Elevated Windows and
-privileged Linux/macOS execution fail closed before candidate extraction;
-POSIX real/effective user or group mismatches and Linux permitted, effective,
-or ambient capabilities are also rejected.
+```bash
+npx dusk-developer-studio
+npx dusk-developer-studio local-actions
+```
 
-## Startup And Identity Gates
+The foreground process serves:
 
-- Verify the exact payload file set, byte sizes, SHA-256 values, bundled Node binary digest, target, version, and full commit before binding either port.
-- Refuse a target that does not match Windows x64, Linux x64, or macOS arm64.
-- Use fixed ports and fail closed on a collision. Never select a new port silently.
-- Generate 32 random pairing bytes in memory. Never put the pairing secret in a file, environment variable, command argument, URL, fragment, clipboard, response, or log.
-- Build portable Studio assets with the portable artifact channel. A hosted build remains docs-only even on localhost.
-- Require exact product, version, full commit, and portable-channel parity before enabling actions in the UI.
+- the Studio on `127.0.0.1:5173`; and
+- the companion on `127.0.0.1:8788`.
 
-## Browser Bootstrap
+It installs no service, scheduled task, registry entry, or daemon. It requires one normal developer identity and rejects administrator or root execution before opening listeners, creating project directories, or invoking tools.
 
-The local static server exposes a one-time POST /__dusk/bootstrap endpoint for five minutes. It accepts only the exact loopback Host and Origin, application/json, a bounded empty object body, and a non-cross-site fetch. The static server posts the in-memory token internally to the companion and copies only the HttpOnly SameSite=Strict session cookie to the browser. A successful bootstrap is burned and cannot be replayed.
+## Package boundary
 
-All static responses use no-store, a local-only Content Security Policy, frame denial, no-referrer, restrictive permissions policy, MIME sniffing protection, and same-origin isolation headers. Unsafe decoded paths, traversal, dotfiles, backslashes, symlinks, and reparse entries are rejected.
+The npm package must:
 
-## Capability Gates
+- use the exact name `dusk-developer-studio`;
+- declare Node.js `>=24.18.0 <25`;
+- contain no runtime dependencies;
+- contain no install lifecycle scripts;
+- expose Safe mode as the default command;
+- expose Local Actions only through the explicit `local-actions` argument;
+- use a strict package file allowlist;
+- include the Apache-2.0 `LICENSE` and `NOTICE`;
+- identify the canonical GeorgianDusk repository, issues, and homepage;
+- record package integrity and provenance; and
+- publish the exact package bytes that passed the package and platform checks.
 
-- Safe mode has its own build-time-bound launcher. It permits startup, pairing, release parity, and health only, and refuses `--enable-local-actions` instead of allowing command-line escalation.
-- Local-actions mode has a separately named build-time-bound launcher. It enables allowlisted tool checks and starter creation internally; the user does not pass an enablement flag.
+An unexpected owner, repository, dependency, script, file, integrity value, or provenance record is a package incident.
+
+## Startup and identity gates
+
+- Verify the package-defined Studio assets and runtime identity before binding either port.
+- Refuse an unsupported Node.js version, operating system, or architecture.
+- Use fixed ports and fail closed on a collision.
+- Reject elevated Windows and privileged Linux or macOS launches.
+- On POSIX systems, require matching real and effective user and group identities and no active Linux process capabilities.
+- Generate at least 32 random pairing bytes in memory.
+- Never place pairing material in a file, environment variable, command argument, URL, fragment, clipboard, response, or log.
+- Require exact frontend and companion package identity before enabling local actions in the UI.
+
+## Browser bootstrap
+
+The local static server exposes a one-time `POST /__dusk/bootstrap` route for five minutes.
+
+It accepts only:
+
+- the exact loopback Host and Origin;
+- `application/json`;
+- a bounded empty object body; and
+- a same-site request.
+
+The server sends the in-memory pairing value directly to the companion and returns only the origin-bound, `HttpOnly`, `SameSite=Strict` session cookie to the browser. A successful bootstrap is consumed and cannot be replayed.
+
+Static responses use no-store caching, a local-only Content Security Policy, frame denial, no-referrer behavior, a restrictive permissions policy, MIME-sniffing protection, and same-origin isolation headers.
+
+Unsafe decoded paths, traversal, dotfiles, backslashes, symbolic links, and reparse entries are rejected.
+
+## Capability gates
+
+### Safe mode
+
+`npx dusk-developer-studio` permits startup, pairing, identity parity, health, guidance, and evidence viewing. It does not enable tool execution or starter creation.
+
+Safe mode cannot be escalated by a hidden flag or request field.
+
+### Local Actions
+
+`npx dusk-developer-studio local-actions` enables only the reviewed prerequisite and starter-creation routes.
+
 - Health, preflight, and scaffold routes require an origin-bound session before body parsing.
-- The companion binds only IPv4 loopback and accepts only 127.0.0.1 or localhost origins for the fixed Studio port.
-- Pairing, session, capability, body, timeout, output, concurrency, file-count, byte, and directory-depth bounds are enforced.
-- Child tools receive an allowlisted environment. Dusk Studio variables and secret-shaped GitHub, cloud, wallet, API, credential, cookie, password, private-key, seed, and token variables are not inherited.
-- External tools use exact allowlisted commands and arguments, bounded
-  asynchronous output and time, and termination of their tracked direct process
-  or ordinary process group on timeout, overflow, or supervisor shutdown.
-  Fixed, reviewed shell wrappers are limited to Windows command shims and the
-  bounded optional WSL probe; no user-controlled shell text or arbitrary
-  command surface is exposed.
-- DuskDS preflight reads only Cargo's `.crates2.json` install receipt under the active `CARGO_INSTALL_ROOT`, falling back to `CARGO_HOME` and then the standard user Cargo home. It returns a normalized package/version/revision identity and fails required readiness when the receipt is absent, malformed, or not bound to the reviewed Forge revision. Forge checks and scaffolding invoke the binary from that same install root's `bin` directory rather than accepting a shadowing `PATH` entry. The companion never installs or updates Forge.
+- The companion accepts only exact `127.0.0.1` or `localhost` origins for the fixed Studio port.
+- Pairing, session, request body, timeout, output, rate, concurrency, file-count, byte, and directory-depth limits are enforced.
+- Child tools receive an allowlisted environment.
+- Dusk Studio variables and secret-shaped GitHub, cloud, wallet, API, credential, cookie, password, private-key, seed, and token values are not inherited.
+- External tools use exact allowlisted commands and arguments with bounded asynchronous output and time.
+- No user-controlled shell text or arbitrary command surface is exposed.
 
-## Filesystem Gates
+## Dusk Forge boundary
 
-Portable projects live in the current user data directory, outside the extracted release. The Foundry template root is the verified packaged template. The Dusk Forge output root is a trusted supervisor option, not a child environment override.
+DuskDS preflight reads Cargo's `.crates2.json` install receipt from:
 
-Before DuskDS scaffolding, the companion revalidates the normalized Cargo install receipt against `config/duskds-toolchain-policy.json`. Scaffolds then populate a private sibling stage, reject lexical escapes and reparse components, revalidate parent identity and target absence, enforce resource bounds, and atomically rename one complete tree. Existing targets are never merged or overwritten.
+1. `CARGO_INSTALL_ROOT`, when set;
+2. `CARGO_HOME`; or
+3. the standard user Cargo home.
 
-## Distribution Gates
+It returns only normalized package, version, repository, and full source revision information.
 
-Every candidate includes an exact payload manifest, SHA256SUMS, CycloneDX SBOM, SLSA-shaped provenance, Node license, third-party notices, deterministic archive, and separate mode-bound Safe and Local Actions launchers. The standalone build receipt records each unsigned launcher's mode, name, byte size, and SHA-256 plus one digest over the ordered two-launcher asset index. After platform signing, one ZIP per OS binds both launchers through a signed-launcher index and an exact allowlisted package manifest; each macOS app must physically include its stapled `Contents/CodeResources` ticket. A dependency-free extractor validates the complete ZIP directory, path and case uniqueness, file types, sizes, compression ratio, CRCs, modes, digests, and manifest before creating files beneath a new install root. Fresh-runner evidence is accepted only when that exact package completes both mode lifecycles and retains the bounded report inside its run-bound target envelope; a command-line claim cannot mark cleanup as passed. Candidate processes receive an isolated working directory and a minimal non-credential environment. Evidence names its scope precisely: Studio-owned listeners are checked before and after preflight, both fixed loopback ports must close after shutdown, and install/extraction rollback covers only runner-owned files. The receipt records that portable payload verification does not establish platform trust for the post-injection executables. The runtime archive and its official SHA-256 are pinned in config/companion-runtime-lock.json.
+The check fails when the receipt is absent, malformed, or does not match the reviewed Forge revision. Forge checks and scaffolding use the tool from that same Cargo install root instead of accepting another copy earlier on `PATH`.
 
-The separate unsigned engineering lane builds twice and exercises both launchers
-on ephemeral native GitHub-hosted runners without moving an executable between
-jobs. It proves privileged-launch rejection on Linux and macOS; on the elevated Windows
-hosted runner it proves elevated rejection, then runs the exact lifecycle under
-a temporary standard local user with an ACL-isolated runner root and removes
-that account. It checks every exact workflow-owned candidate path for absence
-at cleanup time and uploads no workflow artifacts. Full evidence records and
-candidate files remain runner-local; ordinary bounded status output is retained
-in GitHub Actions logs and may include runner-temporary paths. The records
-explicitly deny platform trust, clean-machine, download-integrity, and
-publication claims and are not authenticated release evidence.
+The Studio never installs or updates Dusk Forge.
 
-Lifecycle-owned install and workspace trees are removed only through the
-identity-revalidated lifecycle helper after tracked shutdown is confirmed. If
-shutdown cannot be confirmed, the job fails without recursively deleting those
-trees and relies on disposal of the ephemeral hosted runner.
+## Filesystem gates
 
-An external tool runs with the developer's account authority and can exercise
-that authority for filesystem, network, and process effects while active. It
-may also deliberately create a fully detached process that escapes Node's
-portable child tracking. Lifecycle evidence therefore does not claim OS-level
-containment of a hostile same-user tool or machine-wide process cleanup. George
-accepts this boundary for the current source-only and internal companion scope
-under [the same-user tool boundary decision](same-user-tool-boundary-decision.md),
-with the listed compensating controls and revisit triggers. That maintainer
-decision is not an independent security review or publication approval.
+Projects live outside the npm cache:
 
-Unsigned RCs are internal-only. Candidate transport is disabled: signed binaries must not use GitHub Actions artifacts or draft releases, and fresh-runner smoke remains blocked until a separately reviewed private transport binds each transfer to the exact digest. Standalone publication then requires post-injection Authenticode on Windows, tag-bound keyless Sigstore on Linux, and Developer ID signing, hardened runtime, notarization, stapling, and Gatekeeper on macOS, with fresh-runner smoke for every target. Windows and Apple identities are intentionally unconfigured, so public binaries remain disabled. Independent download/quarantine and reputation checks, security acceptance, support ownership, install rollback, and explicit publication approval also remain required. No signing key or generated private key belongs in the repository.
+- Windows: `%LOCALAPPDATA%\Dusk\DeveloperStudio\projects`
+- macOS: `~/Library/Application Support/Dusk/DeveloperStudio/projects`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/dusk/developer-studio/projects`
+
+Before scaffolding, the companion:
+
+- normalizes the requested project name;
+- constrains it beneath the approved project root;
+- rejects lexical escapes, symbolic links, junctions, and reparse components;
+- rejects existing targets;
+- creates one private sibling stage;
+- enforces file, byte, depth, time, and output bounds;
+- revalidates parent identity and target absence; and
+- promotes the complete project through one atomic rename.
+
+Existing projects are never merged or overwritten. Failed staging data is removed only while the approved parent path and identity remain trusted.
+
+## Process boundary
+
+The Studio terminates the tracked direct child or ordinary process group on timeout, output overflow, failed capability, or supervisor shutdown. Both Studio-owned ports must close when the foreground process exits.
+
+An invoked developer tool runs with the developer's user authority. That tool can exercise the same filesystem, network, and process permissions as the user and may deliberately create a fully detached process outside the Studio's tracked process group.
+
+The Studio reduces this risk through:
+
+- Safe mode by default;
+- explicit Local Actions startup;
+- a small command and argument allowlist;
+- exact reviewed tool identity where available;
+- a minimal secret-free child environment;
+- bounded output, time, concurrency, and filesystem effects;
+- no administrator or root execution; and
+- clear shutdown and incident guidance.
+
+These controls do not make an untrusted developer tool safe and do not provide operating-system containment. Use only tools and versions you trust. If a tool behaves unexpectedly, stop the Studio, identify the exact process and listener, and follow the [package quarantine and withdrawal procedure](../operations/companion-quarantine-and-withdrawal.md).
+
+## Verification expectations
+
+Package and cross-platform checks must cover:
+
+- package metadata, strict inventory, integrity, provenance, and absence of install scripts and dependencies;
+- Safe and Local Actions command separation;
+- fixed-port startup, pairing, identity parity, and session expiry;
+- origin, Host, CORS, Private Network Access, body, rate, and concurrency rejection;
+- allowlisted tool and filesystem behavior;
+- secret-free child environments;
+- tracked process shutdown and fixed-port closure;
+- project preservation across restart and package update; and
+- clean execution on every supported platform.
+
+See the [security test matrix](security-test-matrix.md) and [threat model](threat-model.md).

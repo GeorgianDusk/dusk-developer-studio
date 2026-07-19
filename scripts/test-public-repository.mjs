@@ -10,18 +10,17 @@ for (const file of [
   ".github/CODEOWNERS", ".github/dependabot.yml",
   ".github/workflows/studio-linux-security.yml",
   ".github/workflows/platform-caddy-security.yml",
-  ".github/workflows/studio-companion-signed-rc.yml",
-  ".github/workflows/studio-companion-unsigned-assurance.yml",
+  ".github/workflows/studio-npm-package-assurance.yml",
+  ".github/workflows/studio-npm-publish.yml",
+  ".github/workflows/studio-npm-oidc-publish.yml",
   ".github/workflows/studio-public-staging.yml",
   ".github/workflows/studio-monitor-schedule-guard.yml",
   ".github/workflows/duskds-native-smoke.yml",
   "docs/operations/public-monitoring.md",
-  "docs/operations/github-only-monitoring-decision.md",
-  "docs/security/same-user-tool-boundary-decision.md",
   "scripts/phase5-candidate-context.mjs",
-  "config/companion-unsigned-assurance-policy.json",
-  "SUPPORT.md",
-  "docs/deployment/project-domain-migration.md"
+  "scripts/verify-npm-provenance.mjs",
+  "config/companion-release-policy.json",
+  "SUPPORT.md"
 ]) assert.ok(fs.existsSync(path.join(root, file)), `Missing public repository contract: ${file}`);
 
 const packageJson = JSON.parse(read("package.json"));
@@ -29,44 +28,68 @@ assert.equal(packageJson.private, true, "The workspace must remain protected fro
 assert.equal(packageJson.license, "Apache-2.0");
 assert.equal(packageJson.repository.url, "git+https://github.com/GeorgianDusk/dusk-developer-studio.git");
 assert.match(read("LICENSE"), /Apache License[\s\S]*Version 2\.0/);
-assert.match(read("README.md"), /Independent open-source project maintained by/);
 assert.doesNotMatch(read("README.md"), /private: true|Project status/);
 assert.match(read("SECURITY.md"), /private vulnerability reporting/i);
 assert.doesNotMatch(read("README.md"), /`[^`]+` \? /, "README repository map contains a lossy text-export separator.");
 
-const policy = JSON.parse(read("config/companion-standalone-signing-policy.json"));
-assert.equal(policy.canonical_repository, "GeorgianDusk/dusk-developer-studio");
-assert.equal(policy.publication_enabled, false);
-assert.deepEqual(policy.candidate_transport, {
-  enabled: false,
-  provider: "none",
-  blocker: "No private signed-candidate transport has been implemented and independently reviewed; candidate binaries must not use GitHub Actions artifacts or draft releases."
+const policy = JSON.parse(read("config/companion-release-policy.json"));
+assert.equal(policy.schema_version, 2);
+assert.equal(policy.distribution, "npm");
+assert.deepEqual(policy.package, {
+  name: "dusk-developer-studio",
+  version: "1.0.0",
+  tag: "v1.0.0",
+  registry: "https://registry.npmjs.org",
+  access: "public",
+  node_engine: ">=24.18.0 <25",
+  package_root: "packages/cli",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.0.tgz",
+  primary_entrypoint: "bin/dusk-developer-studio.mjs",
+  safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
+  local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
 });
-assert.equal(policy.targets["windows-x64"].approved_identity, "");
-assert.equal(policy.targets["darwin-arm64"].approved_identity, "");
-assert.match(policy.targets["linux-x64"].identity_template, /GeorgianDusk\/dusk-developer-studio/);
-assert.equal(policy.same_user_tool_boundary.decision, "accepted");
-assert.equal(policy.same_user_tool_boundary.owner, "George");
-assert.equal(policy.same_user_tool_boundary.authority_reference, "docs/security/same-user-tool-boundary-decision.md");
-assert.ok(policy.same_user_tool_boundary.compensating_controls.includes("public-companion-binaries-disabled"));
-assert.match(policy.same_user_tool_boundary.residual_risk, /survives Studio shutdown/);
-assert.doesNotMatch(policy.publication_blocker, /same-user tool boundary|detached tool descendants/i);
-const boundaryDecision = read("docs/security/same-user-tool-boundary-decision.md");
-assert.match(boundaryDecision, /Status: accepted/);
-assert.match(boundaryDecision, /Owner: George/);
-assert.match(boundaryDecision, /not an independent security\s+review/i);
-assert.match(boundaryDecision, /does not approve public binary publication/i);
-
+assert.deepEqual(policy.commands, {
+  build: "pnpm build:npm",
+  test: "pnpm test:npm",
+  pack: "pnpm pack:npm"
+});
+assert.equal(policy.package_inventory.native_binaries_allowed, false);
+assert.equal(policy.package_inventory.install_scripts_allowed, false);
+assert.equal(policy.package_inventory.runtime_dependencies_allowed, false);
+assert.deepEqual(policy.assurance.required_runners, ["ubuntu-24.04", "windows-2025", "macos-15"]);
+assert.ok(policy.assurance.required_checks.includes("local-actions-capability-contract-smoke"));
+assert.ok(!policy.assurance.required_checks.includes("local-actions-functional-smoke"));
+assert.equal(policy.publication.initial_registry_authentication, "short-lived-granular-token");
+assert.equal(policy.publication.initial_token_max_lifetime_hours, 24);
+assert.deepEqual(policy.publication.initial_token_scope, {
+  permissions: "read-write",
+  package_access: "all-packages-bootstrap",
+  bypass_2fa: true
+});
+assert.equal(policy.publication.token_revocation_required, true);
+assert.equal(policy.publication.environment_secret_removal_required, true);
+assert.equal(policy.publication.trusted_publisher_configuration_required, true);
+assert.equal(policy.publication.subsequent_registry_authentication, "github-oidc");
+assert.equal(policy.publication.subsequent_workflow_path, ".github/workflows/studio-npm-oidc-publish.yml");
+assert.equal(policy.publication.expected_oidc_trusted_publisher_id, "github");
+assert.equal(policy.publication.long_lived_token_allowed, false);
+assert.deepEqual(policy.publication.permissions, { contents: "read", "id-token": "write" });
+for (const removed of [
+  ".github/workflows/studio-companion-signed-rc.yml",
+  ".github/workflows/studio-companion-unsigned-assurance.yml",
+  "config/companion-standalone-signing-policy.json",
+  "config/companion-unsigned-assurance-policy.json"
+]) assert.equal(fs.existsSync(path.join(root, removed)), false, `Retired native distribution contract still exists: ${removed}`);
 const workflows = [
   ".github/workflows/studio-linux-security.yml",
   ".github/workflows/platform-caddy-security.yml",
-  ".github/workflows/studio-companion-signed-rc.yml",
-  ".github/workflows/studio-companion-unsigned-assurance.yml",
+  ".github/workflows/studio-npm-package-assurance.yml",
+  ".github/workflows/studio-npm-publish.yml",
+  ".github/workflows/studio-npm-oidc-publish.yml",
   ".github/workflows/studio-public-staging.yml",
   ".github/workflows/studio-monitor-schedule-guard.yml",
   ".github/workflows/duskds-native-smoke.yml"
 ].map((file) => [file, read(file)]);
-const runtimeLock = JSON.parse(read("config/companion-runtime-lock.json"));
 for (const [file, workflow] of workflows) {
   assert.doesNotMatch(workflow, /dusk-network\/marketing|products\/developer-testnet-studio/);
   assert.doesNotMatch(workflow, /contents:\s*write|packages:\s*write|actions:\s*write/);
@@ -74,13 +97,21 @@ for (const [file, workflow] of workflows) {
   if (workflow.includes("actions/setup-node@")) {
     const nodeVersions = [...workflow.matchAll(/node-version:\s*([^\s]+)/g)].map((match) => match[1]);
     assert.ok(nodeVersions.length > 0, `${file} uses setup-node without a frozen Node version.`);
-    assert.ok(nodeVersions.every((version) => version === runtimeLock.runtime.version), `${file} does not use the frozen companion runtime version.`);
+    assert.ok(nodeVersions.every((version) => version === "24.18.0"), `${file} does not use the frozen npm package runtime version.`);
+  }
+  const nodeHeredocOpeners = (workflow.match(/<<'NODE'/g) ?? []).length;
+  if (nodeHeredocOpeners > 0) {
+    assert.equal(
+      (workflow.match(/^ {10}NODE$/gm) ?? []).length,
+      nodeHeredocOpeners,
+      `${file} contains a shell heredoc terminator outside the workflow run-block content column.`
+    );
   }
 }
 
 const requiredWindowsWorkflow = read(".github/workflows/studio-linux-security.yml");
 const elevatedArchiveStepStart = requiredWindowsWorkflow.indexOf(
-  "- name: Build, verify, and reject elevated launch of the extracted Windows companion archive"
+  "- name: Build, pack, install, and smoke the Windows npm package"
 );
 const elevatedArchiveStepEnd = requiredWindowsWorkflow.indexOf(
   "- name: Validate Windows, WSL, and POSIX command generation",
@@ -88,26 +119,85 @@ const elevatedArchiveStepEnd = requiredWindowsWorkflow.indexOf(
 );
 assert.ok(
   elevatedArchiveStepStart >= 0 && elevatedArchiveStepEnd > elevatedArchiveStepStart,
-  "The required Windows archive elevation contract is missing."
+  "The required Windows npm elevation contract is missing."
 );
 const elevatedArchiveStep = requiredWindowsWorkflow.slice(elevatedArchiveStepStart, elevatedArchiveStepEnd);
 assert.match(elevatedArchiveStep, /Dusk Developer Studio refuses elevated or root execution\./);
-assert.match(elevatedArchiveStep, /\$elevatedStatus -eq 0/);
-assert.match(elevatedArchiveStep, /\$unexpectedListener/);
-assert.match(elevatedArchiveStep, /\[System\.Diagnostics\.ProcessStartInfo\]::new\(\)/);
-assert.match(elevatedArchiveStep, /RedirectStandardOutput = \$true[\s\S]*RedirectStandardError = \$true/);
-assert.match(elevatedArchiveStep, /StandardOutput\.ReadToEndAsync\(\)[\s\S]*StandardError\.ReadToEndAsync\(\)/);
-assert.match(elevatedArchiveStep, /\$process\.WaitForExit\(15000\)/);
-assert.match(elevatedArchiveStep, /finally \{[\s\S]*\$process\.Kill\(\$true\)[\s\S]*\$process\.WaitForExit\(\)/);
-assert.doesNotMatch(elevatedArchiveStep, /did not become healthy/);
+assert.match(elevatedArchiveStep, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*pnpm pack:npm/);
+assert.match(elevatedArchiveStep, /output\/npm\/dusk-developer-studio-1\.0\.0\.tgz/);
+assert.match(elevatedArchiveStep, /node_modules\/dusk-developer-studio\/bin\/dusk-developer-studio\.mjs/);
+assert.match(elevatedArchiveStep, /@(?:\(|\{)'--lifecycle-self-test', '--no-open'(?:\)|\})/);
+assert.match(elevatedArchiveStep, /@(?:\(|\{)'local-actions', '--lifecycle-self-test', '--no-open'(?:\)|\})/);
 
-const signedWorkflow = read(".github/workflows/studio-companion-signed-rc.yml");
-assert.doesNotMatch(signedWorkflow, /^\s+(?:push|pull_request|schedule):/m);
-assert.doesNotMatch(signedWorkflow, /gh release|create-release|softprops\/action-gh-release|release-action/i);
-assert.doesNotMatch(signedWorkflow, /name:\s*studio-signed-rc-(?:windows-x64|linux-x64|darwin-arm64)/);
-for (const step of signedWorkflow.split(/\n(?= {6}- )/)) {
-  if (step.includes("uses: actions/upload-artifact@")) assert.match(step, /path:\s*[^\n]*\.json/);
+const npmAssuranceWorkflow = read(".github/workflows/studio-npm-package-assurance.yml");
+assert.match(npmAssuranceWorkflow, /runner: \[ubuntu-24\.04, windows-2025, macos-15\]/);
+assert.match(npmAssuranceWorkflow, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*node scripts\/npm-package-pack\.mjs/);
+assert.doesNotMatch(npmAssuranceWorkflow, /^\s+paths:/m);
+assert.match(npmAssuranceWorkflow, /CANDIDATE_ARTIFACT: dusk-developer-studio-1\.0\.0\.tgz[\s\S]*name: Build the exact npm candidate once[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*archive: false/);
+assert.match(npmAssuranceWorkflow, /needs: build-package[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*path: output\/npm/);
+assert.match(npmAssuranceWorkflow, /^ {4}name: Aggregate npm package assurance$/m);
+assert.match(npmAssuranceWorkflow, /native|exe\|dll\|dylib\|so\|node/i);
+assert.match(npmAssuranceWorkflow, /npm install --ignore-scripts/);
+assert.match(npmAssuranceWorkflow, /--lifecycle-self-test --no-open/);
+assert.match(npmAssuranceWorkflow, /local-actions --lifecycle-self-test --no-open/);
+assert.match(npmAssuranceWorkflow, /fs\.mkdtempSync[\s\S]*unpackedBytes \+= stats\.size[\s\S]*maximum_unpacked_bytes/);
+assert.match(npmAssuranceWorkflow, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential[\s\S]*Invoke-StandardUserSmoke -Arguments @\('--lifecycle-self-test', '--no-open'\)[\s\S]*Invoke-StandardUserSmoke -Arguments @\('local-actions', '--lifecycle-self-test', '--no-open'\)/);
+assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*Platform receipt cannot be written before all lifecycle smokes execute successfully/);
+assert.match(npmAssuranceWorkflow, /EXPECTED_BROWSER_SMOKE !== "passed"[\s\S]*browser_boot_and_pairing_smoke: "passed"/);
+assert.match(npmAssuranceWorkflow, /name: npm-platform-\$\{\{ matrix\.runner \}\}[\s\S]*path: output\/npm\/platform\/npm-platform-\$\{\{ matrix\.runner \}\}\.json/);
+assert.match(npmAssuranceWorkflow, /name: studio-npm-assurance-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*path: output\/npm\/studio-npm-assurance-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false/);
+assert.match(elevatedArchiveStep, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential/);
+for (const workflow of [requiredWindowsWorkflow, npmAssuranceWorkflow]) {
+  assert.match(workflow, /NODE_BIN="\$\(command -v node\)"[\s\S]*sudo -n "\$NODE_BIN" "\$PRIMARY"/);
+  assert.doesNotMatch(workflow, /sudo -n node /);
+  assert.match(workflow, /\$dataRoot = Join-Path \$env:PUBLIC[\s\S]*"\*\$\{userSid\}:\(OI\)\(CI\)M"/);
+  assert.match(workflow, /\$childEnvironment = @\{[\s\S]*HOME = \$profileRoot[\s\S]*LOCALAPPDATA = \$localAppData[\s\S]*USERPROFILE = \$profileRoot[\s\S]*-Environment \$childEnvironment/);
+  assert.match(workflow, /Test-Path -LiteralPath \$dataRoot[\s\S]*Remove-Item -LiteralPath \$dataRoot -Recurse -Force/);
 }
+
+const npmPublishWorkflow = read(".github/workflows/studio-npm-publish.yml");
+assert.match(npmPublishWorkflow, /^ {4}tags:\n {6}- v1\.0\.0$/m);
+assert.match(npmPublishWorkflow, /contents: read[\s\S]*id-token: write/);
+assert.equal((npmPublishWorkflow.match(/secrets\.NPM_INITIAL_PUBLISH_TOKEN/g) ?? []).length, 1);
+assert.match(npmPublishWorkflow, /environment: npm-initial-publication/);
+assert.match(npmPublishWorkflow, /registry-url: https:\/\/registry\.npmjs\.org/);
+assert.doesNotMatch(npmPublishWorkflow, /NPM_TOKEN:\s*\$\{\{|long_lived_token|sigstore_provenance_verified/);
+assert.match(npmPublishWorkflow, /test "\$GITHUB_REF_NAME" = "v1\.0\.0"/);
+assert.match(npmPublishWorkflow, /git rev-parse "refs\/tags\/\$GITHUB_REF_NAME\^\{commit\}"/);
+assert.match(npmPublishWorkflow, /git rev-parse refs\/remotes\/origin\/main\)" = "\$GITHUB_SHA"/);
+assert.match(npmPublishWorkflow, /manifest\.name !== "dusk-developer-studio"[\s\S]*manifest\.version !== "1\.0\.0"/);
+assert.match(npmPublishWorkflow, /ASSURED_CANDIDATE_ARTIFACT[\s\S]*Download the exact candidate exercised by all platform lanes/);
+assert.doesNotMatch(npmPublishWorkflow, /pnpm build:npm|pnpm test:npm|pnpm pack:npm/);
+assert.match(npmPublishWorkflow, /REGISTRY_OUTCOME=verified-existing|outcome = "verified-existing"/);
+assert.match(npmPublishWorkflow, /npm publish "\$TARBALL" --access public --provenance/);
+assert.match(npmPublishWorkflow, /npm whoami --registry=https:\/\/registry\.npmjs\.org[\s\S]*test "\$OBSERVED_NPM_MAINTAINER" = "\$EXPECTED_NPM_MAINTAINER"[\s\S]*npm publish "\$TARBALL" --access public --provenance/);
+assert.match(npmPublishWorkflow, /npm install --ignore-scripts --no-audit --no-fund --save-exact --registry=https:\/\/registry\.npmjs\.org dusk-developer-studio@1\.0\.0[\s\S]*package-lock\.json[\s\S]*node_modules\/dusk-developer-studio[\s\S]*record\.integrity !== process\.env\.LOCAL_NPM_INTEGRITY[\s\S]*npm audit signatures/);
+assert.doesNotMatch(npmPublishWorkflow, /--package-lock-only/);
+assert.match(npmPublishWorkflow, /npm audit signatures --registry=https:\/\/registry\.npmjs\.org/);
+assert.match(npmPublishWorkflow, /verify-npm-provenance\.mjs[\s\S]*--publication=initial/);
+assert.match(npmPublishWorkflow, /provenance_verification: "npm-audit-signatures-and-slsa-source-bound"/);
+assert.match(npmPublishWorkflow, /name: studio-npm-publication-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*path: output\/npm\/studio-npm-publication-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false/);
+assert.doesNotMatch(npmPublishWorkflow, /\bbeta\b|\bfinal\b|release candidate|internal-rc|prototype/i);
+const npmOidcWorkflow = read(".github/workflows/studio-npm-oidc-publish.yml");
+assert.match(npmOidcWorkflow, /github\.ref_name != 'v1\.0\.0'/);
+assert.match(npmOidcWorkflow, /id-token: write/);
+assert.match(npmOidcWorkflow, /environment: npm-trusted-publication/);
+assert.match(npmOidcWorkflow, /registry-url: https:\/\/registry\.npmjs\.org/);
+assert.match(npmOidcWorkflow, /test -z "\$\{NODE_AUTH_TOKEN:-\}"[\s\S]*npm publish "\$TARBALL" --access public --provenance/);
+assert.match(npmOidcWorkflow, /npm install --ignore-scripts --no-audit --no-fund --save-exact --registry=https:\/\/registry\.npmjs\.org "dusk-developer-studio@\$PACKAGE_VERSION"[\s\S]*package-lock\.json[\s\S]*node_modules\/dusk-developer-studio[\s\S]*process\.env\.GITHUB_REF_NAME\.slice\(1\)[\s\S]*record\.integrity !== process\.env\.LOCAL_NPM_INTEGRITY[\s\S]*npm audit signatures/);
+assert.doesNotMatch(npmOidcWorkflow, /--package-lock-only/);
+assert.match(npmOidcWorkflow, /npm audit signatures --registry=https:\/\/registry\.npmjs\.org/);
+assert.match(npmOidcWorkflow, /verify-npm-provenance\.mjs[\s\S]*--publication=subsequent/);
+assert.match(npmOidcWorkflow, /publisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*publisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);
+assert.match(npmOidcWorkflow, /record\.replace\(\/\\s\+<\[\^>\]\+>\$\/u, ""\)\.trim\(\)[\s\S]*npmPublisher !== policy\.publication\.expected_oidc_publisher/);
+assert.match(npmOidcWorkflow, /registryPublisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*registryPublisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);
+assert.doesNotMatch(npmOidcWorkflow, /npmUser !== policy\.publication\.expected_npm_maintainer/);
+assert.doesNotMatch(npmOidcWorkflow, /secrets\.|NPM_INITIAL_PUBLISH_TOKEN/);
+const npmProvenanceVerifier = read("scripts/verify-npm-provenance.mjs");
+assert.match(npmProvenanceVerifier, /published\.dist\.attestations\.url[\s\S]*\/-\/npm\/v1\/attestations\//);
+assert.match(npmProvenanceVerifier, /expectedSubject = `pkg:npm\/\$\{policy\.package\.name\}@\$\{policy\.package\.version\}`/);
+assert.match(npmProvenanceVerifier, /workflow\.repository !== policy\.publication\.expected_provenance_repository[\s\S]*workflow\.path !== expectedWorkflow[\s\S]*workflow\.ref !== expectedRef/);
+assert.match(npmProvenanceVerifier, /resolvedDependencies\.length !== 1[\s\S]*gitCommit !== commit/);
 
 const publicStagingWorkflow = read(".github/workflows/studio-public-staging.yml");
 assert.match(publicStagingWorkflow, /^name: Studio public deployment assurance$/m);
@@ -134,7 +224,7 @@ assert.match(publicStagingWorkflow, /steps\.classification\.outputs\.studio_stat
 assert.match(publicStagingWorkflow, /selectAssuranceIncidentTitle/);
 assert.match(publicStagingWorkflow, /selectAssuranceIncidentTitle\(process\.env\.BROWSER_OUTCOME, process\.env\.SYNTHETIC_OUTCOME, classification\)/);
 assert.doesNotMatch(publicStagingWorkflow, /selectScheduledHeartbeatSignal|heartbeat_signal/);
-assert.match(publicStagingWorkflow, /Monitoring mode: GitHub-only under docs\/operations\/github-only-monitoring-decision\.md/);
+assert.match(publicStagingWorkflow, /Monitoring mode: GitHub-only under docs\/operations\/public-monitoring\.md/);
 assert.match(publicStagingWorkflow, /for other_title in "Studio public deployment assurance failed" "Studio upstream dependency unavailable"/);
 assert.match(publicStagingWorkflow, /Reclassified into #\$issue by failed scheduled assurance/);
 assert.ok(publicStagingWorkflow.indexOf('issue_url="$(gh issue create') < publicStagingWorkflow.indexOf('for other_title in "Studio public deployment assurance failed"'), "The selected incident must be open before other component titles are reclassified.");
@@ -191,33 +281,9 @@ assert.match(publicReleaseSpec, /rpc\.testnet\.evm\.dusk\.network/);
 assert.match(publicReleaseSpec, /redirectedFrom\(\)/);
 assert.match(publicReleaseSpec, /expect\(page\.url\(\), pathname\)\.toBe\(expected\.href\)/);
 const publicMonitoring = read("docs/operations/public-monitoring.md");
-assert.match(publicMonitoring, /monitoring_evidence\.mode=github-only/);
-assert.match(publicMonitoring, /does not call a third-party heartbeat/);
+assert.match(publicMonitoring, /Both controls use GitHub Actions and GitHub Issues/);
+assert.match(publicMonitoring, /GitHub outage can affect monitoring and alert delivery at the same time/);
 assert.doesNotMatch(publicMonitoring, /STUDIO_MONITOR_HEARTBEAT/);
-const monitoringDecision = read("docs/operations/github-only-monitoring-decision.md");
-assert.match(monitoringDecision, /Status: accepted/);
-assert.match(monitoringDecision, /Owner: George/);
-assert.match(monitoringDecision, /GitHub-wide Actions or Issues outage/);
-assert.match(monitoringDecision, /Revisit triggers/);
-const domainMigration = read("docs/deployment/project-domain-migration.md");
-assert.match(domainMigration, /current origin approved for production/);
-assert.match(domainMigration, /optional future migration, not a\s+current\s+launch\s+blocker/);
-assert.match(domainMigration, /selective\s+client-side resolver or endpoint-security rewrite/);
-assert.match(domainMigration, /not an invalid certificate served by the\s+Studio/);
-assert.match(domainMigration, /Never add a browser, antivirus, or TLS exception/);
-assert.match(domainMigration, /Stage 1: prepare source and the exact candidate/);
-assert.match(domainMigration, /Stage 4: activate scheduled GitHub monitoring/);
-const caddyDryRunIndex = domainMigration.indexOf("non-mutating dry run of candidate configuration **B**");
-const caddyDrillIndex = domainMigration.indexOf('Before the real deployment, run `-RehearseRollback`');
-const caddyLiveIndex = domainMigration.indexOf("Only after that rehearsal passes, deploy B once");
-assert.ok(caddyDryRunIndex >= 0 && caddyDrillIndex >= 0 && caddyLiveIndex >= 0, "All exact Stage 2 Caddy release-control steps must be documented.");
-assert.ok(caddyDryRunIndex < caddyDrillIndex && caddyDrillIndex < caddyLiveIndex, "Caddy dry run and A-to-B-to-A rehearsal must precede the one real B deployment.");
-assert.match(domainMigration, /finish with A's release id, hashes, Studio routes, and\s+authenticated Analytics routes reverified/);
-assert.ok(domainMigration.indexOf("one real deployment of B") < domainMigration.indexOf("Immediately dispatch public assurance"), "The one real candidate deployment must precede manual assurance.");
-assert.match(domainMigration, /new versioned\s+rollback release from the retained exact A artifact/);
-assert.match(domainMigration, /-ExpectedCurrentReleaseId '<B-release-id>'/);
-assert.match(domainMigration, /project hostname and the\s+current production alias/);
-assert.ok(domainMigration.indexOf("Immediately dispatch public assurance") < domainMigration.indexOf("Set `DUSK_STUDIO_PUBLIC_URL=https://<fqdn>`"), "Manual production assurance must precede the scheduled-monitor target cutover.");
 
 const caddyWorkflow = read(".github/workflows/platform-caddy-security.yml");
 assert.match(caddyWorkflow, /sudo install -d -m 0755[\s\S]*\/var\/log\/caddy/);
@@ -324,8 +390,35 @@ assert.ok(!phase5Policy.required_synthetic_checks.includes("rpc_chain_id"));
 assert.ok(phase5Policy.required_synthetic_checks.includes("duskds_node_read"));
 assert.deepEqual(phase5Policy.required_native_smoke_steps, ["preflight", "node_read", "scaffold", "build_artifacts", "vm_test", "inspect"]);
 assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total);
-assert.deepEqual(phase5Policy.companion_distribution.allowed_availability, ["not-published"]);
-assert.deepEqual(phase5Policy.companion_distribution.required_targets, ["windows-x64", "linux-x64", "darwin-arm64"]);
+assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
+assert.deepEqual(phase5Policy.npm_distribution, {
+  package_name: "dusk-developer-studio",
+  package_version: "1.0.0",
+  tag: "v1.0.0",
+  registry_url: "https://registry.npmjs.org/dusk-developer-studio",
+  node_engine: ">=24.18.0 <25",
+  assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",
+  publication_workflow: ".github/workflows/studio-npm-publish.yml",
+  initial_publication_environment: "npm-initial-publication",
+  initial_registry_authentication: "short-lived-granular-token",
+  initial_token_max_lifetime_hours: 24,
+  initial_token_scope: {
+    permissions: "read-write",
+    package_access: "all-packages-bootstrap",
+    bypass_2fa: true
+  },
+  expected_npm_maintainer: "georgiandusk",
+  expected_oidc_publisher: "GitHub Actions",
+  expected_oidc_trusted_publisher_id: "github",
+  expected_provenance_repository: "https://github.com/GeorgianDusk/dusk-developer-studio",
+  expected_initial_provenance_workflow: ".github/workflows/studio-npm-publish.yml",
+  token_revocation_required: true,
+  environment_secret_removal_required: true,
+  trusted_publisher_configuration_required: true,
+  subsequent_registry_authentication: "github-oidc",
+  subsequent_workflow_path: ".github/workflows/studio-npm-oidc-publish.yml",
+  required_platforms: ["ubuntu-24.04", "windows-2025", "macos-15"]
+});
 assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
 assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/smart-contracts-duskds/"));
 assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/duskvm/quickstart")));
@@ -350,10 +443,42 @@ assert.ok(!phase5Policy.required_synthetic_checks.includes("external_dead_man"))
 assert.ok(!phase5Policy.required_synthetic_checks.includes("external_direct_health"));
 assert.equal(phase5Policy.monitoring_evidence.mode, "github-only");
 assert.equal(phase5Policy.monitoring_evidence.accepted_risk.owner, "George");
-assert.equal(phase5Policy.monitoring_evidence.accepted_risk.authority_reference, "docs/operations/github-only-monitoring-decision.md");
+assert.equal(phase5Policy.monitoring_evidence.accepted_risk.authority_reference, "docs/operations/public-monitoring.md");
 assert.ok(phase5Policy.monitoring_evidence.accepted_risk.revisit_triggers.length >= 2);
 const phase5Template = JSON.parse(read("config/phase5-evidence.template.json"));
-assert.equal(phase5Template.schema_version, 4);
+assert.equal(phase5Template.schema_version, 5);
+assert.equal(Object.hasOwn(phase5Template, "companion_distribution"), false);
+assert.equal(phase5Template.npm_distribution.package_name, phase5Policy.npm_distribution.package_name);
+assert.equal(phase5Template.npm_distribution.package_version, phase5Policy.npm_distribution.package_version);
+assert.equal(phase5Template.npm_distribution.node_engine, phase5Policy.npm_distribution.node_engine);
+assert.equal(phase5Template.npm_distribution.registry_url, phase5Policy.npm_distribution.registry_url);
+assert.deepEqual(Object.keys(phase5Template.npm_distribution.platform_smoke), phase5Policy.npm_distribution.required_platforms);
+for (const platform of phase5Policy.npm_distribution.required_platforms) {
+  const smoke = phase5Template.npm_distribution.platform_smoke[platform];
+  assert.equal(smoke.runner, platform);
+  assert.equal(smoke.node_version, "24.18.0");
+  assert.ok(Object.hasOwn(smoke, "integrity"));
+  assert.ok(Object.hasOwn(smoke, "package_inventory_sha256"));
+  assert.ok(Object.hasOwn(smoke, "elevated_refusal"));
+}
+assert.equal(phase5Template.npm_distribution.assurance.workflow_path, phase5Policy.npm_distribution.assurance_workflow);
+assert.equal(
+  Object.hasOwn(phase5Template.npm_distribution.assurance, "browser_boot_and_pairing_smoke"),
+  false,
+  "Exact-tarball browser proof belongs inside the downloaded assurance receipt_json, not the wrapper."
+);
+assert.equal(phase5Template.npm_distribution.publication.workflow_path, phase5Policy.npm_distribution.publication_workflow);
+for (const receipt of [phase5Template.npm_distribution.assurance, phase5Template.npm_distribution.publication]) {
+  assert.ok(Object.hasOwn(receipt, "receipt_sha256"));
+  assert.ok(Object.hasOwn(receipt, "receipt_json"));
+  assert.ok(Object.hasOwn(receipt, "provenance"));
+}
+assert.equal(phase5Template.npm_distribution.post_publication_controls.token_revoked, false);
+assert.equal(phase5Template.npm_distribution.post_publication_controls.environment_secret_removed, false);
+assert.equal(phase5Template.npm_distribution.post_publication_controls.trusted_publisher_configured, false);
+assert.ok(Object.hasOwn(phase5Template.npm_distribution.post_publication_controls, "token_revocation_evidence_sha256"));
+assert.ok(Object.hasOwn(phase5Template.npm_distribution.post_publication_controls, "environment_secret_removal_evidence_sha256"));
+assert.ok(Object.hasOwn(phase5Template.npm_distribution.post_publication_controls, "trusted_publisher_evidence_sha256"));
 assert.ok(Array.isArray(phase5Template.candidate.implementation_identities));
 assert.ok(Object.hasOwn(phase5Template.candidate, "release_id"));
 assert.ok(Object.hasOwn(phase5Template.candidate, "policy_sha256"));
@@ -398,7 +523,8 @@ for (const rollbackKind of ["product", "platform"]) {
 }
 assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_dead_man"));
 assert.ok(!Object.hasOwn(phase5Template.synthetics.checks, "external_direct_health"));
-assert.match(read("docs/operations/public-monitoring.md"), /https:\/\/studio\.134-122-59-217\.nip\.io\/healthz/);
+assert.match(read("docs/operations/public-monitoring.md"), /https:\/\/studio\.134-122-59-217\.nip\.io/);
+assert.match(read("docs/operations/public-monitoring.md"), /`\/healthz`/);
 assert.doesNotMatch(read("docs/operations/public-monitoring.md"), /https:\/\/<project-domain>\/healthz/);
 
 const caddy = read("deploy/caddy/studio.caddy");
@@ -409,10 +535,11 @@ for (const required of ["Content-Security-Policy", "Strict-Transport-Security", 
 }
 
 const runtime = read("apps/studio/src/app/runtime.ts");
-assert.match(runtime, /channel === "portable" && LOOPBACK_HOSTS/);
+assert.match(runtime, /channel === "npm" && LOOPBACK_HOSTS/);
 const systemRoutes = read("apps/studio/src/app/routes/SystemRoutes.tsx");
 assert.doesNotMatch(systemRoutes, /Pairing token|Set-Clipboard|DUSK_STUDIO_PAIRING_TOKEN/);
-assert.match(systemRoutes, /No token, Node installation, package-manager command, or source checkout is required/);
+assert.match(systemRoutes, /npx dusk-developer-studio[\s\S]*npx dusk-developer-studio local-actions/);
+assert.match(systemRoutes, /127\.0\.0\.1:5173[\s\S]*127\.0\.0\.1:8788/);
 
 const forbidden = /dusk-network\/marketing|studio\.dusk\.network|Dusk-controlled|Dusk Foundation|not affiliated|not an official Dusk|UNLICENSED|docs\/planning/i;
 const ignored = new Set(["node_modules", ".git", "output", "dist", "coverage", "playwright-report", "test-results"]);
@@ -431,4 +558,13 @@ function walk(directory) {
 }
 walk(root);
 
-console.log("Public standalone repository contract passed.");
+assert.match(policy.publication.expected_npm_maintainer, /^[a-z0-9][a-z0-9._-]{0,63}$/u);
+assert.equal(policy.publication.expected_oidc_publisher, "GitHub Actions");
+assert.equal(policy.publication.expected_oidc_trusted_publisher_id, "github");
+assert.doesNotMatch(
+  policy.publication.expected_npm_maintainer,
+  /^(?:replace|pending|todo)/iu,
+  "Replace the npm maintainer placeholder with George's confirmed npm username before release."
+);
+
+console.log("Public npm repository contract passed.");

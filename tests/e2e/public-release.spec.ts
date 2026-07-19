@@ -15,7 +15,7 @@ const routes = [
   ["inspect", "Explore the planned DuskEVM developer workflow."],
   ["reference", "Source-backed context for the task in front of you."],
   ["troubleshooting", "Review DuskEVM launch-planning issues."],
-  ["companion", "Use the hosted DuskDS guide manually today."],
+  ["companion", "Run the full Studio locally with npm."],
   ["settings", "See the build you are using and control its saved progress."]
 ] as const;
 
@@ -104,9 +104,9 @@ test("public candidate exposes the complete DuskDS guide without DuskEVM RPC tra
 
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  const duskDsPath = page.getByRole("button", { name: /Start DuskDS manually/i });
+  const duskDsPath = page.getByRole("button", { name: /Start DuskDS/i });
   const duskEvmPath = page.getByRole("button", { name: /Explore pre-launch reference/i });
-  await expect(duskDsPath.getByText("Manual guide available", { exact: true })).toBeVisible();
+  await expect(duskDsPath.getByText("Guide and local tools available", { exact: true })).toBeVisible();
   await expect(duskEvmPath.getByText("Reference only", { exact: true })).toBeVisible();
   await duskDsPath.click();
 

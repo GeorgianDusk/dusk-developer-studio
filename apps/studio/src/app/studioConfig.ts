@@ -28,12 +28,12 @@ export const pathText = {
   duskds: {
     label: "DuskDS",
     eyebrow: "Native Dusk path",
-    availability: "Manual guide available",
+    availability: "Guide and local tools available",
     availabilityTone: "good",
-    availabilityCopy: "Follow the complete hosted instructions manually now. Portable automation is optional and is not publicly released yet.",
-    summary: "Choose this for Rust/WASM contracts, DuskVM, data drivers, W3sper, Dusk Connect, or privacy-aware native flows. Hosted Studio guides the work without accessing your machine.",
-    start: "Start DuskDS manually",
-    result: "A source-backed manual route through prerequisites, a read-only node query, a local Forge build, and clearly labeled confirmations."
+    availabilityCopy: "Follow every step manually, or run the Local Studio with npm for tool checks and starter creation.",
+    summary: "Choose this for Rust/WASM contracts, DuskVM, data drivers, W3sper, Dusk Connect, or privacy-aware native flows.",
+    start: "Start DuskDS",
+    result: "A source-backed route through prerequisites, a read-only node query, a local Forge build, and clearly labeled results."
   }
 } satisfies Record<BuilderPath, {
   label: string;
@@ -76,7 +76,7 @@ export const blockerLabels: Record<BlockerCode, string> = {
   "no-wallet": "No compatible wallet was found",
   "no-account": "No wallet account was selected",
   "insufficient-gas": "The selected account does not have enough gas",
-  "companion-unavailable": "Portable automation is not available",
+  "companion-unavailable": "Local Studio is not connected",
   "toolchain-incomplete": "One or more required tool checks are incomplete",
   "unsupported-platform": "This platform is not in the reviewed execution lane",
   "invalid-identifier": "The identifier format is not supported",

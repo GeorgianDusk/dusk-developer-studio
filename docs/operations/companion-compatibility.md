@@ -1,67 +1,69 @@
-# Companion compatibility
+# Local Studio compatibility
 
-Date: 2026-07-18
+## Runtime requirement
 
-Status: intended targets documented; public companion distribution disabled
+The local Studio requires Node.js `>=24.18.0 <25`.
 
-## Read this matrix correctly
+```bash
+node --version
+```
 
-The table records the implemented target contract and current verification
-scope. It is not a download matrix and does not claim that a signed,
-clean-machine-tested package exists.
+The npm package is self-contained, installs no additional runtime dependencies, and does not use install lifecycle scripts.
 
-| Target | Intended package | Current verification scope | DuskDS execution note | Missing publication evidence |
-| --- | --- | --- | --- | --- |
-| Windows x64 | ZIP with separate Safe and Local Actions executables | Ephemeral Windows 2025 same-runner unsigned reproducibility, elevated-launch rejection, one-use credential-backed standard-user exact-package lifecycle with profile loading disabled, bounded shutdown quiescence followed by fail-on-detection exact-SID process cleanup plus defensive profile/account teardown, required `NotSigned` Authenticode state, a custom Defender scan that ignores exclusions and rejects skipped or non-no-threat results, and cleanup diagnostics | The reviewed automated VM-test lane runs on GitHub-hosted Ubuntu 24.04. No native Windows or WSL VM-test evidence is recorded | Authenticode identity and timestamp, reviewed candidate transport, exact-package clean-machine lifecycle, and withdrawal drill |
-| Linux x64 | ZIP with separate Safe and Local Actions ELF launchers and Sigstore bundles | Ephemeral Ubuntu 24.04 same-runner unsigned reproducibility, privileged-launch rejection, ELF/NX/mode checks, exact-package lifecycle, and cleanup diagnostics; exact native DuskDS smoke | Native Ubuntu 24.04 is the reviewed DuskDS build and VM-test lane | Final tag-bound signed package, reviewed candidate transport, exact-package clean-machine lifecycle, and withdrawal drill |
-| macOS arm64 | ZIP containing separate Safe and Local Actions app bundles | Ephemeral macOS 15 arm64 same-runner unsigned reproducibility, privileged-launch rejection, ad-hoc executable integrity, expected Gatekeeper rejection, exact-package lifecycle, and cleanup diagnostics | Use a Linux VM or container for the reviewed DuskDS VM test; a native macOS VM-test pass is not recorded | Developer ID, hardened runtime, notarization, stapling, Gatekeeper acceptance, reviewed transport, exact-package clean-machine lifecycle, and withdrawal drill |
+## Supported platforms
 
-Every target also lacks independent exact-download/quarantine verification and
-public reputation evidence. Those common gates are required for each final
-package and cannot be inferred from the platform-specific observations above.
+| Platform | Local Studio | DuskDS note |
+| --- | --- | --- |
+| Windows x64 | Safe and Local Actions | Use the platform-specific commands shown by the Studio. The reviewed DuskDS VM-test lane uses Linux; follow the Studio's WSL guidance when that check is required. |
+| Linux x64 | Safe and Local Actions | Ubuntu is the primary DuskDS build and VM-test environment. |
+| macOS arm64 | Safe and Local Actions | Use a Linux environment for the reviewed DuskDS VM test when the journey requires it. |
 
-## Common runtime boundary
+Use a current browser supported by its vendor. The Studio attempts to open the default browser and can also be opened manually at `http://127.0.0.1:5173`.
 
-- The companion is a foreground, loopback-only application on
-  `127.0.0.1:5173` and `127.0.0.1:8788`.
-- Safe and Local Actions are distinct mode-bound launchers.
-- Elevated Windows and privileged Linux/macOS launches are rejected before
-  candidate extraction; supported execution uses one non-elevated identity
-  with matching real/effective user and group IDs and no Linux permitted,
-  effective, or ambient capabilities.
-- The companion installs no service, daemon, registry entry, scheduled task, or
-  developer tool. The Windows assurance harness starts one credential-backed
-  process under a temporary local standard user, explicitly disables profile
-  loading and network-only credential behavior, and re-verifies the exact SID
-  and non-admin token inside the child. It temporarily grants that exact SID
-  folder-traverse access to the hosted runner's otherwise private temporary-root
-  ancestor chain, including the hosted volume root, then verifies that every
-  added ACL is removed before deleting the account. Pre-existing protected
-  processes with unresolved owners are baselined by PID and creation time before
-  the account exists; any new or changed unresolved process blocks the result.
-  Before passing, the harness also requires repeated exact-SID process cleanup,
-  no loaded profile hive, defensive removal of any unloaded exact-SID profile
-  record, and verified account deletion. The harness does not grant or mutate
-  Windows account rights.
-- Local Actions verifies existing tool prerequisites. It does not silently
-  install Foundry, Rust, Dusk Forge, WSL, or related utilities.
-- Dusk Forge must match the exact reviewed Cargo install receipt and source
-  revision.
-- Cleanup diagnostics prove only that the lane's exact enumerated
-  workflow-owned candidate paths are absent. They do not make a machine-wide
-  claim that no other copy exists.
-- A developer tool invoked with the user's authority may deliberately detach a
-  process beyond the companion's portable cleanup guarantee.
+## Commands
 
-## What is supported today
+Safe mode:
 
-The hosted Studio is supported as a static, docs-only experience. Repository
-source builds are developer workflows. No operating system currently has a
-supported public companion download.
+```bash
+npx dusk-developer-studio
+```
 
-Compatibility becomes release evidence only after the exact final packages
-receive their required platform trust, cross a reviewed private candidate
-transport, pass fresh clean-machine lifecycle checks, and are independently
-reviewed. Internal fixtures or same-runner checks must not be relabelled as
-those results. The unsigned-assurance JSON is a bounded CI diagnostic, not
-authenticated publication evidence.
+Local Actions:
+
+```bash
+npx dusk-developer-studio local-actions
+```
+
+## Common runtime behavior
+
+- The Studio runs in the foreground.
+- The Studio binds to `127.0.0.1:5173`.
+- The companion binds to `127.0.0.1:8788`.
+- Port collisions fail with an explanation; the Studio does not silently select another port.
+- Administrator or root launches are rejected. Run under one normal developer account.
+- Safe mode does not run developer tools or create projects.
+- Local Actions checks installed tools and creates projects only through reviewed routes.
+- Stopping the command invalidates the local session and closes both Studio-owned ports.
+- User projects remain outside the npm cache.
+
+## Developer tools
+
+Local Actions can check tools such as Foundry, Rust, Dusk Forge, WSL, and related utilities when the selected journey needs them.
+
+The Studio:
+
+- does not install or update those tools;
+- reports required versus optional tools separately;
+- links to relevant installation guidance;
+- checks the reviewed Dusk Forge Cargo receipt and source revision before DuskDS scaffolding; and
+- does not accept a different tool earlier on `PATH` as proof of the reviewed Forge installation.
+
+An invoked developer tool runs with your user account's authority. Use only tools and versions you trust.
+
+## Project locations
+
+- Windows: `%LOCALAPPDATA%\Dusk\DeveloperStudio\projects`
+- macOS: `~/Library/Application Support/Dusk/DeveloperStudio/projects`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/dusk/developer-studio/projects`
+
+See [Local Studio recovery](local-companion-recovery.md) when startup, pairing, tools, or shutdown does not behave as expected.

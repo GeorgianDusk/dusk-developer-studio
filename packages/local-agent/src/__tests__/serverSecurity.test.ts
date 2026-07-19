@@ -186,7 +186,7 @@ describe("local companion containment boundary", () => {
   });
 
   it("returns only a validated bounded release identity when configured", async () => {
-    const releaseIdentity = { product: "Dusk Developer Studio", version: "0.1.0", commit: "a".repeat(40), channel: "portable" };
+    const releaseIdentity = { product: "Dusk Developer Studio", version: "1.0.0", commit: "a".repeat(40), channel: "npm" };
     const { port } = await startServer({ releaseIdentity }); const cookie = await pair(port); const health = await request(port, { session: cookie });
     expect(health.body.release).toEqual(releaseIdentity);
     expect(() => createLocalAgentServer({ pairingToken: PAIRING_TOKEN, releaseIdentity: { ...releaseIdentity, product: "x".repeat(81) } })).toThrow();
@@ -240,7 +240,11 @@ describe("local companion containment boundary", () => {
 
   it("enforces content type and JSON shape after authentication", async () => {
     const scaffoldFoundryTemplate = vi.fn();
-    const { port } = await startServer({ capabilitiesEnabled: true, dependencies: { scaffoldFoundryTemplate } });
+    const { port } = await startServer({
+      capabilitiesEnabled: true,
+      evmScaffoldEnabled: true,
+      dependencies: { scaffoldFoundryTemplate }
+    });
     const cookie = await pair(port);
     const wrongType = await request(port, { method: "POST", path: "/scaffold-template", session: cookie, headers: { "content-type": "text/plain" }, body: "{}" });
     const invalidJson = await request(port, { method: "POST", path: "/scaffold-template", session: cookie, headers: { "content-type": "application/json" }, body: "{not-json" });
@@ -248,6 +252,25 @@ describe("local companion containment boundary", () => {
     expect(wrongType.status).toBe(415);
     expect(invalidJson.status).toBe(400);
     expect(unexpectedField.status).toBe(400);
+    expect(scaffoldFoundryTemplate).not.toHaveBeenCalled();
+  });
+
+  it("keeps DuskEVM scaffold creation fail-closed before Testnet activation", async () => {
+    const scaffoldFoundryTemplate = vi.fn();
+    const { port } = await startServer({
+      capabilitiesEnabled: true,
+      dependencies: { scaffoldFoundryTemplate }
+    });
+    const cookie = await pair(port);
+    const response = await request(port, {
+      method: "POST",
+      path: "/scaffold-template",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "counter-project" })
+    });
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe("evm_scaffold_unavailable");
     expect(scaffoldFoundryTemplate).not.toHaveBeenCalled();
   });
 

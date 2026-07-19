@@ -48,38 +48,27 @@ jobs:
           corepack install --global pnpm@11.7.0
       - name: Restore frozen dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build and smoke the extracted Linux companion archive
-        env:
-          DUSK_STUDIO_ARTIFACT_CHANNEL: portable
-          DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
+      - name: Build, pack, install, and smoke the Linux npm package
         run: |
-          RUNTIME="$RUNNER_TEMP/node-v24.18.0-linux-x64.tar.xz"
-          BUNDLE="$RUNNER_TEMP/companion-bundle-linux"
-          RELEASE="$RUNNER_TEMP/companion-release-linux"
-          ARCHIVE="$RUNNER_TEMP/dusk-developer-studio-local-linux-x64.tar.gz"
-          EXTRACT="$RUNNER_TEMP/companion-extracted-linux"
-          curl --fail --silent --show-error --location --output "$RUNTIME" https://nodejs.org/dist/v24.18.0/node-v24.18.0-linux-x64.tar.xz
-          node scripts/companion-bundle.mjs --out="$BUNDLE"
-          pnpm --filter @dusk/studio build
-          node scripts/companion-build.mjs --target=linux-x64 --out="$RELEASE" --launcher-bundle="$BUNDLE" --runtime-archive="$RUNTIME" --commit="$GITHUB_SHA" --source-date-epoch=1700000000
-          node scripts/companion-verify.mjs --release="$RELEASE"
-          node scripts/companion-archive.mjs --release="$RELEASE" --out="$ARCHIVE"
-          mkdir "$EXTRACT"
-          tar -xf "$ARCHIVE" -C "$EXTRACT"
-          RELEASE_ROOT="$EXTRACT/dusk-developer-studio-local-0.1.0-linux-x64"
-          node scripts/companion-verify.mjs --release="$RELEASE_ROOT"
-          "$RELEASE_ROOT/runtime/node" "$RELEASE_ROOT/app/companion.mjs" --no-open &
-          COMPANION_PID=$!
-          trap 'kill "$COMPANION_PID" 2>/dev/null || true' EXIT
-          READY=0
-          for attempt in $(seq 1 40); do
-            if curl --fail --silent http://127.0.0.1:5173/healthz >/dev/null; then READY=1; break; fi
-            sleep 0.25
-          done
-          test "$READY" = "1"
-          kill "$COMPANION_PID"
-          wait "$COMPANION_PID" || true
-          trap - EXIT
+          pnpm build:npm
+          pnpm test:npm
+          pnpm pack:npm
+          TARBALL="output/npm/dusk-developer-studio-1.0.0.tgz"
+          INSTALL_ROOT="$RUNNER_TEMP/npm-install"
+          PRIMARY="$INSTALL_ROOT/node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs"
+          test -f "$TARBALL"
+          npm install --ignore-scripts --prefix "$INSTALL_ROOT" "$TARBALL"
+          NODE_BIN="$(command -v node)"
+          test -f "$PRIMARY"
+          test -x "$NODE_BIN"
+          "$NODE_BIN" "$PRIMARY" --lifecycle-self-test --no-open
+          "$NODE_BIN" "$PRIMARY" local-actions --lifecycle-self-test --no-open
+          set +e
+          ELEVATED_OUTPUT="$(sudo -n "$NODE_BIN" "$PRIMARY" --lifecycle-self-test --no-open 2>&1)"
+          ELEVATED_STATUS=$?
+          set -e
+          test "$ELEVATED_STATUS" -ne 0
+          printf '%s' "$ELEVATED_OUTPUT" | grep -F "Dusk Developer Studio refuses elevated or root execution."
       - name: Exercise POSIX filesystem and process branches
         run: |
           test "$(node -p 'process.platform')" = "linux"
@@ -158,64 +147,91 @@ jobs:
           corepack install --global pnpm@11.7.0
       - name: Restore frozen dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build, verify, and reject elevated launch of the extracted Windows companion archive
-        env:
-          DUSK_STUDIO_ARTIFACT_CHANNEL: portable
-          DUSK_STUDIO_RELEASE_COMMIT: ${{ github.sha }}
+      - name: Build, pack, install, and smoke the Windows npm package
         run: |
-          $runtime = Join-Path $env:RUNNER_TEMP 'node-v24.18.0-win-x64.zip'
-          $bundle = Join-Path $env:RUNNER_TEMP 'companion-bundle-windows'
-          $release = Join-Path $env:RUNNER_TEMP 'companion-release-windows'
-          $archive = Join-Path $env:RUNNER_TEMP 'dusk-developer-studio-local-windows-x64.zip'
-          $extract = Join-Path $env:RUNNER_TEMP 'companion-extracted-windows'
-          Invoke-WebRequest -UseBasicParsing -Uri 'https://nodejs.org/dist/v24.18.0/node-v24.18.0-win-x64.zip' -OutFile $runtime
-          node scripts/companion-bundle.mjs "--out=$bundle"
-          pnpm --filter @dusk/studio build
-          node scripts/companion-build.mjs --target=windows-x64 "--out=$release" "--launcher-bundle=$bundle" "--runtime-archive=$runtime" "--commit=$env:GITHUB_SHA" --source-date-epoch=1700000000
-          node scripts/companion-verify.mjs "--release=$release"
-          node scripts/companion-archive.mjs "--release=$release" "--out=$archive"
-          New-Item -ItemType Directory -Path $extract | Out-Null
-          tar -xf $archive -C $extract
-          $releaseRoot = Join-Path $extract 'dusk-developer-studio-local-0.1.0-windows-x64'
-          node scripts/companion-verify.mjs "--release=$releaseRoot"
-          $node = Join-Path $releaseRoot 'runtime/node.exe'
-          $companion = Join-Path $releaseRoot 'app/companion.mjs'
-          $process = $null
+          pnpm build:npm
+          pnpm test:npm
+          pnpm pack:npm
+          $tarball = 'output/npm/dusk-developer-studio-1.0.0.tgz'
+          if (-not (Test-Path -LiteralPath $tarball -PathType Leaf)) { throw 'npm tarball is missing.' }
+          $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          if (-not $isAdmin) { throw 'Windows assurance runner must provide the separate elevated-refusal lane.' }
+          $publicRoot = Join-Path $env:PUBLIC "dusk-studio-security-$env:GITHUB_RUN_ID"
+          $dataRoot = Join-Path $env:PUBLIC "dusk-studio-security-data-$env:GITHUB_RUN_ID"
+          $userName = "dss$env:GITHUB_RUN_ID"
+          $passwordPlain = "$([Guid]::NewGuid().ToString('N'))Aa1!"
+          $password = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
+          $credential = [PSCredential]::new("$env:COMPUTERNAME\$userName", $password)
+          $userCreated = $false
           try {
-            $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
-            $processInfo.FileName = $node
-            $processInfo.UseShellExecute = $false
-            $processInfo.CreateNoWindow = $true
-            $processInfo.RedirectStandardOutput = $true
-            $processInfo.RedirectStandardError = $true
-            $processInfo.ArgumentList.Add($companion)
-            $processInfo.ArgumentList.Add('--no-open')
-            $process = [System.Diagnostics.Process]::Start($processInfo)
-            $stdout = $process.StandardOutput.ReadToEndAsync()
-            $stderr = $process.StandardError.ReadToEndAsync()
-            if (-not $process.WaitForExit(15000)) {
-              $process.Kill($true)
-              $process.WaitForExit()
-              throw 'Extracted Windows companion accepted an elevated launch.'
+            if ((Test-Path -LiteralPath $publicRoot) -or (Test-Path -LiteralPath $dataRoot)) {
+              throw 'Windows npm assurance roots must not already exist.'
             }
-            $process.WaitForExit()
-            $elevatedStatus = $process.ExitCode
-            $elevatedOutput = "$($stdout.Result)`n$($stderr.Result)"
-            if ($elevatedStatus -eq 0) { throw 'Extracted Windows companion accepted an elevated launch.' }
-            if (-not $elevatedOutput.Contains('Dusk Developer Studio refuses elevated or root execution.')) {
-              throw 'Extracted Windows companion did not report the required elevated-launch denial.'
+            New-Item -ItemType Directory -Path $publicRoot | Out-Null
+            $profileRoot = Join-Path $dataRoot 'Profile'
+            $localAppData = Join-Path $profileRoot 'AppData\Local'
+            $roamingAppData = Join-Path $profileRoot 'AppData\Roaming'
+            $tempRoot = Join-Path $dataRoot 'Temp'
+            New-Item -ItemType Directory -Path $localAppData, $roamingAppData, $tempRoot -Force | Out-Null
+            $resolvedTarball = (Resolve-Path -LiteralPath $tarball).Path
+            npm install --ignore-scripts --prefix $publicRoot $resolvedTarball
+            if ($LASTEXITCODE -ne 0) { throw 'npm package installation failed.' }
+            $publicNode = Join-Path $publicRoot 'node.exe'
+            Copy-Item -LiteralPath (Get-Command node.exe).Source -Destination $publicNode
+            $publicPrimary = Join-Path $publicRoot 'node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs'
+            if (-not (Test-Path -LiteralPath $publicPrimary -PathType Leaf)) { throw 'npm install did not produce the reviewed CLI.' }
+            New-LocalUser -Name $userName -Password $password -AccountNeverExpires -PasswordNeverExpires | Out-Null
+            $userCreated = $true
+            $userSid = (Get-LocalUser -Name $userName).SID.Value
+            & "$env:SystemRoot\System32\icacls.exe" $publicRoot '/inheritance:r' '/grant:r' `
+              '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "*${userSid}:(OI)(CI)RX" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not bound the public npm assurance root ACL.' }
+            & "$env:SystemRoot\System32\icacls.exe" $dataRoot '/inheritance:r' '/grant:r' `
+              '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' "*${userSid}:(OI)(CI)M" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not bound the npm assurance data root ACL.' }
+            $childEnvironment = @{
+              APPDATA = $roamingAppData
+              HOME = $profileRoot
+              LOCALAPPDATA = $localAppData
+              TEMP = $tempRoot
+              TMP = $tempRoot
+              USERPROFILE = $profileRoot
             }
-            $unexpectedListener = $false
-            try {
-              Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:5173/healthz' -TimeoutSec 2 | Out-Null
-              $unexpectedListener = $true
-            } catch {}
-            if ($unexpectedListener) { throw 'Rejected elevated companion launch left the Studio health endpoint reachable.' }
+            function Invoke-StandardUserSmoke {
+              param([string[]] $Arguments, [string] $Label)
+              $stdout = Join-Path $env:RUNNER_TEMP "$Label.stdout.txt"
+              $stderr = Join-Path $env:RUNNER_TEMP "$Label.stderr.txt"
+              $process = Start-Process -FilePath $publicNode `
+                -ArgumentList (@($publicPrimary) + $Arguments) `
+                -WorkingDirectory $publicRoot `
+                -Credential $credential `
+                -Environment $childEnvironment `
+                -LoadUserProfile `
+                -WindowStyle Hidden `
+                -RedirectStandardOutput $stdout `
+                -RedirectStandardError $stderr `
+                -Wait `
+                -PassThru
+              if ($process.ExitCode -ne 0) {
+                $detail = @(
+                  Get-Content -Raw -ErrorAction SilentlyContinue $stderr
+                  Get-Content -Raw -ErrorAction SilentlyContinue $stdout
+                ) -join "`n"
+                throw "$Label failed as the temporary standard user: $($detail.Trim())"
+              }
+            }
+            Invoke-StandardUserSmoke -Arguments @('--lifecycle-self-test', '--no-open') -Label 'safe-smoke'
+            Invoke-StandardUserSmoke -Arguments @('local-actions', '--lifecycle-self-test', '--no-open') -Label 'local-actions-capability-contract-smoke'
+            $elevatedOutput = & $publicNode $publicPrimary --lifecycle-self-test --no-open 2>&1
+            $elevatedStatus = $LASTEXITCODE
+            if ($elevatedStatus -eq 0 -or -not (($elevatedOutput | Out-String).Contains('Dusk Developer Studio refuses elevated or root execution.'))) {
+              throw 'Elevated Windows npm launch was not refused.'
+            }
           } finally {
-            if ($null -ne $process -and -not $process.HasExited) {
-              $process.Kill($true)
-              $process.WaitForExit()
-            }
+            $passwordPlain = $null
+            if ($userCreated) { Remove-LocalUser -Name $userName -ErrorAction SilentlyContinue }
+            if (Test-Path -LiteralPath $publicRoot) { Remove-Item -LiteralPath $publicRoot -Recurse -Force }
+            if (Test-Path -LiteralPath $dataRoot) { Remove-Item -LiteralPath $dataRoot -Recurse -Force }
           }
       - name: Validate Windows, WSL, and POSIX command generation
         run: pnpm exec vitest run packages/core/src/__tests__/cli.test.ts packages/local-agent/src/__tests__/safePaths.test.ts packages/local-agent/src/__tests__/preflightFailureKinds.test.ts --reporter=verbose

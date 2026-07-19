@@ -8,7 +8,7 @@ import { defineConfig } from "vite";
 const studioRoot = path.dirname(fileURLToPath(import.meta.url));
 const productRoot = path.resolve(studioRoot, "../..");
 const packageJson = JSON.parse(fs.readFileSync(path.join(productRoot, "package.json"), "utf8")) as { version: string };
-const artifactChannels = new Set(["hosted", "portable", "source-dev"]);
+const artifactChannels = new Set(["hosted", "npm", "source-dev"]);
 
 function readArtifactChannel(): string {
   const channel = process.env.DUSK_STUDIO_ARTIFACT_CHANNEL?.trim().toLowerCase() || "hosted";

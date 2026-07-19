@@ -83,11 +83,11 @@
     "accepted_risk": {
       "owner": "George",
       "accepted_at": "2026-07-17T00:00:00Z",
-      "authority_reference": "docs/operations/github-only-monitoring-decision.md",
+      "authority_reference": "docs/operations/public-monitoring.md",
       "rationale": "This personal project intentionally avoids a third-party monitoring account and keeps operational ownership inside the public GitHub repository.",
       "residual_risk": "A GitHub-wide outage or a scheduled workflow that never starts may suppress both detection and the assigned GitHub issue alert.",
       "revisit_triggers": [
-        "public companion binary publication",
+        "public npm package publication",
         "service-level or commercial commitments",
         "a monitoring-blindness incident",
         "material growth in external developer usage"
@@ -112,21 +112,36 @@
     "https://docs.dusk.network/developer/integrations/http-api/",
     "https://github.com/dusk-network/forge"
   ],
-  "companion_distribution": {
-    "hosted_mode": "docs-only",
-    "allowed_availability": [
-      "not-published"
-    ],
-    "required_targets": [
-      "windows-x64",
-      "linux-x64",
-      "darwin-arm64"
-    ],
-    "required_signatures": {
-      "windows-x64": "authenticode",
-      "linux-x64": "sigstore-keyless",
-      "darwin-arm64": "developer-id-notarized"
+  "npm_distribution": {
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.0",
+    "tag": "v1.0.0",
+    "registry_url": "https://registry.npmjs.org/dusk-developer-studio",
+    "node_engine": ">=24.18.0 <25",
+    "assurance_workflow": ".github/workflows/studio-npm-package-assurance.yml",
+    "publication_workflow": ".github/workflows/studio-npm-publish.yml",
+    "initial_publication_environment": "npm-initial-publication",
+    "initial_registry_authentication": "short-lived-granular-token",
+    "initial_token_max_lifetime_hours": 24,
+    "initial_token_scope": {
+      "permissions": "read-write",
+      "package_access": "all-packages-bootstrap",
+      "bypass_2fa": true
     },
-    "clean_machine_smoke_status": "passed"
+    "expected_npm_maintainer": "georgiandusk",
+    "expected_oidc_publisher": "GitHub Actions",
+    "expected_oidc_trusted_publisher_id": "github",
+    "expected_provenance_repository": "https://github.com/GeorgianDusk/dusk-developer-studio",
+    "expected_initial_provenance_workflow": ".github/workflows/studio-npm-publish.yml",
+    "token_revocation_required": true,
+    "environment_secret_removal_required": true,
+    "trusted_publisher_configuration_required": true,
+    "subsequent_registry_authentication": "github-oidc",
+    "subsequent_workflow_path": ".github/workflows/studio-npm-oidc-publish.yml",
+    "required_platforms": [
+      "ubuntu-24.04",
+      "windows-2025",
+      "macos-15"
+    ]
   }
 }

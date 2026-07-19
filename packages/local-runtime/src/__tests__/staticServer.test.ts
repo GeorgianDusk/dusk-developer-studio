@@ -35,7 +35,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-describe("portable local static server", () => {
+describe("npm local static server", () => {
   it("serves hardened files and completes a one-time same-origin bootstrap", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-")); roots.push(root);
     await fs.writeFile(path.join(root, "index.html"), "<title>Local</title>");

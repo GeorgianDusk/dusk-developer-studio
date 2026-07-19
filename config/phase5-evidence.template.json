@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "candidate": {
     "artifact_fingerprint_sha256": "replace-with-64-character-digest",
     "public_fingerprint_sha256": "replace-with-64-character-digest",
@@ -233,7 +233,7 @@
     "monitoring": {
       "mode": "github-only",
       "owner": "George",
-      "authority_reference": "docs/operations/github-only-monitoring-decision.md"
+      "authority_reference": "docs/operations/public-monitoring.md"
     },
     "alert_delivery": {
       "candidate_commit": "pending",
@@ -322,9 +322,128 @@
     "signed_at": "pending",
     "artifact_fingerprint_sha256": "pending"
   },
-  "companion_distribution": {
-    "hosted_mode": "docs-only",
-    "availability": "not-published",
-    "targets": {}
+  "npm_distribution": {
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.0",
+    "node_engine": ">=24.18.0 <25",
+    "registry_url": "https://registry.npmjs.org/dusk-developer-studio",
+    "integrity": "pending",
+    "package_inventory_sha256": "pending",
+    "platform_smoke": {
+      "ubuntu-24.04": {
+        "status": "pending",
+        "runner": "ubuntu-24.04",
+        "node_version": "24.18.0",
+        "safe_smoke": "pending",
+        "local_actions_capability_contract_smoke": "pending",
+        "elevated_refusal": "pending",
+        "candidate_commit": "pending",
+        "integrity": "pending",
+        "package_inventory_sha256": "pending",
+        "observed_at": "pending"
+      },
+      "windows-2025": {
+        "status": "pending",
+        "runner": "windows-2025",
+        "node_version": "24.18.0",
+        "safe_smoke": "pending",
+        "local_actions_capability_contract_smoke": "pending",
+        "elevated_refusal": "pending",
+        "candidate_commit": "pending",
+        "integrity": "pending",
+        "package_inventory_sha256": "pending",
+        "observed_at": "pending"
+      },
+      "macos-15": {
+        "status": "pending",
+        "runner": "macos-15",
+        "node_version": "24.18.0",
+        "safe_smoke": "pending",
+        "local_actions_capability_contract_smoke": "pending",
+        "elevated_refusal": "pending",
+        "candidate_commit": "pending",
+        "integrity": "pending",
+        "package_inventory_sha256": "pending",
+        "observed_at": "pending"
+      }
+    },
+    "assurance": {
+      "candidate_commit": "pending",
+      "receipt_sha256": "pending",
+      "receipt_json": "",
+      "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+      "run_url": "pending",
+      "artifact_name": "studio-npm-assurance-receipt-<run-id>.json",
+      "observed_at": "pending",
+      "provenance": {
+        "schema_version": 1,
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+        "run_id": 0,
+        "run_url": "pending",
+        "run_attempt": 1,
+        "run_event": "workflow_dispatch",
+        "run_commit": "pending",
+        "run_conclusion": "pending",
+        "artifact_id": 0,
+        "artifact_name": "pending",
+        "artifact_api_url": "pending",
+        "artifact_digest_sha256": "pending",
+        "artifact_sha256": "pending",
+        "artifact_expired": false,
+        "receipt_path": "studio-npm-assurance-receipt-<run-id>.json",
+        "receipt_sha256": "pending",
+        "downloaded_at": "pending"
+      }
+    },
+    "publication": {
+      "candidate_commit": "pending",
+      "receipt_sha256": "pending",
+      "receipt_json": "",
+      "workflow_path": ".github/workflows/studio-npm-publish.yml",
+      "run_url": "pending",
+      "artifact_name": "studio-npm-publication-receipt-<run-id>.json",
+      "observed_at": "pending",
+      "provenance": {
+        "schema_version": 1,
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "workflow_path": ".github/workflows/studio-npm-publish.yml",
+        "run_id": 0,
+        "run_url": "pending",
+        "run_attempt": 1,
+        "run_event": "push",
+        "run_commit": "pending",
+        "run_conclusion": "pending",
+        "artifact_id": 0,
+        "artifact_name": "pending",
+        "artifact_api_url": "pending",
+        "artifact_digest_sha256": "pending",
+        "artifact_sha256": "pending",
+        "artifact_expired": false,
+        "receipt_path": "studio-npm-publication-receipt-<run-id>.json",
+        "receipt_sha256": "pending",
+        "downloaded_at": "pending"
+      }
+    },
+    "post_publication_controls": {
+      "token_created_at": "pending",
+      "token_permissions": "pending",
+      "token_package_access": "pending",
+      "token_bypass_2fa": false,
+      "token_revoked": false,
+      "token_revoked_at": "pending",
+      "token_revocation_evidence_reference": "pending",
+      "token_revocation_evidence_sha256": "pending",
+      "environment_secret_removed": false,
+      "environment_secret_removed_at": "pending",
+      "environment_secret_removal_evidence_reference": "pending",
+      "environment_secret_removal_evidence_sha256": "pending",
+      "trusted_publisher_configured": false,
+      "trusted_publisher_configured_at": "pending",
+      "trusted_publisher_evidence_reference": "pending",
+      "trusted_publisher_evidence_sha256": "pending",
+      "verified_by": "pending",
+      "verified_at": "pending"
+    }
   }
 }

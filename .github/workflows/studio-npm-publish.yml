@@ -1,0 +1,306 @@
+name: Publish initial Studio npm package
+
+"on":
+  push:
+    tags:
+      - v1.0.0
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: studio-npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  assurance:
+    name: Re-run cross-platform npm assurance
+    uses: ./.github/workflows/studio-npm-package-assurance.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish exact initial npm tag with provenance
+    needs: assurance
+    runs-on: ubuntu-24.04
+    environment: npm-initial-publication
+    timeout-minutes: 20
+    env:
+      CI: "true"
+      NODE_VERSION: 24.18.0
+      TARBALL: output/npm/dusk-developer-studio-1.0.0.tgz
+      NODE_AUTH_TOKEN: ""
+      ASSURED_NPM_INTEGRITY: ${{ needs.assurance.outputs.integrity }}
+      ASSURED_PACKAGE_INVENTORY_SHA256: ${{ needs.assurance.outputs.package_inventory_sha256 }}
+      ASSURED_CANDIDATE_COMMIT: ${{ needs.assurance.outputs.candidate_commit }}
+      ASSURED_CANDIDATE_ARTIFACT: ${{ needs.assurance.outputs.candidate_artifact_name }}
+    steps:
+      - name: Check out the exact tagged source and current main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: "false"
+      - name: Enforce exact tag, current main, version, commit, and clean source
+        run: |
+          test "$GITHUB_REF_TYPE" = "tag"
+          test "$GITHUB_REF_NAME" = "v1.0.0"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")" = "$GITHUB_SHA"
+          git fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          test "$(git rev-parse refs/remotes/origin/main)" = "$GITHUB_SHA"
+          test -z "$(git status --short)"
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          const manifest = JSON.parse(fs.readFileSync("packages/cli/package.json", "utf8"));
+          const expectedMaintainer = policy.publication.expected_npm_maintainer;
+          if (policy.distribution !== "npm"
+              || policy.package.tag !== process.env.GITHUB_REF_NAME
+              || manifest.name !== "dusk-developer-studio"
+              || manifest.name !== policy.package.name
+              || manifest.version !== "1.0.0"
+              || manifest.version !== policy.package.version
+              || manifest.engines?.node !== ">=24.18.0 <25"
+              || manifest.engines.node !== policy.package.node_engine
+              || manifest.private === true
+              || Object.keys(manifest.dependencies ?? {}).length
+              || ["preinstall", "install", "postinstall"].some((name) => manifest.scripts?.[name])
+              || !/^[a-z0-9][a-z0-9._-]{0,63}$/u.test(expectedMaintainer ?? "")
+              || /^(?:replace|pending|todo)/iu.test(expectedMaintainer)
+              || policy.publication.expected_provenance_repository !== "https://github.com/GeorgianDusk/dusk-developer-studio"
+              || policy.publication.expected_initial_provenance_workflow !== ".github/workflows/studio-npm-publish.yml") {
+            throw new Error("Tagged npm manifest does not match the frozen publication policy.");
+          }
+          NODE
+      - name: Use the verified Node.js line and npm registry mapping
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.18.0
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: "false"
+      - name: Download the exact candidate exercised by all platform lanes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ env.ASSURED_CANDIDATE_ARTIFACT }}
+          path: output/npm
+      - name: Recheck exact package inventory and assurance bindings
+        run: |
+          test -f "$TARBALL"
+          node --input-type=module <<'NODE'
+          import { execFileSync } from "node:child_process";
+          import { createHash } from "node:crypto";
+          import fs from "node:fs";
+          import os from "node:os";
+          import path from "node:path";
+          const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          const archiveEntries = execFileSync("tar", ["-tzf", process.env.TARBALL], { encoding: "utf8" })
+            .split(/\r?\n/u).filter(Boolean);
+          if (archiveEntries.some((entry) => {
+            const normalized = entry.replace(/\/$/u, "");
+            return !normalized.startsWith("package/")
+              || normalized.includes("\\")
+              || normalized.split("/").some((segment) => segment === "." || segment === "..");
+          })) {
+            throw new Error("Publication package contains an unsafe archive path.");
+          }
+          const files = archiveEntries
+            .filter((entry) => !entry.endsWith("/"))
+            .map((entry) => entry.slice("package/".length))
+            .sort();
+          const inventory = policy.package_inventory;
+          if (files.length > inventory.maximum_files
+              || new Set(files).size !== files.length
+              || inventory.required_paths.some((required) => !files.includes(required))
+              || files.some((file) => {
+                const root = file.split("/", 1)[0];
+                return !inventory.allowed_root_files.includes(file) && !inventory.allowed_roots.includes(root);
+              })
+              || files.some((file) => /\.(?:exe|dll|dylib|so|node)$/iu.test(file))) {
+            throw new Error("Publication package inventory is outside the reviewed allowlist.");
+          }
+          const extractionRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dusk-studio-publish-"));
+          let unpackedBytes = 0;
+          const extractedFiles = [];
+          try {
+            execFileSync("tar", ["-xzf", process.env.TARBALL, "-C", extractionRoot]);
+            const walk = (directory, prefix = "") => {
+              for (const name of fs.readdirSync(directory).sort()) {
+                const absolute = path.join(directory, name);
+                const relative = prefix ? `${prefix}/${name}` : name;
+                const stats = fs.lstatSync(absolute);
+                if (stats.isSymbolicLink() || (!stats.isDirectory() && !stats.isFile())) {
+                  throw new Error(`Publication package contains a non-regular entry: ${relative}`);
+                }
+                if (stats.isDirectory()) walk(absolute, relative);
+                else {
+                  unpackedBytes += stats.size;
+                  extractedFiles.push(relative);
+                }
+              }
+            };
+            walk(path.join(extractionRoot, "package"));
+          } finally {
+            fs.rmSync(extractionRoot, { recursive: true, force: true });
+          }
+          if (unpackedBytes <= 0
+              || unpackedBytes > inventory.maximum_unpacked_bytes
+              || JSON.stringify(extractedFiles.sort()) !== JSON.stringify(files)) {
+            throw new Error("Publication package unpacked inventory or size is outside policy.");
+          }
+          const bytes = fs.readFileSync(process.env.TARBALL);
+          const integrity = `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+          const inventorySha256 = createHash("sha256").update(`${files.join("\n")}\n`, "utf8").digest("hex");
+          if (process.env.ASSURED_CANDIDATE_COMMIT !== process.env.GITHUB_SHA
+              || integrity !== process.env.ASSURED_NPM_INTEGRITY
+              || inventorySha256 !== process.env.ASSURED_PACKAGE_INVENTORY_SHA256) {
+            throw new Error("Publication tarball bytes do not match the exact cross-platform assurance outputs.");
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, `LOCAL_NPM_INTEGRITY=${integrity}\nPACKAGE_INVENTORY_SHA256=${inventorySha256}\n`);
+          NODE
+      - name: Enforce the initial-publication credential boundary
+        run: |
+          test -z "${NODE_AUTH_TOKEN:-}"
+          test -z "${NPM_TOKEN:-}"
+          NPM_VERSION="$(npm --version)"
+          node -e 'const [major, minor] = process.argv[1].split(".").map(Number); if (major < 11 || (major === 11 && minor < 5)) process.exit(1)' "$NPM_VERSION"
+      - name: Determine whether exact package bytes already exist
+        id: registry
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          const response = await fetch(`${policy.package.registry}/${policy.package.name}/${policy.package.version}`, {
+            redirect: "error",
+            signal: AbortSignal.timeout(15000)
+          });
+          let outcome;
+          if (response.status === 404) {
+            outcome = "needs-publication";
+          } else if (response.status === 200) {
+            const published = await response.json();
+            const npmName = (record) => typeof record === "string"
+              ? record.replace(/\s+<[^>]+>$/u, "").trim()
+              : record?.name;
+            const npmUser = npmName(published._npmUser);
+            const maintainers = (published.maintainers ?? []).map(npmName);
+            if (published.name !== policy.package.name
+                || published.version !== policy.package.version
+                || published.dist?.integrity !== process.env.LOCAL_NPM_INTEGRITY
+                || npmUser !== policy.publication.expected_npm_maintainer
+                || !maintainers.includes(policy.publication.expected_npm_maintainer)) {
+              throw new Error("The registry already contains different bytes or unexpected ownership for the frozen package version.");
+            }
+            outcome = "verified-existing";
+          } else {
+            throw new Error(`Registry preflight returned ${response.status}.`);
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, `REGISTRY_OUTCOME=${outcome}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `outcome=${outcome}\n`);
+          NODE
+      - name: Publish once with the environment-scoped npm token
+        if: steps.registry.outputs.outcome == 'needs-publication'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_INITIAL_PUBLISH_TOKEN }}
+        run: |
+          test -n "${NODE_AUTH_TOKEN:-}"
+          test -z "${NPM_TOKEN:-}"
+          EXPECTED_NPM_MAINTAINER="$(node -p 'JSON.parse(require("node:fs").readFileSync("config/companion-release-policy.json", "utf8")).publication.expected_npm_maintainer')"
+          OBSERVED_NPM_MAINTAINER="$(npm whoami --registry=https://registry.npmjs.org)"
+          test "$OBSERVED_NPM_MAINTAINER" = "$EXPECTED_NPM_MAINTAINER"
+          npm publish "$TARBALL" --access public --provenance
+          printf '%s\n' 'PUBLICATION_OUTCOME=published' >> "$GITHUB_ENV"
+      - name: Record idempotent exact-byte recovery
+        if: steps.registry.outputs.outcome == 'verified-existing'
+        run: printf '%s\n' 'PUBLICATION_OUTCOME=verified-existing' >> "$GITHUB_ENV"
+      - name: Wait for exact registry integrity and provenance metadata
+        run: |
+          verified=false
+          for attempt in $(seq 1 20); do
+            if npm view dusk-developer-studio@1.0.0 --registry=https://registry.npmjs.org --json > "$RUNNER_TEMP/npm-view.json" \
+              && node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          const published = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/npm-view.json`, "utf8"));
+          const npmName = (record) => typeof record === "string"
+            ? record.replace(/\s+<[^>]+>$/u, "").trim()
+            : record?.name;
+          const npmUser = npmName(published._npmUser);
+          const maintainers = (published.maintainers ?? []).map(npmName);
+          if (published.name !== "dusk-developer-studio"
+              || published.version !== "1.0.0"
+              || published.dist?.integrity !== process.env.LOCAL_NPM_INTEGRITY
+              || npmUser !== policy.publication.expected_npm_maintainer
+              || !maintainers.includes(policy.publication.expected_npm_maintainer)
+              || published.dist?.attestations?.provenance?.predicateType !== "https://slsa.dev/provenance/v1") {
+            process.exit(1);
+          }
+          NODE
+            then
+              verified=true
+              break
+            fi
+            sleep 3
+          done
+          test "$verified" = true
+      - name: Cryptographically verify the published provenance
+        run: |
+          VERIFY_ROOT="$RUNNER_TEMP/npm-signature-verification"
+          mkdir -p "$VERIFY_ROOT"
+          cd "$VERIFY_ROOT"
+          npm init --yes >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund --save-exact --registry=https://registry.npmjs.org dusk-developer-studio@1.0.0
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const lock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+          const record = lock.packages?.["node_modules/dusk-developer-studio"];
+          if (record?.version !== "1.0.0" || record.integrity !== process.env.LOCAL_NPM_INTEGRITY) {
+            throw new Error("Signature verification lockfile is not bound to the exact published tarball.");
+          }
+          NODE
+          npm audit signatures --registry=https://registry.npmjs.org
+          node "$GITHUB_WORKSPACE/scripts/verify-npm-provenance.mjs" \
+            "--metadata=$RUNNER_TEMP/npm-view.json" \
+            "--output=$RUNNER_TEMP/npm-provenance-binding.json" \
+            --publication=initial
+      - name: Write the bounded publication receipt
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          const published = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/npm-view.json`, "utf8"));
+          const provenance = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/npm-provenance-binding.json`, "utf8"));
+          if (!["published", "verified-existing"].includes(process.env.PUBLICATION_OUTCOME)) {
+            throw new Error("Publication outcome is missing.");
+          }
+          const receipt = {
+            schema_version: 1,
+            status: process.env.PUBLICATION_OUTCOME,
+            package_name: policy.package.name,
+            package_version: policy.package.version,
+            node_engine: policy.package.node_engine,
+            registry_url: `${policy.package.registry}/${policy.package.name}`,
+            tag: policy.package.tag,
+            candidate_commit: process.env.GITHUB_SHA,
+            workflow_path: policy.publication.workflow_path,
+            observed_at: new Date().toISOString(),
+            integrity: published.dist.integrity,
+            package_inventory_sha256: process.env.PACKAGE_INVENTORY_SHA256,
+            npm_maintainer: policy.publication.expected_npm_maintainer,
+            registry_authentication: process.env.PUBLICATION_OUTCOME === "published"
+              ? policy.publication.initial_registry_authentication
+              : "not-used-idempotent-verification",
+            provenance_verification: "npm-audit-signatures-and-slsa-source-bound",
+            ...provenance
+          };
+          fs.mkdirSync("output/npm", { recursive: true });
+          fs.writeFileSync(`output/npm/studio-npm-publication-receipt-${process.env.GITHUB_RUN_ID}.json`, `${JSON.stringify(receipt, null, 2)}\n`);
+          NODE
+      - name: Upload the direct npm publication receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-npm-publication-receipt-${{ github.run_id }}.json
+          path: output/npm/studio-npm-publication-receipt-${{ github.run_id }}.json
+          archive: false
+          if-no-files-found: error
+          retention-days: 90
