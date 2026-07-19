@@ -1,6 +1,6 @@
 # Phase 5 Pilot And Independent Review Protocol
 
-Date: 2026-07-17
+Date: 2026-07-19
 Status: ready for assigned reviewers and participants
 
 ## Launch Scope
@@ -97,10 +97,10 @@ Use pseudonymous participant ids. Do not commit names, email addresses, wallet a
 5. Verify both WASM artifacts and the VM-test result separately.
 6. Observe a positive block height and 64-hex hash from the official Testnet node.
 7. Identify execution/finality/data-driver evidence in Inspect.
-8. Use the current `/on/driver:<contract_id>/...` schema and encoding/decoding routes without signing or deployment.
-9. Find source, support, and manual deploy boundaries.
+8. After a supplied finalized Testnet contract ID, read `/on/contract:<contract_id>/metadata`, explain why `driver_available: true` is required, then use the current `/on/driver:<contract_id>/...` schema and encoding/decoding routes without asking Studio to sign or deploy.
+9. Open deployment readiness, identify the exact build and Testnet prerequisites it derives, review the placeholder-only Rusk Wallet handoff, and explain why Studio cannot confirm wallet settings, funding, signing, submission, inclusion, or finality.
 
-Each participant receives one controlled recoverable failure. Never inject a real wallet, secret, filesystem, or network safety failure.
+Each participant receives one controlled failure and attempts recovery; the cohort must meet the 80% recovery threshold below. Never inject a real wallet, secret, filesystem, or network safety failure.
 
 ## Observation Record
 
@@ -127,4 +127,42 @@ For every session record:
 
 The machine-readable thresholds live in `config/phase5-policy.json`. Summarise redacted sessions in the Phase 5 evidence JSON and validate it with `scripts/check-phase5-evidence.mjs`.
 
-Use evidence schema version 2 for new or refreshed decisions. Version 1 records are historical only: they predate the explicit monitoring-mode binding and must be migrated through the current template before evaluation.
+Formal verification is online and fail closed. Set `GH_TOKEN` or
+`GITHUB_TOKEN` to a repository-scoped credential with read access to Actions
+before running the checker. The checker verifies the canonical repository,
+workflow, event, exact candidate commit, successful first run attempt, and the
+single run-scoped receipt artifact through GitHub. It then downloads the
+direct, unarchived JSON artifact through GitHub's one-use redirect without
+forwarding the token, and requires the GitHub digest, downloaded SHA-256,
+embedded receipt bytes, and recorded receipt SHA-256 to be identical. An
+offline schema evaluation is useful for finding evidence defects but always
+returns `no-go`; self-recorded provenance cannot authorize a launch.
+
+The formal checker must run from a clean checkout at the exact candidate
+commit. Candidate evidence binds the byte-for-byte Phase 5 policy SHA-256 and
+the evaluator commit; a modified local policy or evaluator cannot authorize a
+different candidate.
+
+The resulting `go` means **policy-complete under trusted operator assembly**.
+Only the four GitHub Actions run, artifact, and receipt records are
+independently authenticated online. Reviewer identity and independence, pilot
+observations, rollback claims and references, issue disposition, support
+ownership, and George's product sign-off remain human attestations supplied by
+trusted operators. The checker validates their shape, chronology, candidate
+binding, safe references, and internal consistency; it cannot prove the
+identity or truth of those human claims and does not dereference their evidence
+links.
+
+Each pilot entry uses a non-identifying pseudonymous id, strict UTC start and
+completion timestamps, an exact duration, and a unique canonical
+`session_record_reference` distinct from its recovery evidence. Each rollback
+uses a hashed structured receipt that records the prior A release, candidate B
+release, restored A fingerprint, exact start/completion chronology, target,
+result, health proof, and evidence reference.
+
+Use evidence schema version 4 for new or refreshed decisions. Earlier records
+are historical only: they predate exact policy/evaluator binding, canonical
+pilot session records, structured rollback receipts, and the current strict
+candidate binding across reviews, pilots, native smoke, monitoring, and
+synthetic receipts. Recreate them through the current fail-closed template
+before evaluation.

@@ -82,7 +82,9 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
   for (const viewport of [
     { width: 320, height: 800, route: "overview" },
     { width: 320, height: 800, route: "setup" },
+    { width: 320, height: 800, route: "inspect" },
     { width: 390, height: 844, route: "setup" },
+    { width: 390, height: 844, route: "inspect" },
     { width: 640, height: 900, route: "setup" }
   ] as const) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
@@ -115,6 +117,14 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
     expect(layout.scrollWidth, JSON.stringify(layout.overflowingElements, null, 2)).toBeLessThanOrEqual(layout.innerWidth);
     expect(layout.clippedTextCount).toBe(0);
     expect(layout.smallTargetCount).toBe(0);
+    if (viewport.route === "inspect" && viewport.width <= 390) {
+      const contractBox = await page.getByLabel("Deployed contract ID").boundingBox();
+      const functionBox = await page.getByLabel("Function name for encode / decode").boundingBox();
+      expect(contractBox).not.toBeNull();
+      expect(functionBox).not.toBeNull();
+      expect(Math.abs((contractBox?.x ?? 0) - (functionBox?.x ?? 0))).toBeLessThanOrEqual(1);
+      expect(functionBox?.y ?? 0).toBeGreaterThan((contractBox?.y ?? 0) + (contractBox?.height ?? 0));
+    }
   }
 });
 
@@ -145,7 +155,7 @@ test("critical routes have no automated WCAG A/AA violations", async ({ page }, 
   test.skip(testInfo.project.name !== "chromium-desktop", "One deterministic axe pass covers shared markup; browser projects cover rendering parity.");
   await page.goto("/");
   await page.getByRole("button", { name: /Start DuskDS manually/i }).click();
-  for (const route of ["overview", "setup", "reference"] as const) {
+  for (const route of ["overview", "setup", "inspect", "reference"] as const) {
     await page.goto(`/#${route}`);
     const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
     expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);

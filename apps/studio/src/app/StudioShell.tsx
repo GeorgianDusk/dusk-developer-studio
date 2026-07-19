@@ -11,6 +11,7 @@ import {
   type StepRoute
 } from "./journeyProgress";
 import { blockerLabels, evidenceLabels, pathText, steps } from "./studioConfig";
+import { getDuskDsDeployReadiness } from "./deployReadiness";
 import { useJourney, useStudioRuntime } from "./studioState";
 import { ExternalLink, StatusPill, toneForStatus } from "./StudioUi";
 import type { CompanionStatus, RouteId } from "./types";
@@ -101,7 +102,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
     ["1", "Setup", "Follow the reviewed prerequisites manually."],
     ["2", "Access", "Run a read-only query and record what you observed."],
     ["3", "Build", "Create and test locally; automation is optional."],
-    ["4", "Inspect", "Review results and keep manual and automatic checks distinct."]
+    ["4", "Inspect", "Review pre-deploy evidence, deploy manually, then verify read-only results."]
   ];
   return (
     <section className="overview-page">
@@ -197,8 +198,21 @@ export function StepFrame({ builderPath, route, setRoute, children, helper }: { 
   const progress = journey.progress.paths[builderPath][route];
   const required = getStepRequirements(builderPath, route);
   const completion = getJourneyCompletionCounts(journey.progress, builderPath);
+  const deployReadiness = builderPath === "duskds"
+    ? getDuskDsDeployReadiness(journey.progress)
+    : null;
   const announcement = useRef<HTMLSpanElement>(null);
   const previousProgress = useRef({ status: progress.status, evidenceCount: progress.evidence.length });
+  function reviewDeployReadiness() {
+    const target = document.getElementById("duskds-deploy-readiness");
+    target?.scrollIntoView({ block: "start" });
+    target?.focus();
+  }
+  function reviewPostDeployInspection() {
+    const target = document.getElementById("duskds-post-deploy-inspection");
+    target?.scrollIntoView({ block: "start" });
+    target?.querySelector<HTMLInputElement>("input")?.focus({ preventScroll: true });
+  }
   useEffect(() => {
     const previous = previousProgress.current;
     let message = "";
@@ -256,7 +270,13 @@ export function StepFrame({ builderPath, route, setRoute, children, helper }: { 
           {previous ? <button type="button" onClick={() => setRoute(previous.id)}>Back: {previous.label}</button> : null}
           {next
             ? <button type="button" className="primary-button" onClick={() => setRoute(next.id)}>Next: {next.label}</button>
-            : <button type="button" className="primary-button" onClick={() => setRoute("reference")}>Open reference</button>}
+            : builderPath === "duskds"
+              ? !deployReadiness?.evidenceReady
+                ? <button type="button" className="primary-button" onClick={reviewDeployReadiness}>Review deployment readiness</button>
+                : !isJourneyComplete(progress.status)
+                  ? <button type="button" className="primary-button" onClick={reviewPostDeployInspection}>Continue to post-deploy inspection</button>
+                  : <button type="button" className="primary-button" onClick={() => setRoute("reference")}>Open reference</button>
+              : <button type="button" className="primary-button" onClick={() => setRoute("reference")}>Open reference</button>}
         </div>
       </aside>
     </section>

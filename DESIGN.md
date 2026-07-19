@@ -122,6 +122,10 @@ Objective rail → task surface → evidence rail. Healthy states emphasize evid
 
 Same shell as EVM for transfer learning. Preflight/tool rows behave like a tactical equipment checklist: required vs optional and failure category remain explicit.
 
+Inspect uses one continuous four-part task surface rather than adding a fifth journey stage: observe a latest block, bind the result to the exact Build source identity, review the derived manual deployment gate, then return after finality for post-deploy reads. Readiness is a computed status, never a success claim: Setup, Access, Build artifacts, VM tests, and source identity must agree before it reads as ready. The gate shows the oldest required observation and its refresh deadline; Access expires after 24 hours, while Setup, Build, and source-binding evidence expire after 30 days. Wallet settings, funding, signing, nonces, initialization arguments, gas overrides, submission, inclusion, and finality remain outside Studio.
+
+Post-deploy inspection checks contract metadata first with separate Linux/macOS and Windows commands. Driver commands and schema/encode/decode confirmations stay disabled until saved metadata evidence for the same contract ID and source identity reports `driver_available: true`; deployment alone must never be presented as proof that a data driver was published. Identity changes clear dependent digests and confirmations, and the recovery action focuses the exact missing-driver guidance.
+
 ### Reference
 
 Filter/search controls lead. Resources and capabilities are dense source-backed rows. Maturity/source/checked date form a compact receipt line. Mainnet/Devnet remain visually quieter reference records.

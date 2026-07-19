@@ -32,6 +32,7 @@ describe("journey invalidation", () => {
     state = recordJourneyEvidence(state, "duskds", "inspect", [
       "duskds-inspect-latest-block",
       "duskds-inspect-artifact-revision",
+      "duskds-inspect-driver-availability",
       "duskds-inspect-driver-schema",
       "duskds-inspect-driver-encode",
       "duskds-inspect-driver-decode"
@@ -40,6 +41,7 @@ describe("journey invalidation", () => {
     const next = removeJourneyEvidence(state, "duskds", "inspect", ["duskds-inspect-driver-schema"]);
 
     expect(next.paths.duskds.inspect.evidence).not.toContain("duskds-inspect-driver-schema");
+    expect(next.paths.duskds.inspect.evidence).toContain("duskds-inspect-driver-availability");
     expect(next.paths.duskds.inspect.evidence).toContain("duskds-inspect-driver-encode");
     expect(next.paths.duskds.inspect.status).not.toBe("confirmed-manually");
   });

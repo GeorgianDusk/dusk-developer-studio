@@ -75,6 +75,9 @@ describe("resource search", () => {
     expect(searchTroubleshooting("forge").some((item) => item.id === "foundry-missing")).toBe(true);
     expect(searchCapabilities("citadel").some((item) => item.id === "citadel-private-identity")).toBe(true);
     expect(searchCapabilities("hedger").some((item) => item.id === "duskevm-confidential-hedger")).toBe(true);
+    expect(searchResources("DuskVM contract quickstart").some((item) => item.id === "duskds-smart-contracts")).toBe(true);
+    expect(searchCapabilities("driver_available").some((item) => item.id === "duskds-data-drivers")).toBe(true);
+    expect(searchTroubleshooting("driver_available").some((item) => item.id === "duskds-driver-unavailable-after-deploy")).toBe(true);
   });
 });
 

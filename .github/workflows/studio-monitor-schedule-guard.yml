@@ -36,16 +36,15 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/monitor-heartbeat.mjs --max-age-hours=15 --out=output/monitor-heartbeat-receipt.json
+        run: node scripts/monitor-heartbeat.mjs --max-age-hours=15 --out="output/studio-monitor-heartbeat-$GITHUB_RUN_ID.json"
       - name: Upload the bounded heartbeat receipt
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: studio-monitor-heartbeat-${{ github.run_id }}
-          path: output/monitor-heartbeat-receipt.json
+          path: output/studio-monitor-heartbeat-${{ github.run_id }}.json
+          archive: false
           if-no-files-found: error
           retention-days: 30
-          compression-level: 0
       - name: Open or update the assigned heartbeat alert
         if: always() && steps.heartbeat.outcome != 'success'
         env:

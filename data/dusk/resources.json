@@ -101,10 +101,10 @@
     },
     {
         "id":  "duskds-smart-contracts",
-        "title":  "Smart Contracts on DuskDS",
+        "title":  "DuskVM contract quickstart",
         "category":  "Native",
-        "summary":  "Official native Dusk smart contract path covering Rust, WASM, DuskVM, data drivers, build commands, and Rusk Wallet deployment shape.",
-        "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/",
+        "summary":  "Official Forge v0.3.0 path to create, test in DuskVM, build and verify paired WASM artifacts, then manually deploy and call the contract on Testnet with Rusk Wallet.",
+        "url":  "https://docs.dusk.network/developer/duskvm/quickstart/#5-deploy-on-testnet",
         "maturity":  "official",
         "tags":  [
                      "duskds",
@@ -115,16 +115,20 @@
                      "native",
                      "setup",
                      "build",
-                     "inspect"
+                     "inspect",
+                     "deploy",
+                     "rusk-wallet",
+                     "testnet",
+                     "verify"
                  ]
     },
     {
         "id":  "my-first-contract",
         "title":  "my-first-contract Template",
         "category":  "Native template",
-        "summary":  "Dusk docs currently reference this repository as the DuskDS template route. The Studio keeps it as source context while using the Dusk Forge CLI path that was locally scaffolded, built, and tested.",
+        "summary":  "Earlier DuskDS documentation used this repository as its starter template. Keep it as legacy source context; the current canonical route is the Forge v0.3.0 DuskVM quickstart.",
         "url":  "https://github.com/dusk-network/my-first-contract",
-        "maturity":  "official-docs-referenced",
+        "maturity":  "official-source-legacy",
         "tags":  [
                      "duskds",
                      "native",
@@ -132,7 +136,7 @@
                      "my-first-contract",
                      "setup",
                      "build",
-                     "source-gap"
+                     "legacy"
                  ]
     },
     {
@@ -172,7 +176,7 @@
         "id":  "duskds-http-api",
         "title":  "DuskDS HTTP API",
         "category":  "Native",
-        "summary":  "Official HTTP/RUES API reference for low-level DuskDS node interaction when W3sper is not enough.",
+        "summary":  "Official low-level DuskDS API reference for POST /graphql, contract calls at /on/contracts:<id>/<method>, data-driver helpers at /on/driver:<id>/..., and the /on/contract:<id>/metadata availability gate.",
         "url":  "https://docs.dusk.network/developer/integrations/http-api/",
         "maturity":  "official",
         "tags":  [
@@ -228,16 +232,19 @@
         "id":  "rusk-wallet-cli",
         "title":  "Rusk Wallet CLI",
         "category":  "Native wallet",
-        "summary":  "Official CLI wallet reference for profiles, balances, transfers, contract-call, contract-deploy, custom node URLs, and manual signing workflows.",
-        "url":  "https://github.com/dusk-network/rusk/tree/master/rusk-wallet",
-        "maturity":  "official-source",
+        "summary":  "Official wallet guidance for checking local settings and help, funding a public Testnet account, manually deploying, and retaining the returned contract ID and transaction hash.",
+        "url":  "https://docs.dusk.network/use/wallets/#rusk-wallet",
+        "maturity":  "official",
         "tags":  [
                      "duskds",
                      "access",
                      "build",
                      "deploy",
                      "wallet",
-                     "rusk-wallet"
+                     "rusk-wallet",
+                     "testnet",
+                     "settings",
+                     "manual"
                  ]
     },
     {

@@ -1,15 +1,86 @@
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { evaluatePhase5Evidence } from "./phase5-evidence.mjs";
+import { URL } from "node:url";
+import { verifyCandidateBoundPhase5Context } from "./phase5-candidate-context.mjs";
+import {
+  evaluatePhase5Evidence as evaluatePhase5EvidenceRaw,
+  evaluatePhase5EvidenceOnline as evaluatePhase5EvidenceOnlineRaw
+} from "./phase5-evidence.mjs";
 
 const root = path.resolve(process.cwd());
 const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "phase5-policy.json"), "utf8"));
-const now = new Date("2026-07-15T00:00:00Z");
-policy.monitoring_evidence.accepted_risk.accepted_at = now.toISOString();
+const now = new Date("2026-07-15T12:00:00Z");
+policy.monitoring_evidence.accepted_risk.accepted_at = "2026-07-15T00:30:00Z";
 const digest = "a".repeat(64);
+const restoredDigest = "c".repeat(64);
+const candidateCommit = "b".repeat(40);
+const policyShaFor = (testPolicy) => createHash("sha256").update(JSON.stringify(testPolicy), "utf8").digest("hex");
+const evaluationOptions = (testPolicy, options = {}) => ({
+  policySha256: policyShaFor(testPolicy),
+  evaluatorCommit: candidateCommit,
+  ...options
+});
+const evaluatePhase5Evidence = (testPolicy, testEvidence, options = {}) =>
+  evaluatePhase5EvidenceRaw(testPolicy, testEvidence, evaluationOptions(testPolicy, options));
+const evaluatePhase5EvidenceOnline = (testPolicy, testEvidence, options = {}) =>
+  evaluatePhase5EvidenceOnlineRaw(testPolicy, testEvidence, evaluationOptions(testPolicy, options));
+const publicAssuranceRunUrl = "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123456";
+const nativeSmokeRunUrl = "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123450";
+const heartbeatRunUrl = "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123457";
+const alertRunUrl = "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123458";
+const boundReceipt = (receipt) => {
+  const receipt_json = `${JSON.stringify(receipt, null, 2)}\n`;
+  return {
+    receipt_json,
+    receipt_sha256: createHash("sha256").update(receipt_json, "utf8").digest("hex")
+  };
+};
+const rewriteReceipt = (record, mutate) => {
+  const receipt = JSON.parse(record.receipt_json);
+  mutate(receipt);
+  Object.assign(record, boundReceipt(receipt));
+  if (record.provenance) {
+    record.provenance.receipt_sha256 = record.receipt_sha256;
+    record.provenance.artifact_digest_sha256 = record.receipt_sha256;
+    record.provenance.artifact_sha256 = record.receipt_sha256;
+  }
+};
+const provenanceFor = ({ workflowPath, runUrl, runEvent, artifactId, artifactName, receiptPath, receiptSha256, downloadedAt }) => {
+  const runId = Number(new URL(runUrl).pathname.split("/").at(-1));
+  return {
+    schema_version: 1,
+    repository: "GeorgianDusk/dusk-developer-studio",
+    workflow_path: workflowPath,
+    run_id: runId,
+    run_url: runUrl,
+    run_attempt: 1,
+    run_event: runEvent,
+    run_commit: candidateCommit,
+    run_conclusion: "success",
+    artifact_id: artifactId,
+    artifact_name: artifactName,
+    artifact_api_url: `https://api.github.com/repos/GeorgianDusk/dusk-developer-studio/actions/artifacts/${artifactId}`,
+    artifact_digest_sha256: receiptSha256,
+    artifact_sha256: receiptSha256,
+    artifact_expired: false,
+    receipt_path: receiptPath,
+    receipt_sha256: receiptSha256,
+    downloaded_at: downloadedAt
+  };
+};
 const owners = Object.fromEntries(policy.required_owners.map((owner) => [owner, `${owner}-owner`]));
-const reviews = Object.fromEntries(policy.required_reviews.map((review) => [review, { status: "accepted", reviewer: `${review}-reviewer`, reviewed_at: "2026-07-15T00:00:00Z", independent: true }]));
+const reviews = Object.fromEntries(policy.required_reviews.map((review) => [review, {
+  status: "accepted",
+  reviewer: `${review}-reviewer`,
+  reviewed_at: "2026-07-15T01:00:00Z",
+  independent: true,
+  evidence_reference: `review-${review}`,
+  candidate_commit: candidateCommit,
+  candidate_artifact_fingerprint_sha256: digest
+}]));
 const sessions = [
   ["p1", "duskds", "novice", "windows", true, true],
   ["p2", "duskds", "experienced", "wsl", true, true],
@@ -19,57 +90,470 @@ const sessions = [
   ["p6", "duskds", "experienced", "linux", true, true],
   ["p7", "duskds", "experienced", "macos", true, true],
   ["p8", "duskds", "experienced", "macos", true, true]
-].map(([id, pathName, experience, context, recoveryAttempted, recovered]) => ({ id, path: pathName, experience, context, completed: true, recovery_attempted: recoveryAttempted, recovered, trust_score: 5, blocking_confusion: false, duration_minutes: 20 }));
-const checks = Object.fromEntries(policy.required_synthetic_checks.map((check) => [check, { status: "passed", owner: "platform-owner" }]));
+].map(([id, pathName, experience, context, recoveryAttempted, recovered]) => ({
+  id,
+  path: pathName,
+  experience,
+  context,
+  completed: true,
+  controlled_failure: true,
+  failure_scenario: "known-bad local prerequisite",
+  recovery_attempted: recoveryAttempted,
+  recovered,
+  recovery_evidence_reference: `pilot-${id}-recovery`,
+  started_at: "2026-07-15T01:10:00Z",
+  completed_at: "2026-07-15T01:30:00Z",
+  candidate_commit: candidateCommit,
+  candidate_artifact_fingerprint_sha256: digest,
+  trust_score: 5,
+  blocking_confusion: false,
+  duration_minutes: 20,
+  session_record_reference: `pilot-${id}-session-record`
+}));
+const checks = Object.fromEntries(policy.required_synthetic_checks.map((check) => [check, {
+  status: "passed",
+  owner: "platform-owner",
+  candidate_commit: candidateCommit,
+  candidate_public_fingerprint_sha256: digest
+}]));
 checks.duskds_node_read = {
   ...checks.duskds_node_read,
   endpoint: policy.duskds_testnet_graphql_url,
   height: 3_818_138,
   hash: "f".repeat(64),
-  observed_at: "2026-07-15T00:00:00Z"
+  observed_at: "2026-07-15T02:59:00Z"
 };
 checks.rpc_chain_id = {
   status: "deferred",
   path: "evm",
-  reason: policy.deferred_synthetic_checks.rpc_chain_id.reason
-};
-checks.monitor_heartbeat = {
-  ...checks.monitor_heartbeat,
-  receipt_sha256: digest,
-  workflow_path: policy.monitoring_evidence.schedule_guard_workflow,
-  observed_at: "2026-07-14T12:00:00Z",
-  run_url: "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123456"
+  reason: policy.deferred_synthetic_checks.rpc_chain_id.reason,
+  authority_reference: "config/phase5-policy.json",
+  candidate_commit: candidateCommit,
+  candidate_public_fingerprint_sha256: digest
 };
 const passedSteps = (steps) => Object.fromEntries(steps.map((step) => [step, "passed"]));
-const evidence = {
+const nativeReceipt = {
+  schema_version: 1,
+  status: "passed",
+  candidate_commit: candidateCommit,
+  candidate_artifact_fingerprint_sha256: digest,
+  workflow_path: ".github/workflows/duskds-native-smoke.yml",
+  observed_at: "2026-07-15T02:00:00Z",
+  contract_sha256: "1".repeat(64),
+  data_driver_sha256: "2".repeat(64),
+  native_steps: passedSteps(policy.required_native_smoke_steps)
+};
+const publicReceiptChecks = Object.fromEntries(policy.required_synthetic_checks
+  .filter((check) => check !== "monitor_heartbeat")
+  .map((check) => [check, { status: "passed" }]));
+publicReceiptChecks.release_parity = {
+  status: "passed",
+  commit: candidateCommit,
+  version: "2026.07.15",
+  artifact_fingerprint_sha256: digest
+};
+publicReceiptChecks.key_routes = { status: "passed", spa_fallback_cache: "no-cache" };
+publicReceiptChecks.source_links = {
+  status: "passed",
+  urls: Object.fromEntries(policy.key_source_urls.map((url) => [url, 200]))
+};
+publicReceiptChecks.duskds_node_read = {
+  status: "passed",
+  endpoint: policy.duskds_testnet_graphql_url,
+  height: 3_818_138,
+  hash: "f".repeat(64),
+  observed_at: "2026-07-15T02:59:00Z"
+};
+publicReceiptChecks.rpc_chain_id = {
+  status: "deferred",
+  path: "evm",
+  reason: policy.deferred_synthetic_checks.rpc_chain_id.reason
+};
+publicReceiptChecks.rpc_degradation = { status: "passed", evidence: "hosted-browser-offline-recovery" };
+publicReceiptChecks.tls_expiry = { status: "passed", days_remaining: 45, expires_at: "2026-08-29T00:00:00Z" };
+publicReceiptChecks.companion_port_closed = { status: "passed", observed: "econnrefused" };
+publicReceiptChecks.development_port_closed = { status: "passed", observed: "econnrefused" };
+const publicReceipt = {
+  schema_version: 1,
+  checked_at: "2026-07-15T03:00:00Z",
+  target: "https://studio.134-122-59-217.nip.io",
+  expected_environment: "production",
+  status: "passed",
+  studio_status: "passed",
+  upstream_dependency_status: "passed",
+  checks: publicReceiptChecks,
+  errors: []
+};
+const heartbeatReceipt = {
+  schema_version: 1,
+  status: "passed",
+  workflow_path: ".github/workflows/studio-public-staging.yml",
+  checked_at: "2026-07-15T04:00:00Z",
+  max_age_seconds: 54_000,
+  workflow_id: 123,
+  workflow_state: "active",
+  last_run_id: 123456,
+  last_run_url: publicAssuranceRunUrl,
+  last_run_status: "completed",
+  last_run_conclusion: "success",
+  last_run_created_at: "2026-07-15T03:00:00Z",
+  age_seconds: 3600
+};
+const heartbeatBoundReceipt = boundReceipt(heartbeatReceipt);
+checks.monitor_heartbeat = {
+  ...checks.monitor_heartbeat,
+  ...heartbeatBoundReceipt,
+  workflow_path: policy.monitoring_evidence.schedule_guard_workflow,
+  guard_run_url: heartbeatRunUrl,
+  artifact_name: "studio-monitor-heartbeat-123457.json",
+  observed_at: heartbeatReceipt.checked_at,
+  observed_public_run_url: publicAssuranceRunUrl,
+  provenance: provenanceFor({
+    workflowPath: ".github/workflows/studio-monitor-schedule-guard.yml",
+    runUrl: heartbeatRunUrl,
+    runEvent: "schedule",
+    artifactId: 457,
+    artifactName: "studio-monitor-heartbeat-123457.json",
+    receiptPath: "studio-monitor-heartbeat-123457.json",
+    receiptSha256: heartbeatBoundReceipt.receipt_sha256,
+    downloadedAt: "2026-07-15T04:10:00Z"
+  })
+};
+const alertReceipt = {
   schema_version: 2,
-  candidate: { artifact_fingerprint_sha256: digest, public_fingerprint_sha256: digest, commit: "b".repeat(40), manifest_url: "https://studio.134-122-59-217.nip.io/release-manifest.json", built_at: "2026-07-15T00:00:00Z", source_checked_at: "2026-07-14T00:00:00Z", source_expires_at: "2026-08-03T23:59:59Z" },
+  status: "passed",
+  channel: "github-assigned-issue",
+  owner: "George",
+  issue_number: 123,
+  issue_closed: true,
+  run_id: "123458",
+  candidate_commit: candidateCommit,
+  candidate_public_fingerprint_sha256: digest,
+  workflow_path: ".github/workflows/studio-public-staging.yml",
+  observed_at: "2026-07-15T05:00:00Z"
+};
+const nativeBoundReceipt = boundReceipt(nativeReceipt);
+const publicBoundReceipt = boundReceipt(publicReceipt);
+const alertBoundReceipt = boundReceipt(alertReceipt);
+const evidence = {
+  schema_version: 4,
+  candidate: {
+    artifact_fingerprint_sha256: digest,
+    public_fingerprint_sha256: digest,
+    commit: candidateCommit,
+    release_id: "2026.07.15",
+    policy_sha256: policyShaFor(policy),
+    evaluator_commit: candidateCommit,
+    implementation_identities: ["codex-agent"],
+    manifest_url: "https://studio.134-122-59-217.nip.io/release-manifest.json",
+    built_at: "2026-07-15T00:00:00Z",
+    source_checked_at: "2026-07-14T00:00:00Z",
+    source_expires_at: "2026-08-03T23:59:59Z"
+  },
   companion_distribution: { hosted_mode: "docs-only", availability: "not-published", targets: {} },
   owners,
   reviews,
   pilot: { sessions },
-  live_smoke: { status: "passed", authority_reference: "approval-2026-07-15", redacted: true, native_steps: passedSteps(policy.required_native_smoke_steps) },
+  live_smoke: {
+    status: "passed",
+    authority_reference: "approval-2026-07-15",
+    redacted: true,
+    candidate_commit: candidateCommit,
+    candidate_artifact_fingerprint_sha256: digest,
+    ...nativeBoundReceipt,
+    workflow_path: ".github/workflows/duskds-native-smoke.yml",
+    run_url: nativeSmokeRunUrl,
+    artifact_name: "duskds-native-smoke-receipt-123450.json",
+    observed_at: nativeReceipt.observed_at,
+    provenance: provenanceFor({
+      workflowPath: ".github/workflows/duskds-native-smoke.yml",
+      runUrl: nativeSmokeRunUrl,
+      runEvent: "workflow_dispatch",
+      artifactId: 450,
+      artifactName: "duskds-native-smoke-receipt-123450.json",
+      receiptPath: "duskds-native-smoke-receipt-123450.json",
+      receiptSha256: nativeBoundReceipt.receipt_sha256,
+      downloadedAt: "2026-07-15T02:10:00Z"
+    }),
+    native_steps: passedSteps(policy.required_native_smoke_steps)
+  },
   synthetics: {
+    public_assurance: {
+      candidate_commit: candidateCommit,
+      candidate_public_fingerprint_sha256: digest,
+      ...publicBoundReceipt,
+      workflow_path: ".github/workflows/studio-public-staging.yml",
+      run_url: publicAssuranceRunUrl,
+      artifact_name: "studio-public-synthetic-receipt-123456.json",
+      observed_at: publicReceipt.checked_at,
+      provenance: provenanceFor({
+        workflowPath: ".github/workflows/studio-public-staging.yml",
+        runUrl: publicAssuranceRunUrl,
+        runEvent: "schedule",
+        artifactId: 456,
+        artifactName: "studio-public-synthetic-receipt-123456.json",
+        receiptPath: "studio-public-synthetic-receipt-123456.json",
+        receiptSha256: publicBoundReceipt.receipt_sha256,
+        downloadedAt: "2026-07-15T03:10:00Z"
+      })
+    },
     checks,
     monitoring: {
       mode: policy.monitoring_evidence.mode,
       owner: policy.monitoring_evidence.accepted_risk.owner,
       authority_reference: policy.monitoring_evidence.accepted_risk.authority_reference
     },
-    alert_delivery_verified: true,
-    checked_at: "2026-07-15T00:00:00Z"
+    alert_delivery: {
+      candidate_commit: candidateCommit,
+      candidate_public_fingerprint_sha256: digest,
+      ...alertBoundReceipt,
+      workflow_path: ".github/workflows/studio-public-staging.yml",
+      run_url: alertRunUrl,
+      artifact_name: "studio-alert-delivery-receipt-123458.json",
+      observed_at: alertReceipt.observed_at,
+      provenance: provenanceFor({
+        workflowPath: ".github/workflows/studio-public-staging.yml",
+        runUrl: alertRunUrl,
+        runEvent: "workflow_dispatch",
+        artifactId: 458,
+        artifactName: "studio-alert-delivery-receipt-123458.json",
+        receiptPath: "studio-alert-delivery-receipt-123458.json",
+        receiptSha256: alertBoundReceipt.receipt_sha256,
+        downloadedAt: "2026-07-15T05:10:00Z"
+      })
+    },
+    checked_at: publicReceipt.checked_at
   },
   rollback: {
-    product: { status: "passed", owner: "engineering-owner", duration_seconds: 100, restored_fingerprint_sha256: digest, health_proof: "receipt-product", data_cache_effects: "immutable assets retained; HTML reverted" },
-    platform: { status: "passed", owner: "platform-owner", duration_seconds: 200, restored_fingerprint_sha256: digest, health_proof: "receipt-platform", data_cache_effects: "no data mutation; route restored" }
+    product: (() => {
+      const record = {
+      owner: "engineering-owner",
+      target: "product",
+      result: "passed",
+      duration_seconds: 100,
+      prior_release_id: "2026.07.14",
+      prior_commit: "a".repeat(40),
+      prior_fingerprint_sha256: restoredDigest,
+      candidate_release_id: "2026.07.15",
+      candidate_commit: candidateCommit,
+      candidate_artifact_fingerprint_sha256: digest,
+      restored_fingerprint_sha256: restoredDigest,
+      started_at: "2026-07-15T05:58:20Z",
+      completed_at: "2026-07-15T06:00:00Z",
+      evidence_reference: "rollback-product",
+      health_proof: "receipt-product",
+      data_cache_effects: "immutable assets retained; HTML reverted"
+      };
+      return { ...record, ...boundReceipt({ schema_version: 1, ...record }) };
+    })(),
+    platform: (() => {
+      const record = {
+      owner: "platform-owner",
+      target: "platform",
+      result: "passed",
+      duration_seconds: 200,
+      prior_release_id: "2026.07.14",
+      prior_commit: "a".repeat(40),
+      prior_fingerprint_sha256: restoredDigest,
+      candidate_release_id: "2026.07.15",
+      candidate_commit: candidateCommit,
+      candidate_artifact_fingerprint_sha256: digest,
+      restored_fingerprint_sha256: restoredDigest,
+      started_at: "2026-07-15T06:26:40Z",
+      completed_at: "2026-07-15T06:30:00Z",
+      evidence_reference: "rollback-platform",
+      health_proof: "receipt-platform",
+      data_cache_effects: "no data mutation; route restored"
+      };
+      return { ...record, ...boundReceipt({ schema_version: 1, ...record }) };
+    })()
   },
   issues: [],
   support: { on_call_owner: "support-owner", support_channel_confirmed: true, launch_message_owner: "product-owner", incident_message_owner: "platform-owner" },
-  product_signoff: { decision: "go", owner: "George", signed_at: "2026-07-15T00:00:00Z", artifact_fingerprint_sha256: digest }
+  product_signoff: { decision: "go", owner: "George", signed_at: "2026-07-15T07:00:00Z", artifact_fingerprint_sha256: digest }
 };
 
-assert.equal(evaluatePhase5Evidence(policy, evidence, { now }).decision, "go");
+function onlineFetchFor(testEvidence) {
+  const repository = "GeorgianDusk/dusk-developer-studio";
+  const records = [
+    testEvidence.live_smoke,
+    testEvidence.synthetics.public_assurance,
+    { ...testEvidence.synthetics.checks.monitor_heartbeat, run_url: testEvidence.synthetics.checks.monitor_heartbeat.guard_run_url },
+    testEvidence.synthetics.alert_delivery
+  ];
+  const routes = new Map();
+  for (const record of records) {
+    const provenance = record.provenance;
+    const runId = provenance.run_id;
+    const runApi = `https://api.github.com/repos/${repository}/actions/runs/${runId}`;
+    const observedAt = Date.parse(record.observed_at);
+    const receiptBytes = Buffer.from(record.receipt_json, "utf8");
+    const artifactApi = `https://api.github.com/repos/${repository}/actions/artifacts/${provenance.artifact_id}`;
+    const artifact = {
+      id: provenance.artifact_id,
+      name: record.artifact_name,
+      size_in_bytes: receiptBytes.length,
+      url: artifactApi,
+      archive_download_url: `${artifactApi}/zip`,
+      expired: false,
+      created_at: new Date(observedAt + 60_000).toISOString(),
+      expires_at: new Date(observedAt + 30 * 24 * 60 * 60 * 1_000).toISOString(),
+      digest: `sha256:${record.receipt_sha256}`,
+      workflow_run: {
+        id: runId,
+        repository_id: 99,
+        head_repository_id: 99,
+        head_sha: candidateCommit
+      }
+    };
+    routes.set(runApi, {
+      kind: "json",
+      value: {
+        id: runId,
+        url: runApi,
+        html_url: record.run_url,
+        artifacts_url: `${runApi}/artifacts`,
+        path: `${record.workflow_path}@main`,
+        head_sha: candidateCommit,
+        status: "completed",
+        conclusion: "success",
+        event: provenance.run_event,
+        run_attempt: 1,
+        created_at: new Date(observedAt - 10 * 60_000).toISOString(),
+        run_started_at: new Date(observedAt - 5 * 60_000).toISOString(),
+        updated_at: new Date(observedAt + 5 * 60_000).toISOString(),
+        repository: { id: 99, full_name: repository },
+        head_repository: { id: 99, full_name: repository }
+      }
+    });
+    routes.set(`${runApi}/artifacts?name=${encodeURIComponent(record.artifact_name)}&per_page=100`, {
+      kind: "json",
+      value: { total_count: 1, artifacts: [artifact] }
+    });
+    const signedUrl = `https://results-receiver.actions.githubusercontent.com/artifacts/${provenance.artifact_id}?sig=redacted`;
+    routes.set(artifact.archive_download_url, { kind: "redirect", location: signedUrl });
+    routes.set(signedUrl, { kind: "bytes", value: receiptBytes });
+  }
+  return async (input, init = {}) => {
+    const url = String(input);
+    const route = routes.get(url);
+    if (!route) throw new Error(`Unexpected online Phase 5 fixture URL: ${url}`);
+    const authorization = new globalThis.Headers(init.headers).get("authorization");
+    if (url.startsWith("https://api.github.com/")) assert.equal(authorization, "Bearer phase5-test-token");
+    else assert.equal(authorization, null);
+    if (route.kind === "json") return new globalThis.Response(JSON.stringify(route.value), { status: 200 });
+    if (route.kind === "redirect") return new globalThis.Response(null, { status: 302, headers: { location: route.location } });
+    return new globalThis.Response(route.value, { status: 200 });
+  };
+}
+
+async function formalDecision(testPolicy, testEvidence) {
+  const policyBoundEvidence = {
+    ...testEvidence,
+    candidate: {
+      ...testEvidence.candidate,
+      policy_sha256: policyShaFor(testPolicy),
+      evaluator_commit: candidateCommit
+    }
+  };
+  return evaluatePhase5EvidenceOnline(testPolicy, policyBoundEvidence, {
+    now,
+    token: "phase5-test-token",
+    fetchImpl: onlineFetchFor(policyBoundEvidence)
+  });
+}
+
+assert.equal(evaluatePhase5Evidence(policy, evidence, { now }).decision, "no-go");
+assert.match(evaluatePhase5Evidence(policy, evidence, { now }).blockers.join("\n"), /Online GitHub Actions/);
+const baselineFormalDecision = await formalDecision(policy, evidence);
+assert.equal(baselineFormalDecision.decision, "go");
+assert.equal(baselineFormalDecision.assurance_scope, "policy-complete-under-trusted-operator-assembly");
+assert.deepEqual(baselineFormalDecision.trusted_human_attestations, ["reviews", "pilots", "support", "rollback", "product_signoff"]);
+assert.match(evaluatePhase5EvidenceRaw(policy, evidence, { now }).blockers.join("\n"), /exact reviewed policy bytes and evaluator commit/);
+const wrongPolicyBinding = JSON.parse(JSON.stringify(evidence));
+wrongPolicyBinding.candidate.policy_sha256 = "d".repeat(64);
+assert.match(evaluatePhase5Evidence(policy, wrongPolicyBinding, { now }).blockers.join("\n"), /exact reviewed policy bytes and evaluator commit/);
+const wrongEvaluatorBinding = JSON.parse(JSON.stringify(evidence));
+wrongEvaluatorBinding.candidate.evaluator_commit = "d".repeat(40);
+assert.match(evaluatePhase5Evidence(policy, wrongEvaluatorBinding, { now }).blockers.join("\n"), /exact reviewed policy bytes and evaluator commit/);
+const contextPolicyBytes = Buffer.from(JSON.stringify(policy), "utf8");
+const cleanCandidateContext = verifyCandidateBoundPhase5Context({
+  root,
+  evidence,
+  policyBytes: contextPolicyBytes,
+  git: (args) => args[0] === "rev-parse" ? candidateCommit : ""
+});
+assert.deepEqual(cleanCandidateContext, { evaluatorCommit: candidateCommit, policySha256: evidence.candidate.policy_sha256 });
+assert.throws(() => verifyCandidateBoundPhase5Context({
+  root,
+  evidence,
+  policyBytes: contextPolicyBytes,
+  git: (args) => args[0] === "rev-parse" ? "d".repeat(40) : ""
+}), /exact candidate commit/);
+assert.throws(() => verifyCandidateBoundPhase5Context({
+  root,
+  evidence,
+  policyBytes: contextPolicyBytes,
+  git: (args) => args[0] === "rev-parse" ? candidateCommit : args[0] === "status" ? " M config/phase5-policy.json" : ""
+}), /clean tracked candidate checkout/);
+assert.throws(() => verifyCandidateBoundPhase5Context({
+  root,
+  evidence,
+  policyBytes: Buffer.from("{}", "utf8"),
+  git: () => ""
+}), /exact local policy bytes/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, schema_version: 2 }, { now }).blockers.join("\n"), /schema is unsupported/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, schema_version: 3 }, { now }).blockers.join("\n"), /schema is unsupported/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, candidate: { ...evidence.candidate, public_fingerprint_sha256: "c".repeat(64) } }, { now }).blockers.join("\n"), /fingerprints differ/);
+const futureCandidateBuild = JSON.parse(JSON.stringify(evidence));
+futureCandidateBuild.candidate.built_at = "2026-07-15T12:01:00Z";
+assert.match(evaluatePhase5Evidence(policy, futureCandidateBuild, { now }).blockers.join("\n"), /build time is invalid or in the future/);
+for (const invalidTimestamp of [
+  "2026-07-15",
+  "2026-07-15T00:00:00+00:00",
+  "2026-02-30T00:00:00Z",
+  "2026-07-15T00:00:00.0000Z"
+]) {
+  const nonCanonicalCandidateBuild = JSON.parse(JSON.stringify(evidence));
+  nonCanonicalCandidateBuild.candidate.built_at = invalidTimestamp;
+  assert.match(evaluatePhase5Evidence(policy, nonCanonicalCandidateBuild, { now }).blockers.join("\n"), /build time is invalid/);
+}
+const futureSourceCheck = JSON.parse(JSON.stringify(evidence));
+futureSourceCheck.candidate.source_checked_at = "2026-07-15T12:01:00Z";
+assert.match(evaluatePhase5Evidence(policy, futureSourceCheck, { now }).blockers.join("\n"), /source receipt is future-dated/);
+const excessiveSourceHorizon = JSON.parse(JSON.stringify(evidence));
+excessiveSourceHorizon.candidate.source_expires_at = "2026-08-20T00:00:01Z";
+assert.match(evaluatePhase5Evidence(policy, excessiveSourceHorizon, { now }).blockers.join("\n"), /exceeds the 31-day horizon/);
+const futureSignoff = JSON.parse(JSON.stringify(evidence));
+futureSignoff.product_signoff.signed_at = "2026-07-15T12:01:00Z";
+assert.match(evaluatePhase5Evidence(policy, futureSignoff, { now }).blockers.join("\n"), /no later than now/);
+const earlySignoff = JSON.parse(JSON.stringify(evidence));
+earlySignoff.product_signoff.signed_at = "2026-07-15T06:00:00Z";
+assert.match(evaluatePhase5Evidence(policy, earlySignoff, { now }).blockers.join("\n"), /no earlier than every gating record/);
+const credentialedManifest = JSON.parse(JSON.stringify(evidence));
+credentialedManifest.candidate.manifest_url = "https://user:pass@studio.134-122-59-217.nip.io/release-manifest.json";
+assert.match(evaluatePhase5Evidence(policy, credentialedManifest, { now }).blockers.join("\n"), /credential-free/);
+const queriedManifest = JSON.parse(JSON.stringify(evidence));
+queriedManifest.candidate.manifest_url = "https://studio.134-122-59-217.nip.io/release-manifest.json?candidate=1";
+assert.match(evaluatePhase5Evidence(policy, queriedManifest, { now }).blockers.join("\n"), /credential-free/);
+const queriedActionsRun = JSON.parse(JSON.stringify(evidence));
+queriedActionsRun.synthetics.public_assurance.run_url = `${publicAssuranceRunUrl}?download=1`;
+assert.match(evaluatePhase5Evidence(policy, queriedActionsRun, { now }).blockers.join("\n"), /exact canonical Actions workflow and run/);
+const secretInAllowedValue = JSON.parse(JSON.stringify(evidence));
+secretInAllowedValue.pilot.sessions[0].failure_scenario = "mnemonic is nonsecret-placeholder";
+assert.match(evaluatePhase5Evidence(policy, secretInAllowedValue, { now }).blockers.join("\n"), /forbidden secret-shaped fields or values/);
+const unknownSecretNote = JSON.parse(JSON.stringify(evidence));
+unknownSecretNote.notes = "mnemonic words";
+assert.match(evaluatePhase5Evidence(policy, unknownSecretNote, { now }).blockers.join("\n"), /unknown: notes/);
+const nonexistentArtifactMetadata = JSON.parse(JSON.stringify(evidence));
+nonexistentArtifactMetadata.synthetics.public_assurance.provenance.artifact_id = 0;
+assert.match(evaluatePhase5Evidence(policy, nonexistentArtifactMetadata, { now }).blockers.join("\n"), /lacks complete downloaded GitHub run\/artifact provenance/);
+const mismatchedRunMetadata = JSON.parse(JSON.stringify(evidence));
+mismatchedRunMetadata.synthetics.public_assurance.provenance.run_id = 999999;
+assert.match(evaluatePhase5Evidence(policy, mismatchedRunMetadata, { now }).blockers.join("\n"), /lacks complete downloaded GitHub run\/artifact provenance/);
+const mismatchedArtifactDigest = JSON.parse(JSON.stringify(evidence));
+mismatchedArtifactDigest.synthetics.alert_delivery.provenance.artifact_sha256 = "d".repeat(64);
+assert.match(evaluatePhase5Evidence(policy, mismatchedArtifactDigest, { now }).blockers.join("\n"), /lacks complete downloaded GitHub run\/artifact provenance/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { sessions: sessions.slice(0, 7) } }, { now }).blockers.join("\n"), /Pilot has 7\/8/);
 const mixedPathSessions = sessions.map((session, index) => index === 0 ? { ...session, path: "evm" } : session);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { sessions: mixedPathSessions } }, { now }).blockers.join("\n"), /required DuskDS sessions|non-production path/);
@@ -86,10 +570,166 @@ attemptedEvmActivation.preview_paths = [];
 const attemptedEvmBlockers = evaluatePhase5Evidence(attemptedEvmActivation, evidence, { now }).blockers.join("\n");
 assert.match(attemptedEvmBlockers, /real RPC verification and no active deferral/);
 assert.match(attemptedEvmBlockers, /explicit EVM smoke steps and pilot coverage/);
-assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, companion_security: { ...reviews.companion_security, independent: false } } }, { now }).blockers.join("\n"), /not recorded as independent/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, companion_security: { ...reviews.companion_security, independent: false } } }, { now }).blockers.join("\n"), /not independent/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, platform: { ...reviews.platform, independent: false } } }, { now }).blockers.join("\n"), /Reviewer for platform is not independent/);
+const repeatedReviewer = JSON.parse(JSON.stringify(evidence));
+repeatedReviewer.reviews.accessibility.reviewer = repeatedReviewer.reviews.platform.reviewer;
+assert.match(evaluatePhase5Evidence(policy, repeatedReviewer, { now }).blockers.join("\n"), /distinct independent reviewers/);
+const repeatedReviewReference = JSON.parse(JSON.stringify(evidence));
+repeatedReviewReference.reviews.accessibility.evidence_reference = ` ${repeatedReviewReference.reviews.platform.evidence_reference.toUpperCase()} `;
+assert.match(evaluatePhase5Evidence(policy, repeatedReviewReference, { now }).blockers.join("\n"), /reviews must use distinct evidence references/);
+const ownerReviewer = JSON.parse(JSON.stringify(evidence));
+ownerReviewer.reviews.companion_security.reviewer = ownerReviewer.owners.security;
+assert.match(evaluatePhase5Evidence(policy, ownerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
+const implementerReviewer = JSON.parse(JSON.stringify(evidence));
+implementerReviewer.reviews.platform.reviewer = implementerReviewer.candidate.implementation_identities[0];
+assert.match(evaluatePhase5Evidence(policy, implementerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
+const aliasedOwnerReviewer = JSON.parse(JSON.stringify(evidence));
+aliasedOwnerReviewer.owners.security = "Alice Smith <alice.security@example.com>";
+aliasedOwnerReviewer.reviews.companion_security.reviewer = "alice.security@example.com";
+assert.match(evaluatePhase5Evidence(policy, aliasedOwnerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
+const dottedOwnerReviewer = JSON.parse(JSON.stringify(evidence));
+dottedOwnerReviewer.owners.security = "Alice Smith";
+dottedOwnerReviewer.reviews.companion_security.reviewer = "alice.smith@example.com";
+assert.match(evaluatePhase5Evidence(policy, dottedOwnerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
+const displayEmailOwnerReviewer = JSON.parse(JSON.stringify(evidence));
+displayEmailOwnerReviewer.owners.security = "Alice Smith <security@example.com>";
+displayEmailOwnerReviewer.reviews.companion_security.reviewer = "alice.smith@example.net";
+assert.match(evaluatePhase5Evidence(policy, displayEmailOwnerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
+const aliasedOwners = JSON.parse(JSON.stringify(evidence));
+aliasedOwners.owners.security = "Alice Smith";
+aliasedOwners.owners.platform = "alice.smith@example.com";
+assert.match(evaluatePhase5Evidence(policy, aliasedOwners, { now }).blockers.join("\n"), /Owner assignments must use distinct people/);
+const aliasedReviewers = JSON.parse(JSON.stringify(evidence));
+aliasedReviewers.reviews.companion_security.reviewer = "Alice Smith";
+aliasedReviewers.reviews.platform.reviewer = "alice.smith@example.com";
+assert.match(evaluatePhase5Evidence(policy, aliasedReviewers, { now }).blockers.join("\n"), /distinct independent reviewers/);
+const unsafeReviewReference = JSON.parse(JSON.stringify(evidence));
+unsafeReviewReference.reviews.accessibility.evidence_reference = "https://github.com/example/review?token=1";
+assert.match(evaluatePhase5Evidence(policy, unsafeReviewReference, { now }).blockers.join("\n"), /safe redacted evidence reference/);
+for (const unsafeReference of [
+  " https://user:pass@example.com/review",
+  "//user:pass@example.com/review",
+  "file:///tmp/review.json",
+  "C:\\Users\\Alice\\review.json",
+  "\\\\server\\share\\review.json",
+  "/tmp/review.json",
+  "https://example.com/review?download=1",
+  "https://example.com/review#finding"
+]) {
+  const bypassedReference = JSON.parse(JSON.stringify(evidence));
+  bypassedReference.reviews.accessibility.evidence_reference = unsafeReference;
+  assert.match(evaluatePhase5Evidence(policy, bypassedReference, { now }).blockers.join("\n"), /safe redacted evidence reference/);
+}
+const recoveryPhraseWithoutDelimiter = JSON.parse(JSON.stringify(evidence));
+recoveryPhraseWithoutDelimiter.pilot.sessions[0].failure_scenario = "recovery phrase alpha beta gamma";
+assert.match(evaluatePhase5Evidence(policy, recoveryPhraseWithoutDelimiter, { now }).blockers.join("\n"), /forbidden secret-shaped fields or values/);
+const accessTokenValue = JSON.parse(JSON.stringify(evidence));
+accessTokenValue.support.on_call_owner = "access token: ghp_abcdefghijklmnopqrstuvwxyz123456";
+assert.match(evaluatePhase5Evidence(policy, accessTokenValue, { now }).blockers.join("\n"), /forbidden secret-shaped fields or values/);
+const embeddedCredentialedUrl = JSON.parse(JSON.stringify(evidence));
+embeddedCredentialedUrl.support.on_call_owner = "reviewed at https://user:pass@example.com/evidence";
+assert.match(evaluatePhase5Evidence(policy, embeddedCredentialedUrl, { now }).blockers.join("\n"), /forbidden secret-shaped fields or values/);
+const prebuildReview = JSON.parse(JSON.stringify(evidence));
+prebuildReview.reviews.accessibility.reviewed_at = "2026-07-14T23:59:59Z";
+assert.match(evaluatePhase5Evidence(policy, prebuildReview, { now }).blockers.join("\n"), /at or after the candidate build/);
+const unboundReview = JSON.parse(JSON.stringify(evidence));
+unboundReview.reviews.accessibility.candidate_commit = "d".repeat(40);
+assert.match(evaluatePhase5Evidence(policy, unboundReview, { now }).blockers.join("\n"), /Independent review accessibility is not bound/);
+const participantWithoutRecovery = JSON.parse(JSON.stringify(evidence));
+participantWithoutRecovery.pilot.sessions[3].controlled_failure = false;
+participantWithoutRecovery.pilot.sessions[3].recovered = false;
+assert.match(evaluatePhase5Evidence(policy, participantWithoutRecovery, { now }).blockers.join("\n"), /Pilot session p4 lacks its own/);
+const oneUnrecoveredPilot = JSON.parse(JSON.stringify(evidence));
+oneUnrecoveredPilot.pilot.sessions[3].recovered = false;
+assert.equal((await formalDecision(policy, oneUnrecoveredPilot)).decision, "go");
+const twoUnrecoveredPilots = JSON.parse(JSON.stringify(evidence));
+twoUnrecoveredPilots.pilot.sessions[3].recovered = false;
+twoUnrecoveredPilots.pilot.sessions[4].recovered = false;
+assert.match(evaluatePhase5Evidence(policy, twoUnrecoveredPilots, { now }).blockers.join("\n"), /recovery rate 0.75 is below 0.8/);
+const unboundPilot = JSON.parse(JSON.stringify(evidence));
+unboundPilot.pilot.sessions[0].candidate_artifact_fingerprint_sha256 = "d".repeat(64);
+assert.match(evaluatePhase5Evidence(policy, unboundPilot, { now }).blockers.join("\n"), /Pilot session p1 is not bound/);
+const duplicateRecoveryReference = JSON.parse(JSON.stringify(evidence));
+duplicateRecoveryReference.pilot.sessions[1].recovery_evidence_reference = `  ${duplicateRecoveryReference.pilot.sessions[0].recovery_evidence_reference.toUpperCase()}  `;
+assert.match(evaluatePhase5Evidence(policy, duplicateRecoveryReference, { now }).blockers.join("\n"), /unique evidence reference/);
+const duplicateSessionReference = JSON.parse(JSON.stringify(evidence));
+duplicateSessionReference.pilot.sessions[1].session_record_reference = duplicateSessionReference.pilot.sessions[0].session_record_reference;
+assert.match(evaluatePhase5Evidence(policy, duplicateSessionReference, { now }).blockers.join("\n"), /unique canonical session record reference/);
+const reusedRecoveryAsSessionReference = JSON.parse(JSON.stringify(evidence));
+reusedRecoveryAsSessionReference.pilot.sessions[1].session_record_reference = reusedRecoveryAsSessionReference.pilot.sessions[0].recovery_evidence_reference;
+assert.match(evaluatePhase5Evidence(policy, reusedRecoveryAsSessionReference, { now }).blockers.join("\n"), /unique canonical session record reference/);
+const unsafeSessionReference = JSON.parse(JSON.stringify(evidence));
+unsafeSessionReference.pilot.sessions[0].session_record_reference = "C:\\Users\\Alice\\pilot.json";
+assert.match(evaluatePhase5Evidence(policy, unsafeSessionReference, { now }).blockers.join("\n"), /canonical session/);
+const mismatchedPilotDuration = JSON.parse(JSON.stringify(evidence));
+mismatchedPilotDuration.pilot.sessions[0].duration_minutes = 19;
+assert.match(evaluatePhase5Evidence(policy, mismatchedPilotDuration, { now }).blockers.join("\n"), /canonical session/);
+const identifyingPilotId = JSON.parse(JSON.stringify(evidence));
+identifyingPilotId.pilot.sessions[0].id = "alice@example.com";
+assert.match(evaluatePhase5Evidence(policy, identifyingPilotId, { now }).blockers.join("\n"), /non-identifying pseudonymous id/);
+const prebuildPilot = JSON.parse(JSON.stringify(evidence));
+prebuildPilot.pilot.sessions[0].started_at = "2026-07-14T23:40:00Z";
+prebuildPilot.pilot.sessions[0].completed_at = "2026-07-15T00:00:00Z";
+assert.match(evaluatePhase5Evidence(policy, prebuildPilot, { now }).blockers.join("\n"), /Pilot session p1 start must be dated at or after/);
+const invalidPilotScale = JSON.parse(JSON.stringify(evidence));
+invalidPilotScale.pilot.sessions[0].trust_score = 6;
+assert.match(evaluatePhase5Evidence(policy, invalidPilotScale, { now }).blockers.join("\n"), /1-5 trust evidence/);
+const unboundNativeSmoke = JSON.parse(JSON.stringify(evidence));
+delete unboundNativeSmoke.live_smoke.receipt_sha256;
+assert.match(evaluatePhase5Evidence(policy, unboundNativeSmoke, { now }).blockers.join("\n"), /DuskDS production smoke receipt bytes/);
+const forgedNativeReceipt = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedNativeReceipt.live_smoke, (receipt) => { receipt.candidate_commit = "d".repeat(40); });
+assert.match(evaluatePhase5Evidence(policy, forgedNativeReceipt, { now }).blockers.join("\n"), /receipt does not prove the exact candidate/);
+const nativeWithoutArtifactHash = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(nativeWithoutArtifactHash.live_smoke, (receipt) => { receipt.contract_sha256 = "pending"; });
+assert.match(evaluatePhase5Evidence(policy, nativeWithoutArtifactHash, { now }).blockers.join("\n"), /receipt does not prove the exact candidate, workflow, timestamp, and native steps/);
+const nativeWithoutCandidateFingerprint = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(nativeWithoutCandidateFingerprint.live_smoke, (receipt) => { receipt.candidate_artifact_fingerprint_sha256 = "d".repeat(64); });
+assert.match(evaluatePhase5Evidence(policy, nativeWithoutCandidateFingerprint, { now }).blockers.join("\n"), /receipt does not prove the exact candidate/);
+const prebuildNativeSmoke = JSON.parse(JSON.stringify(evidence));
+prebuildNativeSmoke.live_smoke.observed_at = "2026-07-14T23:59:59Z";
+rewriteReceipt(prebuildNativeSmoke.live_smoke, (receipt) => { receipt.observed_at = prebuildNativeSmoke.live_smoke.observed_at; });
+assert.match(evaluatePhase5Evidence(policy, prebuildNativeSmoke, { now }).blockers.join("\n"), /production smoke must be dated at or after/);
 const missingDevelopmentPort = JSON.parse(JSON.stringify(evidence));
 delete missingDevelopmentPort.synthetics.checks.development_port_closed;
 assert.match(evaluatePhase5Evidence(policy, missingDevelopmentPort, { now }).blockers.join("\n"), /development_port_closed/);
+const unboundPublicSynthetic = JSON.parse(JSON.stringify(evidence));
+unboundPublicSynthetic.synthetics.checks.key_routes.candidate_public_fingerprint_sha256 = "d".repeat(64);
+assert.match(evaluatePhase5Evidence(policy, unboundPublicSynthetic, { now }).blockers.join("\n"), /Synthetic check key_routes is not bound/);
+const missingPublicSyntheticReceipt = JSON.parse(JSON.stringify(evidence));
+delete missingPublicSyntheticReceipt.synthetics.public_assurance.receipt_sha256;
+assert.match(evaluatePhase5Evidence(policy, missingPublicSyntheticReceipt, { now }).blockers.join("\n"), /Public assurance receipt bytes/);
+const failedBoundPublicCheck = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(failedBoundPublicCheck.synthetics.public_assurance, (receipt) => { receipt.checks.key_routes.status = "failed"; });
+assert.match(evaluatePhase5Evidence(policy, failedBoundPublicCheck, { now }).blockers.join("\n"), /Synthetic check key_routes is not passed in the bound/);
+const forgedPublicCommit = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedPublicCommit.synthetics.public_assurance, (receipt) => { receipt.checks.release_parity.commit = "d".repeat(40); });
+assert.match(evaluatePhase5Evidence(policy, forgedPublicCommit, { now }).blockers.join("\n"), /does not prove the exact public candidate/);
+const forgedPublicVersion = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedPublicVersion.synthetics.public_assurance, (receipt) => { receipt.checks.release_parity.version = "unbound-version"; });
+assert.match(evaluatePhase5Evidence(policy, forgedPublicVersion, { now }).blockers.join("\n"), /does not prove the exact public candidate/);
+const forgedSpaCache = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedSpaCache.synthetics.public_assurance, (receipt) => { receipt.checks.key_routes.spa_fallback_cache = "public,max-age=3600"; });
+assert.match(evaluatePhase5Evidence(policy, forgedSpaCache, { now }).blockers.join("\n"), /exact no-cache SPA fallback/);
+const forgedRpcDegradation = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedRpcDegradation.synthetics.public_assurance, (receipt) => { receipt.checks.rpc_degradation.evidence = "operator-said-ok"; });
+assert.match(evaluatePhase5Evidence(policy, forgedRpcDegradation, { now }).blockers.join("\n"), /reviewed hosted-browser recovery behavior/);
+const forgedTlsLifetime = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedTlsLifetime.synthetics.public_assurance, (receipt) => { receipt.checks.tls_expiry.days_remaining = 1; });
+assert.match(evaluatePhase5Evidence(policy, forgedTlsLifetime, { now }).blockers.join("\n"), /minimum lifetime and expiry chronology/);
+const forgedTlsExpiry = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedTlsExpiry.synthetics.public_assurance, (receipt) => { receipt.checks.tls_expiry.expires_at = "2026-07-14T00:00:00Z"; });
+assert.match(evaluatePhase5Evidence(policy, forgedTlsExpiry, { now }).blockers.join("\n"), /minimum lifetime and expiry chronology/);
+const forgedClosedPort = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(forgedClosedPort.synthetics.public_assurance, (receipt) => { receipt.checks.companion_port_closed.observed = "open"; });
+assert.match(evaluatePhase5Evidence(policy, forgedClosedPort, { now }).blockers.join("\n"), /accepted closed-port observation/);
+const secretInParsedReceipt = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(secretInParsedReceipt.synthetics.public_assurance, (receipt) => { receipt.checks.rpc_degradation.evidence = "recovery phrase: alpha beta gamma"; });
+assert.match(evaluatePhase5Evidence(policy, secretInParsedReceipt, { now }).blockers.join("\n"), /parsed receipt contains forbidden secret-shaped/);
+const unsafeUrlInParsedReceipt = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(unsafeUrlInParsedReceipt.synthetics.public_assurance, (receipt) => { receipt.target = "https://user:pass@studio.134-122-59-217.nip.io?proof=1"; });
+assert.match(evaluatePhase5Evidence(policy, unsafeUrlInParsedReceipt, { now }).blockers.join("\n"), /parsed receipt contains forbidden secret-shaped or unsafe URL/);
 const invalidDuskDsRead = JSON.parse(JSON.stringify(evidence));
 invalidDuskDsRead.synthetics.checks.duskds_node_read.height = 0;
 assert.match(evaluatePhase5Evidence(policy, invalidDuskDsRead, { now }).blockers.join("\n"), /DuskDS node-read evidence/);
@@ -104,7 +744,43 @@ unboundDuskDsRead.synthetics.checked_at = "2026-07-14T23:30:00Z";
 assert.match(evaluatePhase5Evidence(policy, unboundDuskDsRead, { now }).blockers.join("\n"), /DuskDS node-read evidence/);
 const unboundHeartbeat = JSON.parse(JSON.stringify(evidence));
 delete unboundHeartbeat.synthetics.checks.monitor_heartbeat.receipt_sha256;
-assert.match(evaluatePhase5Evidence(policy, unboundHeartbeat, { now }).blockers.join("\n"), /Monitor heartbeat evidence/);
+assert.match(evaluatePhase5Evidence(policy, unboundHeartbeat, { now }).blockers.join("\n"), /Monitor heartbeat receipt bytes/);
+const heartbeatForAnotherRun = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(heartbeatForAnotherRun.synthetics.checks.monitor_heartbeat, (receipt) => {
+  receipt.last_run_url = "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/999999";
+});
+assert.match(evaluatePhase5Evidence(policy, heartbeatForAnotherRun, { now }).blockers.join("\n"), /does not prove a fresh successful scheduled run/);
+const heartbeatBeforePublicAssurance = JSON.parse(JSON.stringify(evidence));
+heartbeatBeforePublicAssurance.synthetics.checks.monitor_heartbeat.observed_at = "2026-07-15T02:30:00Z";
+rewriteReceipt(heartbeatBeforePublicAssurance.synthetics.checks.monitor_heartbeat, (receipt) => {
+  receipt.checked_at = "2026-07-15T02:30:00Z";
+});
+assert.match(evaluatePhase5Evidence(policy, heartbeatBeforePublicAssurance, { now }).blockers.join("\n"), /does not prove a fresh successful scheduled run/);
+const nonCanonicalHeartbeatCreation = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(nonCanonicalHeartbeatCreation.synthetics.checks.monitor_heartbeat, (receipt) => {
+  receipt.last_run_created_at = "2026-07-15T03:00:00+00:00";
+});
+assert.match(evaluatePhase5Evidence(policy, nonCanonicalHeartbeatCreation, { now }).blockers.join("\n"), /does not prove a fresh successful scheduled run/);
+const heartbeatBeforeVerifiedCompletion = JSON.parse(JSON.stringify(evidence));
+heartbeatBeforeVerifiedCompletion.synthetics.checks.monitor_heartbeat.observed_at = "2026-07-15T03:02:00Z";
+rewriteReceipt(heartbeatBeforeVerifiedCompletion.synthetics.checks.monitor_heartbeat, (receipt) => {
+  receipt.checked_at = "2026-07-15T03:02:00Z";
+  receipt.age_seconds = 120;
+});
+assert.match((await formalDecision(policy, heartbeatBeforeVerifiedCompletion)).blockers.join("\n"), /predates the verified public-assurance run completion/);
+const legacyAlertBoolean = JSON.parse(JSON.stringify(evidence));
+delete legacyAlertBoolean.synthetics.alert_delivery;
+legacyAlertBoolean.synthetics.alert_delivery_verified = true;
+assert.match(evaluatePhase5Evidence(policy, legacyAlertBoolean, { now }).blockers.join("\n"), /Synthetic alert delivery lacks/);
+const unboundAlert = JSON.parse(JSON.stringify(evidence));
+unboundAlert.synthetics.alert_delivery.candidate_commit = "d".repeat(40);
+assert.match(evaluatePhase5Evidence(policy, unboundAlert, { now }).blockers.join("\n"), /Synthetic alert delivery is not bound/);
+const alertWithoutClosedIssue = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(alertWithoutClosedIssue.synthetics.alert_delivery, (receipt) => { receipt.issue_closed = false; });
+assert.match(evaluatePhase5Evidence(policy, alertWithoutClosedIssue, { now }).blockers.join("\n"), /does not prove the exact candidate, workflow run, assigned issue, closure/);
+const alertForAnotherCandidate = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(alertForAnotherCandidate.synthetics.alert_delivery, (receipt) => { receipt.candidate_public_fingerprint_sha256 = "d".repeat(64); });
+assert.match(evaluatePhase5Evidence(policy, alertForAnotherCandidate, { now }).blockers.join("\n"), /does not prove the exact candidate/);
 const wrongMonitoringMode = JSON.parse(JSON.stringify(evidence));
 wrongMonitoringMode.synthetics.monitoring.mode = "external";
 assert.match(evaluatePhase5Evidence(policy, wrongMonitoringMode, { now }).blockers.join("\n"), /reviewed monitoring mode/);
@@ -114,6 +790,9 @@ assert.match(evaluatePhase5Evidence(missingAcceptedRisk, evidence, { now }).bloc
 const futureAcceptedRisk = JSON.parse(JSON.stringify(policy));
 futureAcceptedRisk.monitoring_evidence.accepted_risk.accepted_at = "2099-01-01T00:00:00Z";
 assert.match(evaluatePhase5Evidence(futureAcceptedRisk, evidence, { now }).blockers.join("\n"), /accepted-risk record/);
+const acceptedRiskAfterSignoff = JSON.parse(JSON.stringify(policy));
+acceptedRiskAfterSignoff.monitoring_evidence.accepted_risk.accepted_at = "2026-07-15T07:30:00Z";
+assert.match(evaluatePhase5Evidence(acceptedRiskAfterSignoff, evidence, { now }).blockers.join("\n"), /no earlier than every gating record/);
 const externalRequiredByGithubOnly = JSON.parse(JSON.stringify(policy));
 externalRequiredByGithubOnly.required_synthetic_checks.push("external_dead_man");
 assert.match(evaluatePhase5Evidence(externalRequiredByGithubOnly, evidence, { now }).blockers.join("\n"), /cannot require external checks/);
@@ -137,19 +816,25 @@ externalEvidence.synthetics.monitoring = {
 externalEvidence.synthetics.checks.external_dead_man = {
   status: "passed",
   owner: "platform-owner",
+  candidate_commit: candidateCommit,
+  candidate_public_fingerprint_sha256: digest,
+  evidence_reference: "external-dead-man-receipt",
   outside_github: true,
   success_endpoint_configured: true,
   provider: "external-dead-man-provider",
   check_id: "studio-public-staging",
   alert_channel: "email",
   alert_delivery_verified: true,
-  latest_success_at: "2026-07-14T18:00:00Z",
-  missed_ping_rehearsed_at: "2026-07-10T12:00:00Z",
+  latest_success_at: "2026-07-15T11:00:00Z",
+  missed_ping_rehearsed_at: "2026-07-15T08:00:00Z",
   rehearsal_reference: "external-rehearsal-2026-07-10"
 };
 externalEvidence.synthetics.checks.external_direct_health = {
   status: "passed",
   owner: "platform-owner",
+  candidate_commit: candidateCommit,
+  candidate_public_fingerprint_sha256: digest,
+  evidence_reference: "external-direct-health-receipt",
   outside_github: true,
   provider: "external-uptime-provider",
   check_id: "studio-public-health",
@@ -159,13 +844,14 @@ externalEvidence.synthetics.checks.external_direct_health = {
   tls_verified: true,
   alert_channel: "email",
   alert_delivery_verified: true,
-  latest_success_at: "2026-07-14T18:00:00Z",
-  alert_rehearsed_at: "2026-07-10T13:00:00Z",
+  latest_success_at: "2026-07-15T11:00:00Z",
+  alert_rehearsed_at: "2026-07-15T08:30:00Z",
   recovery_verified: true,
-  recovered_at: "2026-07-10T13:30:00Z",
+  recovered_at: "2026-07-15T09:00:00Z",
   rehearsal_reference: "direct-health-rehearsal-2026-07-10"
 };
-assert.equal(evaluatePhase5Evidence(externalPolicy, externalEvidence, { now }).decision, "go");
+externalEvidence.product_signoff.signed_at = "2026-07-15T11:30:00Z";
+assert.equal((await formalDecision(externalPolicy, externalEvidence)).decision, "go");
 const githubBoundDeadMan = JSON.parse(JSON.stringify(externalEvidence));
 githubBoundDeadMan.synthetics.checks.external_dead_man.outside_github = false;
 assert.match(evaluatePhase5Evidence(externalPolicy, githubBoundDeadMan, { now }).blockers.join("\n"), /External dead-man evidence/);
@@ -199,24 +885,117 @@ assert.match(evaluatePhase5Evidence(externalPolicy, successBeforeRecovery, { now
 const reusedExternalCheck = JSON.parse(JSON.stringify(externalEvidence));
 reusedExternalCheck.synthetics.checks.external_direct_health.check_id = reusedExternalCheck.synthetics.checks.external_dead_man.check_id;
 assert.match(evaluatePhase5Evidence(externalPolicy, reusedExternalCheck, { now }).blockers.join("\n"), /External direct health evidence/);
+const unboundRollback = JSON.parse(JSON.stringify(evidence));
+unboundRollback.rollback.product.candidate_commit = "d".repeat(40);
+assert.match(evaluatePhase5Evidence(policy, unboundRollback, { now }).blockers.join("\n"), /product rollback is not bound/);
+const missingRollbackReceipt = JSON.parse(JSON.stringify(evidence));
+delete missingRollbackReceipt.rollback.product.receipt_sha256;
+assert.match(evaluatePhase5Evidence(policy, missingRollbackReceipt, { now }).blockers.join("\n"), /product rollback receipt bytes/);
+const tamperedRollbackReceipt = JSON.parse(JSON.stringify(evidence));
+tamperedRollbackReceipt.rollback.product.receipt_json = tamperedRollbackReceipt.rollback.product.receipt_json.replace("rollback-product", "rollback-forged");
+assert.match(evaluatePhase5Evidence(policy, tamperedRollbackReceipt, { now }).blockers.join("\n"), /product rollback receipt bytes/);
+const wrongRollbackTarget = JSON.parse(JSON.stringify(evidence));
+wrongRollbackTarget.rollback.product.target = "platform";
+rewriteReceipt(wrongRollbackTarget.rollback.product, (receipt) => { receipt.target = "platform"; });
+assert.match(evaluatePhase5Evidence(policy, wrongRollbackTarget, { now }).blockers.join("\n"), /product rollback has not passed/);
+const wrongRollbackPriorCommit = JSON.parse(JSON.stringify(evidence));
+wrongRollbackPriorCommit.rollback.product.prior_commit = candidateCommit;
+rewriteReceipt(wrongRollbackPriorCommit.rollback.product, (receipt) => { receipt.prior_commit = candidateCommit; });
+assert.match(evaluatePhase5Evidence(policy, wrongRollbackPriorCommit, { now }).blockers.join("\n"), /incomplete or not a distinct dated restore/);
+const wrongRollbackRelease = JSON.parse(JSON.stringify(evidence));
+wrongRollbackRelease.rollback.product.candidate_release_id = "unbound-release";
+rewriteReceipt(wrongRollbackRelease.rollback.product, (receipt) => { receipt.candidate_release_id = "unbound-release"; });
+assert.match(evaluatePhase5Evidence(policy, wrongRollbackRelease, { now }).blockers.join("\n"), /incomplete or not a distinct dated restore/);
+const noOpRollback = JSON.parse(JSON.stringify(evidence));
+noOpRollback.rollback.platform.restored_fingerprint_sha256 = digest;
+assert.match(evaluatePhase5Evidence(policy, noOpRollback, { now }).blockers.join("\n"), /platform rollback evidence is incomplete or not a distinct dated restore/);
+const prebuildRollback = JSON.parse(JSON.stringify(evidence));
+prebuildRollback.rollback.product.started_at = "2026-07-14T23:58:20Z";
+prebuildRollback.rollback.product.completed_at = "2026-07-15T00:00:00Z";
+rewriteReceipt(prebuildRollback.rollback.product, (receipt) => {
+  receipt.started_at = prebuildRollback.rollback.product.started_at;
+  receipt.completed_at = prebuildRollback.rollback.product.completed_at;
+});
+assert.match(evaluatePhase5Evidence(policy, prebuildRollback, { now }).blockers.join("\n"), /product rollback start must be dated at or after/);
+const reusedRollbackReference = JSON.parse(JSON.stringify(evidence));
+reusedRollbackReference.rollback.platform.evidence_reference = ` ${reusedRollbackReference.rollback.product.evidence_reference.toUpperCase()} `;
+assert.match(evaluatePhase5Evidence(policy, reusedRollbackReference, { now }).blockers.join("\n"), /must use distinct evidence and health references/);
+const reusedRollbackHealthProof = JSON.parse(JSON.stringify(evidence));
+reusedRollbackHealthProof.rollback.platform.health_proof = reusedRollbackHealthProof.rollback.product.health_proof;
+assert.match(evaluatePhase5Evidence(policy, reusedRollbackHealthProof, { now }).blockers.join("\n"), /must use distinct evidence and health references/);
+const negativeRollbackDuration = JSON.parse(JSON.stringify(evidence));
+negativeRollbackDuration.rollback.product.duration_seconds = -1;
+assert.match(evaluatePhase5Evidence(policy, negativeRollbackDuration, { now }).blockers.join("\n"), /product rollback has not passed/);
+const mismatchedRollbackDuration = JSON.parse(JSON.stringify(evidence));
+mismatchedRollbackDuration.rollback.product.duration_seconds = 99;
+rewriteReceipt(mismatchedRollbackDuration.rollback.product, (receipt) => { receipt.duration_seconds = 99; });
+assert.match(evaluatePhase5Evidence(policy, mismatchedRollbackDuration, { now }).blockers.join("\n"), /product rollback has not passed/);
+const reversedRollbackChronology = JSON.parse(JSON.stringify(evidence));
+reversedRollbackChronology.rollback.product.started_at = "2026-07-15T06:01:00Z";
+rewriteReceipt(reversedRollbackChronology.rollback.product, (receipt) => { receipt.started_at = "2026-07-15T06:01:00Z"; });
+assert.match(evaluatePhase5Evidence(policy, reversedRollbackChronology, { now }).blockers.join("\n"), /rollback chronology is invalid/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "P1-1", severity: "P1", status: "open" }] }, { now }).blockers.join("\n"), /no complete exception/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "P0-pending", severity: "P0", status: "pending" }] }, { now }).blockers.join("\n"), /invalid status[\s\S]*Non-closed P0/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "P1-pending", severity: "P1", status: "pending" }] }, { now }).blockers.join("\n"), /invalid status[\s\S]*no complete exception/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "bad-severity", severity: "critical", status: "closed" }] }, { now }).blockers.join("\n"), /invalid severity/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, issues: [{ id: "P0-closed-incomplete", severity: "P0", status: "closed" }] }, { now }).blockers.join("\n"), /missing: owner, resolution_evidence, closed_at, candidate_commit, candidate_artifact_fingerprint_sha256/);
+const closedP0 = JSON.parse(JSON.stringify(evidence));
+closedP0.issues = [{
+  id: "P0-closed",
+  severity: "P0",
+  status: "closed",
+  owner: "security-owner",
+  resolution_evidence: "p0-closed-review",
+  closed_at: "2026-07-15T06:45:00Z",
+  candidate_commit: candidateCommit,
+  candidate_artifact_fingerprint_sha256: digest
+}];
+assert.equal((await formalDecision(policy, closedP0)).decision, "go");
+const closedP0WrongCandidate = JSON.parse(JSON.stringify(closedP0));
+closedP0WrongCandidate.issues[0].candidate_commit = "d".repeat(40);
+assert.match(evaluatePhase5Evidence(policy, closedP0WrongCandidate, { now }).blockers.join("\n"), /Closed P0 P0-closed is not bound/);
+const prebuildClosedP0 = JSON.parse(JSON.stringify(closedP0));
+prebuildClosedP0.issues[0].closed_at = "2026-07-14T23:59:59Z";
+assert.match(evaluatePhase5Evidence(policy, prebuildClosedP0, { now }).blockers.join("\n"), /Closed P0 P0-closed must be dated at or after/);
+const exceptedP1 = JSON.parse(JSON.stringify(evidence));
+exceptedP1.issues = [{
+  id: "P1-excepted",
+  severity: "P1",
+  status: "open",
+  exception: {
+    owner: "security-owner",
+    rationale: "bounded launch exception",
+    compensating_control: "route remains disabled",
+    residual_risk: "manual follow-up required",
+    monitoring: "assigned issue",
+    expiry: "2026-07-30T00:00:00Z",
+    revalidation_trigger: "route activation",
+    accepted_by: "George",
+    accepted_at: "2026-07-15T06:45:00Z"
+  }
+}];
+assert.equal((await formalDecision(policy, exceptedP1)).decision, "go");
+const exceptionAfterSignoff = JSON.parse(JSON.stringify(exceptedP1));
+exceptionAfterSignoff.issues[0].exception.accepted_at = "2026-07-15T08:00:00Z";
+assert.match(evaluatePhase5Evidence(policy, exceptionAfterSignoff, { now }).blockers.join("\n"), /no earlier than every gating record/);
 const unsignedDistribution = { ...evidence, companion_distribution: { hosted_mode: "docs-only", availability: "unsigned-downloads", targets: {} } };
 assert.match(evaluatePhase5Evidence(policy, unsignedDistribution, { now }).blockers.join("\n"), /availability is not allowed/);
 const incompleteSignedDistribution = { ...evidence, companion_distribution: { hosted_mode: "docs-only", availability: "signed-downloads", targets: {} } };
-assert.match(evaluatePhase5Evidence(policy, incompleteSignedDistribution, { now }).blockers.join("\n"), /incomplete for windows-x64/);
+assert.match(evaluatePhase5Evidence(policy, incompleteSignedDistribution, { now }).blockers.join("\n"), /separate cryptographic signature/);
 const signedTargets = Object.fromEntries(policy.companion_distribution.required_targets.map((target) => [target, {
   signing_status: "signed",
   signature_algorithm: policy.companion_distribution.required_signatures[target],
   signature_verified: true,
   clean_machine_smoke: "passed",
   archive_sha256: digest,
-  manifest_sha256: digest
+  manifest_sha256: digest,
+  verified_at: "2026-07-15T06:45:00Z"
 }]));
 const signedDistribution = { ...evidence, companion_distribution: { hosted_mode: "docs-only", availability: "signed-downloads", targets: signedTargets } };
-assert.equal(evaluatePhase5Evidence(policy, signedDistribution, { now }).decision, "go");
+assert.match((await formalDecision(policy, signedDistribution)).blockers.join("\n"), /separate cryptographic signature/);
 const wrongLinuxSignature = JSON.parse(JSON.stringify(signedDistribution));
 wrongLinuxSignature.companion_distribution.targets["linux-x64"].signature_algorithm = "ed25519";
-assert.match(evaluatePhase5Evidence(policy, wrongLinuxSignature, { now }).blockers.join("\n"), /incomplete for linux-x64/);
+assert.match(evaluatePhase5Evidence(policy, wrongLinuxSignature, { now }).blockers.join("\n"), /separate cryptographic signature/);
 const forbiddenKey = ["private", "key"].join("_");
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, unsafe: { [forbiddenKey]: "redacted" } }, { now }).blockers.join("\n"), /forbidden secret-shaped fields/);
 console.log("Phase 5 evidence go/no-go fixtures passed.");

@@ -10,7 +10,7 @@ Dusk developers and curious builders who are choosing between DuskEVM and DuskDS
 
 ## Product Purpose
 
-Dusk Developer Studio helps a builder choose the right Dusk path, then move through Setup, Access, Build, and Inspect with confidence. The public Studio is a read-only guide and docs map; machine-specific checks and starter scaffolding run only through the local companion on the developer's own machine. Success means a developer understands which path fits their project, what to do next, which tools/sources matter, and which actions remain deliberately manual or unsafe to automate.
+Dusk Developer Studio helps a builder choose the right Dusk path, then move through Setup, Access, Build, and Inspect with confidence. The public Studio is a read-only guide and docs map; machine-specific checks and starter scaffolding run only through the local companion on the developer's own machine. For DuskDS, Inspect is intentionally two-pass: verify one exact build, prepare a Testnet-only manual Rusk Wallet handoff, then return after finality to confirm contract metadata and data-driver reads. Success means a developer understands which path fits their project, what to do next, which tools/sources matter, and which actions remain deliberately manual or unsafe to automate.
 
 ## Brand Personality
 

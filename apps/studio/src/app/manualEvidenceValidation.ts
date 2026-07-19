@@ -33,7 +33,7 @@ export function validateRevision(input: string): ValidationResult<string> {
     : { error: "Enter the 7-64 character Git tree or commit ID printed by the Build command." };
 }
 
-export type DriverObservationKind = "schema" | "encode" | "decode";
+export type DriverObservationKind = "availability" | "schema" | "encode" | "decode";
 
 export function validateDriverObservation(
   kind: DriverObservationKind,
@@ -44,8 +44,10 @@ export function validateDriverObservation(
     return { error: "Enter the deployed 32-byte contract ID as 64 hexadecimal characters." };
   }
   const functionName = input.functionName.trim();
-  if (kind !== "schema" && !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(functionName)) {
-    return { error: "Enter the exact contract function name used for this encode or decode check." };
+  if (kind === "encode" || kind === "decode") {
+    if (!/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(functionName)) {
+      return { error: "Enter the exact contract function name used for this encode or decode check." };
+    }
   }
   const responseSha256 = input.responseSha256.trim().toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(responseSha256)) {
@@ -57,7 +59,7 @@ export function validateDriverObservation(
       tool: "rpc",
       endpoint: DUSKDS_TESTNET_NODE,
       contractId,
-      ...(kind === "schema" ? {} : { functionName }),
+      ...(kind === "encode" || kind === "decode" ? { functionName } : {}),
       responseSha256
     }
   };

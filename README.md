@@ -12,7 +12,7 @@ so it starts fresh once when moving to the canonical `nip.io` address.
 
 ## Use it today
 
-- Follow the active DuskDS Setup → Access → Build → Inspect guide with source-backed public-node, W3sper, Forge, and data-driver guidance.
+- Follow the active DuskDS Setup → Access → Build → Inspect guide with source-backed public-node, W3sper, Forge, manual Testnet deployment readiness, and post-deploy data-driver guidance.
 - Browse the complete DuskEVM journey as a pre-launch educational preview. DuskEVM Testnet is not live yet, so live RPC, wallet, balance, and inspection evidence is unavailable and deferred.
 - Use the hosted Studio as a static, docs-only guide; it never runs local machine actions or proxies the companion.
 - Clone the repository and run the Studio locally with the commands below.
@@ -22,7 +22,8 @@ so it starts fresh once when moving to the canonical `nip.io` address.
 - A first-screen choice between an active DuskDS guide and a clearly labelled DuskEVM pre-launch preview, followed by one focused four-step journey.
 - Source-labelled capability, network, resource, and troubleshooting references.
 - DuskEVM architecture, safety boundaries, and Foundry guidance without claiming that its Testnet is already live.
-- DuskDS prerequisites, public read-only node guidance, Dusk Forge guidance, and constrained starter creation.
+- DuskDS prerequisites, public read-only node guidance, Dusk Forge guidance, constrained starter creation, and a revision-bound manual deployment handoff.
+- A two-pass Inspect flow: prepare the exact verified build, deploy through Rusk Wallet in your own terminal, then return only after finality to confirm contract metadata and read-only driver behavior. Access evidence expires after 24 hours; prerequisite, build, and source-binding evidence expires after 30 days.
 - A loopback-only local companion for allowlisted preflight checks and starter scaffolding.
 - Static self-hosting assets, security headers, source freshness receipts, and release assurance gates.
 
@@ -30,7 +31,7 @@ so it starts fresh once when moving to the canonical `nip.io` address.
 
 The public site is static. Local machine actions run only through the optional companion on `127.0.0.1`, require a paired loopback browser session, and remain capability-gated and allowlisted. Public companion binaries are not distributed yet, so the hosted and source-checkout experiences remain docs-only for machine actions.
 
-The Studio never asks for, stores, transmits, or logs private keys, mnemonics, wallet passwords, seeders, profile entropy, or API secrets. It does not dispense faucet funds, sign browser transactions, automate mainnet deployment, or execute arbitrary local commands.
+The Studio never asks for, stores, transmits, or logs private keys, mnemonics, wallet passwords, seeders, profile entropy, or API secrets. It does not dispense faucet funds, sign browser transactions, automate deployment, or execute arbitrary local commands. Its DuskDS deploy template is intentionally incomplete until the developer supplies and reviews public Testnet values in a trusted terminal.
 
 See [SECURITY.md](SECURITY.md), [docs/security/threat-model.md](docs/security/threat-model.md), and [docs/security/local-companion-boundary.md](docs/security/local-companion-boundary.md).
 

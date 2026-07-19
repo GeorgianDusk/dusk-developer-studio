@@ -1,6 +1,6 @@
 # Deploy Automation Policy
 
-Date: 2026-07-17
+Date: 2026-07-19
 Status: hosted-production guardrail; DuskEVM remains pre-launch
 
 ## Position
@@ -35,4 +35,6 @@ The public Studio may automate local checks, scaffolding, build commands, read-o
 
 ## Next Safe Product Step
 
-Build a deploy readiness assistant that checks non-secret prerequisites and produces a reviewed command checklist, but still requires the user to run Rusk Wallet manually.
+The deploy readiness assistant is implemented. It derives readiness from the exact recorded Setup, Access, Build, VM-test, and source-identity evidence; rejects blocked, skipped, future-dated, or expired evidence; fixes the command shape to DuskDS Testnet; and leaves all wallet, funding, nonce, optional argument, gas, signing, submission, inclusion, and finality decisions in the user's terminal. Access evidence is valid for 24 hours; Setup, Build, and source binding are valid for 30 days.
+
+The next safe step is evidence collection, not more automation: verify the final candidate through the Phase 5 independent reviews and genuine pilot sessions. Any future wallet or deployment execution still requires every approval gate above and a separate reviewed implementation.

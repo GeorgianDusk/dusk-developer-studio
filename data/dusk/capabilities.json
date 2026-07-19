@@ -113,13 +113,13 @@
         "category":  "Contracts",
         "summary":  "Build native Dusk contracts with Rust, WASM, DuskVM, Dusk Forge, VM-backed tests, and paired contract plus data-driver artifacts.",
         "beginnerUse":  "Choose this when your app needs Dusk-native execution, protocol-level control, or privacy-aware flows close to the base layer.",
-        "safeNextStep":  "Run DuskDS preflight, create the Forge starter, then build contract WASM and data-driver WASM together.",
+        "safeNextStep":  "Run DuskDS preflight, create the Forge starter, test in DuskVM, build both WASM artifacts, and run dusk-forge verify before deployment readiness.",
         "maturity":  "ready-local",
         "sourceStatus":  "official-source",
         "links":  [
                       {
-                          "label":  "Smart Contracts on DuskDS",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
+                          "label":  "DuskVM contract quickstart",
+                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/"
                       },
                       {
                           "label":  "Dusk Forge",
@@ -141,9 +141,9 @@
         "path":  "duskds",
         "title":  "Data drivers, schemas, calls, and events",
         "category":  "App integration",
-        "summary":  "Use data-driver WASM and RUES driver endpoints to encode inputs, decode outputs, inspect schemas, and keep frontends aligned with native contracts.",
-        "beginnerUse":  "Choose this after your first Forge build works and before you connect a frontend or indexer to a contract.",
-        "safeNextStep":  "Keep contract WASM and data-driver WASM from the same source commit; rebuild both after contract changes.",
+        "summary":  "Use paired data-driver WASM to encode inputs, decode outputs, and inspect schemas, but only call /on/driver helpers after contract metadata reports driver_available: true.",
+        "beginnerUse":  "Choose this after your first Forge build works. A deployed contract is not proof that its data driver is available to a node.",
+        "safeNextStep":  "Read /on/contract:<id>/metadata first. Continue to /on/driver:<id>/... only when driver_available is true; otherwise stop and complete the signed owner upload outside Studio.",
         "maturity":  "advanced-ready",
         "sourceStatus":  "official-docs",
         "links":  [
@@ -254,25 +254,21 @@
     {
         "id":  "duskds-rusk-wallet-manual-ops",
         "path":  "duskds",
-        "title":  "Rusk Wallet manual operations",
+        "title":  "Manual Testnet deployment with Rusk Wallet",
         "category":  "Wallet CLI",
-        "summary":  "Use the official Rusk Wallet CLI for manual profile, balance, transfer, staking, contract-call, contract-deploy, contract-id, blob, and custom-node workflows when browser wallet flows are not enough.",
-        "beginnerUse":  "Choose this when you need a terminal wallet for native DuskDS operations and you are ready to handle signing, funding, node URLs, fees, and finality deliberately.",
-        "safeNextStep":  "Read the Rusk Wallet docs, keep secrets out of Studio/browser forms, and run manual testnet commands before considering any deploy automation.",
+        "summary":  "Use Rusk Wallet in your own terminal to deploy the verified contract WASM to Testnet with an explicit funded public address and unused nonce, then retain the contract ID and transaction hash.",
+        "beginnerUse":  "Choose this after checking your installed wallet version, local help, settings, Testnet selection, and funded public Testnet address. Signing and secrets never enter Studio.",
+        "safeNextStep":  "Verify local help and settings, deploy manually with an explicit address and unused nonce, keep the returned identifiers, then confirm inclusion and finality separately before post-deploy checks.",
         "maturity":  "manual-official",
-        "sourceStatus":  "official-source",
+        "sourceStatus":  "official-docs",
         "links":  [
                       {
-                          "label":  "Rusk Wallet CLI",
-                          "url":  "https://github.com/dusk-network/rusk/tree/master/rusk-wallet"
+                          "label":  "Dusk wallets",
+                          "url":  "https://docs.dusk.network/use/wallets/#rusk-wallet"
                       },
                       {
-                          "label":  "Rusk Wallet docs",
-                          "url":  "https://docs.dusk.network/learn/rusk-wallet/"
-                      },
-                      {
-                          "label":  "Smart Contracts on DuskDS",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
+                          "label":  "DuskVM Testnet deployment quickstart",
+                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/#5-deploy-on-testnet"
                       }
                   ],
         "tags":  [
@@ -281,8 +277,9 @@
                      "cli",
                      "contract-deploy",
                      "contract-call",
-                     "staking",
-                     "manual"
+                     "testnet",
+                     "manual",
+                     "finality"
                  ]
     },
     {
@@ -534,8 +531,8 @@
                           "url":  "https://github.com/dusk-network/dusk-verifiable-builds"
                       },
                       {
-                          "label":  "Smart Contracts on DuskDS",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
+                          "label":  "DuskVM contract quickstart",
+                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/"
                       }
                   ],
         "tags":  [

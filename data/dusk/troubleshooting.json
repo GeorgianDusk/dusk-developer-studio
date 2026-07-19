@@ -215,6 +215,22 @@
         "safeNextStep":  "Use DuskDS Build and keep contract and data-driver outputs from the same source revision."
     },
     {
+        "id":  "duskds-driver-unavailable-after-deploy",
+        "title":  "The deployed contract's data driver is unavailable",
+        "symptoms":  [
+                         "driver_available: false",
+                         "data driver unavailable",
+                         "schema request failed",
+                         "encode request failed",
+                         "decode request failed",
+                         "duskds",
+                         "contract metadata"
+                     ],
+        "severity":  "medium",
+        "fix":  "A successful contract deployment does not prove that a data driver is available. Read /on/contract:<id>/metadata and require driver_available: true before using /on/driver:<id>/... schema, encode, or decode helpers.",
+        "safeNextStep":  "If driver_available is false, do not mark post-deploy driver checks complete. Uploading the driver requires a signed owner action outside Studio; follow the current official workflow rather than inventing an upload command."
+    },
+    {
         "id":  "rusk-wallet-missing",
         "title":  "Rusk Wallet is missing for native deployment",
         "symptoms":  [
@@ -366,7 +382,7 @@
     },
     {
         "id":  "duskds-template-source-split",
-        "title":  "DuskDS docs and Forge CLI show different starter routes",
+        "title":  "An old DuskDS starter guide conflicts with the current Forge quickstart",
         "symptoms":  [
                          "duskds",
                          "native",
@@ -374,11 +390,11 @@
                          "forge template",
                          "starter confusion",
                          "docs mismatch",
-                         "source gap"
+                         "legacy guide"
                      ],
         "severity":  "low",
-        "fix":  "Current Dusk docs reference my-first-contract as the template route, while Dusk Forge provides the CLI scaffold that this Studio uses for the tested Forge path. Treat my-first-contract as official source context and use the Studio Forge path for this public preview unless Dusk updates the canonical recommendation.",
-        "safeNextStep":  "Use DuskDS Build for the tested Forge scaffold, then open Smart Contracts on DuskDS and Dusk Forge if you need to compare source guidance."
+        "fix":  "The earlier Smart Contracts on DuskDS guide used my-first-contract, while the current canonical DuskVM quickstart uses Dusk Forge v0.3.0 to create, test, build, and verify a starter. Treat my-first-contract as legacy source context.",
+        "safeNextStep":  "Use the current DuskVM quickstart and the Studio Forge path. Do not mix Makefile commands or artifact paths from the legacy template into a Forge-generated project."
     },
     {
         "id":  "hedger-source-gap",

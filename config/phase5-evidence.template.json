@@ -1,9 +1,15 @@
 {
-  "schema_version": 2,
+  "schema_version": 4,
   "candidate": {
     "artifact_fingerprint_sha256": "replace-with-64-character-digest",
     "public_fingerprint_sha256": "replace-with-64-character-digest",
     "commit": "replace-with-clean-40-character-commit",
+    "release_id": "replace-with-candidate-release-id",
+    "policy_sha256": "replace-with-exact-phase5-policy-file-digest",
+    "evaluator_commit": "replace-with-clean-40-character-commit",
+    "implementation_identities": [
+      "pending"
+    ],
     "manifest_url": "https://approved-host/release-manifest.json",
     "built_at": "replace-with-ISO-8601",
     "source_checked_at": "replace-with-ISO-8601",
@@ -24,17 +30,28 @@
       "status": "pending",
       "reviewer": "pending",
       "reviewed_at": "pending",
-      "independent": false
+      "independent": false,
+      "evidence_reference": "pending",
+      "candidate_commit": "pending",
+      "candidate_artifact_fingerprint_sha256": "pending"
     },
     "platform": {
       "status": "pending",
       "reviewer": "pending",
-      "reviewed_at": "pending"
+      "reviewed_at": "pending",
+      "independent": false,
+      "evidence_reference": "pending",
+      "candidate_commit": "pending",
+      "candidate_artifact_fingerprint_sha256": "pending"
     },
     "accessibility": {
       "status": "pending",
       "reviewer": "pending",
-      "reviewed_at": "pending"
+      "reviewed_at": "pending",
+      "independent": false,
+      "evidence_reference": "pending",
+      "candidate_commit": "pending",
+      "candidate_artifact_fingerprint_sha256": "pending"
     }
   },
   "pilot": {
@@ -44,6 +61,34 @@
     "status": "not-authorized",
     "authority_reference": "pending",
     "redacted": false,
+    "candidate_commit": "pending",
+    "candidate_artifact_fingerprint_sha256": "pending",
+    "receipt_sha256": "pending",
+    "receipt_json": "pending",
+    "workflow_path": ".github/workflows/duskds-native-smoke.yml",
+    "run_url": "pending",
+    "artifact_name": "pending",
+    "observed_at": "pending",
+    "provenance": {
+      "schema_version": 1,
+      "repository": "GeorgianDusk/dusk-developer-studio",
+      "workflow_path": ".github/workflows/duskds-native-smoke.yml",
+      "run_id": 0,
+      "run_url": "pending",
+      "run_attempt": 0,
+      "run_event": "workflow_dispatch",
+      "run_commit": "pending",
+      "run_conclusion": "pending",
+      "artifact_id": 0,
+      "artifact_name": "pending",
+      "artifact_api_url": "pending",
+      "artifact_digest_sha256": "pending",
+      "artifact_sha256": "pending",
+      "artifact_expired": false,
+      "receipt_path": "duskds-native-smoke-receipt-<run-id>.json",
+      "receipt_sha256": "pending",
+      "downloaded_at": "pending"
+    },
     "native_steps": {
       "preflight": "pending",
       "node_read": "pending",
@@ -54,10 +99,66 @@
     }
   },
   "synthetics": {
+    "public_assurance": {
+      "candidate_commit": "pending",
+      "candidate_public_fingerprint_sha256": "pending",
+      "receipt_sha256": "pending",
+      "receipt_json": "pending",
+      "workflow_path": ".github/workflows/studio-public-staging.yml",
+      "run_url": "pending",
+      "artifact_name": "pending",
+      "observed_at": "pending",
+      "provenance": {
+        "schema_version": 1,
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "workflow_path": ".github/workflows/studio-public-staging.yml",
+        "run_id": 0,
+        "run_url": "pending",
+        "run_attempt": 0,
+        "run_event": "schedule",
+        "run_commit": "pending",
+        "run_conclusion": "pending",
+        "artifact_id": 0,
+        "artifact_name": "pending",
+        "artifact_api_url": "pending",
+        "artifact_digest_sha256": "pending",
+        "artifact_sha256": "pending",
+        "artifact_expired": false,
+        "receipt_path": "studio-public-synthetic-receipt-<run-id>.json",
+        "receipt_sha256": "pending",
+        "downloaded_at": "pending"
+      }
+    },
     "checks": {
+      "public_health": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
+      "release_parity": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
+      "key_routes": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
+      "source_links": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
       "duskds_node_read": {
         "status": "pending",
         "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending",
         "endpoint": "https://testnet.nodes.dusk.network/on/graphql/query",
         "height": 0,
         "hash": "pending",
@@ -66,15 +167,67 @@
       "rpc_chain_id": {
         "status": "deferred",
         "path": "evm",
-        "reason": "DuskEVM Testnet is not live; the EVM journey is an educational pre-launch preview and does not gate DuskDS production."
+        "reason": "DuskEVM Testnet is not live; the EVM journey is an educational pre-launch preview and does not gate DuskDS production.",
+        "authority_reference": "config/phase5-policy.json",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
+      "rpc_degradation": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
+      "tls_expiry": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
+      "companion_port_closed": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
+      },
+      "development_port_closed": {
+        "status": "pending",
+        "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending"
       },
       "monitor_heartbeat": {
         "status": "pending",
         "owner": "pending",
+        "candidate_commit": "pending",
+        "candidate_public_fingerprint_sha256": "pending",
         "receipt_sha256": "pending",
+        "receipt_json": "pending",
         "workflow_path": ".github/workflows/studio-monitor-schedule-guard.yml",
+        "guard_run_url": "pending",
+        "artifact_name": "pending",
         "observed_at": "pending",
-        "run_url": "pending"
+        "observed_public_run_url": "pending",
+        "provenance": {
+          "schema_version": 1,
+          "repository": "GeorgianDusk/dusk-developer-studio",
+          "workflow_path": ".github/workflows/studio-monitor-schedule-guard.yml",
+          "run_id": 0,
+          "run_url": "pending",
+          "run_attempt": 0,
+          "run_event": "schedule",
+          "run_commit": "pending",
+          "run_conclusion": "pending",
+          "artifact_id": 0,
+          "artifact_name": "pending",
+          "artifact_api_url": "pending",
+          "artifact_digest_sha256": "pending",
+          "artifact_sha256": "pending",
+          "artifact_expired": false,
+          "receipt_path": "studio-monitor-heartbeat-<run-id>.json",
+          "receipt_sha256": "pending",
+          "downloaded_at": "pending"
+        }
       }
     },
     "monitoring": {
@@ -82,15 +235,78 @@
       "owner": "George",
       "authority_reference": "docs/operations/github-only-monitoring-decision.md"
     },
-    "alert_delivery_verified": false,
+    "alert_delivery": {
+      "candidate_commit": "pending",
+      "candidate_public_fingerprint_sha256": "pending",
+      "receipt_sha256": "pending",
+      "receipt_json": "pending",
+      "workflow_path": ".github/workflows/studio-public-staging.yml",
+      "run_url": "pending",
+      "artifact_name": "pending",
+      "observed_at": "pending",
+      "provenance": {
+        "schema_version": 1,
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "workflow_path": ".github/workflows/studio-public-staging.yml",
+        "run_id": 0,
+        "run_url": "pending",
+        "run_attempt": 0,
+        "run_event": "workflow_dispatch",
+        "run_commit": "pending",
+        "run_conclusion": "pending",
+        "artifact_id": 0,
+        "artifact_name": "pending",
+        "artifact_api_url": "pending",
+        "artifact_digest_sha256": "pending",
+        "artifact_sha256": "pending",
+        "artifact_expired": false,
+        "receipt_path": "studio-alert-delivery-receipt-<run-id>.json",
+        "receipt_sha256": "pending",
+        "downloaded_at": "pending"
+      }
+    },
     "checked_at": "pending"
   },
   "rollback": {
     "product": {
-      "status": "pending"
+      "owner": "pending",
+      "target": "product",
+      "result": "pending",
+      "duration_seconds": 0,
+      "prior_release_id": "pending",
+      "prior_commit": "pending",
+      "prior_fingerprint_sha256": "pending",
+      "candidate_release_id": "pending",
+      "candidate_commit": "pending",
+      "candidate_artifact_fingerprint_sha256": "pending",
+      "restored_fingerprint_sha256": "pending",
+      "started_at": "pending",
+      "completed_at": "pending",
+      "evidence_reference": "pending",
+      "health_proof": "pending",
+      "data_cache_effects": "pending",
+      "receipt_sha256": "pending",
+      "receipt_json": ""
     },
     "platform": {
-      "status": "pending"
+      "owner": "pending",
+      "target": "platform",
+      "result": "pending",
+      "duration_seconds": 0,
+      "prior_release_id": "pending",
+      "prior_commit": "pending",
+      "prior_fingerprint_sha256": "pending",
+      "candidate_release_id": "pending",
+      "candidate_commit": "pending",
+      "candidate_artifact_fingerprint_sha256": "pending",
+      "restored_fingerprint_sha256": "pending",
+      "started_at": "pending",
+      "completed_at": "pending",
+      "evidence_reference": "pending",
+      "health_proof": "pending",
+      "data_cache_effects": "pending",
+      "receipt_sha256": "pending",
+      "receipt_json": ""
     }
   },
   "issues": [],

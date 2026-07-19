@@ -1,13 +1,13 @@
 {
   "schema_version": 3,
   "status": "verified",
-  "reviewed_at": "2026-07-03",
-  "expires_at": "2026-08-03",
+  "reviewed_at": "2026-07-19",
+  "expires_at": "2026-08-19",
   "policy": "fail-build",
   "covered_files": [
     {
       "path": "data/dusk/capabilities.json",
-      "sha256": "340a4af917bf20e3035868fdd19b5b5431d75f8fb8037a244c8cd192b545f8f6"
+      "sha256": "b696730a66399fd2fa1d656b94c5af91947598276df709fbc88e8db997f62eb5"
     },
     {
       "path": "data/dusk/networks.evm.json",
@@ -15,24 +15,48 @@
     },
     {
       "path": "data/dusk/resources.json",
-      "sha256": "7c9463a45280759b5747566831a594284cf1768884dad7419d0d7909b814b78d"
+      "sha256": "b74bac764f1cf7e67f87f28127a417eda157b4b98b7ac8e8d14e75b3a910a7d9"
     },
     {
       "path": "data/dusk/troubleshooting.json",
-      "sha256": "512942ae9c50774e6ecf5becc2dc86d85e9cc58dc359fa93a22d8dd94d02a570"
+      "sha256": "139f365cfafedab09f1f667a7aed7fb5aac3590ed69ff372f332181b1f679091"
     }
   ],
   "sources": [
     {
-      "id": "dusk-docs",
-      "url": "https://docs.dusk.network/",
-      "checked_at": "2026-07-03",
+      "id": "dusk-docs-duskvm-quickstart",
+      "url": "https://github.com/dusk-network/docs/blob/b9c7f5590619eda127d20889670f78af681930ef/src/content/docs/developer/duskvm/quickstart.md",
+      "checked_at": "2026-07-19",
       "status": "verified"
     },
     {
-      "id": "dusk-forge",
-      "url": "https://github.com/dusk-network/forge",
-      "checked_at": "2026-07-03",
+      "id": "dusk-docs-http-api",
+      "url": "https://github.com/dusk-network/docs/blob/b9c7f5590619eda127d20889670f78af681930ef/src/content/docs/developer/integrations/http-api.md",
+      "checked_at": "2026-07-19",
+      "status": "verified"
+    },
+    {
+      "id": "dusk-docs-wallets",
+      "url": "https://github.com/dusk-network/docs/blob/b9c7f5590619eda127d20889670f78af681930ef/src/content/docs/use/wallets.md",
+      "checked_at": "2026-07-19",
+      "status": "verified"
+    },
+    {
+      "id": "dusk-forge-v0.3.0",
+      "url": "https://github.com/dusk-network/forge/tree/d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a",
+      "checked_at": "2026-07-19",
+      "status": "verified"
+    },
+    {
+      "id": "rusk-wallet-0.3.0-command",
+      "url": "https://github.com/dusk-network/rusk/blob/491bd39707411ae1b9b7bed59c0aff38b8f8e517/rusk-wallet/src/bin/command.rs",
+      "checked_at": "2026-07-19",
+      "status": "verified"
+    },
+    {
+      "id": "rusk-wallet-0.3.0-network-defaults",
+      "url": "https://github.com/dusk-network/rusk/blob/491bd39707411ae1b9b7bed59c0aff38b8f8e517/rusk-wallet/default.config.toml",
+      "checked_at": "2026-07-19",
       "status": "verified"
     }
   ],
@@ -57,7 +81,7 @@
       "capabilities": 22,
       "networks": 3,
       "resources": 49,
-      "troubleshooting": 42
+      "troubleshooting": 43
     }
   }
 }

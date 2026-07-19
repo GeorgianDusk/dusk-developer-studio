@@ -30,6 +30,7 @@ export type EvidenceCode =
   | "duskds-vm-test-attestation"
   | "duskds-inspect-latest-block"
   | "duskds-inspect-artifact-revision"
+  | "duskds-inspect-driver-availability"
   | "duskds-inspect-driver-schema"
   | "duskds-inspect-driver-encode"
   | "duskds-inspect-driver-decode"
@@ -159,6 +160,7 @@ const requirements: Record<BuilderPath, Record<StepRoute, EvidenceCode[]>> = {
     inspect: [
       "duskds-inspect-latest-block",
       "duskds-inspect-artifact-revision",
+      "duskds-inspect-driver-availability",
       "duskds-inspect-driver-schema",
       "duskds-inspect-driver-encode",
       "duskds-inspect-driver-decode"

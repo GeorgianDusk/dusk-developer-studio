@@ -107,7 +107,7 @@
     "platform": 600
   },
   "key_source_urls": [
-    "https://docs.dusk.network/developer/smart-contracts-duskds/",
+    "https://docs.dusk.network/developer/duskvm/quickstart/",
     "https://docs.dusk.network/developer/integrations/w3sper/",
     "https://docs.dusk.network/developer/integrations/http-api/",
     "https://github.com/dusk-network/forge"
@@ -115,8 +115,7 @@
   "companion_distribution": {
     "hosted_mode": "docs-only",
     "allowed_availability": [
-      "not-published",
-      "signed-downloads"
+      "not-published"
     ],
     "required_targets": [
       "windows-x64",

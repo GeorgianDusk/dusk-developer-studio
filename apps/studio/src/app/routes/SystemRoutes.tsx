@@ -34,7 +34,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           <p>When a verified release is available, it will include separate Safe and Local Actions launchers. Only the clearly named Local Actions launcher will run allowlisted tool checks or create approved starter files through a loopback-only session. The public website will never connect directly to your machine.</p>
           <p className="quiet-note">You do not need the source repository to use the manual guide. The source link below is provided only for advanced review and contribution.</p>
           <div className="button-row">
-            <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-duskds/">Open the DuskDS guide</ExternalLink>
+            <ExternalLink href="https://docs.dusk.network/developer/duskvm/quickstart/">Open the DuskVM quickstart</ExternalLink>
             <ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio">View source repository — advanced</ExternalLink>
           </div>
           <p className="quiet-note">External links open in a new tab; your Studio journey stays here.</p>

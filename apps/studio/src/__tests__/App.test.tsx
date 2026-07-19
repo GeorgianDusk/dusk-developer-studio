@@ -62,14 +62,15 @@ describe("App", () => {
     expect(screen.queryByText(/forge create|cast wallet import|Create and verify Counter starter/i)).not.toBeInTheDocument();
   });
 
-  it("shows the current DuskDS data-driver HTTP surface", () => {
+  it("gates the current DuskDS data-driver HTTP surface behind matching metadata", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#inspect";
     render(<App />);
 
-    expect(screen.getByText(/\/on\/driver:<contract_id>\/get_schema/)).toBeInTheDocument();
-    expect(screen.getByText(/\/on\/driver:<contract_id>\/encode_input_fn:<fn_name>/)).toBeInTheDocument();
-    expect(screen.getByText(/\/on\/driver:<contract_id>\/decode_output_fn:<fn_name>/)).toBeInTheDocument();
+    expect(screen.getByText("/on/contract:<contract_id>/metadata", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText(/Driver routes stay disabled until you save metadata evidence/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "I observed a non-empty schema" })).toBeDisabled();
+    expect(screen.queryByText(/\/on\/driver:<contract_id>\/get_schema/)).not.toBeInTheDocument();
     expect(screen.queryByText(/\/rues\/contract/)).not.toBeInTheDocument();
   });
 
@@ -88,7 +89,7 @@ describe("App", () => {
   it("shows maturity, source status, and freshness in references", () => {
     window.location.hash = "#reference";
     render(<App />);
-    expect(screen.getAllByText(/reviewed July 3, 2026/).length).toBeGreaterThan(2);
+    expect(screen.getAllByText(/reviewed July 19, 2026/).length).toBeGreaterThan(2);
     expect(screen.getAllByText("Pre-launch Testnet reference").length).toBeGreaterThan(0);
     expect(screen.getByText("pre-launch metadata")).toBeInTheDocument();
     expect(screen.getAllByText("reference only")).toHaveLength(2);

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CAPABILITIES,
   DUSK_EVM_NETWORKS,
@@ -17,6 +17,7 @@ import { useJourney } from "../studioState";
 import { AsyncNotice, CopyButton, ExternalLink, PageIntro, SearchBox, StatusPill } from "../StudioUi";
 
 const DEFAULT_REFERENCE_LIMIT = 10;
+const TROUBLESHOOTING_FOCUS_STORAGE_KEY = "dusk-studio-troubleshooting-focus";
 
 const readerLabels: Record<string, string> = {
   archived: "Archived",
@@ -213,18 +214,43 @@ function NetworkReferenceRow({ network }: { network: (typeof DUSK_EVM_NETWORKS)[
 export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath | null }) {
   const { progress } = useJourney();
   const [query, setQuery] = useState("");
+  const [focusedTroubleId, setFocusedTroubleId] = useState<string | null>(() => {
+    try {
+      return window.sessionStorage.getItem(TROUBLESHOOTING_FOCUS_STORAGE_KEY);
+    } catch {
+      return null;
+    }
+  });
   const normalizedQuery = query.trim();
   const activeTroubleIds = new Set(troubleIds[builderPath ?? "duskds"]);
   const blockedRoute = builderPath
     ? STEP_ROUTES.find((route) => progress.paths[builderPath][route].status === "blocked")
     : undefined;
   const currentBlocker = builderPath && blockedRoute ? progress.paths[builderPath][blockedRoute].blocker : undefined;
-  const candidates = normalizedQuery ? searchTroubleshooting(normalizedQuery) : TROUBLESHOOTING;
+  const candidates = normalizedQuery
+    ? searchTroubleshooting(normalizedQuery)
+    : focusedTroubleId
+      ? TROUBLESHOOTING.filter((item) => item.id === focusedTroubleId)
+      : TROUBLESHOOTING;
   const items = candidates.filter((item) => activeTroubleIds.has(item.id));
   const prelaunch = builderPath === "evm";
   const blockedStep = blockedRoute && builderPath
     ? steps[builderPath].find((step) => step.id === blockedRoute)
     : undefined;
+
+  useEffect(() => {
+    if (!focusedTroubleId) return;
+    const focusTimer = window.setTimeout(
+      () => document.getElementById(`trouble-${focusedTroubleId}`)?.focus(),
+      0
+    );
+    try {
+      window.sessionStorage.removeItem(TROUBLESHOOTING_FOCUS_STORAGE_KEY);
+    } catch {
+      // The focused result is still rendered when session storage is disabled.
+    }
+    return () => window.clearTimeout(focusTimer);
+  }, [focusedTroubleId]);
 
   return (
     <section className="reference-page">
@@ -253,7 +279,14 @@ export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath 
           <span>Showing active DuskDS recovery guidance. Choose a path for a more focused result.</span>
         </div>
       )}
-      <SearchBox value={query} onChange={setQuery} placeholder={prelaunch ? "Search wallet, RPC, gas, Foundry..." : "Search Forge, Rust, WASM, data driver, VM tests..."} />
+      <SearchBox
+        value={query}
+        onChange={(next) => {
+          setQuery(next);
+          if (next.trim()) setFocusedTroubleId(null);
+        }}
+        placeholder={prelaunch ? "Search wallet, RPC, gas, Foundry..." : "Search Forge, Rust, WASM, data driver, VM tests..."}
+      />
       <p className="quiet-note" role="status">{items.length} {prelaunch ? "planning" : "recovery"} {items.length === 1 ? "entry" : "entries"} found.</p>
       {items.length ? <div className="trouble-list">{items.map((item) => <TroubleRow key={item.id} item={item} prelaunch={prelaunch} />)}</div> : <AsyncNotice state="empty" message="No entry matches this search. Try the failed tool or symptom wording, or open project support." />}
     </section>
@@ -273,7 +306,7 @@ function TroubleRow({ item, prelaunch }: { item: TroubleshootingItem; prelaunch:
   const impact = item.severity === "high" ? "High impact" : item.severity === "medium" ? "Medium impact" : "Low impact";
   const action = prelaunch ? undefined : duskDsTroubleActions[item.id];
   return (
-    <article className="trouble-row">
+    <article className="trouble-row" id={`trouble-${item.id}`} tabIndex={-1}>
       <StatusPill tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warn" : "neutral"}>{prelaunch ? "Planning" : impact}</StatusPill>
       <div>
         <h2>{item.title}</h2>

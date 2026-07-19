@@ -170,11 +170,11 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
     name: "Rusk Wallet CLI",
     scopes: ["inspect"],
     requirement: "conditional",
-    reviewedIdentity: "Required only for later manual deployment",
-    purpose: "Handles deployment and signing outside the Studio. It is not required for this read-only journey.",
-    checkCommand: same("rusk-wallet --version"),
-    helpUrl: "https://github.com/dusk-network/rusk",
-    expectedResult: "A Rusk Wallet version is printed. Never paste wallet secrets into the Studio."
+    reviewedIdentity: "Rusk Wallet 0.3.0+ for manual DuskDS Testnet deployment",
+    purpose: "Handles wallet settings, deployment, and signing in your own terminal. Studio never reads the wallet or runs the deploy command.",
+    checkCommand: same(["rusk-wallet --version", "rusk-wallet --network testnet settings", "rusk-wallet --network testnet contract-deploy --help"].join("\n")),
+    helpUrl: "https://docs.dusk.network/learn/rusk-wallet/",
+    expectedResult: "Version 0.3.0 or newer and the intended Testnet settings are shown. Do not paste settings output or wallet secrets into Studio."
   }
 ];
 
