@@ -1,6 +1,6 @@
 # Studio Security Test Matrix
 
-Date: 2026-07-10
+Date: 2026-07-18
 Scope: static public Studio and optional loopback companion
 
 The protected whole-system audit defined ST-01 through ST-16. These cases are now durable product checks rather than one-off audit probes.
@@ -26,10 +26,40 @@ The protected whole-system audit defined ST-01 through ST-16. These cases are no
 | ST-17 Portable distribution | payload/runtime verifier, deterministic archive fixtures, release signing fixtures, extracted target smoke, release-parity UI tests, and child-environment regression | Wrong target, tampering, undeclared files, mixed releases, unsafe paths, secrets, untrusted signatures, inherited credentials, and non-runnable archives fail closed. |
 | ST-18 Exact signed candidate lifecycle | adversarial ZIP directory/local-header fixtures, strict dual-launcher index and package manifest, required macOS staple-ticket files, one-time bootstrap/session probes, safe/action mode parity, Studio-owned listener inspection before and after preflight, minimal child environment, isolated user-data roots, fixed-port closure, and identity-revalidated install cleanup | Traversal, collisions, bombs, bad CRCs/modes, extra entries, symlink/reparse boundaries, inherited credentials, mode substitution, missing staple tickets, unexpected Studio listeners, hardcoded install-cleanup claims, or cleanup outside the runner-owned ephemeral root fail closed. It does not claim machine-wide process containment. |
 | ST-19 Staged publication decision | run-bound target records, retained lifecycle evidence, signing/transport/candidate/publication fixtures, exact-key schemas, raw-evidence digest binding, strict timestamps, maximum age, and monitoring-revisit bounds | Candidate evidence can be accepted while publication is disabled, but schema 2 rejects every transport and publication dossier because gate artifacts and actor identities are not authenticated; stale, future, caller-digested, self-reviewed, incomplete, or mixed-run evidence also fails closed. |
+| ST-20 Unsigned engineering assurance | native Windows x64, Linux x64, and macOS arm64 hosted runners; elevated/root rejection before extraction; one-use credential-backed Windows lifecycle under a temporary standard user with profile loading and network-only credentials disabled; runtime exact-SID/non-admin verification; repeated exact-SID process sweep plus profile/account teardown; two-build receipt and launcher-digest comparison; unsigned exact-inventory ZIP creation/extraction; both mode lifecycles; platform observations; point-in-time verified absence of every exact workflow-owned candidate path; no retained workflow artifacts | Engineering regressions, privileged-launch acceptance, substituted launchers, non-reproducible builds, unsafe packages, lifecycle failures, unconfirmed tracked shutdown, inherited credentials, wrong or administrative Windows identity, unexpected Windows profile loading, process/profile/account cleanup failure, any Windows publisher signature, executable Linux stacks or special modes, macOS ad-hoc-integrity failures, unexpected Gatekeeper acceptance, retained workflow-owned candidate paths, attempted workflow-artifact transfer, or publication-trust claims fail closed. On unconfirmed shutdown, lifecycle-owned roots are preserved for ephemeral-runner disposal rather than recursively deleted. A pass remains same-runner, unsigned, unauthenticated diagnostic evidence only; the elevation guard and final SID sweep are not hostile-admin/root containment, and pull-request code can modify the lane and its validators. |
 
 ## Platform behavior
 
-The reparse test creates a Windows directory junction on Windows and a directory symlink on POSIX. Tracked process-group shutdown uses `taskkill /T /F` on Windows and a detached process group on POSIX; it does not claim containment of a deliberately detached same-user tool daemon. The required `.github/workflows/studio-linux-security.yml` lane asserts `process.platform === "linux"`, runs the POSIX filesystem/process tests explicitly on Ubuntu 24.04, then runs the complete source/product gate. The production helper stays bound to IPv4 loopback; IPv6 origins/authorities are rejected rather than partially supported.
+The reparse test creates a Windows directory junction on Windows and a directory
+symlink on POSIX. Tracked process-group shutdown uses `taskkill /T /F` on
+Windows and a detached process group on POSIX; it does not claim containment of
+a deliberately detached same-user tool daemon. The unsigned lane rejects the
+hosted runner's elevated Windows token, then uses a temporary standard local
+user through a one-use, credential-backed primary process for lifecycle checks.
+Profile loading and network-only credential behavior are explicitly disabled;
+the child then verifies its exact temporary SID and non-admin token at runtime.
+The harness repeatedly removes exact-SID processes, requires no loaded SID
+profile hive, defensively removes one exact, non-special, unloaded profile
+record if Windows created it, and deletes the account before it can pass. A
+temporary exact-SID folder-traverse ACL makes the hosted runner's private
+temporary-root ancestor chain, including its hosted volume root, reachable;
+that ACL is removed and verified before account deletion. Protected processes
+whose owners are already unresolved are baselined by PID and creation time
+before the temporary account exists; any new or changed unresolved process, or
+any ACL cleanup failure, blocks cleanup evidence. The parent writes the root-deletion
+confirmation into a separate inheritance-stripped control directory that the
+temporary user cannot write. The harness does not modify local account rights
+or install task/service scaffolding. Its Windows limits are deliberately
+staggered: a five-minute child lifecycle, a bounded 15-second child post-kill
+confirmation, a seven-minute credentialed parent wait, a bounded 15-second
+parent shutdown confirmation, and a bounded 15-second redirected-output drain.
+Linux and macOS use `sudo` only to prove privileged launch rejection before
+running lifecycles normally. The required
+`.github/workflows/studio-linux-security.yml` lane asserts
+`process.platform === "linux"`, runs the POSIX filesystem/process tests
+explicitly on Ubuntu 24.04, then runs the complete source/product gate. The
+production helper stays bound to IPv4 loopback; IPv6 origins/authorities are
+rejected rather than partially supported.
 
 ## Failure handling
 

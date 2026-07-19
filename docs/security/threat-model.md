@@ -45,7 +45,11 @@ boundaries are documented in `../../README.md` and `../deployment/`.
 - CORS preflight and Private Network Access are validated explicitly. Private Network Access is denied by default.
 - Filesystem parents are materialized beneath canonical approved roots, checked for symlinks/junctions/reparse points, and revalidated by real path and directory identity immediately before promotion.
 - Scaffolds populate a private sibling stage and become visible only through one atomic rename; existing targets are rejected and failed stages are removed only while their parent identity remains trusted.
-- External tool execution uses exact commands, bounded output/time, and termination of tracked direct processes or ordinary process groups; the request server no longer runs blocking `spawnSync` paths.
+- External tool execution uses exact allowlisted commands and arguments,
+  bounded output/time, and termination of tracked direct processes or ordinary
+  process groups; fixed reviewed wrappers for Windows command shims and the
+  bounded optional WSL probe expose no user-controlled shell text, and the
+  request server no longer runs blocking `spawnSync` paths.
 - Source freshness and tracked-source boundary checks fail the product gate when provenance is stale/unverified or generated/provider/sensitive paths enter the release scope.
 - No private key fields anywhere.
 - No browser-based transaction signing.
@@ -60,13 +64,33 @@ boundaries are documented in `../../README.md` and `../deployment/`.
 
 The portable supervisor verifies its exact payload before binding, keeps the pairing secret in memory only, bootstraps one same-origin browser session without URLs or environment variables, requires exact frontend/runtime release parity, defaults to safe mode, strips secret-shaped child environments, terminates active tracked children on shutdown, and closes both Studio-owned loopback services.
 
+The standalone bootstrap rejects elevated Windows and privileged Linux/macOS
+execution before extracting its embedded candidate. POSIX real/effective user
+or group mismatches and nonzero Linux permitted, effective, or ambient
+capabilities are rejected as well. The
+portable runtime repeats the same fail-closed check before payload verification,
+filesystem creation, listeners, browser launch, or developer tools. The check
+prevents accidental privileged execution; it is not OS containment against an
+administrator or root user who can alter an unsigned program or its execution
+environment.
+
 Release packaging rejects unsafe paths, reparse entries, undeclared files, secret-like material, and absolute build-host paths; binds a pinned Node binary, SBOM, personal-project provenance identifiers, and checksums; and produces deterministic engineering inputs. Every OS candidate is one exact forward-slash ZIP with two distinct mode-bound launchers and a complete allowlisted package manifest. Before extraction, the central directory, local headers, paths, collisions, file types, sizes, compression ratios, CRCs, modes, and manifest are validated under strict bounds. Candidate processes run from isolated directories with a minimal credential-free environment. Lifecycle cleanup is permitted only beneath a pre-existing runner-owned ephemeral root after Studio-owned listener closure and directory-identity and symlink revalidation. Drive roots, parent paths, symlinks, reparse boundaries, unexpected package files, output collisions, and unconfirmed Studio shutdown fail closed before removal.
 
 The lifecycle harness assumes a fresh, isolated hosted runner without a hostile same-account process mutating `RUNNER_TEMP`. Node does not expose a portable handle-relative `openat`/`unlinkat` tree API, and Windows does not expose `O_NOFOLLOW`; an adversary already executing as the runner account could therefore attempt a junction or pathname race between validation and use. Random private siblings, exclusive creation, atomic final rename, filesystem-identity checks, and revalidation make this non-exploitable by a malicious ZIP alone, but they do not replace OS-level account isolation.
 
-The companion invokes already installed developer tools with the developer's own account authority. A hostile or compromised tool can deliberately detach a daemon outside Node's portable child/process-group tracking. Signed-candidate evidence is therefore scoped to Studio-owned loopback shutdown and runner-owned install-file rollback; it never claims machine-wide process cleanup. Public binary publication remains blocked until OS-level detached-descendant containment is implemented or this same-user tool boundary is explicitly accepted with compensating controls.
+The companion invokes already installed developer tools with the developer's
+own account authority. A hostile or compromised tool can use that authority for
+filesystem, network, and process effects while active and can deliberately
+detach a daemon outside Node's portable child/process-group tracking.
+Signed-candidate evidence is therefore scoped to Studio-owned loopback shutdown
+and runner-owned install-file rollback; it never claims OS-level containment of
+the invoked tool or machine-wide process cleanup. George accepts that residual
+risk for the current source-only and internal companion scope in
+[the same-user tool boundary decision](same-user-tool-boundary-decision.md).
+The recorded compensating controls and revisit triggers do not constitute an
+independent security review or publication approval.
 
-Unsigned RCs are internal-only. Candidate transport remains disabled, every enabled transport shape is rejected by policy schema 2, and candidate binaries are forbidden from GitHub Actions artifacts and draft releases until a private transport is separately implemented and reviewed. Candidate acceptance is intentionally independent of publication, but it remains bound to the protected tag, full commit, workflow run, attempt, actor, creation window, exact package hashes, launcher indexes, package manifest, retained lifecycle reports, and platform checks. Publication separately requires a digest-bound, time-bounded dossier and an explicit switch. Schema 2 can validate dossier shape but cannot authenticate referenced bytes or actor identities, so it rejects every publication dossier rather than treating URLs, names, or caller-supplied hashes as proof. The standalone channel then requires post-injection maintainer platform trust: Authenticode with timestamp on Windows, tag-bound keyless Sigstore on Linux, and Developer ID with hardened runtime, notarization, stapling, and Gatekeeper on macOS. Separate fresh runners verify scoped Studio lifecycle and install rollback, while independent download/quarantine, reputation, compatibility, detached-descendant boundary acceptance, and security review remain external publication gates. The hosted artifact remains docs-only and never becomes a loopback client.
+Unsigned RCs are internal-only. Candidate transport remains disabled, every enabled transport shape is rejected by policy schema 2, and candidate binaries are forbidden from GitHub Actions artifacts and draft releases until a private transport is separately implemented and reviewed. Candidate acceptance is intentionally independent of publication, but it remains bound to the protected tag, full commit, workflow run, attempt, actor, creation window, exact package hashes, launcher indexes, package manifest, retained lifecycle reports, and platform checks. Publication separately requires a digest-bound, time-bounded dossier and an explicit switch. Schema 2 can validate dossier shape but cannot authenticate referenced bytes or actor identities, so it rejects every publication dossier rather than treating URLs, names, or caller-supplied hashes as proof. The standalone channel then requires post-injection maintainer platform trust: Authenticode with timestamp on Windows, tag-bound keyless Sigstore on Linux, and Developer ID with hardened runtime, notarization, stapling, and Gatekeeper on macOS. Windows and Apple identities are intentionally unconfigured. Separate fresh runners would verify scoped Studio lifecycle and install rollback, while independent download/quarantine, reputation, compatibility, and security review remain external publication gates. The maintainer's same-user boundary decision does not replace that candidate-specific review. The hosted artifact remains docs-only and never becomes a loopback client.
 
 The precise boundary and configuration contract is documented in local-companion-boundary.md.
 
