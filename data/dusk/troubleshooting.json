@@ -393,7 +393,7 @@
                          "project shape"
                      ],
         "severity":  "low",
-        "fix":  "The current official Smart Contracts on DuskDS guide names my-first-contract as the canonical starting point and uses Make-based commands. Studio's separately pinned and tested Dusk Forge CLI creates a different project shape. Both support Forge contracts and data drivers, but their commands and artifact paths are not interchangeable.",
+        "fix":  "The current official Smart Contracts on DuskDS guide names my-first-contract as the canonical starting point and uses Make-based commands. Studio's separately pinned and tested Dusk Forge CLI creates a different project shape. Both target DuskDS and produce contract plus data-driver WASM, but their commands and artifact paths are not interchangeable.",
         "safeNextStep":  "Choose one project shape: follow the official Make commands inside my-first-contract, or follow Studio's dusk-forge commands inside a Studio Forge starter. Do not mix commands or artifact paths between them."
     },
     {
