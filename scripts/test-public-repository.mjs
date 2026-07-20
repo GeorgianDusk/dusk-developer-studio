@@ -544,6 +544,7 @@ const phase5ProvenanceVerifier = read("scripts/github-actions-provenance.mjs");
 const agentPilotCollector = read("scripts/agent-pilot-collector.mjs");
 const agentPilotPlan = read("scripts/agent-pilot-plan.mjs");
 const agentPilotAssembler = read("scripts/assemble-agent-pilot-evidence.mjs");
+const stagingSmoke = read("scripts/staging-smoke.mjs");
 assert.match(phase5Checker, /GH_TOKEN[\s\S]*GITHUB_TOKEN[\s\S]*evaluatePhase5EvidenceOnline/);
 assert.match(phase5Checker, /verifyCandidateBoundPhase5Context[\s\S]*policyBytes[\s\S]*candidateContext/);
 assert.match(phase5CandidateContext, /rev-parse[\s\S]*status[\s\S]*--untracked-files=no[\s\S]*cat-file/);
@@ -570,6 +571,8 @@ assert.match(agentPilotCollector, /operator-attested-machine-collected/);
 assert.match(agentPilotCollector, /independent_execution: false/);
 assert.match(agentPilotCollector, /raw_observation_bundle_sha256/);
 assert.match(agentPilotCollector, /github_actions_provenance_input/);
+assert.match(stagingSmoke, /artifactFingerprintFromRecords\(manifest\?\.artifacts\)/);
+assert.doesNotMatch(stagingSmoke, /sha256\(JSON\.stringify\(manifest\.artifacts\)\)/);
 assert.match(agentPilotAssembler, /verifyAgentPilotResult\(wrapper\)/);
 assert.match(agentPilotAssembler, /downloadGitHubActionsReceipt/);
 assert.match(agentPilotAssembler, /envelope\.ref !== "refs\/heads\/main"/);
@@ -744,7 +747,6 @@ for (const sourceBackedFile of [
 }
 assert.match(read("data/dusk/resources.json"), /canonical starting point[\s\S]*Make-based build flow/);
 assert.match(read("data/dusk/troubleshooting.json"), /different project shape[\s\S]*not interchangeable/);
-const stagingSmoke = read("scripts/staging-smoke.mjs");
 assert.doesNotMatch(stagingSmoke, /eth_chainId|checkRpc\(/, "DuskEVM RPC must not be requested while its policy check is deferred.");
 assert.match(stagingSmoke, /checks\.rpc_chain_id = deferredRpcChainId\(options\.policy\)/);
 assert.match(stagingSmoke, /record\("duskds_node_read", \(\) => checkDuskDsNodeRead/);

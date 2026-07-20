@@ -4,6 +4,8 @@ import path from "node:path";
 import { URL } from "node:url";
 
 const RECEIPT_NAME = "assurance-receipt.json";
+const RELEASE_MANIFEST_NAME = "release-manifest.json";
+const FINGERPRINT_METADATA_PATHS = new Set([RECEIPT_NAME, RELEASE_MANIFEST_NAME]);
 const SOURCE_FILES = ["capabilities.json", "networks.evm.json", "resources.json", "source-freshness.json", "troubleshooting.json"];
 
 function sha256(value) {
@@ -17,7 +19,7 @@ function walk(directory, base = directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const absolute = path.join(directory, entry.name);
     if (entry.isDirectory()) files.push(...walk(absolute, base));
-    else if (entry.isFile() && ![RECEIPT_NAME, "release-manifest.json"].includes(entry.name)) files.push(path.relative(base, absolute).replaceAll(path.sep, "/"));
+    else if (entry.isFile() && !FINGERPRINT_METADATA_PATHS.has(entry.name)) files.push(path.relative(base, absolute).replaceAll(path.sep, "/"));
   }
   return files.sort();
 }
@@ -128,11 +130,49 @@ export function validateAssuranceReceipt(root, receipt) {
   return { assets: expected.assets.observed, sourceUrls: expected.source_links_and_schema.url_count };
 }
 
+function hasUnsafeFingerprintPathCharacter(value) {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return character === "\\" || codePoint < 0x20 || codePoint === 0x7f;
+  });
+}
+
+export function artifactFingerprintFromRecords(records) {
+  if (!Array.isArray(records)) throw new Error("Artifact fingerprint records must be an array.");
+  const seen = new Set();
+  const canonical = [];
+  for (const record of records) {
+    if (
+      typeof record?.path !== "string"
+      || !record.path
+      || record.path.startsWith("/")
+      || record.path !== path.posix.normalize(record.path)
+      || hasUnsafeFingerprintPathCharacter(record.path)
+      || record.path.split("/").some((segment) => !segment || segment === "." || segment === "..")
+      || seen.has(record.path)
+      || !Number.isSafeInteger(record.bytes)
+      || record.bytes < 0
+      || !/^[a-f0-9]{64}$/u.test(record.sha256 ?? "")
+    ) {
+      throw new Error("Artifact fingerprint records are invalid or duplicated.");
+    }
+    seen.add(record.path);
+    if (!FINGERPRINT_METADATA_PATHS.has(path.posix.basename(record.path))) {
+      canonical.push({ path: record.path, bytes: record.bytes, sha256: record.sha256 });
+    }
+  }
+  canonical.sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+  );
+  if (!canonical.length) throw new Error("Artifact fingerprint records contain no product artifacts.");
+  return sha256(JSON.stringify(canonical));
+}
+
 export function artifactFingerprint(root) {
   const dist = path.join(root, "apps", "studio", "dist");
   const records = walk(dist).map((relative) => {
     const bytes = fs.readFileSync(path.join(dist, relative));
     return { path: relative, bytes: bytes.length, sha256: sha256(bytes) };
   });
-  return sha256(JSON.stringify(records));
+  return artifactFingerprintFromRecords(records);
 }
