@@ -168,7 +168,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       const url = response.url();
       if (/^https?:\/\//u.test(url)) {
         responseEvents.push({ url, status: response.status() });
-        responseByRequest.set(response.request(), { url, status: response.status() });
+        responseByRequest.set(response.request(), response);
       }
       if (url.startsWith("http://127.0.0.1:")) {
         responses.set(url, response.status());
@@ -231,8 +231,10 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     assert.equal(bootstrapRequest.url(), expectedBootstrapUrl);
     assert.equal(bootstrapRequest.method(), "POST");
     assert.equal(bootstrapRequest.postData(), "{}");
+    const bootstrapResponse = responseByRequest.get(bootstrapRequest);
+    assert.ok(bootstrapResponse, "The single bootstrap request must receive a response.");
     assert.deepEqual(
-      responseByRequest.get(bootstrapRequest),
+      { url: bootstrapResponse.url(), status: bootstrapResponse.status() },
       { url: expectedBootstrapUrl, status: 200 },
       "The single bootstrap request must receive the observed successful response."
     );
@@ -283,6 +285,9 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       createdProjectPath = scaffold.body.projectPath;
       assert.equal(typeof createdProjectPath, "string");
     }
+    // Drain the terminal event in both modes; the strict correlation below
+    // determines whether any returned Chromium transport error is acceptable.
+    await bootstrapResponse.finished();
     assert.deepEqual(
       responseEvents.filter(({ status }) => status >= 400),
       [{ url: expectedProbeUrl, status: 401 }],
