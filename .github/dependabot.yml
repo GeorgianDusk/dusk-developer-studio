@@ -22,3 +22,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+  - package-ecosystem: cargo
+    directory: /packages/templates/duskds-counter-forge
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    versioning-strategy: lockfile-only

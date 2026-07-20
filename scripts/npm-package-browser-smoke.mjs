@@ -7,6 +7,7 @@ import path from "node:path";
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
 import { chromium } from "playwright";
+import { validatePairingTransportEvidence } from "./npm-package-browser-telemetry.mjs";
 import {
   npmPackageName,
   npmPackageVersion,
@@ -141,8 +142,9 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     const responseEvents = [];
     const responseByRequest = new Map();
     const bootstrapRequests = [];
-    const finishedRequests = new Set();
+    const finishedRequests = new Map();
     const requestFailures = [];
+    let networkEventSequence = 0;
     page.on("console", (message) => {
       if (message.type() === "error") {
         errors.push({ kind: "console", text: message.text(), url: message.location().url });
@@ -154,11 +156,14 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
         bootstrapRequests.push(request);
       }
     });
-    page.on("requestfinished", (request) => finishedRequests.add(request));
+    page.on("requestfinished", (request) => {
+      finishedRequests.set(request, ++networkEventSequence);
+    });
     page.on("requestfailed", (request) => {
       if (/^https?:\/\//u.test(request.url())) {
         requestFailures.push({
           request,
+          sequence: ++networkEventSequence,
           text: request.failure()?.errorText ?? "failed",
           url: request.url()
         });
@@ -167,8 +172,15 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     page.on("response", (response) => {
       const url = response.url();
       if (/^https?:\/\//u.test(url)) {
-        responseEvents.push({ url, status: response.status() });
-        responseByRequest.set(response.request(), response);
+        const request = response.request();
+        responseEvents.push({
+          request,
+          response,
+          sequence: ++networkEventSequence,
+          url,
+          status: response.status()
+        });
+        responseByRequest.set(request, response);
       }
       if (url.startsWith("http://127.0.0.1:")) {
         responses.set(url, response.status());
@@ -213,19 +225,6 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     );
     const expectedProbeUrl = "http://127.0.0.1:8788/health";
     const expectedBootstrapUrl = new URL("/__dusk/bootstrap", page.url()).href;
-    const probeIndex = responseEvents.findIndex(({ url, status }) =>
-      url === expectedProbeUrl && status === 401
-    );
-    const bootstrapIndex = responseEvents.findIndex(({ url, status }) =>
-      url === expectedBootstrapUrl && status === 200
-    );
-    const authenticatedHealthIndex = responseEvents.findIndex(({ url, status }, index) =>
-      index > bootstrapIndex && url === expectedProbeUrl && status === 200
-    );
-    assert.ok(
-      probeIndex >= 0 && bootstrapIndex > probeIndex && authenticatedHealthIndex > bootstrapIndex,
-      "Local pairing must observe unauthenticated health, successful bootstrap, then authenticated health in order."
-    );
     assert.equal(bootstrapRequests.length, 1, "Local pairing must make exactly one bootstrap request.");
     const [bootstrapRequest] = bootstrapRequests;
     assert.equal(bootstrapRequest.url(), expectedBootstrapUrl);
@@ -242,12 +241,6 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       error.kind === "console"
       && error.text === "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       && error.url === expectedProbeUrl;
-    // Hosted Chromium can report ERR_ABORTED after this fetch has already
-    // returned 200, supplied valid pairing JSON, and enabled authenticated health.
-    const isExpectedCompletedBootstrapAbort = (failure) =>
-      failure.request === bootstrapRequest
-      && failure.text === "net::ERR_ABORTED"
-      && failure.url === expectedBootstrapUrl;
     if (capabilitiesEnabled) {
       const expectedScaffoldUrl = "http://127.0.0.1:8788/scaffold-duskds-forge";
       const scaffoldResponsePromise = page.waitForResponse(
@@ -285,34 +278,39 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       createdProjectPath = scaffold.body.projectPath;
       assert.equal(typeof createdProjectPath, "string");
     }
-    // Drain the terminal event in both modes; the strict correlation below
-    // determines whether any returned Chromium transport error is acceptable.
-    await bootstrapResponse.finished();
+    const authenticatedHealthEvents = responseEvents.filter(({ url, status }) =>
+      url === expectedProbeUrl && status === 200
+    );
+    assert.equal(
+      authenticatedHealthEvents.length,
+      1,
+      "Local pairing must observe exactly one successful authenticated health response."
+    );
+    const [authenticatedHealthEvent] = authenticatedHealthEvents;
+    // Drain both successful pairing responses. Chromium can emit a late
+    // requestfailed event after the application has already consumed a valid
+    // response; the identity-bound classifier below decides whether it is safe.
+    await Promise.all([
+      bootstrapResponse.finished(),
+      authenticatedHealthEvent.response.finished()
+    ]);
     assert.deepEqual(
-      responseEvents.filter(({ status }) => status >= 400),
+      responseEvents
+        .filter(({ status }) => status >= 400)
+        .map(({ url, status }) => ({ url, status })),
       [{ url: expectedProbeUrl, status: 401 }],
       "The only expected HTTP failure is the one unauthenticated health probe before pairing."
     );
-    const completedBootstrapAborts = requestFailures.filter(isExpectedCompletedBootstrapAbort);
-    assert.ok(
-      finishedRequests.has(bootstrapRequest) || completedBootstrapAborts.length === 1,
-      "The successful bootstrap request must finish or produce only the correlated Chromium abort telemetry."
-    );
-    assert.ok(
-      !(finishedRequests.has(bootstrapRequest) && completedBootstrapAborts.length),
-      "The bootstrap request cannot both finish and fail."
-    );
-    assert.ok(
-      completedBootstrapAborts.length <= 1,
-      "The completed bootstrap produced duplicate Chromium abort telemetry."
-    );
-    assert.deepEqual(
-      requestFailures
-        .filter((failure) => !isExpectedCompletedBootstrapAbort(failure))
-        .map(({ text, url }) => ({ text, url })),
-      [],
-      "Browser smoke produced an unexpected request failure."
-    );
+    const pairingTransport = validatePairingTransportEvidence({
+      bootstrapRequest,
+      expectedBootstrapUrl,
+      expectedProbeUrl,
+      finishedRequests,
+      pairingValidated: true,
+      requestFailures,
+      responseByRequest,
+      responseEvents
+    });
     assert.ok(
       errors.filter(isExpectedProbeConsoleError).length <= 1,
       "The expected unauthenticated health probe produced duplicate browser errors."
@@ -326,6 +324,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       mode: capabilitiesEnabled ? "local-actions" : "safe",
       paired_ui: expectedMode,
       assets,
+      late_abort_telemetry: pairingTransport.lateAbortTelemetry,
       ...(createdProjectPath ? { scaffold_verified: true } : {})
     };
   } finally {

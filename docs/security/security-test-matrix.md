@@ -24,6 +24,7 @@ The matrix defines the durable security behaviors expected from the Hosted guide
 | ST-18 Mode and lifecycle | Clean Safe and Local Actions runs, startup, pairing, identity parity, tool denial or enablement, project preservation, shutdown, and port closure | Safe cannot escalate; Local Actions exposes only reviewed capabilities; both modes close cleanly without deleting projects. |
 | ST-19 Cross-platform behavior | Windows x64, Linux x64, and macOS arm64 package execution under a normal user | The same package contract and security behavior holds on every supported platform. |
 | ST-20 Published-byte identity | Pack once, inspect, test the exact package archive, and publish that same digest | The package selected for publication is byte-for-byte the package that passed the checks. |
+| ST-21 Embedded Rust dependency health | Policy-bound Cargo lock hash and versions, weekly Cargo-aware Dependabot updates, a pinned RustSec scan, and exact owner/expiry-bound informational-warning review | Known RustSec vulnerabilities, new or changed warnings, expired reviews, ignored advisories, and dependency or lock drift fail CI. |
 
 ## Platform behavior
 

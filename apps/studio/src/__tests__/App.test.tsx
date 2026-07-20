@@ -8,7 +8,7 @@ import { getStudioRuntime } from "../app/runtime";
 const npmCommit = "a".repeat(40);
 const npmRelease: StudioRelease = { product: STUDIO_PRODUCT, version: "1.2.3", commit: npmCommit, channel: "npm" };
 const reviewedTemplateRevision = "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a";
-const reviewedTemplateLock = "c1ac706c10edf715eebc33c2b04b430911597ffa8dfb393f41f2535468edd3cb";
+const reviewedTemplateLock = "1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da";
 
 function scaffoldReceipt(projectPath: string, recovered = false, runtimeOs: "windows" | "linux" | "macos" = "windows") {
   return {
