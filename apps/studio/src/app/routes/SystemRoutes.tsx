@@ -47,7 +47,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           <p>It serves the Studio only on <strong>127.0.0.1:5173</strong> and its companion only on <strong>127.0.0.1:8788</strong>. It installs no service, requests no administrator access, and never asks for wallet secrets.</p>
           <p>The first local page load uses one in-memory pairing value and a one-use bootstrap. The browser receives only an origin-bound, <strong>HttpOnly</strong>, <strong>SameSite=Strict</strong> session cookie. Other origins, hosts, unpaired requests, oversized requests, and expired sessions are rejected.</p>
           <p>Local Actions can run only the allowlisted prerequisite checks and create approved starter projects. Wallet signing, funded transactions, deployment, arbitrary commands, and writes outside the managed project root remain unavailable.</p>
-          <details>
+          <details className="local-storage-disclosure">
             <summary>Where created projects are stored</summary>
             <ul>
               <li>Windows: <code>%LOCALAPPDATA%\Dusk\DeveloperStudio\projects</code></li>

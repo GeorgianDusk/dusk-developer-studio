@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { isNativeWindowsWasmOptPath, runPreflightAsync } from "../commands/preflight";
+import {
+  isNativeWindowsWasmOptPath,
+  runPreflightAsync,
+  trustedPathAdditionsForTool
+} from "../commands/preflight";
+import os from "node:os";
+import path from "node:path";
 import {
   DUSK_FORGE_INSTALL_COMMAND,
   DUSK_FORGE_REVISION,
@@ -18,7 +24,7 @@ const REVIEWED_FORGE_IDENTITY: DuskForgeInstallIdentity = {
 };
 
 function logicalCommand(options: BoundedProcessOptions): string {
-  return options.command === "cmd.exe" ? options.args[3] : options.command;
+  return options.command;
 }
 
 function successfulOutput(options: BoundedProcessOptions): string {
@@ -29,6 +35,42 @@ function successfulOutput(options: BoundedProcessOptions): string {
 }
 
 describe("path preflight", () => {
+  it("prefers a configured Cargo home before the default per-user Cargo bin", () => {
+    const root = path.join(os.tmpdir(), "dusk-cargo-order");
+    const homeDirectory = path.join(root, "home");
+    const cargoHome = path.join(root, "configured-cargo");
+    expect(trustedPathAdditionsForTool(
+      { name: "Cargo", command: "cargo", args: ["--version"], required: true },
+      {
+        homeDirectory,
+        cargoHome,
+        launchCwd: path.join(root, "launch-project"),
+        pathExists: () => true
+      }
+    )).toEqual([
+      path.resolve(cargoHome, "bin"),
+      path.resolve(homeDirectory, ".cargo", "bin")
+    ]);
+  });
+
+  it("restores a configured Cargo home below the profile when launched from the profile root", () => {
+    const root = path.join(os.tmpdir(), "dusk-home-cargo");
+    const homeDirectory = path.join(root, "home");
+    const cargoHome = path.join(homeDirectory, "custom-cargo");
+    expect(trustedPathAdditionsForTool(
+      { name: "Cargo", command: "cargo", args: ["--version"], required: true },
+      {
+        homeDirectory,
+        cargoHome,
+        launchCwd: homeDirectory,
+        pathExists: () => true
+      }
+    )).toEqual([
+      path.resolve(cargoHome, "bin"),
+      path.resolve(homeDirectory, ".cargo", "bin")
+    ]);
+  });
+
   it("accepts only a native Windows wasm-opt executable path", () => {
     expect(isNativeWindowsWasmOptPath("C:\\tools\\wasm-opt.exe")).toBe(true);
     expect(isNativeWindowsWasmOptPath("C:\\tools\\wasm-opt.cmd")).toBe(false);
@@ -43,6 +85,7 @@ describe("path preflight", () => {
     expect(result.tools[0]).toMatchObject({ name: "Node.js", ok: true, required: true, version: process.version });
     expect(result.ok).toBe(true);
     expect(runProcess).toHaveBeenCalledTimes(2);
+    expect(runProcess.mock.calls.some(([options]) => options.command.toLowerCase() === "cmd.exe")).toBe(false);
     for (const [options] of runProcess.mock.calls) {
       expect(options).toEqual(expect.objectContaining({ timeoutMs: 5_000, maxOutputBytes: 65_536 }));
     }

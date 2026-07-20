@@ -153,6 +153,8 @@ The Studio reduces this risk through:
 - explicit Local Actions startup;
 - a small command and argument allowlist;
 - exact reviewed tool identity where available;
+- verified absolute operating-system helper paths and a canonical Studio-owned working directory;
+- native developer-tool resolution through absolute search directories that exclude the launch project, relative entries, and project-scoped `node_modules/.bin` shims;
 - a minimal secret-free child environment;
 - bounded output, time, concurrency, and filesystem effects;
 - no administrator or root execution; and
@@ -169,6 +171,7 @@ Package and cross-platform checks must cover:
 - fixed-port startup, pairing, identity parity, and session expiry;
 - origin, Host, CORS, Private Network Access, body, rate, and concurrency rejection;
 - allowlisted tool and filesystem behavior;
+- planted system-helper and developer-tool executable rejection;
 - secret-free child environments;
 - tracked process shutdown and fixed-port closure;
 - project preservation across restart and package update; and

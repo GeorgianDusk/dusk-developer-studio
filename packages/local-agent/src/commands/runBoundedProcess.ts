@@ -1,5 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createChildEnvironment } from "./childEnvironment";
+import {
+  resolveExecutableForSpawn,
+  resolveExecutionDirectory,
+  resolveWindowsSystemDirectory,
+  resolveWindowsSystemExecutable
+} from "./executableResolution";
 
 export type ProcessFailureReason = "spawn" | "timeout" | "output_limit" | "exit" | "signal";
 
@@ -20,6 +26,8 @@ export interface BoundedProcessOptions {
   args: string[];
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  inheritedCwd?: string;
+  trustedPathAdditions?: string[];
   timeoutMs: number;
   maxOutputBytes: number;
 }
@@ -45,6 +53,17 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
   }
 
   await new Promise<void>((resolve) => {
+    const environment = createChildEnvironment();
+    let taskkill: string;
+    let taskkillCwd: string;
+    try {
+      taskkill = resolveWindowsSystemExecutable("taskkill.exe", environment);
+      taskkillCwd = resolveWindowsSystemDirectory(environment);
+    } catch {
+      child.kill("SIGKILL");
+      resolve();
+      return;
+    }
     let settled = false;
     const finish = () => {
       if (settled) return;
@@ -52,8 +71,9 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
       clearTimeout(timer);
       resolve();
     };
-    const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-      env: createChildEnvironment(),
+    const killer = spawn(taskkill, ["/PID", String(child.pid), "/T", "/F"], {
+      cwd: taskkillCwd,
+      env: environment,
       shell: false,
       windowsHide: true,
       stdio: "ignore"
@@ -83,10 +103,37 @@ export function runBoundedProcess(options: BoundedProcessOptions): Promise<Bound
     throw new Error("Process timeout and output limits must be positive.");
   }
 
+  const inheritedCwd = options.inheritedCwd ?? process.cwd();
+  const environment = createChildEnvironment(options.env ?? process.env, {
+    trustedPathAdditions: options.trustedPathAdditions,
+    inheritedCwd
+  });
+  let command = options.command;
+  let cwd = options.cwd;
+  try {
+    if (process.platform === "win32") {
+      cwd = resolveExecutionDirectory(options.cwd, environment);
+    } else if (options.cwd) {
+      cwd = resolveExecutionDirectory(options.cwd, environment);
+    }
+    command = resolveExecutableForSpawn(options.command, environment, {
+      inheritedCwd,
+      trustedPathDirectories: options.trustedPathAdditions
+    });
+  } catch {
+    return Promise.reject(new BoundedProcessError(
+      "Process could not be started.",
+      "spawn",
+      "",
+      "",
+      null
+    ));
+  }
+
   return new Promise((resolve, reject) => {
-    const child = spawn(options.command, options.args, {
-      cwd: options.cwd,
-      env: createChildEnvironment(options.env ?? process.env),
+    const child = spawn(command, options.args, {
+      cwd,
+      env: environment,
       shell: false,
       windowsHide: true,
       detached: process.platform !== "win32",

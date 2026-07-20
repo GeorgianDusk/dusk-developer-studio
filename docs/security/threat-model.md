@@ -106,6 +106,8 @@ Wallet secrets and funded actions remain outside the Studio. Public network data
 - Local Actions requires an explicit startup argument.
 - Validate every request against an exact schema.
 - Use exact command and argument allowlists.
+- Invoke operating-system helpers by verified absolute path from a canonical Studio-owned working directory.
+- Resolve native developer tools only from absolute search directories outside the launch project and project-scoped shims.
 - Bound request size, time, output, rate, concurrency, filesystem files, bytes, and depth.
 - Give child tools a minimal environment without secret-shaped values.
 - Terminate the tracked child or ordinary process group on timeout, overflow, error, and shutdown.

@@ -1,6 +1,7 @@
 // @vitest-environment node
 
 import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   ELEVATED_LAUNCH_DENIAL,
@@ -13,7 +14,12 @@ import {
 function windowsProbe(overrides: Partial<WindowsLaunchPrivilegeProbe> = {}): WindowsLaunchPrivilegeProbe {
   return {
     systemRoot: "C:\\Windows",
-    lstat: () => ({ isFile: () => true, isSymbolicLink: () => false }),
+    lstat: (file) => ({
+      isDirectory: () => !file.toLowerCase().endsWith(".exe"),
+      isFile: () => file.toLowerCase().endsWith(".exe"),
+      isSymbolicLink: () => false
+    }),
+    realpath: (file) => path.win32.normalize(file),
     runWhoami: () => ({
       status: 0,
       signal: null,
@@ -103,7 +109,11 @@ describe("non-elevated launch guard", () => {
       systemRoot: "D:/Windows",
       lstat: (file) => {
         inspected = file;
-        return { isFile: () => true, isSymbolicLink: () => false };
+        return {
+          isDirectory: () => !file.toLowerCase().endsWith(".exe"),
+          isFile: () => file.toLowerCase().endsWith(".exe"),
+          isSymbolicLink: () => false
+        };
       },
       runWhoami: (file, args, options) => {
         invoked = file;
@@ -145,10 +155,15 @@ describe("non-elevated launch guard", () => {
       lstat: () => { throw new Error("missing"); }
     })));
     expectDenied(() => assertWindowsNonElevatedLaunch(windowsProbe({
-      lstat: () => ({ isFile: () => false, isSymbolicLink: () => false })
+      lstat: () => ({ isDirectory: () => false, isFile: () => false, isSymbolicLink: () => false })
     })));
     expectDenied(() => assertWindowsNonElevatedLaunch(windowsProbe({
-      lstat: () => ({ isFile: () => true, isSymbolicLink: () => true })
+      lstat: () => ({ isDirectory: () => false, isFile: () => true, isSymbolicLink: () => true })
+    })));
+    expectDenied(() => assertWindowsNonElevatedLaunch(windowsProbe({
+      realpath: (file) => file.toLowerCase().endsWith("whoami.exe")
+        ? "C:\\redirected\\whoami.exe"
+        : path.win32.normalize(file)
     })));
   });
 

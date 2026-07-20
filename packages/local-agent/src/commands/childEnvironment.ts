@@ -1,4 +1,9 @@
 import { delimiter } from "node:path";
+import { homedir } from "node:os";
+import {
+  getLaunchPathExclusions,
+  sanitizeExecutablePathEntries
+} from "./executableResolution";
 
 const SAFE_ENVIRONMENT_KEYS = new Set([
   "APPDATA", "CARGO_HOME", "COMSPEC", "FOUNDRY_DIR", "HOME", "HOMEDRIVE", "HOMEPATH",
@@ -10,7 +15,14 @@ const SAFE_ENVIRONMENT_KEYS = new Set([
 
 const SECRET_NAME_RE = /(?:^|_)(?:API_?KEY|AUTH|CREDENTIALS?|COOKIE|KEY|MNEMONIC|PASS(?:WORD|WD)?|PRIVATE|SECRET|SEED|TOKEN)(?:_|$)/i;
 
-export interface ChildEnvironmentOptions { pathAdditions?: string[]; }
+export interface ChildEnvironmentOptions {
+  trustedPathAdditions?: string[];
+  inheritedCwd?: string;
+  homeDirectory?: string;
+  realpath?(file: string): string;
+  excludedPathRoots?: string[];
+  excludedPaths?: string[];
+}
 
 function isSafeEnvironmentName(name: string): boolean {
   const normalized = name.toUpperCase();
@@ -18,8 +30,10 @@ function isSafeEnvironmentName(name: string): boolean {
 }
 
 function currentPath(environment: NodeJS.ProcessEnv): string {
-  for (const [name, value] of Object.entries(environment)) if (name.toUpperCase() === "PATH" && value) return value;
-  return "";
+  const values = Object.entries(environment)
+    .filter(([name, value]) => name.toUpperCase() === "PATH" && Boolean(value))
+    .map(([, value]) => value as string);
+  return new Set(values).size <= 1 ? values[0] ?? "" : "";
 }
 
 export function createChildEnvironment(source: NodeJS.ProcessEnv = process.env, options: ChildEnvironmentOptions = {}): NodeJS.ProcessEnv {
@@ -28,9 +42,29 @@ export function createChildEnvironment(source: NodeJS.ProcessEnv = process.env, 
     if (value !== undefined && isSafeEnvironmentName(name)) environment[name] = value;
   }
   for (const name of Object.keys(environment)) if (name.toUpperCase() === "PATH") delete environment[name];
-  const pathValue = [...(options.pathAdditions ?? []), currentPath(source)]
-    .map((entry) => entry.trim()).filter(Boolean)
-    .filter((entry, index, entries) => entries.indexOf(entry) === index).join(delimiter);
+  const launchExclusions = options.excludedPathRoots || options.excludedPaths
+    ? {
+        excludedRoots: options.excludedPathRoots ?? [],
+        excludedPaths: options.excludedPaths ?? []
+      }
+    : getLaunchPathExclusions(
+        options.inheritedCwd ?? process.cwd(),
+        options.homeDirectory ?? homedir(),
+        process.platform,
+        { realpath: options.realpath }
+      );
+  const trustedPathAdditions = sanitizeExecutablePathEntries(
+    options.trustedPathAdditions ?? [],
+    { excludedRoots: [], excludedPaths: [] }
+  );
+  const inheritedPath = sanitizeExecutablePathEntries(
+    currentPath(source).split(delimiter),
+    launchExclusions
+  );
+  const pathValue = sanitizeExecutablePathEntries(
+    [...trustedPathAdditions, ...inheritedPath],
+    { excludedRoots: [], excludedPaths: [] }
+  ).join(delimiter);
   if (pathValue) environment.PATH = pathValue;
   return environment;
 }
