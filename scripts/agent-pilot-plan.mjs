@@ -22,6 +22,7 @@ const MAX_POLICY_BYTES = 256 * 1024;
 const MAX_PLAN_BYTES = 256 * 1024;
 const MAX_CHILD_OUTPUT_BYTES = 256 * 1024;
 const CHILD_TIMEOUT_MS = 6 * 60 * 1_000;
+export const NATIVE_TOOLCHAIN_RECOVERY_TIMEOUT_MS = 14 * 60 * 1_000;
 const SHA256_RE = /^[a-f0-9]{64}$/u;
 const COMMIT_RE = /^[a-f0-9]{40}$/u;
 const SRI_SHA512_RE = /^sha512-[A-Za-z0-9+/]{80,}={0,2}$/u;
@@ -375,6 +376,34 @@ export function isExpectedToolchainMismatch(result) {
     );
 }
 
+export function nativeToolchainRecoveryCommands() {
+  return [
+    { command: "rustc", args: ["+1.94.0", "--version"] },
+    { command: "make", args: ["test"] }
+  ];
+}
+
+export async function runNativeToolchainRecovery(projectRoot, runner = runBounded) {
+  const [toolchainProbe, exactStarterTest] = nativeToolchainRecoveryCommands();
+  const rustc = await runner(toolchainProbe.command, toolchainProbe.args, {
+    cwd: projectRoot
+  });
+  if (
+    rustc.status !== 0
+    || rustc.signal !== null
+    || !/^rustc 1[.]94[.]0\b/u.test(rustc.stdout)
+  ) {
+    throw new Error("Pinned native DuskDS toolchain recovery did not complete.");
+  }
+  const result = await runner(exactStarterTest.command, exactStarterTest.args, {
+    cwd: projectRoot,
+    timeoutMs: NATIVE_TOOLCHAIN_RECOVERY_TIMEOUT_MS
+  });
+  if (result.status !== 0 || result.signal !== null) {
+    throw new Error("Exact-candidate native DuskDS build and test did not complete.");
+  }
+}
+
 async function observeSafeModeMachineActionRefusal(packageRoot, workRoot) {
   const runtimeModule = await import(pathToFileURL(path.join(packageRoot, "app", "runtime.mjs")));
   let runtime;
@@ -700,24 +729,7 @@ async function runRecovery(scenario, packageRoot, workRoot) {
   }
   if (scenario.id === "wsl-native-toolchain-recovery") {
     const projectRoot = path.join(workRoot, "native-toolchain-counter");
-    const rustc = await runBounded("rustc", ["+1.94.0", "--version"], {
-      cwd: projectRoot
-    });
-    if (
-      rustc.status !== 0
-      || !/^rustc 1[.]94[.]0\b/u.test(rustc.stdout)
-    ) {
-      throw new Error("Pinned native DuskDS toolchain recovery did not complete.");
-    }
-    for (const args of [
-      ["+1.94.0", "check", "--locked"],
-      ["+1.94.0", "test", "--locked", "--release"]
-    ]) {
-      const result = await runBounded("cargo", args, { cwd: projectRoot });
-      if (result.status !== 0 || result.signal !== null) {
-        throw new Error("Exact-candidate native DuskDS check or test did not complete.");
-      }
-    }
+    await runNativeToolchainRecovery(projectRoot);
     return;
   }
   if (scenario.id === "linux-port-conflict-recovery") {
