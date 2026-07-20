@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { validatePairingTransportEvidence } from "./npm-package-browser-telemetry.mjs";
+import { setTimeout } from "node:timers";
+import {
+  createRequestTerminalTracker,
+  validatePairingTransportEvidence
+} from "./npm-package-browser-telemetry.mjs";
 
 const expectedProbeUrl = "http://127.0.0.1:8788/health";
 const expectedBootstrapUrl = "http://127.0.0.1:5173/__dusk/bootstrap";
@@ -153,6 +157,132 @@ for (const [method, url] of [
     url
   });
   assert.throws(() => validate(input), /unexpected request failure/u);
+}
+
+{
+  const exactRequest = request("GET", expectedProbeUrl);
+  const tracker = createRequestTerminalTracker({
+    finishedRequests: new Map([[exactRequest, 1]]),
+    requestFailures: [],
+    timeoutMs: 20
+  });
+  await tracker.wait(exactRequest, "Already finished request");
+}
+{
+  const exactRequest = request("GET", expectedProbeUrl);
+  const tracker = createRequestTerminalTracker({
+    finishedRequests: new Map(),
+    requestFailures: [{
+      request: exactRequest,
+      sequence: 1,
+      text: "net::ERR_ABORTED",
+      url: expectedProbeUrl
+    }],
+    timeoutMs: 20
+  });
+  await tracker.wait(exactRequest, "Already failed request");
+}
+{
+  const exactRequest = request("GET", expectedProbeUrl);
+  const finishedRequests = new Map();
+  const tracker = createRequestTerminalTracker({
+    finishedRequests,
+    requestFailures: [],
+    timeoutMs: 50
+  });
+  const terminal = tracker.wait(exactRequest, "Later exact request");
+  finishedRequests.set(exactRequest, 1);
+  tracker.notify(exactRequest);
+  await terminal;
+}
+{
+  const exactRequest = request("GET", expectedProbeUrl);
+  const unrelatedRequest = request("GET", expectedProbeUrl);
+  const finishedRequests = new Map();
+  const tracker = createRequestTerminalTracker({
+    finishedRequests,
+    requestFailures: [],
+    timeoutMs: 50
+  });
+  let resolved = false;
+  const terminal = tracker.wait(exactRequest, "Identity-bound request").then(() => {
+    resolved = true;
+  });
+  finishedRequests.set(unrelatedRequest, 1);
+  tracker.notify(unrelatedRequest);
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(resolved, false);
+  finishedRequests.set(exactRequest, 2);
+  tracker.notify(exactRequest);
+  await terminal;
+}
+{
+  const firstRequest = request("POST", expectedBootstrapUrl);
+  const secondRequest = request("GET", expectedProbeUrl);
+  const finishedRequests = new Map();
+  const tracker = createRequestTerminalTracker({
+    finishedRequests,
+    requestFailures: [],
+    timeoutMs: 50
+  });
+  let firstResolved = false;
+  const firstTerminal = tracker.wait(firstRequest, "First request").then(() => {
+    firstResolved = true;
+  });
+  const secondTerminal = tracker.wait(secondRequest, "Second request");
+  finishedRequests.set(secondRequest, 1);
+  tracker.notify(secondRequest);
+  await secondTerminal;
+  assert.equal(firstResolved, false);
+  finishedRequests.set(firstRequest, 2);
+  tracker.notify(firstRequest);
+  await firstTerminal;
+}
+{
+  const exactRequest = request("GET", expectedProbeUrl);
+  const finishedRequests = new Map();
+  const tracker = createRequestTerminalTracker({
+    finishedRequests,
+    requestFailures: [],
+    timeoutMs: 50
+  });
+  const terminal = tracker.wait(exactRequest, "Duplicate request");
+  assert.throws(
+    () => tracker.wait(exactRequest, "Duplicate request"),
+    /already has a pending terminal-event wait/u
+  );
+  finishedRequests.set(exactRequest, 1);
+  tracker.notify(exactRequest);
+  await terminal;
+}
+{
+  const exactRequest = request("GET", expectedProbeUrl);
+  class EventDuringRegistrationMap extends Map {
+    checks = 0;
+
+    has(requestObject) {
+      this.checks += 1;
+      return this.checks > 1 && requestObject === exactRequest;
+    }
+  }
+  const tracker = createRequestTerminalTracker({
+    finishedRequests: new EventDuringRegistrationMap(),
+    requestFailures: [],
+    timeoutMs: 20
+  });
+  await tracker.wait(exactRequest, "Registration-race request");
+}
+{
+  const exactRequest = request("GET", expectedProbeUrl);
+  const tracker = createRequestTerminalTracker({
+    finishedRequests: new Map(),
+    requestFailures: [],
+    timeoutMs: 10
+  });
+  await assert.rejects(
+    tracker.wait(exactRequest, "Missing request"),
+    /did not produce a terminal browser request event/u
+  );
 }
 
 console.log("Npm package browser transport telemetry checks passed.");

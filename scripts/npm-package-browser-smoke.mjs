@@ -7,7 +7,10 @@ import path from "node:path";
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
 import { chromium } from "playwright";
-import { validatePairingTransportEvidence } from "./npm-package-browser-telemetry.mjs";
+import {
+  createRequestTerminalTracker,
+  validatePairingTransportEvidence
+} from "./npm-package-browser-telemetry.mjs";
 import {
   npmPackageName,
   npmPackageVersion,
@@ -144,6 +147,11 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     const bootstrapRequests = [];
     const finishedRequests = new Map();
     const requestFailures = [];
+    const requestTerminalTracker = createRequestTerminalTracker({
+      finishedRequests,
+      requestFailures,
+      timeoutMs: BROWSER_TIMEOUT_MS
+    });
     let networkEventSequence = 0;
     page.on("console", (message) => {
       if (message.type() === "error") {
@@ -158,6 +166,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     });
     page.on("requestfinished", (request) => {
       finishedRequests.set(request, ++networkEventSequence);
+      requestTerminalTracker.notify(request);
     });
     page.on("requestfailed", (request) => {
       if (/^https?:\/\//u.test(request.url())) {
@@ -167,6 +176,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
           text: request.failure()?.errorText ?? "failed",
           url: request.url()
         });
+        requestTerminalTracker.notify(request);
       }
     });
     page.on("response", (response) => {
@@ -260,10 +270,19 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
         }, expectedScaffoldUrl),
         scaffoldResponsePromise
       ]);
-      assert.equal(
-        await scaffoldResponse.finished(),
-        null,
+      const scaffoldRequest = scaffoldResponse.request();
+      await requestTerminalTracker.wait(
+        scaffoldRequest,
+        "The Local Actions scaffold request"
+      );
+      assert.ok(
+        finishedRequests.has(scaffoldRequest),
         "The Local Actions scaffold response must finish without a transport error."
+      );
+      assert.equal(
+        requestFailures.filter(({ request }) => request === scaffoldRequest).length,
+        0,
+        "The Local Actions scaffold response must not produce request-failure telemetry."
       );
       assert.equal(scaffold.status, 200);
       assert.equal(scaffold.body.ok, true);
@@ -287,12 +306,16 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       "Local pairing must observe exactly one successful authenticated health response."
     );
     const [authenticatedHealthEvent] = authenticatedHealthEvents;
-    // Drain both successful pairing responses. Chromium can emit a late
-    // requestfailed event after the application has already consumed a valid
-    // response; the identity-bound classifier below decides whether it is safe.
+    // Await exact terminal request events with a hard bound. Chromium can emit a
+    // late requestfailed event after the application has already consumed a
+    // valid response; the identity-bound classifier below decides whether it is
+    // the one safe late-abort case.
     await Promise.all([
-      bootstrapResponse.finished(),
-      authenticatedHealthEvent.response.finished()
+      requestTerminalTracker.wait(bootstrapRequest, "The successful bootstrap request"),
+      requestTerminalTracker.wait(
+        authenticatedHealthEvent.request,
+        "The successful authenticated health request"
+      )
     ]);
     assert.deepEqual(
       responseEvents

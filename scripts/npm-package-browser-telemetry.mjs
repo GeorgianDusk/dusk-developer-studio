@@ -1,6 +1,69 @@
 import assert from "node:assert/strict";
+import { clearTimeout, setTimeout } from "node:timers";
 
 const LATE_ABORT_TEXT = "net::ERR_ABORTED";
+
+export function createRequestTerminalTracker({
+  finishedRequests,
+  requestFailures,
+  timeoutMs
+}) {
+  assert.ok(
+    Number.isFinite(timeoutMs) && timeoutMs > 0,
+    "Request terminal-event timeout must be a positive finite number."
+  );
+  const waiters = new Map();
+  const hasTerminalEvent = (request) =>
+    finishedRequests.has(request)
+    || requestFailures.some((failure) => failure.request === request);
+
+  function notify(request) {
+    if (hasTerminalEvent(request)) {
+      waiters.get(request)?.();
+    }
+  }
+
+  function wait(request, label) {
+    assert.ok(request, `${label} must provide an exact Request object.`);
+    assert.equal(
+      waiters.has(request),
+      false,
+      `${label} already has a pending terminal-event wait.`
+    );
+    if (hasTerminalEvent(request)) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (error) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        waiters.delete(request);
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+      const timer = setTimeout(() => {
+        settle(new Error(
+          `${label} did not produce a terminal browser request event within ${timeoutMs}ms.`
+        ));
+      }, timeoutMs);
+      waiters.set(request, () => settle());
+      // Close the race where the event is recorded after the first check but
+      // before its exact Request-object waiter is registered.
+      if (hasTerminalEvent(request)) {
+        settle();
+      }
+    });
+  }
+
+  return { notify, wait };
+}
 
 function matchingResponseEvents(responseEvents, url, status) {
   return responseEvents.filter((event) => event.url === url && event.status === status);
