@@ -15,7 +15,10 @@ import {
   isExpectedToolchainMismatch,
   isSafeModeMachineActionRefusal,
   materializeAgentPilotPlan,
-  recoveryMarker
+  NATIVE_TOOLCHAIN_RECOVERY_TIMEOUT_MS,
+  nativeToolchainRecoveryCommands,
+  recoveryMarker,
+  runNativeToolchainRecovery
 } from "./agent-pilot-plan.mjs";
 
 const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -87,6 +90,79 @@ assert.equal(
     stderr: ""
   }),
   false
+);
+assert.deepEqual(
+  nativeToolchainRecoveryCommands(),
+  [
+    { command: "rustc", args: ["+1.94.0", "--version"] },
+    { command: "make", args: ["test"] }
+  ],
+  "WSL recovery must probe the pinned toolchain and run the starter's canonical WASM-aware test target"
+);
+assert.equal(NATIVE_TOOLCHAIN_RECOVERY_TIMEOUT_MS, 14 * 60 * 1_000);
+const duskDsTemplateRoot = path.join(
+  productRoot,
+  "packages",
+  "templates",
+  "duskds-counter-forge"
+);
+const duskDsMakefile = await fs.readFile(path.join(duskDsTemplateRoot, "Makefile"), "utf8");
+const duskDsRustToolchain = await fs.readFile(
+  path.join(duskDsTemplateRoot, "rust-toolchain.toml"),
+  "utf8"
+);
+const duskDsTestTarget = duskDsMakefile.match(
+  /^test:\s+wasm\b[^\n]*\n((?:\t[^\n]*\n)+)/mu
+)?.[1];
+assert.ok(duskDsTestTarget, "DuskDS Makefile must define a WASM-dependent test target");
+assert.match(duskDsTestTarget, /^\t@cargo test --locked --release$/mu);
+assert.match(duskDsRustToolchain, /^channel = "1[.]94[.]0"$/mu);
+const nativeRecoveryCalls = [];
+await runNativeToolchainRecovery("/bounded/native-toolchain-counter", async (command, args, options) => {
+  nativeRecoveryCalls.push({ command, args, options });
+  if (command === "rustc") {
+    return { status: 0, signal: null, stdout: "rustc 1.94.0 (fixture)", stderr: "" };
+  }
+  return { status: 0, signal: null, stdout: "3 passed", stderr: "" };
+});
+assert.deepEqual(nativeRecoveryCalls, [
+  {
+    command: "rustc",
+    args: ["+1.94.0", "--version"],
+    options: { cwd: "/bounded/native-toolchain-counter" }
+  },
+  {
+    command: "make",
+    args: ["test"],
+    options: {
+      cwd: "/bounded/native-toolchain-counter",
+      timeoutMs: NATIVE_TOOLCHAIN_RECOVERY_TIMEOUT_MS
+    }
+  }
+]);
+await assert.rejects(
+  runNativeToolchainRecovery("/bounded/native-toolchain-counter", async (command) => (
+    command === "rustc"
+      ? { status: 0, signal: null, stdout: "rustc 1.93.1", stderr: "" }
+      : { status: 0, signal: null, stdout: "", stderr: "" }
+  )),
+  /Pinned native DuskDS toolchain recovery did not complete/u
+);
+await assert.rejects(
+  runNativeToolchainRecovery("/bounded/native-toolchain-counter", async (command) => (
+    command === "rustc"
+      ? { status: 0, signal: null, stdout: "rustc 1.94.0", stderr: "" }
+      : { status: 1, signal: null, stdout: "", stderr: "build failed" }
+  )),
+  /Exact-candidate native DuskDS build and test did not complete/u
+);
+await assert.rejects(
+  runNativeToolchainRecovery("/bounded/native-toolchain-counter", async (command) => (
+    command === "rustc"
+      ? { status: 0, signal: null, stdout: "rustc 1.94.0", stderr: "" }
+      : { status: null, signal: "SIGKILL", stdout: "", stderr: "" }
+  )),
+  /Exact-candidate native DuskDS build and test did not complete/u
 );
 
 const plans = scenarios.map((scenario) => {
