@@ -5,6 +5,7 @@ import net from "node:net";
 import tls from "node:tls";
 import { clearTimeout, setTimeout } from "node:timers";
 import { URL } from "node:url";
+import { artifactFingerprintFromRecords } from "./assurance-metadata.mjs";
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
@@ -116,6 +117,10 @@ export function validateReleaseDocuments(manifest, assurance, options = {}) {
   const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : [];
   if (!artifacts.length || artifacts.some((artifact) => !artifact.path || !SHA256_RE.test(artifact.sha256 ?? "") || !Number.isInteger(artifact.bytes))) blockers.push("Release manifest artifact records are invalid.");
   return blockers;
+}
+
+export function publicArtifactFingerprint(manifest) {
+  return artifactFingerprintFromRecords(manifest?.artifacts);
 }
 
 function checkTls(hostname, minimumDays) {
@@ -326,7 +331,12 @@ export async function runStagingSmoke(options) {
         if (cacheBlockers.length) throw new Error(cacheBlockers.join(" "));
       }
     }
-    return { status: "passed", commit: manifest.commit, version: manifest.version, artifact_fingerprint_sha256: sha256(JSON.stringify(manifest.artifacts)) };
+    return {
+      status: "passed",
+      commit: manifest.commit,
+      version: manifest.version,
+      artifact_fingerprint_sha256: publicArtifactFingerprint(manifest)
+    };
   });
   await record("source_links", async () => {
     const statuses = {};

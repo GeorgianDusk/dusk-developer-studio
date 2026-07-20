@@ -1,8 +1,24 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createAssuranceReceipt, validateAssuranceReceipt, writeAssuranceReceipt } from "./assurance-metadata.mjs";
+import {
+  artifactFingerprint,
+  artifactFingerprintFromRecords,
+  createAssuranceReceipt,
+  validateAssuranceReceipt,
+  writeAssuranceReceipt
+} from "./assurance-metadata.mjs";
+
+const fileRecord = (root, relative) => {
+  const bytes = fs.readFileSync(path.join(root, ...relative.split("/")));
+  return {
+    path: relative,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    bytes: bytes.byteLength
+  };
+};
 
 const sourceRoot = path.resolve(process.cwd());
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "dusk-studio-assurance-"));
@@ -15,6 +31,37 @@ try {
   fs.writeFileSync(path.join(root, "apps", "studio", "dist", "assets", "app.js"), "console.log('fixture')");
   const { receipt } = writeAssuranceReceipt(root);
   assert.equal(validateAssuranceReceipt(root, receipt).sourceUrls > 0, true);
+  const distRoot = path.join(root, "apps", "studio", "dist");
+  const manifestStyleRecords = [
+    fileRecord(distRoot, "index.html"),
+    fileRecord(distRoot, "assurance-receipt.json"),
+    fileRecord(distRoot, "assets/app.js"),
+    { path: "nested/release-manifest.json", sha256: "e".repeat(64), bytes: 17 }
+  ];
+  const initialFingerprint = artifactFingerprint(root);
+  assert.equal(artifactFingerprintFromRecords(manifestStyleRecords), initialFingerprint);
+  const pathFixture = { bytes: 1, sha256: "f".repeat(64) };
+  assert.doesNotThrow(() =>
+    artifactFingerprintFromRecords([{ path: "assets/app @+ ü.js", ...pathFixture }])
+  );
+  for (const unsafePath of [
+    "/absolute.js",
+    "../escape.js",
+    "assets/../escape.js",
+    "assets//app.js",
+    "assets\\app.js",
+    `assets/${String.fromCharCode(0)}app.js`
+  ]) {
+    assert.throws(
+      () => artifactFingerprintFromRecords([{ path: unsafePath, ...pathFixture }]),
+      /invalid or duplicated/
+    );
+  }
+  fs.writeFileSync(path.join(distRoot, "assurance-receipt.json"), '{"changed":"metadata"}\n');
+  fs.writeFileSync(path.join(distRoot, "release-manifest.json"), '{"changed":"metadata"}\n');
+  assert.equal(artifactFingerprint(root), initialFingerprint);
+  fs.writeFileSync(path.join(distRoot, "assets", "app.js"), "console.log('changed product asset')");
+  assert.notEqual(artifactFingerprint(root), initialFingerprint);
   fs.writeFileSync(path.join(root, "apps", "studio", "dist", "assets", "large.js"), "x".repeat(500_000));
   assert.throws(() => createAssuranceReceipt(root), /budget exceeded/);
   fs.rmSync(path.join(root, "apps", "studio", "dist", "assets", "large.js"));

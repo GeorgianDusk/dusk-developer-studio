@@ -12,6 +12,7 @@ import {
   classifyAssuranceChecks,
   fetchAvailability,
   fetchStudioEvidence,
+  publicArtifactFingerprint,
   selectAssuranceIncidentTitle,
   STUDIO_ASSURANCE_INCIDENT_TITLE,
   UPSTREAM_ASSURANCE_INCIDENT_TITLE,
@@ -52,6 +53,23 @@ assert.match(validateReleaseDocuments(manifest, assurance, { expectedEnvironment
 assert.deepEqual(validateReleaseDocuments(manifest, assurance, { expectedEnvironment: "staging" }), []);
 assert.match(validateReleaseDocuments({ ...manifest, commit: `${"a".repeat(40)}-dirty` }, assurance, { expectedEnvironment: "staging" }).join("\n"), /clean full Git commit/);
 assert.match(validateReleaseDocuments({ ...manifest, assurance: { ...manifest.assurance, source_access: "not-run" } }, assurance, { expectedEnvironment: "staging" }).join("\n"), /source_access/);
+const publicArtifacts = [
+  { path: "index.html", sha256: "b".repeat(64), bytes: 5 },
+  { path: "assurance-receipt.json", sha256: "c".repeat(64), bytes: 7 },
+  { sha256: "d".repeat(64), bytes: 11, path: "assets/app.js" }
+];
+const canonicalPublicArtifacts = [
+  { path: "assets/app.js", bytes: 11, sha256: "d".repeat(64) },
+  { path: "index.html", bytes: 5, sha256: "b".repeat(64) }
+];
+assert.equal(
+  publicArtifactFingerprint({ artifacts: publicArtifacts }),
+  createHash("sha256").update(JSON.stringify(canonicalPublicArtifacts)).digest("hex")
+);
+assert.throws(
+  () => publicArtifactFingerprint({ artifacts: [...publicArtifacts, publicArtifacts[0]] }),
+  /invalid or duplicated/
+);
 let syntheticHeaders;
 const fakeGet = (_url, options, callback) => {
   syntheticHeaders = new globalThis.Headers(options.headers);
