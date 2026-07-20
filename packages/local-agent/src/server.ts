@@ -69,6 +69,7 @@ export interface LocalAgentServerOptions {
   pairingToken: string;
   port?: number;
   workspaceRoot?: string;
+  processCwd?: string;
   foundryTemplateRoot?: string;
   duskDsTemplateRoot?: string;
   duskDsProjectRoot?: string;
@@ -329,6 +330,7 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   const port = options.port ?? DEFAULT_PORT;
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : path.resolve(__dirname, "../../..");
+  const processCwd = options.processCwd?.trim() ? path.resolve(options.processCwd) : workspaceRoot;
   const foundryTemplateRoot = options.foundryTemplateRoot?.trim() ? path.resolve(options.foundryTemplateRoot) : undefined;
   const duskDsTemplateRoot = options.duskDsTemplateRoot?.trim() ? path.resolve(options.duskDsTemplateRoot) : undefined;
   const duskDsProjectRoot = options.duskDsProjectRoot?.trim()
@@ -350,7 +352,7 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   const capabilityRequestsPerMinute = options.capabilityRequestsPerMinute ?? DEFAULT_CAPABILITY_REQUESTS_PER_MINUTE;
   const completedDuskDsScaffolds = new Map<string, ScaffoldCompletionReceipt>();
   const dependencies: LocalAgentDependencies = {
-    runPreflight: runPreflightAsync,
+    runPreflight: (preflightPath) => runPreflightAsync(preflightPath, { cwd: processCwd }),
     scaffoldFoundryTemplate: (input) => scaffoldFoundryTemplate(input, foundryTemplateRoot ? { templateRoot: foundryTemplateRoot } : {}),
     scaffoldDuskDsForge: (input) => scaffoldDuskDsForge(input, {
       ...(duskDsProjectRoot ? { projectRoot: duskDsProjectRoot } : {}),

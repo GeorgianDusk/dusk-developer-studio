@@ -33,7 +33,7 @@
     "check:phase5": "node scripts/check-phase5-evidence.mjs",
     "fingerprint:artifacts": "node scripts/artifact-fingerprint.mjs",
     "build:npm": "node scripts/npm-package-build.mjs",
-    "test:npm": "vitest run packages/local-runtime packages/templates/src/duskDsCounterForge.test.ts packages/local-agent/src/__tests__/preflight.test.ts packages/local-agent/src/__tests__/runBoundedProcess.test.ts packages/local-agent/src/__tests__/serverSecurity.test.ts packages/local-agent/src/__tests__/safePaths.test.ts packages/local-agent/src/__tests__/transactionalScaffold.test.ts packages/local-agent/src/__tests__/scaffoldTemplate.test.ts packages/local-agent/src/__tests__/cloneDuskDsStarter.test.ts && node scripts/test-npm-package.mjs && node scripts/test-npm-package-browser-telemetry.mjs",
+    "test:npm": "vitest run packages/local-runtime packages/templates/src/duskDsCounterForge.test.ts packages/local-agent/src/__tests__/executableResolution.test.ts packages/local-agent/src/__tests__/preflight.test.ts packages/local-agent/src/__tests__/runBoundedProcess.test.ts packages/local-agent/src/__tests__/serverSecurity.test.ts packages/local-agent/src/__tests__/safePaths.test.ts packages/local-agent/src/__tests__/transactionalScaffold.test.ts packages/local-agent/src/__tests__/scaffoldTemplate.test.ts packages/local-agent/src/__tests__/cloneDuskDsStarter.test.ts && node scripts/test-npm-package.mjs && node scripts/test-npm-package-browser-telemetry.mjs",
     "pack:npm": "node scripts/npm-package-build.mjs --strict && node scripts/npm-package-pack.mjs"
   },
   "devDependencies": {

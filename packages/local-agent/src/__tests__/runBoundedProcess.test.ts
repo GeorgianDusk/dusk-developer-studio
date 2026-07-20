@@ -1,5 +1,8 @@
 // @vitest-environment node
 
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { BoundedProcessError, runBoundedProcess, terminateAllBoundedProcesses } from "../commands/runBoundedProcess";
 
@@ -12,6 +15,97 @@ describe("bounded process runner", () => {
       return false;
     }
   }
+
+  it("rejects a POSIX PATH alias that resolves into the untrusted launch project", async () => {
+    if (process.platform !== "linux" && process.platform !== "darwin") return;
+    const launchRoot = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-launch-"));
+    const aliasParent = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-alias-"));
+    try {
+      const aliasBin = path.join(aliasParent, "bin");
+      await fs.symlink(launchRoot, aliasBin, "dir");
+      await fs.writeFile(
+        path.join(launchRoot, "git"),
+        "#!/bin/sh\nprintf planted\n",
+        { mode: 0o755 }
+      );
+      await expect(runBoundedProcess({
+        command: "git",
+        args: [],
+        env: { ...process.env, PATH: aliasBin },
+        inheritedCwd: launchRoot,
+        timeoutMs: 5_000,
+        maxOutputBytes: 4_096
+      })).rejects.toMatchObject({ reason: "spawn" });
+    } finally {
+      await Promise.all([
+        fs.rm(aliasParent, { recursive: true, force: true }),
+        fs.rm(launchRoot, { recursive: true, force: true })
+      ]);
+    }
+  });
+
+  it("allows a POSIX tool symlink whose canonical target is a safe regular executable", async () => {
+    if (process.platform !== "linux" && process.platform !== "darwin") return;
+    const launchRoot = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-launch-"));
+    const targetRoot = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-target-"));
+    const toolBin = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-bin-"));
+    try {
+      const target = path.join(targetRoot, "rustup");
+      await fs.writeFile(
+        target,
+        "#!/bin/sh\nname=${0##*/}\nprintf '%s-persona' \"$name\"\n",
+        { mode: 0o755 }
+      );
+      await fs.symlink(target, path.join(toolBin, "cargo"), "file");
+      await expect(runBoundedProcess({
+        command: "cargo",
+        args: [],
+        env: { ...process.env, PATH: toolBin },
+        inheritedCwd: launchRoot,
+        timeoutMs: 5_000,
+        maxOutputBytes: 4_096
+      })).resolves.toEqual({
+        stdout: "cargo-persona",
+        stderr: "",
+        exitCode: 0
+      });
+    } finally {
+      await Promise.all([
+        fs.rm(toolBin, { recursive: true, force: true }),
+        fs.rm(targetRoot, { recursive: true, force: true }),
+        fs.rm(launchRoot, { recursive: true, force: true })
+      ]);
+    }
+  });
+
+  it("skips a non-executable POSIX PATH match and selects the next executable", async () => {
+    if (process.platform !== "linux" && process.platform !== "darwin") return;
+    const launchRoot = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-launch-"));
+    const blockedBin = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-blocked-"));
+    const validBin = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-bounded-valid-"));
+    try {
+      await fs.writeFile(path.join(blockedBin, "git"), "#!/bin/sh\nprintf blocked\n", { mode: 0o644 });
+      await fs.writeFile(path.join(validBin, "git"), "#!/bin/sh\nprintf valid\n", { mode: 0o755 });
+      await expect(runBoundedProcess({
+        command: "git",
+        args: [],
+        env: { ...process.env, PATH: [blockedBin, validBin].join(path.delimiter) },
+        inheritedCwd: launchRoot,
+        timeoutMs: 5_000,
+        maxOutputBytes: 4_096
+      })).resolves.toEqual({
+        stdout: "valid",
+        stderr: "",
+        exitCode: 0
+      });
+    } finally {
+      await Promise.all([
+        fs.rm(validBin, { recursive: true, force: true }),
+        fs.rm(blockedBin, { recursive: true, force: true }),
+        fs.rm(launchRoot, { recursive: true, force: true })
+      ]);
+    }
+  });
 
   it("captures a successful allowlisted process result", async () => {
     const result = await runBoundedProcess({

@@ -3,7 +3,7 @@ import { runPreflightAsync } from "../commands/preflight";
 import { BoundedProcessError, type BoundedProcessOptions } from "../commands/runBoundedProcess";
 
 function logicalCommand(options: BoundedProcessOptions): string {
-  return options.command === "cmd.exe" ? options.args[3] : options.command;
+  return options.command;
 }
 
 describe("preflight failure classification", () => {

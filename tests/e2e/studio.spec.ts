@@ -40,3 +40,89 @@ test("guided builder flow stays clear", async ({ page }) => {
   await returnToJourney.click();
   await expect(page.getByRole("heading", { name: "Check a read-only Dusk node query." })).toBeVisible();
 });
+
+test("keyboard order, focus treatment, and Local Studio targets follow the accessibility contract", async ({ page, browserName }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
+  await page.getByRole("button", { name: "Troubleshoot" }).click();
+
+  const routeHeading = page.getByRole("heading", { name: "Fix the blocker in front of you." });
+  const brand = page.getByRole("button", { name: "Dusk Developer Studio home" });
+  const topNavigation = page.getByRole("navigation", { name: "Studio navigation" });
+  const journeyContext = page.getByRole("button", { name: "Return to DuskDS at Setup" });
+  let brandBox = await brand.boundingBox();
+  let navigationBox = await topNavigation.boundingBox();
+  let contextBox = await journeyContext.boundingBox();
+
+  expect(brandBox).not.toBeNull();
+  expect(navigationBox).not.toBeNull();
+  expect(contextBox).not.toBeNull();
+  expect(Math.abs(brandBox!.y - navigationBox!.y)).toBeLessThan(8);
+  expect(navigationBox!.y).toBeLessThan(contextBox!.y);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  brandBox = await brand.boundingBox();
+  navigationBox = await topNavigation.boundingBox();
+  contextBox = await journeyContext.boundingBox();
+  expect(brandBox).not.toBeNull();
+  expect(navigationBox).not.toBeNull();
+  expect(contextBox).not.toBeNull();
+  expect(brandBox!.y).toBeLessThan(navigationBox!.y);
+  expect(navigationBox!.y).toBeLessThan(contextBox!.y);
+
+  await expect(routeHeading).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(journeyContext).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  const localStudioButton = page.getByRole("button", { name: /Local Studio/i });
+  await expect(localStudioButton).toBeFocused();
+
+  await localStudioButton.click();
+  await expect(page.getByRole("heading", { name: "Run the full Studio locally with npm." })).toBeFocused();
+
+  const commandTargets = [
+    page.getByRole("button", { name: "Copy Safe mode" }),
+    page.getByRole("button", { name: "Copy Local Actions" })
+  ];
+  const linkTargets = [
+    page.getByRole("link", { name: /Get Node.js/i }),
+    page.getByRole("link", { name: /Review this package version and provenance/i }),
+    page.getByRole("link", { name: "Continue in the hosted guide" })
+  ];
+  const storageDisclosure = page.locator("summary", { hasText: "Where created projects are stored" });
+  const keyboardSequence = [
+    ...commandTargets,
+    // WebKit follows Safari's default keyboard preference and skips links unless
+    // Full Keyboard Access is enabled at the OS/browser level. Its Linux CI build
+    // also skips native summary controls under that preference.
+    ...(browserName === "webkit" ? [] : [...linkTargets, storageDisclosure])
+  ];
+  for (const target of keyboardSequence) {
+    await page.keyboard.press("Tab");
+    await expect(target).toBeFocused();
+  }
+
+  if (browserName === "webkit") await storageDisclosure.focus();
+  await expect(storageDisclosure).toBeFocused();
+  await expect(storageDisclosure).toHaveCSS("display", "list-item");
+  await expect(storageDisclosure).toHaveCSS("outline-style", "solid");
+  await expect(storageDisclosure).toHaveCSS("outline-width", "2px");
+  await expect(storageDisclosure).toHaveCSS("outline-offset", "2px");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("details.local-storage-disclosure")).toHaveAttribute("open", "");
+
+  const companionTargets = page.locator(".reference-page :is(a, button, summary)");
+  const targetCount = await companionTargets.count();
+  expect(targetCount).toBeGreaterThan(0);
+  for (let index = 0; index < targetCount; index += 1) {
+    const target = companionTargets.nth(index);
+    await expect(target).toBeVisible();
+    const box = await target.boundingBox();
+    expect(box, `Local Studio target ${index + 1} should have a rendered box`).not.toBeNull();
+    expect(box!.height, `Local Studio target ${index + 1} should be at least 44px tall`).toBeGreaterThanOrEqual(44);
+    expect(box!.width, `Local Studio target ${index + 1} should be at least 44px wide`).toBeGreaterThanOrEqual(44);
+  }
+});

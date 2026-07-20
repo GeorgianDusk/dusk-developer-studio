@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { lstatSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
+import { resolveWindowsSystemExecutable } from "@dusk/local-agent/executable";
 
 export const ELEVATED_LAUNCH_DENIAL = "Dusk Developer Studio refuses elevated or root execution.";
 
 interface FileIdentity {
+  isDirectory(): boolean;
   isFile(): boolean;
   isSymbolicLink(): boolean;
 }
@@ -27,6 +28,7 @@ interface WindowsWhoamiProbeResult {
 export interface WindowsLaunchPrivilegeProbe {
   systemRoot: string | undefined;
   lstat(file: string): FileIdentity;
+  realpath(file: string): string;
   runWhoami(
     file: string,
     args: readonly ["/groups"],
@@ -93,22 +95,6 @@ export function assertPosixLaunchIdentity(
   }
 }
 
-function resolveWindowsWhoami(systemRoot: string | undefined): string {
-  if (typeof systemRoot !== "string" || systemRoot.length === 0 || systemRoot !== systemRoot.trim()
-      || !/^[A-Za-z]:[\\/]/.test(systemRoot) || systemRoot.slice(2).includes(":")
-      || /[\0\r\n<>"|?*]/.test(systemRoot)) {
-    denyElevatedLaunch();
-  }
-  const normalizedRoot = path.win32.normalize(systemRoot);
-  const parsedRoot = path.win32.parse(normalizedRoot).root;
-  if (!path.win32.isAbsolute(normalizedRoot) || !/^[A-Za-z]:\\$/.test(parsedRoot)) {
-    denyElevatedLaunch();
-  }
-  const whoami = path.win32.join(normalizedRoot, "System32", "whoami.exe");
-  if (!path.win32.isAbsolute(whoami)) denyElevatedLaunch();
-  return whoami;
-}
-
 function parseIntegrityRid(output: unknown): number {
   if (typeof output !== "string") denyElevatedLaunch();
   const prefixes = output.match(/S-1-16-/gi) ?? [];
@@ -120,7 +106,21 @@ function parseIntegrityRid(output: unknown): number {
 }
 
 export function assertWindowsNonElevatedLaunch(probe: WindowsLaunchPrivilegeProbe): void {
-  const whoami = resolveWindowsWhoami(probe.systemRoot);
+  let whoami: string;
+  try {
+    whoami = resolveWindowsSystemExecutable(
+      "whoami.exe",
+      { SystemRoot: probe.systemRoot },
+      {
+        platform: "win32",
+        systemRoot: probe.systemRoot,
+        lstat: probe.lstat,
+        realpath: probe.realpath
+      }
+    );
+  } catch {
+    denyElevatedLaunch();
+  }
   let identity: FileIdentity;
   try {
     identity = probe.lstat(whoami);
@@ -150,6 +150,7 @@ export function assertNonElevatedLaunch(): void {
     assertWindowsNonElevatedLaunch({
       systemRoot: process.env.SystemRoot,
       lstat: (file) => lstatSync(file),
+      realpath: (file) => realpathSync.native(file),
       runWhoami: (file, args, options) => {
         const result = spawnSync(file, [...args], options);
         return { error: result.error, signal: result.signal, status: result.status, stdout: result.stdout };

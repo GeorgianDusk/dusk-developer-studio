@@ -12,6 +12,13 @@ import {
   scaffoldDuskDsForge
 } from "@dusk/local-agent/server";
 import { terminateAllBoundedProcesses } from "@dusk/local-agent/process";
+import { createChildEnvironment } from "@dusk/local-agent/environment";
+import {
+  resolveExecutableForSpawn,
+  resolveExecutionDirectory,
+  resolveWindowsSystemDirectory,
+  resolveWindowsSystemExecutable
+} from "@dusk/local-agent/executable";
 import { assertNonElevatedLaunch } from "./launchPrivilege";
 import { createLocalStudioServer } from "./staticServer";
 import {
@@ -146,20 +153,42 @@ function close(server: http.Server): Promise<void> {
   });
 }
 
-function openLocalBrowser(url: string): void {
-  const command = process.platform === "win32"
-    ? "explorer.exe"
-    : process.platform === "darwin"
-      ? "open"
-      : "xdg-open";
-  const child = spawn(command, [url], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    shell: false
+export function resolveLocalBrowserLaunch(
+  cwd: string,
+  environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  inheritedCwd: string = process.cwd()
+): { command: string; cwd: string; environment: NodeJS.ProcessEnv } {
+  const childEnvironment = createChildEnvironment(environment, {
+    inheritedCwd
   });
-  child.once("error", () => undefined);
-  child.unref();
+  const canonicalCwd = resolveExecutionDirectory(cwd, childEnvironment, { platform, inheritedCwd });
+  const command = platform === "win32"
+    ? resolveWindowsSystemExecutable("explorer.exe", childEnvironment, { inheritedCwd })
+    : platform === "darwin"
+      ? resolveExecutableForSpawn("open", childEnvironment, { platform, inheritedCwd })
+      : platform === "linux"
+        ? resolveExecutableForSpawn("xdg-open", childEnvironment, { platform, inheritedCwd })
+        : (() => { throw new Error("Automatic browser launch is not supported on this operating system."); })();
+  return { command, cwd: canonicalCwd, environment: childEnvironment };
+}
+
+function openLocalBrowser(url: string, cwd: string): void {
+  try {
+    const launch = resolveLocalBrowserLaunch(cwd);
+    const child = spawn(launch.command, [url], {
+      cwd: launch.cwd,
+      env: launch.environment,
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      shell: false
+    });
+    child.once("error", () => undefined);
+    child.unref();
+  } catch {
+    // Browser launch is best-effort; the CLI always prints the loopback URL.
+  }
 }
 
 export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
@@ -194,6 +223,7 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
     pairingToken,
     port: companionPort,
     workspaceRoot: projectRoot,
+    processCwd: packageRoot,
     foundryTemplateRoot: path.join(packageRoot, "templates", "foundry-counter-dusk-evm"),
     duskDsTemplateRoot: path.join(packageRoot, "templates", "duskds-counter-forge"),
     duskDsProjectRoot,
@@ -225,7 +255,7 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
     await terminateAllBoundedProcesses();
     await Promise.all([close(studioServer), close(companionServer)]);
   };
-  if (options.openBrowser) openLocalBrowser(`http://${HOST}:${studioPort}/#companion`);
+  if (options.openBrowser) openLocalBrowser(`http://${HOST}:${studioPort}/#companion`, packageRoot);
   return { manifest, studioServer, companionServer, projectRoot, duskDsProjectRoot, shutdown };
 }
 
@@ -343,12 +373,18 @@ export function parseWindowsNetstatListeningEndpoints(output: string, ownerPid: 
   return values;
 }
 
-function ownedListeningEndpoints(): string[] {
+function ownedListeningEndpoints(cwd: string): string[] {
   let values: string[] = [];
+  const environment = createChildEnvironment(process.env, {
+    inheritedCwd: process.cwd()
+  });
   if (process.platform === "win32") {
-    const netstat = path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "netstat.exe");
+    const netstat = resolveWindowsSystemExecutable("netstat.exe", environment);
     const result = spawnSync(netstat, ["-a", "-n", "-o", "-p", "tcp"], {
+      cwd: resolveWindowsSystemDirectory(environment),
+      env: environment,
       encoding: "utf8",
+      shell: false,
       windowsHide: true,
       timeout: 30_000,
       maxBuffer: 1_048_576
@@ -364,8 +400,11 @@ function ownedListeningEndpoints(): string[] {
     }
     values = parseWindowsNetstatListeningEndpoints(result.stdout, process.pid);
   } else if (process.platform === "linux") {
-    const result = spawnSync("ss", ["-H", "-ltnp"], {
+    const result = spawnSync(resolveExecutableForSpawn("ss", environment), ["-H", "-ltnp"], {
+      cwd: resolveExecutionDirectory(cwd, environment),
+      env: environment,
       encoding: "utf8",
+      shell: false,
       windowsHide: true,
       timeout: 10_000
     });
@@ -376,9 +415,16 @@ function ownedListeningEndpoints(): string[] {
       .map((line) => line.trim().split(/\s+/)[3] ?? "");
   } else if (process.platform === "darwin") {
     const result = spawnSync(
-      "lsof",
+      resolveExecutableForSpawn("lsof", environment),
       ["-nP", "-a", "-p", String(process.pid), "-iTCP", "-sTCP:LISTEN", "-Fn"],
-      { encoding: "utf8", windowsHide: true, timeout: 10_000 }
+      {
+        cwd: resolveExecutionDirectory(cwd, environment),
+        env: environment,
+        encoding: "utf8",
+        shell: false,
+        windowsHide: true,
+        timeout: 10_000
+      }
     );
     if (result.status !== 0) throw new Error("Lifecycle self-test could not inspect macOS listening sockets.");
     values = result.stdout
@@ -459,7 +505,7 @@ async function runLifecycleSelfTest(
       return `${address.address}:${address.port}`;
     })
     .sort();
-  const socketEndpoints = ownedListeningEndpoints();
+  const socketEndpoints = ownedListeningEndpoints(runtime.projectRoot);
   if (
     JSON.stringify(serverEndpoints) !== JSON.stringify([...expectedEndpoints].sort())
     || JSON.stringify(socketEndpoints) !== JSON.stringify([...expectedEndpoints].sort())
@@ -559,7 +605,7 @@ async function runLifecycleSelfTest(
   } else if (preflight.status !== 403 || preflightBody.code !== "capabilities_disabled") {
     throw new Error("Lifecycle Safe mode did not deny a local action.");
   }
-  if (JSON.stringify(ownedListeningEndpoints()) !== JSON.stringify([...expectedEndpoints].sort())) {
+  if (JSON.stringify(ownedListeningEndpoints(runtime.projectRoot)) !== JSON.stringify([...expectedEndpoints].sort())) {
     throw new Error("Lifecycle preflight changed the Studio-owned listening endpoint set.");
   }
 
@@ -634,7 +680,7 @@ async function runLifecycleSelfTest(
       throw new Error("Lifecycle Local Actions scaffold inventory differs from its reviewed receipt.");
     }
   }
-  if (JSON.stringify(ownedListeningEndpoints()) !== JSON.stringify([...expectedEndpoints].sort())) {
+  if (JSON.stringify(ownedListeningEndpoints(runtime.projectRoot)) !== JSON.stringify([...expectedEndpoints].sort())) {
     throw new Error("Lifecycle scaffold changed the Studio-owned listening endpoint set.");
   }
 

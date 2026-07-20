@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createChildEnvironment } from "./childEnvironment";
+import {
+  getLaunchPathExclusions,
+  sanitizeExecutablePathEntries
+} from "./executableResolution";
 import {
   assertReviewedDuskForgeIdentity,
   DUSK_FORGE_BINARY,
@@ -101,28 +105,69 @@ function getToolAllowlist(path: PreflightPath): ToolCheck[] {
   return [...DUSKDS_TOOLS, ...wslTools];
 }
 
-function pathAdditionsForTool(tool: ToolCheck): string[] {
-  const home = homedir();
+export interface ToolPathResolutionRuntime {
+  homeDirectory?: string;
+  cargoHome?: string;
+  launchCwd?: string;
+  pathExists?(candidate: string): boolean;
+}
+
+export function trustedPathAdditionsForTool(
+  tool: ToolCheck,
+  runtime: ToolPathResolutionRuntime = {}
+): string[] {
+  const home = runtime.homeDirectory ?? homedir();
+  const cargoHome = runtime.cargoHome ?? resolveCargoHome();
+  const pathExists = runtime.pathExists ?? existsSync;
   const candidates: string[] = [];
   if (process.platform === "win32" && ["forge", "cast", "anvil", "chisel"].includes(tool.command)) {
     candidates.push(join(home, ".foundry", "bin"));
   }
   if (["cargo", "rustc", "rustup", "dusk-forge", "rusk-wallet", "wasm-pack", "wasm-tools"].includes(tool.command)) {
-    candidates.push(join(resolveCargoHome(), "bin"));
+    candidates.push(join(cargoHome, "bin"), join(home, ".cargo", "bin"));
   }
 
-  return candidates.filter((candidate) => existsSync(candidate));
+  const launchRoot = resolve(runtime.launchCwd ?? process.cwd());
+  const launchExclusions = getLaunchPathExclusions(launchRoot, home);
+  const standardHomeBins = new Set([
+    resolve(join(home, ".cargo", "bin")),
+    resolve(join(home, ".foundry", "bin"))
+  ].map((candidate) => process.platform === "win32" ? candidate.toLowerCase() : candidate));
+  const seen = new Set<string>();
+  return candidates
+    .map((candidate) => resolve(candidate))
+    .filter((candidate) => {
+      const comparison = process.platform === "win32" ? candidate.toLowerCase() : candidate;
+      if (seen.has(comparison)) return false;
+      seen.add(comparison);
+      return true;
+    })
+    .filter((candidate) => {
+      if (!pathExists(candidate)) return false;
+      const comparison = process.platform === "win32" ? candidate.toLowerCase() : candidate;
+      if (standardHomeBins.has(comparison)) return true;
+      return sanitizeExecutablePathEntries([candidate], launchExclusions).length === 1;
+    });
 }
 
-function envForTool(tool: ToolCheck): NodeJS.ProcessEnv {
-  const additions = pathAdditionsForTool(tool);
-  return createChildEnvironment(process.env, { pathAdditions: additions });
+function envForTool(trustedPathAdditions: string[]): NodeJS.ProcessEnv {
+  return createChildEnvironment(process.env, { trustedPathAdditions });
 }
 
-async function checkWasmOptShimAsync(tool: ToolCheck, runProcess: typeof runBoundedProcess): Promise<ToolResult | undefined> {
+async function checkWasmOptShimAsync(
+  tool: ToolCheck,
+  runProcess: typeof runBoundedProcess,
+  cwd?: string
+): Promise<ToolResult | undefined> {
   if (tool.command !== "wasm-opt" || process.platform !== "win32") return undefined;
   try {
-    const located = await runProcess({ command: "where.exe", args: ["wasm-opt"], timeoutMs: 5_000, maxOutputBytes: 16_384 });
+    const located = await runProcess({
+      command: "where.exe",
+      args: ["wasm-opt"],
+      cwd,
+      timeoutMs: 5_000,
+      maxOutputBytes: 16_384
+    });
     const firstPath = located.stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)[0];
     if (firstPath && !isNativeWindowsWasmOptPath(firstPath)) {
       return {
@@ -145,22 +190,27 @@ export function isNativeWindowsWasmOptPath(value: string): boolean {
   return /\.exe$/i.test(value.trim());
 }
 
-async function checkToolAsync(tool: ToolCheck, runProcess: typeof runBoundedProcess): Promise<ToolResult> {
+async function checkToolAsync(
+  tool: ToolCheck,
+  runProcess: typeof runBoundedProcess,
+  cwd?: string
+): Promise<ToolResult> {
   if (tool.checkKind === "dusk-forge-identity") {
     throw new Error("Dusk Forge identity checks require the dedicated bounded receipt reader.");
   }
-  const shimWarning = await checkWasmOptShimAsync(tool, runProcess);
+  const shimWarning = await checkWasmOptShimAsync(tool, runProcess, cwd);
   if (shimWarning) return shimWarning;
   const reviewedForgeExecutable = tool.command === DUSK_FORGE_BINARY ? reviewedDuskForgeExecutable() : undefined;
+  const trustedPathAdditions = trustedPathAdditionsForTool(tool);
   const invocation = reviewedForgeExecutable
     ? { command: reviewedForgeExecutable, args: tool.args }
-    : process.platform === "win32" && !tool.windowsDirect
-      ? { command: "cmd.exe", args: ["/d", "/s", "/c", tool.command, ...tool.args] }
-      : { command: tool.command, args: tool.args };
+    : { command: tool.command, args: tool.args };
   try {
     const result = await runProcess({
       ...invocation,
-      env: envForTool(tool),
+      cwd,
+      env: envForTool(trustedPathAdditions),
+      trustedPathAdditions,
       timeoutMs: tool.windowsDirect ? 10_000 : 5_000,
       maxOutputBytes: 65_536
     });
@@ -229,6 +279,7 @@ export async function runPreflightAsync(
     runProcess?: typeof runBoundedProcess;
     nodeVersion?: string;
     readDuskForgeIdentity?: () => Promise<DuskForgeInstallIdentity>;
+    cwd?: string;
   } = {}
 ): Promise<{ ok: boolean; checkedAt: string; path: PreflightPath; tools: ToolResult[] }> {
   const tools: ToolResult[] = [{ name: "Node.js", command: "node", required: true, ok: true, version: runtime.nodeVersion?.trim() || process.version, installHint: "Node.js 24.18 or newer in the Node 24 release line is required to run Local Studio." }];
@@ -251,7 +302,7 @@ export async function runPreflightAsync(
         installHint: tool.installHint
       });
     } else {
-      tools.push(await checkToolAsync(tool, runProcess));
+      tools.push(await checkToolAsync(tool, runProcess, runtime.cwd));
     }
   }
   return { ok: tools.every((tool) => tool.ok || !tool.required), checkedAt: new Date().toISOString(), path, tools };

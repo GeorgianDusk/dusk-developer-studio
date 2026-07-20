@@ -5,7 +5,9 @@
   "type": "module",
   "exports": {
     "./server": "./src/server.ts",
-    "./process": "./src/commands/runBoundedProcess.ts"
+    "./process": "./src/commands/runBoundedProcess.ts",
+    "./environment": "./src/commands/childEnvironment.ts",
+    "./executable": "./src/commands/executableResolution.ts"
   },
   "scripts": {
     "dev": "tsx src/main.ts",
