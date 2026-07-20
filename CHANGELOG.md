@@ -4,6 +4,27 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.1 - 2026-07-20
+
+### Added
+
+- Add a reviewed, packaged DuskDS counter starter with an exact Rust `1.94.0` toolchain, Cargo lockfile, MPL-2.0 license text, and upstream provenance.
+- Add `dusk-developer-studio create-duskds <project-name>` for creating one new starter beneath the current working directory.
+- Add exact-package checks for direct and Local Actions scaffolding, overwrite refusal, clean shutdown, and post-shutdown project preservation.
+
+### Changed
+
+- Replace moving Forge starter generation with the Studio-owned reviewed template while retaining exact Forge checks for build, test, and verification.
+- Clarify Hosted, Safe mode, Local Actions, existing-project, recovery, WSL, and native macOS support boundaries throughout the developer journey.
+- Publish subsequent immutable npm versions through GitHub OIDC trusted publishing while preserving the initial `1.0.0` bootstrap record.
+
+### Security
+
+- Bind completed-action recovery to the exact starter file inventory and content digest.
+- Tighten project-name, filesystem-root, containment, runtime-platform, timeout, and evidence-identity validation.
+- Verify the packaged DuskDS template inventory, lockfile, provenance, and installed-tarball behavior before publication.
+- Bind historical npm bootstrap controls to the preserved `1.0.0` publication receipt and require explicit exact-tarball scaffold, preservation, and shutdown proofs.
+
 ## 1.0.0 - 2026-07-19
 
 ### Added

@@ -32,9 +32,9 @@ env:
   CI: "true"
   NODE_VERSION: 24.18.0
   PNPM_VERSION: 11.7.0
-  TARBALL: output/npm/dusk-developer-studio-1.0.0.tgz
+  TARBALL: output/npm/dusk-developer-studio-1.0.1.tgz
   PRIMARY_ENTRY: node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs
-  CANDIDATE_ARTIFACT: dusk-developer-studio-1.0.0.tgz
+  CANDIDATE_ARTIFACT: dusk-developer-studio-1.0.1.tgz
 
 jobs:
   build-package:
@@ -47,6 +47,9 @@ jobs:
       candidate_commit: ${{ steps.candidate.outputs.candidate_commit }}
       candidate_artifact_name: ${{ steps.candidate.outputs.candidate_artifact_name }}
       browser_smoke: ${{ steps.browser.outputs.status }}
+      exact_tarball_local_actions_scaffold_smoke: ${{ steps.browser.outputs.local_actions_scaffold_smoke }}
+      exact_tarball_scaffold_preservation_smoke: ${{ steps.browser.outputs.scaffold_preservation_smoke }}
+      exact_tarball_shutdown_smoke: ${{ steps.browser.outputs.shutdown_smoke }}
     steps:
       - name: Check out reviewed source
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -164,13 +167,29 @@ jobs:
         run: |
           command -v google-chrome-stable
           google-chrome-stable --version
-      - name: Render, pair, and verify both modes from the exact tarball
+      - name: Render, pair, scaffold, preserve, and verify shutdown from the exact tarball
         id: browser
         run: |
           node scripts/npm-package-browser-smoke.mjs \
             --tarball="$TARBALL" \
             --receipt=output/npm/npm-browser-ubuntu.json
-          printf '%s\n' 'status=passed' >> "$GITHUB_OUTPUT"
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const receipt = JSON.parse(fs.readFileSync("output/npm/npm-browser-ubuntu.json", "utf8"));
+          if (receipt.status !== "passed"
+              || receipt.local_actions_scaffold_verified !== true
+              || receipt.scaffold_preserved_after_shutdown !== true
+              || receipt.studio_shutdown_verified !== true) {
+            throw new Error("Exact-tarball Local Actions scaffold, preservation, or shutdown proof is incomplete.");
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, [
+            "status=passed",
+            "local_actions_scaffold_smoke=passed",
+            "scaffold_preservation_smoke=passed",
+            "shutdown_smoke=passed",
+            ""
+          ].join("\n"));
+          NODE
       - name: Upload the bounded browser assurance receipt
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -247,8 +266,76 @@ jobs:
           NODE_BIN="$(command -v node)"
           test -f "$PRIMARY"
           test -x "$NODE_BIN"
+          DIRECT_PARENT="$RUNNER_TEMP/npm-direct-cli"
+          mkdir -p "$DIRECT_PARENT"
+          (
+            cd "$DIRECT_PARENT"
+            "$NODE_BIN" "$PRIMARY" create-duskds platform-direct-counter
+          )
+          test -f "$DIRECT_PARENT/platform-direct-counter/Cargo.lock"
+          test -f "$DIRECT_PARENT/platform-direct-counter/src/lib.rs"
+          grep -F "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a" \
+            "$DIRECT_PARENT/platform-direct-counter/PROVENANCE.md"
+          set +e
+          DIRECT_RETRY="$(
+            cd "$DIRECT_PARENT"
+            "$NODE_BIN" "$PRIMARY" create-duskds platform-direct-counter 2>&1
+          )"
+          DIRECT_RETRY_STATUS=$?
+          set -e
+          test "$DIRECT_RETRY_STATUS" -ne 0
+          printf '%s' "$DIRECT_RETRY" | grep -Ei "existing target|already exists"
           "$NODE_BIN" "$PRIMARY" --lifecycle-self-test --no-open
-          "$NODE_BIN" "$PRIMARY" local-actions --lifecycle-self-test --no-open
+          LOCAL_ACTIONS_ROOT="$RUNNER_TEMP/npm-local-actions-$GITHUB_RUN_ID"
+          LOCAL_ACTIONS_OUTPUT="$(
+            DUSK_STUDIO_DUSKDS_PROJECT_ROOT="$LOCAL_ACTIONS_ROOT" \
+              "$NODE_BIN" "$PRIMARY" local-actions --lifecycle-self-test --no-open
+          )"
+          printf '%s\n' "$LOCAL_ACTIONS_OUTPUT"
+          export LOCAL_ACTIONS_OUTPUT LOCAL_ACTIONS_ROOT
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import path from "node:path";
+          const lines = process.env.LOCAL_ACTIONS_OUTPUT.split(/\r?\n/u)
+            .filter((line) => line.startsWith("DUSK_STUDIO_LIFECYCLE="));
+          if (lines.length !== 1) throw new Error("Local Actions lifecycle receipt is missing or duplicated.");
+          const receipt = JSON.parse(lines[0].slice("DUSK_STUDIO_LIFECYCLE=".length));
+          if (receipt.schema_version !== 2
+              || receipt.mode !== "local-actions"
+              || receipt.local_actions_scaffold_smoke !== "passed"
+              || receipt.scaffold_preservation_smoke !== "passed"
+              || receipt.shutdown_smoke !== "passed"
+              || receipt.studio_loopback_services_stopped !== true) {
+            throw new Error("Local Actions lifecycle did not prove scaffold, preservation, and shutdown.");
+          }
+          const root = fs.realpathSync(process.env.LOCAL_ACTIONS_ROOT);
+          const entries = fs.readdirSync(root, { withFileTypes: true });
+          if (entries.length !== 1 || !entries[0].isDirectory() || entries[0].isSymbolicLink()) {
+            throw new Error("Local Actions lifecycle did not retain exactly one regular project.");
+          }
+          const project = path.join(root, entries[0].name);
+          for (const required of [
+            "Cargo.lock", "Cargo.toml", "PROVENANCE.md", "rust-toolchain.toml",
+            "src/lib.rs", "tests/contract.rs"
+          ]) {
+            const stat = fs.lstatSync(path.join(project, required));
+            if (!stat.isFile() || stat.isSymbolicLink()) {
+              throw new Error(`Local Actions retained an unsafe required file: ${required}.`);
+            }
+          }
+          const rejectLinks = (directory) => {
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+              const absolute = path.join(directory, entry.name);
+              const stat = fs.lstatSync(absolute);
+              if (entry.isSymbolicLink() || stat.isSymbolicLink()) {
+                throw new Error("Local Actions retained a link.");
+              }
+              if (entry.isDirectory() && stat.isDirectory()) rejectLinks(absolute);
+              else if (!entry.isFile() || !stat.isFile()) throw new Error("Local Actions retained a non-regular entry.");
+            }
+          };
+          rejectLinks(project);
+          NODE
           set +e
           ELEVATED_OUTPUT="$(sudo -n "$NODE_BIN" "$PRIMARY" --lifecycle-self-test --no-open 2>&1)"
           ELEVATED_STATUS=$?
@@ -258,6 +345,10 @@ jobs:
           printf '%s\n' \
             'NPM_SAFE_SMOKE=passed' \
             'NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed' \
+            'NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed' \
+            'NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed' \
+            'NPM_SCAFFOLD_PRESERVATION_SMOKE=passed' \
+            'NPM_SHUTDOWN_SMOKE=passed' \
             'NPM_ELEVATED_REFUSAL=passed' >> "$GITHUB_ENV"
       - name: Install and exercise npm package on Windows
         if: runner.os == 'Windows'
@@ -281,7 +372,9 @@ jobs:
             $localAppData = Join-Path $profileRoot 'AppData\Local'
             $roamingAppData = Join-Path $profileRoot 'AppData\Roaming'
             $tempRoot = Join-Path $dataRoot 'Temp'
-            New-Item -ItemType Directory -Path $localAppData, $roamingAppData, $tempRoot -Force | Out-Null
+            $directCliRoot = Join-Path $dataRoot 'DirectCli'
+            $localActionsRoot = Join-Path $dataRoot 'LocalActions'
+            New-Item -ItemType Directory -Path $localAppData, $roamingAppData, $tempRoot, $directCliRoot -Force | Out-Null
             $tarball = (Resolve-Path -LiteralPath $env:TARBALL).Path
             npm install --ignore-scripts --prefix $publicRoot $tarball
             if ($LASTEXITCODE -ne 0) { throw 'npm package installation failed.' }
@@ -305,14 +398,20 @@ jobs:
               TEMP = $tempRoot
               TMP = $tempRoot
               USERPROFILE = $profileRoot
+              DUSK_STUDIO_DUSKDS_PROJECT_ROOT = $localActionsRoot
             }
             function Invoke-StandardUserSmoke {
-              param([string[]] $Arguments, [string] $Label)
+              param(
+                [string[]] $Arguments,
+                [string] $Label,
+                [string] $WorkingDirectory = $publicRoot,
+                [switch] $ExpectFailure
+              )
               $stdout = Join-Path $env:RUNNER_TEMP "$Label.stdout.txt"
               $stderr = Join-Path $env:RUNNER_TEMP "$Label.stderr.txt"
               $process = Start-Process -FilePath $publicNode `
                 -ArgumentList (@($publicPrimary) + $Arguments) `
-                -WorkingDirectory $publicRoot `
+                -WorkingDirectory $WorkingDirectory `
                 -Credential $credential `
                 -Environment $childEnvironment `
                 -LoadUserProfile `
@@ -321,16 +420,71 @@ jobs:
                 -RedirectStandardError $stderr `
                 -Wait `
                 -PassThru
-              if ($process.ExitCode -ne 0) {
-                $detail = @(
-                  Get-Content -Raw -ErrorAction SilentlyContinue $stderr
-                  Get-Content -Raw -ErrorAction SilentlyContinue $stdout
-                ) -join "`n"
+              $detail = @(
+                Get-Content -Raw -ErrorAction SilentlyContinue $stderr
+                Get-Content -Raw -ErrorAction SilentlyContinue $stdout
+              ) -join "`n"
+              if ($ExpectFailure) {
+                if ($process.ExitCode -eq 0) { throw "$Label unexpectedly succeeded." }
+              } elseif ($process.ExitCode -ne 0) {
                 throw "$Label failed as the temporary standard user: $($detail.Trim())"
               }
+              return [PSCustomObject]@{
+                ExitCode = $process.ExitCode
+                Output = $detail
+              }
             }
-            Invoke-StandardUserSmoke -Arguments @('--lifecycle-self-test', '--no-open') -Label 'safe-smoke'
-            Invoke-StandardUserSmoke -Arguments @('local-actions', '--lifecycle-self-test', '--no-open') -Label 'local-actions-capability-contract-smoke'
+            $directCreate = Invoke-StandardUserSmoke `
+              -Arguments @('create-duskds', 'platform-direct-counter') `
+              -Label 'direct-cli-scaffold' `
+              -WorkingDirectory $directCliRoot
+            $directProject = Join-Path $directCliRoot 'platform-direct-counter'
+            foreach ($required in @('Cargo.lock', 'Cargo.toml', 'PROVENANCE.md', 'rust-toolchain.toml', 'src\lib.rs', 'tests\contract.rs')) {
+              $requiredPath = Join-Path $directProject $required
+              if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)
+                  -or ((Get-Item -LiteralPath $requiredPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "Direct CLI scaffold retained an unsafe required file: $required"
+              }
+            }
+            $directRetry = Invoke-StandardUserSmoke `
+              -Arguments @('create-duskds', 'platform-direct-counter') `
+              -Label 'direct-cli-overwrite-refusal' `
+              -WorkingDirectory $directCliRoot `
+              -ExpectFailure
+            if ($directRetry.Output -notmatch 'existing target|already exists') {
+              throw 'Direct CLI retry did not report overwrite refusal.'
+            }
+            $safeResult = Invoke-StandardUserSmoke -Arguments @('--lifecycle-self-test', '--no-open') -Label 'safe-smoke'
+            $localActionsResult = Invoke-StandardUserSmoke -Arguments @('local-actions', '--lifecycle-self-test', '--no-open') -Label 'local-actions-capability-contract-smoke'
+            $lifecycleLines = @($localActionsResult.Output -split "`r?`n" | Where-Object { $_.StartsWith('DUSK_STUDIO_LIFECYCLE=') })
+            if ($lifecycleLines.Count -ne 1) { throw 'Local Actions lifecycle receipt is missing or duplicated.' }
+            $lifecycle = $lifecycleLines[0].Substring('DUSK_STUDIO_LIFECYCLE='.Length) | ConvertFrom-Json
+            if ($lifecycle.schema_version -ne 2
+                -or $lifecycle.mode -ne 'local-actions'
+                -or $lifecycle.local_actions_scaffold_smoke -ne 'passed'
+                -or $lifecycle.scaffold_preservation_smoke -ne 'passed'
+                -or $lifecycle.shutdown_smoke -ne 'passed'
+                -or $lifecycle.studio_loopback_services_stopped -ne $true) {
+              throw 'Local Actions lifecycle did not prove scaffold, preservation, and shutdown.'
+            }
+            $localProjects = @(Get-ChildItem -LiteralPath $localActionsRoot -Force)
+            if ($localProjects.Count -ne 1
+                -or -not $localProjects[0].PSIsContainer
+                -or ($localProjects[0].Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+              throw 'Local Actions lifecycle did not retain exactly one regular project.'
+            }
+            foreach ($required in @('Cargo.lock', 'Cargo.toml', 'PROVENANCE.md', 'rust-toolchain.toml', 'src\lib.rs', 'tests\contract.rs')) {
+              $requiredPath = Join-Path $localProjects[0].FullName $required
+              if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)
+                  -or ((Get-Item -LiteralPath $requiredPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+                throw "Local Actions lifecycle retained an unsafe required file: $required"
+              }
+            }
+            if (Get-ChildItem -LiteralPath $localProjects[0].FullName -Force -Recurse |
+                Where-Object { $_.Attributes -band [IO.FileAttributes]::ReparsePoint } |
+                Select-Object -First 1) {
+              throw 'Local Actions lifecycle retained a reparse-point entry.'
+            }
             $elevatedOutput = & $publicNode $publicPrimary --lifecycle-self-test --no-open 2>&1
             $elevatedStatus = $LASTEXITCODE
             if ($elevatedStatus -eq 0 -or -not (($elevatedOutput | Out-String).Contains('Dusk Developer Studio refuses elevated or root execution.'))) {
@@ -339,6 +493,10 @@ jobs:
             @(
               'NPM_SAFE_SMOKE=passed'
               'NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed'
+              'NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed'
+              'NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed'
+              'NPM_SCAFFOLD_PRESERVATION_SMOKE=passed'
+              'NPM_SHUTDOWN_SMOKE=passed'
               'NPM_ELEVATED_REFUSAL=passed'
             ) | Add-Content -LiteralPath $env:GITHUB_ENV
           } finally {
@@ -361,16 +519,24 @@ jobs:
           const runner = process.env.RUNNER_LABEL;
           if (process.env.NPM_SAFE_SMOKE !== "passed"
               || process.env.NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE !== "passed"
+              || process.env.NPM_DIRECT_CLI_SCAFFOLD_SMOKE !== "passed"
+              || process.env.NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE !== "passed"
+              || process.env.NPM_SCAFFOLD_PRESERVATION_SMOKE !== "passed"
+              || process.env.NPM_SHUTDOWN_SMOKE !== "passed"
               || process.env.NPM_ELEVATED_REFUSAL !== "passed") {
-            throw new Error("Platform receipt cannot be written before all lifecycle smokes execute successfully.");
+            throw new Error("Platform receipt cannot be written before all exact-tarball lifecycle and scaffold smokes execute successfully.");
           }
           const receipt = {
-            schema_version: 1,
+            schema_version: 2,
             status: "passed",
             runner,
             node_version: process.env.NODE_VERSION,
             safe_smoke: "passed",
             local_actions_capability_contract_smoke: "passed",
+            direct_cli_scaffold_smoke: "passed",
+            local_actions_scaffold_smoke: "passed",
+            scaffold_preservation_smoke: "passed",
+            shutdown_smoke: "passed",
             elevated_refusal: "passed",
             candidate_commit: process.env.GITHUB_SHA,
             integrity: process.env.NPM_INTEGRITY,
@@ -399,6 +565,9 @@ jobs:
       EXPECTED_CANDIDATE_COMMIT: ${{ needs.build-package.outputs.candidate_commit }}
       EXPECTED_CANDIDATE_ARTIFACT: ${{ needs.build-package.outputs.candidate_artifact_name }}
       EXPECTED_BROWSER_SMOKE: ${{ needs.build-package.outputs.browser_smoke }}
+      EXPECTED_LOCAL_ACTIONS_SCAFFOLD_SMOKE: ${{ needs.build-package.outputs.exact_tarball_local_actions_scaffold_smoke }}
+      EXPECTED_SCAFFOLD_PRESERVATION_SMOKE: ${{ needs.build-package.outputs.exact_tarball_scaffold_preservation_smoke }}
+      EXPECTED_SHUTDOWN_SMOKE: ${{ needs.build-package.outputs.exact_tarball_shutdown_smoke }}
     outputs:
       integrity: ${{ steps.aggregate.outputs.integrity }}
       package_inventory_sha256: ${{ steps.aggregate.outputs.package_inventory_sha256 }}
@@ -422,8 +591,11 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
-          if (process.env.EXPECTED_BROWSER_SMOKE !== "passed") {
-            throw new Error("Exact-tarball browser boot and pairing smoke did not pass.");
+          if (process.env.EXPECTED_BROWSER_SMOKE !== "passed"
+              || process.env.EXPECTED_LOCAL_ACTIONS_SCAFFOLD_SMOKE !== "passed"
+              || process.env.EXPECTED_SCAFFOLD_PRESERVATION_SMOKE !== "passed"
+              || process.env.EXPECTED_SHUTDOWN_SMOKE !== "passed") {
+            throw new Error("Exact-tarball browser boot, pairing, Local Actions scaffold, preservation, and shutdown smoke did not pass.");
           }
           const records = Object.fromEntries(policy.assurance.required_runners.map((runner) => {
             const file = `output/npm/platform/npm-platform-${runner}.json`;
@@ -431,11 +603,16 @@ jobs:
           }));
           for (const runner of policy.assurance.required_runners) {
             const record = records[runner];
-            if (record.status !== "passed"
+            if (record.schema_version !== 2
+                || record.status !== "passed"
                 || record.runner !== runner
                 || record.node_version !== process.env.NODE_VERSION
                 || record.safe_smoke !== "passed"
                 || record.local_actions_capability_contract_smoke !== "passed"
+                || record.direct_cli_scaffold_smoke !== "passed"
+                || record.local_actions_scaffold_smoke !== "passed"
+                || record.scaffold_preservation_smoke !== "passed"
+                || record.shutdown_smoke !== "passed"
                 || record.elevated_refusal !== "passed"
                 || record.candidate_commit !== process.env.EXPECTED_CANDIDATE_COMMIT
                 || record.integrity !== process.env.EXPECTED_NPM_INTEGRITY
@@ -444,7 +621,7 @@ jobs:
             }
           }
           const receipt = {
-            schema_version: 1,
+            schema_version: 2,
             status: "passed",
             package_name: policy.package.name,
             package_version: policy.package.version,
@@ -455,6 +632,10 @@ jobs:
             integrity: process.env.EXPECTED_NPM_INTEGRITY,
             package_inventory_sha256: process.env.EXPECTED_PACKAGE_INVENTORY_SHA256,
             browser_boot_and_pairing_smoke: "passed",
+            exact_tarball_direct_cli_scaffold_smoke: "passed",
+            exact_tarball_local_actions_scaffold_smoke: "passed",
+            exact_tarball_scaffold_preservation_smoke: "passed",
+            exact_tarball_shutdown_smoke: "passed",
             platform_smoke: records
           };
           fs.mkdirSync("output/npm", { recursive: true });

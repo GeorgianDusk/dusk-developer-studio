@@ -1,7 +1,12 @@
 // @vitest-environment node
 
 import { describe, expect, it } from "vitest";
-import { parseWindowsNetstatListeningEndpoints, resolveLocalRuntimeCliMode } from "../main";
+import path from "node:path";
+import {
+  parseWindowsNetstatListeningEndpoints,
+  resolveDuskDsProjectRoot,
+  resolveLocalRuntimeCliMode
+} from "../main";
 
 describe("local npm runtime CLI mode", () => {
   it("defaults to interactive mode", () => {
@@ -26,6 +31,23 @@ describe("local npm runtime CLI mode", () => {
     expect(() => resolveLocalRuntimeCliMode(["--unknown"])).toThrow(/Unsupported argument/);
     expect(() => resolveLocalRuntimeCliMode(["--no-open", "--no-open"])).toThrow(/must not be repeated/);
     expect(() => resolveLocalRuntimeCliMode(["--enable-local-actions"])).toThrow(/Unsupported argument/);
+  });
+
+  it("uses one managed DuskDS root and supports only explicit safe absolute overrides", () => {
+    const managed = path.resolve("runtime-projects");
+    const override = path.join(managed, "short-duskds-root");
+    expect(resolveDuskDsProjectRoot(managed, "")).toBe(path.join(managed, "duskds"));
+    expect(resolveDuskDsProjectRoot(managed, override)).toBe(path.resolve(override));
+    expect(() => resolveDuskDsProjectRoot(managed, "relative-root")).toThrow(/normal absolute local path/);
+    expect(() => resolveDuskDsProjectRoot(managed, path.parse(managed).root)).toThrow(/cannot be a filesystem root/);
+    if (process.platform === "win32") {
+      expect(() => resolveDuskDsProjectRoot(managed, "\\root-relative")).toThrow(/normal absolute local path/);
+      expect(() => resolveDuskDsProjectRoot(managed, "/root-relative")).toThrow(/normal absolute local path/);
+    }
+    expect(() => resolveDuskDsProjectRoot(managed, path.resolve(managed, "x".repeat(1_100))))
+      .toThrow(/1,024 characters or fewer/);
+    expect(() => resolveDuskDsProjectRoot("m".repeat(1_100), ""))
+      .toThrow(/1,024 characters or fewer/);
   });
 
   it("parses locale-independent Windows netstat listener rows for the exact owner", () => {

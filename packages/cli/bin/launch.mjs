@@ -1,4 +1,4 @@
-const CLI_VERSION = "1.0.0";
+const CLI_VERSION = "1.0.1";
 const REQUIRED_NODE = ">=24.18.0 <25";
 const INFORMATIONAL_FLAGS = new Map([
   ["--help", "help"],
@@ -21,9 +21,12 @@ function helpText() {
   return [
     `Dusk Developer Studio ${CLI_VERSION}`,
     "",
-    "Usage: npx dusk-developer-studio [local-actions] [--no-open]",
+    "Usage:",
+    "  npx dusk-developer-studio [local-actions] [--no-open]",
+    "  npx dusk-developer-studio create-duskds <project-name>",
     "",
     "Runs Safe mode by default. Add local-actions to enable reviewed DuskDS machine actions.",
+    "create-duskds writes the packaged reviewed starter as one new child of the current directory.",
     "",
     "Options:",
     "  --no-open        Start without opening a browser",
@@ -39,6 +42,12 @@ export function resolveCliInvocation(args) {
       throw new Error("Help and version flags cannot be combined with other arguments.");
     }
     return { kind: INFORMATIONAL_FLAGS.get(informational[0]) };
+  }
+  if (args[0] === "create-duskds") {
+    if (args.length !== 2 || !args[1] || args[1].startsWith("-")) {
+      throw new Error("Usage: dusk-developer-studio create-duskds <project-name>");
+    }
+    return { kind: "create-duskds", projectName: args[1] };
   }
   const capabilitiesEnabled = args[0] === "local-actions";
   return {
@@ -59,6 +68,11 @@ export async function runCli(args) {
     return;
   }
   assertSupportedNode();
+  if (invocation.kind === "create-duskds") {
+    const { runDuskDsTemplateCli } = await import("../app/runtime.mjs");
+    await runDuskDsTemplateCli({ projectName: invocation.projectName });
+    return;
+  }
   if (invocation.runtimeArgs.includes("--enable-local-actions")) {
     throw new Error(
       invocation.capabilitiesEnabled

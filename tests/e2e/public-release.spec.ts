@@ -67,7 +67,7 @@ test("public candidate exposes the exact release across key routes", async ({ pa
 
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
+  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
   for (const [route, heading] of routes) {
     await gotoExact(page, `/#${route}`);
     await expect(page).toHaveTitle(`${heading} | Dusk Developer Studio`);
@@ -105,7 +105,7 @@ test("public candidate exposes the complete DuskDS guide without DuskEVM RPC tra
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
   const duskDsPath = page.getByRole("button", { name: /Start DuskDS/i });
-  const duskEvmPath = page.getByRole("button", { name: /Explore pre-launch reference/i });
+  const duskEvmPath = page.getByRole("button", { name: /Open pre-launch overview/i });
   await expect(duskDsPath.getByText("Guide and local tools available", { exact: true })).toBeVisible();
   await expect(duskEvmPath.getByText("Reference only", { exact: true })).toBeVisible();
   await duskDsPath.click();
@@ -136,14 +136,14 @@ test("public candidate exposes the complete DuskDS guide without DuskEVM RPC tra
   expect(evmRpcRequests, "DuskDS browsing must not contact the DuskEVM RPC").toEqual([]);
 });
 
-test("public candidate keeps the DuskEVM pre-launch reference inert while offline", async ({ page, context }) => {
+test("public candidate keeps the DuskEVM pre-launch overview inert while offline", async ({ page, context }) => {
   const evmRpcRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).origin === allowedRpcOrigin) evmRpcRequests.push(request.url());
   });
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
+  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
   await gotoExact(page, "/#setup");
   await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
   await context.setOffline(true);
@@ -152,6 +152,6 @@ test("public candidate keeps the DuskEVM pre-launch reference inert while offlin
   await expect(page.getByText("No live evidence is recorded")).toBeVisible();
   await expect(page.getByLabel("DuskEVM guide sequence")).toHaveCount(0);
   await expect(page.getByText(/forge create|cast wallet import/i)).toHaveCount(0);
-  expect(evmRpcRequests, "The pre-launch reference must not contact the EVM RPC").toEqual([]);
+  expect(evmRpcRequests, "The pre-launch overview must not contact the EVM RPC").toEqual([]);
   await context.setOffline(false);
 });

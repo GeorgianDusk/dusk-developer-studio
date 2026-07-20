@@ -9,7 +9,7 @@ export const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.u
 export const npmOutputRoot = path.join(productRoot, "output", "npm");
 export const npmPackageRoot = path.join(npmOutputRoot, "package");
 export const npmPackageName = "dusk-developer-studio";
-export const npmPackageVersion = "1.0.0";
+export const npmPackageVersion = "1.0.1";
 export const requiredNodeRange = ">=24.18.0 <25";
 export const supportedTargets = Object.freeze(["windows-x64", "linux-x64", "darwin-arm64"]);
 
@@ -101,7 +101,17 @@ const REQUIRED_FILES = [
   "templates/foundry-counter-dusk-evm/README.md",
   "templates/foundry-counter-dusk-evm/foundry.toml",
   "templates/foundry-counter-dusk-evm/src/Counter.sol",
-  "templates/foundry-counter-dusk-evm/test/Counter.t.sol"
+  "templates/foundry-counter-dusk-evm/test/Counter.t.sol",
+  "templates/duskds-counter-forge/.gitignore.template",
+  "templates/duskds-counter-forge/Cargo.lock",
+  "templates/duskds-counter-forge/Cargo.toml",
+  "templates/duskds-counter-forge/LICENSE-MPL-2.0.txt",
+  "templates/duskds-counter-forge/Makefile",
+  "templates/duskds-counter-forge/PROVENANCE.md",
+  "templates/duskds-counter-forge/README.md",
+  "templates/duskds-counter-forge/rust-toolchain.toml",
+  "templates/duskds-counter-forge/src/lib.rs",
+  "templates/duskds-counter-forge/tests/contract.rs"
 ];
 const MAX_FILE_COUNT = 10_000;
 const MAX_PACKAGE_BYTES = 64 * 1024 * 1024;

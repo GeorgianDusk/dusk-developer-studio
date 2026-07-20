@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
 
 test("every deep link renders a stable route", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
+  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
   for (const [route, heading] of routes) {
     await page.goto(`/#${route}`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -34,7 +34,7 @@ test("a pathless guide deep link preserves the requested step until path choice"
   await page.goto("/#build");
   await expect(page).toHaveURL(/#build$/);
   await expect(page.getByRole("heading", { name: "Choose a path to continue to Build." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Explore pre-launch reference/i })).toHaveAccessibleName("DuskEVM. Explore pre-launch reference");
+  await expect(page.getByRole("button", { name: /Open pre-launch overview/i })).toHaveAccessibleName("DuskEVM. Open pre-launch overview");
   await page.getByRole("button", { name: /Start DuskDS/i }).click();
   await expect(page).toHaveURL(/#build$/);
   await expect(page.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeVisible();

@@ -23,7 +23,17 @@ const REQUIRED_PACKAGE_FILES = [
   "templates/foundry-counter-dusk-evm/README.md",
   "templates/foundry-counter-dusk-evm/foundry.toml",
   "templates/foundry-counter-dusk-evm/src/Counter.sol",
-  "templates/foundry-counter-dusk-evm/test/Counter.t.sol"
+  "templates/foundry-counter-dusk-evm/test/Counter.t.sol",
+  "templates/duskds-counter-forge/.gitignore.template",
+  "templates/duskds-counter-forge/Cargo.lock",
+  "templates/duskds-counter-forge/Cargo.toml",
+  "templates/duskds-counter-forge/LICENSE-MPL-2.0.txt",
+  "templates/duskds-counter-forge/Makefile",
+  "templates/duskds-counter-forge/PROVENANCE.md",
+  "templates/duskds-counter-forge/README.md",
+  "templates/duskds-counter-forge/rust-toolchain.toml",
+  "templates/duskds-counter-forge/src/lib.rs",
+  "templates/duskds-counter-forge/tests/contract.rs"
 ] as const;
 const SUPPORTED_TARGETS = ["windows-x64", "linux-x64", "darwin-arm64"] as const;
 

@@ -1,21 +1,24 @@
 import { CheckCircle2, Circle, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
-  buildDuskDsDeployCommandSet,
-  type CommandPlatform
+  buildDuskDsDeployCommandSet
 } from "@dusk/core/commands";
 import { getDuskDsDeployReadiness } from "./deployReadiness";
 import { PlatformPicker } from "./ManualJourneyUi";
-import { initialCommandPlatform } from "./studioConfig";
+import { initialManualPlatform } from "./studioConfig";
+import type { ManualPlatform } from "./manualJourneyConfig";
 import { useJourney } from "./studioState";
 import { CommandPair, ExternalLink, StatusPill } from "./StudioUi";
 import type { RouteId } from "./types";
 
 export function DuskDsDeployReadiness({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const { progress } = useJourney();
-  const [platform, setPlatform] = useState<CommandPlatform>(initialCommandPlatform);
+  const [platform, setPlatform] = useState<ManualPlatform>(initialManualPlatform);
   const readiness = getDuskDsDeployReadiness(progress);
-  const commands = useMemo(() => buildDuskDsDeployCommandSet(platform), [platform]);
+  const commands = useMemo(
+    () => buildDuskDsDeployCommandSet(platform === "windows" ? "windows" : "posix"),
+    [platform]
+  );
 
   function openCheck(checkId: string, route: RouteId) {
     setRoute(route);

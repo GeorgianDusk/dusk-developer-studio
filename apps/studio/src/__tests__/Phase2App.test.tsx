@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../app/App";
 import { createInitialJourneyProgress, JOURNEY_PROGRESS_STORAGE_KEY, recordJourneyEvidence } from "../app/journeyProgress";
+import { DUSK_STUDIO_NPM_PACKAGE_VERSION } from "../app/manualJourneyConfig";
 
 describe("Phase 2 evidence journeys", () => {
   beforeEach(() => {
@@ -71,6 +72,161 @@ describe("Phase 2 evidence journeys", () => {
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).toContain("duskds-node-read-attestation");
   });
 
+  it("surfaces the conditional Ubuntu VM-test lane during Windows Setup", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#setup";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+
+    expect(screen.getByText("WSL with Ubuntu 24.04")).toBeInTheDocument();
+    expect(screen.getByText(/Setup also shows the Ubuntu 24.04 WSL check because Build's reviewed VM test runs there/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Conditional and optional tools/, { selector: "summary" }));
+    const wslRow = screen.getByText("WSL with Ubuntu 24.04").closest("article");
+    expect(wslRow).not.toBeNull();
+    fireEvent.click(within(wslRow!).getByText("Commands and expected result"));
+    expect(within(wslRow!).getByText((content, element) => element?.tagName === "PRE"
+      && content.includes("wsl -d Ubuntu-24.04 -- true"))).toBeInTheDocument();
+    expect(within(wslRow!).getByText((content, element) => element?.tagName === "PRE"
+      && content.includes("dusk-forge-cli[[:space:]]+v?0\\.1\\.0.*d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a"))).toBeInTheDocument();
+  });
+
+  it("gives the manual W3sper lane explicit folder and file creation steps", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#access";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+
+    expect(screen.getByRole("heading", { name: "Create dedicated working folder" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Create check-duskds.ts" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Paste this into check-duskds.ts" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Add W3sper" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Run the read-only script" })).toBeInTheDocument();
+  });
+
+  it("uses the exact npm template creator and pins its reviewed WSL test to Rust 1.94.0", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+
+    expect(screen.getByText((content, element) => element?.tagName === "PRE"
+      && content.includes(`dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`))).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === "PRE"
+      && content.includes("rustup run ''1.94.0'' \"$forgeExe\" test"))).toBeInTheDocument();
+    expect(screen.getByText("wasm-opt")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
+    fireEvent.change(screen.getByLabelText("Existing project root"), { target: { value: "C:\\work\\existing-duskds" } });
+    expect(screen.getByText((content, element) => element?.tagName === "PRE"
+      && content.includes("cd ''/mnt/c/work/existing-duskds''; rustup run ''1.94.0'' \"$forgeExe\" test"))).toBeInTheDocument();
+  });
+
+  it("renders fail-closed self-contained project and artifact command blocks", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+
+    const prepare = screen.getByRole("heading", { name: "Prepare project" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(prepare).toContain(`npx.cmd --yes dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`);
+    expect(prepare).toContain("Reviewed DuskDS template creation failed; no existing target was overwritten.");
+    expect(prepare).not.toContain("$forgeReceipt");
+    expect(prepare).not.toContain("$forgeExe");
+    expect(prepare).not.toContain("Remove-Item");
+    expect(prepare).toContain("Set-Location -LiteralPath 'C:\\tmp\\dusk-studio-projects\\duskds-forge-starter' -ErrorAction Stop");
+    const build = screen.getByRole("heading", { name: "Build contract + data-driver WASM" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(build).toContain("Dusk Forge check failed.");
+    expect(build).toContain("Dusk Forge build failed.");
+    const locate = screen.getByRole("heading", { name: "Locate WASM files and byte sizes" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    const hash = screen.getByRole("heading", { name: "Calculate WASM SHA-256 values" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(locate.startsWith("Set-Location -LiteralPath")).toBe(true);
+    expect(hash.startsWith("Set-Location -LiteralPath")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    const linuxBuild = screen.getByRole("heading", { name: "Build contract + data-driver WASM" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(linuxBuild).toMatch(/^\(\nset -e\n/);
+    expect(linuxBuild.trimEnd().endsWith(")")).toBe(true);
+    expect(linuxBuild).toContain('PATH="$forgeBin:$PATH"');
+    expect(linuxBuild).toContain('"$forgeExe" check');
+    expect(linuxBuild).toContain('"$forgeExe" build all');
+    const linuxLocate = screen.getByRole("heading", { name: "Locate WASM files and byte sizes" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    const linuxHash = screen.getByRole("heading", { name: "Calculate WASM SHA-256 values" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(linuxLocate).toMatch(/^\(\nset -e\n/);
+    expect(linuxLocate.trimEnd().endsWith(")")).toBe(true);
+    expect(linuxHash).toMatch(/^\(\nset -e\n/);
+    expect(linuxHash).toContain("sha256sum");
+
+    fireEvent.click(screen.getByRole("button", { name: "macOS shell" }));
+    const macLocate = screen.getByRole("heading", { name: "Locate WASM files and byte sizes" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    const macHash = screen.getByRole("heading", { name: "Calculate WASM SHA-256 values" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(macLocate).toMatch(/^\(\nset -e\n/);
+    expect(macLocate).not.toContain("-maxdepth");
+    expect(macLocate).toContain("wc -c");
+    expect(macHash).toContain("shasum -a 256");
+    expect(macHash).not.toContain("sha256sum");
+
+    const allCommands = Array.from(document.querySelectorAll("pre")).map((node) => node.textContent ?? "").join("\n");
+    expect(allCommands).not.toMatch(/(?:^|[;\n]\s*)dusk-forge\s+(?:new|check|build|test)\b/m);
+  });
+
+  it("records macOS evidence exactly but withholds native VM-test evidence controls", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "macOS shell" }));
+
+    expect(screen.getByText(/npm runtime and Local Actions lifecycle are supported on macOS/)).toBeInTheDocument();
+    expect(screen.getByText("macOS", { selector: ".command-context .status-pill" })).toBeInTheDocument();
+    expect(screen.getByText("Build: macOS shell")).toBeInTheDocument();
+    expect(screen.getByText("VM tests: self-managed Linux required")).toBeInTheDocument();
+    expect(screen.queryByText(/reviewed POSIX VM-test lane/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "I observed the VM test pass in this environment" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy Run the VM test" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cargo.toml is present" }));
+    fireEvent.click(screen.getByRole("button", { name: /rust-toolchain\.toml pins/ }));
+    fireEvent.change(screen.getByLabelText("Source identity"), { target: { value: "a".repeat(40) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual structure confirmation" }));
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as {
+        paths: { duskds: { build: { evidenceEntries: Array<{ code: string; metadata?: { platform?: string } }> } } };
+      };
+      expect(stored.paths.duskds.build.evidenceEntries.find(
+        (entry) => entry.code === "duskds-starter-structure"
+      )?.metadata?.platform).toBe("macos");
+    });
+  });
+
+  it("restores saved hosted Access evidence without contradicting the recorded result", () => {
+    const observedAt = new Date().toISOString();
+    const progress = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "access",
+      ["duskds-node-read-attestation"],
+      {
+        method: "automatic",
+        observedAt,
+        metadata: {
+          blockHeight: 3_838_440,
+          blockHash: "a".repeat(64),
+          endpoint: "https://testnet.nodes.dusk.network/on/graphql/query"
+        }
+      }
+    );
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+    window.location.hash = "#access";
+
+    render(<App />);
+
+    expect(screen.getByText(/Saved observation: block 3838440/)).toBeInTheDocument();
+    expect(screen.queryByText("No hosted node check has run in this page visit.")).not.toBeInTheDocument();
+    expect(screen.getByText("available here")).toBeInTheDocument();
+    expect(screen.getByText(/One bounded, read-only public-node request from this browser/)).toBeInTheDocument();
+    expect(screen.getByText("3838440", { selector: "dd" })).toBeInTheDocument();
+  });
+
   it("revokes saved manual Setup evidence when a required tool is unmarked", async () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#setup";
@@ -91,6 +247,59 @@ describe("Phase 2 evidence journeys", () => {
     });
     expect(screen.queryByText("Confirmed manually", { selector: ".done-panel .status-pill" })).not.toBeInTheDocument();
   });
+
+  it.each(["Linux shell", "macOS shell"])(
+    "clears all Windows Setup confirmations when switching to %s",
+    async (targetPlatform) => {
+      window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+      window.location.hash = "#setup";
+      render(<App />);
+      fireEvent.click(screen.getByRole("button", { name: "macOS shell" }));
+      fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+      for (const button of screen.getAllByRole("button", { name: /^Mark .+ as checked$/ })) {
+        fireEvent.click(button);
+      }
+      fireEvent.click(screen.getByRole("button", { name: "Save manual setup confirmation" }));
+      await waitFor(() => expect(screen.getByText("Confirmed manually", { selector: ".done-panel .status-pill" })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: targetPlatform }));
+
+      expect(screen.getByRole("button", { name: "Save manual setup confirmation" })).toBeDisabled();
+      expect(screen.getAllByRole("button", { name: /^Mark .+ as checked$/ }).length).toBeGreaterThan(0);
+      await waitFor(() => {
+        const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+        expect(stored.paths.duskds.setup.evidence).toEqual([]);
+      });
+    }
+  );
+
+  it.each(["Linux shell", "macOS shell"])(
+    "clears all Windows Access inputs and confirmations when switching to %s",
+    async (targetPlatform) => {
+      window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+      window.location.hash = "#access";
+      render(<App />);
+      fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+      fireEvent.click(screen.getByRole("button", { name: "macOS shell" }));
+      fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+      fireEvent.click(screen.getByRole("button", { name: "Mark Deno as checked" }));
+      fireEvent.change(screen.getByLabelText("Block height"), { target: { value: "3820996" } });
+      fireEvent.change(screen.getByLabelText("Block hash"), { target: { value: "a".repeat(64) } });
+      fireEvent.click(screen.getByRole("button", { name: "Save manual node observation" }));
+      await waitFor(() => expect(screen.getByText("Confirmed manually", { selector: ".done-panel .status-pill" })).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole("button", { name: targetPlatform }));
+
+      expect(screen.getByLabelText("Block height")).toHaveValue("");
+      expect(screen.getByLabelText("Block hash")).toHaveValue("");
+      expect(screen.getByRole("button", { name: "Save manual node observation" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Mark Deno as checked" })).toBeInTheDocument();
+      await waitFor(() => {
+        const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+        expect(stored.paths.duskds.access.evidence).toEqual([]);
+      });
+    }
+  );
 
   it("invalidates Build and Inspect evidence when the project context changes", async () => {
     let progress = recordJourneyEvidence(
@@ -119,6 +328,55 @@ describe("Phase 2 evidence journeys", () => {
       expect(stored.paths.duskds.build.evidence).toEqual([]);
       expect(stored.paths.duskds.inspect.evidence).toEqual([]);
     });
+  });
+
+  it("offers Local Studio setup and a manual fallback for a hosted new starter", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App />);
+
+    const completionMethod = screen.getByRole("group", { name: "Choose how to complete this task" });
+    fireEvent.click(within(completionMethod).getByRole("button", { name: /Local Studio/i }));
+
+    expect(screen.getByRole("heading", { name: "Start Local Studio to create the reviewed starter" })).toBeInTheDocument();
+    expect(screen.getByText(/Local Studio can create the new starter inside its approved project root/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Local Studio setup" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue manually" })).toBeInTheDocument();
+  });
+
+  it("keeps the existing-project choice across routes without persisting its path", () => {
+    const sensitiveRoot = "C:\\Users\\George\\private-existing-project";
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App />);
+
+    const existingProject = screen.getByRole("button", { name: /Existing repository/ });
+    fireEvent.click(existingProject);
+    fireEvent.change(screen.getByLabelText("Existing project root"), { target: { value: sensitiveRoot } });
+    const completionMethod = screen.getByRole("group", { name: "Choose how to complete this task" });
+    fireEvent.click(within(completionMethod).getByRole("button", { name: /Local Studio/i }));
+
+    expect(screen.getByRole("heading", { name: "Local Actions does not attach to existing repositories" })).toBeInTheDocument();
+    expect(screen.getByText(/does not attach to, import, crawl, or write to an existing repository/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue with manual existing-repo checks" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Local Studio setup" })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("dusk-studio-duskds-build-project-mode")).toBe("existing");
+    const savedSessionValues = Array.from(
+      { length: window.sessionStorage.length },
+      (_, index) => window.sessionStorage.getItem(window.sessionStorage.key(index) ?? "")
+    );
+    expect(savedSessionValues).not.toContain(sensitiveRoot);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "Return to DuskDS at Build" }));
+
+    expect(screen.getByRole("button", { name: /Existing repository/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText("Existing project root")).toHaveValue("");
+    const restoredSessionValues = Array.from(
+      { length: window.sessionStorage.length },
+      (_, index) => window.sessionStorage.getItem(window.sessionStorage.key(index) ?? "")
+    );
+    expect(restoredSessionValues).not.toContain(sensitiveRoot);
   });
 
   it("revokes saved artifact evidence when a recorded artifact input changes", async () => {
@@ -151,6 +409,84 @@ describe("Phase 2 evidence journeys", () => {
     });
   });
 
+  it("removes only VM evidence when its toggle is cleared and allows a fresh resave", async () => {
+    const revision = "a".repeat(40);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cargo.toml is present" }));
+    fireEvent.click(screen.getByRole("button", { name: /rust-toolchain\.toml pins/ }));
+    fireEvent.change(screen.getByLabelText("Source identity"), { target: { value: revision } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual structure confirmation" }));
+
+    fireEvent.change(screen.getByLabelText("Artifact source identity"), { target: { value: revision } });
+    const names = screen.getAllByLabelText("Filename");
+    const hashes = screen.getAllByLabelText("SHA-256");
+    const sizes = screen.getAllByLabelText("Size in bytes");
+    fireEvent.change(names[0], { target: { value: "counter-contract.wasm" } });
+    fireEvent.change(hashes[0], { target: { value: "b".repeat(64) } });
+    fireEvent.change(sizes[0], { target: { value: "1234" } });
+    fireEvent.change(names[1], { target: { value: "counter-data-driver.wasm" } });
+    fireEvent.change(hashes[1], { target: { value: "c".repeat(64) } });
+    fireEvent.change(sizes[1], { target: { value: "2345" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual artifact evidence" }));
+    fireEvent.click(screen.getByRole("button", { name: "I observed the VM test pass in this environment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save manual VM-test evidence" }));
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+      expect(stored.paths.duskds.build.evidence).toEqual(expect.arrayContaining([
+        "duskds-starter-structure",
+        "duskds-build-artifact-attestation",
+        "duskds-vm-test-attestation"
+      ]));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "I observed the VM test pass in this environment" }));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+      expect(stored.paths.duskds.build.evidence).toEqual(expect.arrayContaining([
+        "duskds-starter-structure",
+        "duskds-build-artifact-attestation"
+      ]));
+      expect(stored.paths.duskds.build.evidence).not.toContain("duskds-vm-test-attestation");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "I observed the VM test pass in this environment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save manual VM-test evidence" }));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+      expect(stored.paths.duskds.build.evidence).toContain("duskds-vm-test-attestation");
+    });
+  });
+
+  it("blocks VM-first evidence and removes a legacy VM receipt when its revision changes", async () => {
+    const oldRevision = "a".repeat(40);
+    const progress = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "build",
+      ["duskds-starter-structure", "duskds-vm-test-attestation"],
+      { method: "manual", metadata: { revision: oldRevision, platform: "linux" } }
+    );
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+    window.location.hash = "#build";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+
+    expect(screen.getByRole("button", { name: "Save manual VM-test evidence" })).toBeDisabled();
+    expect(screen.getByText(/Save the artifact evidence before recording the VM-test pass/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Artifact source identity"), { target: { value: "b".repeat(40) } });
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as typeof progress;
+      expect(stored.paths.duskds.build.evidence).toContain("duskds-starter-structure");
+      expect(stored.paths.duskds.build.evidence).not.toContain("duskds-vm-test-attestation");
+    });
+  });
+
   it("keeps deployment readiness separate from post-deploy Inspect completion", () => {
     const revision = "a".repeat(40);
     let progress = recordJourneyEvidence(
@@ -180,7 +516,7 @@ describe("Phase 2 evidence journeys", () => {
     render(<App />);
 
     expect(screen.getByText("Pre-deploy evidence ready")).toBeInTheDocument();
-    expect(screen.getByText("Ready", { selector: ".done-panel .status-pill" })).toBeInTheDocument();
+    expect(screen.getByText("Ready to start", { selector: ".done-panel .status-pill" })).toBeInTheDocument();
     expect(screen.queryByText("Confirmed manually", { selector: ".done-panel .status-pill" })).not.toBeInTheDocument();
     const readiness = screen.getByLabelText("Manual deployment readiness");
     expect(within(readiness).getAllByText("Ready")).toHaveLength(4);
@@ -286,10 +622,32 @@ describe("Phase 2 evidence journeys", () => {
     window.location.hash = "#inspect";
     render(<App />);
 
+    const metadataLinux = screen.getByRole("heading", { name: "Fetch, inspect + hash metadata on Linux" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    const metadataMac = screen.getByRole("heading", { name: "Fetch, inspect + hash metadata on macOS" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    const metadataWindows = screen.getByRole("heading", { name: "Fetch, inspect + hash metadata on Windows" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(metadataLinux).toMatch(/^\(\nset -e\n/);
+    expect(metadataLinux).toContain('metadataTemp="$metadataFinal.tmp.$$"');
+    expect(metadataLinux).toContain("curl --fail-with-body --silent --show-error");
+    expect(metadataLinux.indexOf('mv -f -- "$metadataTemp" "$metadataFinal"'))
+      .toBeLessThan(metadataLinux.indexOf('cat -- "$metadataFinal"'));
+    expect(metadataLinux).toContain('sha256sum "$metadataFinal"');
+    expect(metadataMac).toContain('shasum -a 256 "$metadataFinal"');
+    expect(metadataMac).not.toContain("sha256sum");
+    expect(metadataWindows).toContain("$metadataTemp = \"$metadataFinal.tmp.$PID\"");
+    expect(metadataWindows).toContain("-OutFile $metadataTemp -ErrorAction Stop");
+    expect(metadataWindows.indexOf("Move-Item -LiteralPath $metadataTemp"))
+      .toBeLessThan(metadataWindows.indexOf("Get-Content -Raw -LiteralPath $metadataFinal"));
+    expect(metadataWindows).toContain("finally {");
+
     fireEvent.change(screen.getByLabelText("Artifact source identity"), { target: { value: revision } });
     fireEvent.change(screen.getByLabelText("Deployed contract ID"), { target: { value: "b".repeat(64) } });
-    expect(screen.getByText(/cat metadata-response\.bin/)).toBeInTheDocument();
-    expect(screen.getByText(/Get-Content -Raw -LiteralPath '.\\metadata-response\.bin'/)).toBeInTheDocument();
+    expect(screen.getAllByText((content, element) => element?.tagName === "PRE"
+      && content.includes('cat -- "$metadataFinal"'))).toHaveLength(2);
+    expect(screen.getByText((content, element) => element?.tagName === "PRE"
+      && content.includes("Get-Content -Raw -LiteralPath $metadataFinal"))).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "I observed a non-empty schema" })).toBeDisabled();
     expect(screen.getByLabelText("Schema response SHA-256")).toBeDisabled();
     expect(screen.queryByText(/\/on\/driver:<contract_id>\/get_schema/)).not.toBeInTheDocument();
@@ -297,10 +655,22 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.click(screen.getByRole("button", { name: "I observed driver_available: true in contract metadata" }));
     fireEvent.change(screen.getByLabelText("Metadata response SHA-256"), { target: { value: "d".repeat(64) } });
     fireEvent.click(screen.getByRole("button", { name: "Save availability confirmation" }));
-    expect(await screen.findAllByText(/\/on\/driver:<contract_id>\/get_schema/)).toHaveLength(2);
-    expect(screen.getByText(/cat schema-response\.bin/)).toBeInTheDocument();
-    expect(screen.getByText(/Get-Content -Raw -LiteralPath '.\\schema-response\.bin'/)).toBeInTheDocument();
+    expect(await screen.findAllByText(/\/on\/driver:<contract_id>\/get_schema/)).toHaveLength(3);
+    expect(screen.getAllByText((content, element) => element?.tagName === "PRE"
+      && content.includes('cat -- "$schemaFinal"'))).toHaveLength(2);
+    expect(screen.getByText((content, element) => element?.tagName === "PRE"
+      && content.includes("Get-Content -Raw -LiteralPath $schemaFinal"))).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "I observed a non-empty schema" })).toBeEnabled();
+    const driverLinux = screen.getByRole("heading", { name: "Fetch, inspect + hash driver responses on Linux" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    const driverWindows = screen.getByRole("heading", { name: "Fetch, inspect + hash driver responses on Windows" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    const firstLinuxMove = driverLinux.indexOf('mv -f -- "$schemaTemp" "$schemaFinal"');
+    expect(driverLinux.indexOf('--output "$decodeTemp"')).toBeLessThan(firstLinuxMove);
+    expect(driverLinux.indexOf('cat -- "$schemaFinal"')).toBeGreaterThan(firstLinuxMove);
+    const firstWindowsMove = driverWindows.indexOf("Move-Item -LiteralPath $schemaTemp");
+    expect(driverWindows.indexOf("-OutFile $decodeTemp -ErrorAction Stop")).toBeLessThan(firstWindowsMove);
+    expect(driverWindows.indexOf("Get-Content -Raw -LiteralPath $schemaFinal")).toBeGreaterThan(firstWindowsMove);
     fireEvent.click(screen.getByRole("button", { name: "I observed a non-empty schema" }));
     fireEvent.change(screen.getByLabelText("Schema response SHA-256"), { target: { value: "c".repeat(64) } });
     fireEvent.click(screen.getByRole("button", { name: "Save schema confirmation" }));

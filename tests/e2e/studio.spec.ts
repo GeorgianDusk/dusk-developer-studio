@@ -6,14 +6,15 @@ test("guided builder flow stays clear", async ({ page }) => {
 
   await expect(page.getByText("Choose your path")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Explore pre-launch reference/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Open pre-launch overview/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Start DuskDS/i })).toBeVisible();
   await expect(page.getByLabel("Builder path selector")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "DuskEVM", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Explore pre-launch reference/i }).click();
-  await expect(page.getByRole("heading", { name: "Source-backed context for the task in front of you." })).toBeVisible();
-  await expect(page.getByRole("button", { name: "DuskEVM only" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
+  await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
+  await page.getByLabel("Example identifier").fill(`0x${"b".repeat(40)}`);
+  await expect(page.getByText("address", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Resume DuskEVM/i })).toHaveCount(0);
   await expect(page.getByText(/0\/4/)).toHaveCount(0);
 
@@ -31,7 +32,7 @@ test("guided builder flow stays clear", async ({ page }) => {
   await page.getByRole("button", { name: "Troubleshoot" }).click();
   await expect(page.getByRole("heading", { name: "Fix the blocker in front of you." })).toBeVisible();
 
-  await page.getByRole("button", { name: /Automation/i }).click();
+  await page.getByRole("button", { name: /Local Studio/i }).click();
   await expect(page.getByRole("heading", { name: "Run the full Studio locally with npm." })).toBeVisible();
   await expect(page.getByLabel("Pairing token")).toHaveCount(0);
   const returnToJourney = page.getByRole("button", { name: "Return to DuskDS at Access" });

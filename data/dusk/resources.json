@@ -773,6 +773,28 @@
                  ]
     },
     {
+        "id":  "studio-local-security-boundary",
+        "title":  "Local Studio Security Boundary",
+        "category":  "Studio security",
+        "summary":  "How the npm-launched Studio protects pairing, origin-bound sessions, Safe mode, Local Actions, loopback services, project files, child processes, and secrets.",
+        "url":  "https://github.com/GeorgianDusk/dusk-developer-studio/blob/main/docs/security/local-companion-boundary.md",
+        "maturity":  "project-documentation",
+        "tags":  [
+                     "duskds",
+                     "local-studio",
+                     "companion",
+                     "pairing",
+                     "session",
+                     "origin",
+                     "localhost",
+                     "security",
+                     "safe-mode",
+                     "local-actions",
+                     "projects",
+                     "capabilities"
+                 ]
+    },
+    {
         "id":  "dusk-migration-contract",
         "title":  "DUSK Migration Contract",
         "category":  "Migration",
@@ -837,6 +859,25 @@
                      "onchainid",
                      "regulated-assets",
                      "capabilities"
+                 ]
+    },
+    {
+        "id":  "windows-wsl-ubuntu-setup",
+        "title":  "Windows WSL and Ubuntu Setup",
+        "category":  "Local toolchain",
+        "summary":  "Official Microsoft setup for WSL and Ubuntu. DuskDS uses Ubuntu 24.04 as the reviewed Linux-backed VM-test lane on Windows; native Windows still handles the WASM build.",
+        "url":  "https://learn.microsoft.com/en-us/windows/wsl/install",
+        "maturity":  "official-platform-documentation",
+        "tags":  [
+                     "duskds",
+                     "windows",
+                     "wsl",
+                     "ubuntu",
+                     "ubuntu-24.04",
+                     "vm-test",
+                     "rust",
+                     "setup",
+                     "local-actions"
                  ]
     }
 ]

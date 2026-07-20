@@ -7,22 +7,34 @@ import {
 } from "./journeyProgress";
 import { getDuskDsDeployReadiness } from "./deployReadiness";
 
-function recordPreDeployEvidence() {
+function recordPreDeployEvidence(observedAt?: string) {
   const revision = "a".repeat(40);
   let state = createInitialJourneyProgress();
-  state = recordJourneyEvidence(state, "duskds", "setup", ["duskds-required-preflight"]);
-  state = recordJourneyEvidence(state, "duskds", "access", ["duskds-node-read-attestation"]);
+  state = recordJourneyEvidence(
+    state,
+    "duskds",
+    "setup",
+    ["duskds-required-preflight"],
+    { observedAt }
+  );
+  state = recordJourneyEvidence(
+    state,
+    "duskds",
+    "access",
+    ["duskds-node-read-attestation"],
+    { observedAt }
+  );
   state = recordJourneyEvidence(state, "duskds", "build", [
     "duskds-starter-structure",
     "duskds-build-artifact-attestation",
     "duskds-vm-test-attestation"
-  ], { metadata: { revision } });
+  ], { observedAt, metadata: { revision } });
   state = recordJourneyEvidence(
     state,
     "duskds",
     "inspect",
     ["duskds-inspect-artifact-revision"],
-    { metadata: { revision } }
+    { observedAt, metadata: { revision } }
   );
   return state;
 }
@@ -96,7 +108,7 @@ describe("DuskDS deploy readiness", () => {
 
   it("expires a Testnet access observation after 24 hours and exposes its evidence window", () => {
     const now = new Date("2026-07-19T12:00:00.000Z");
-    const state = recordPreDeployEvidence();
+    const state = recordPreDeployEvidence(now.toISOString());
     state.paths.duskds.access.evidenceEntries[0].observedAt = "2026-07-18T10:59:59.000Z";
 
     const readiness = getDuskDsDeployReadiness(state, now);
@@ -113,7 +125,7 @@ describe("DuskDS deploy readiness", () => {
 
   it("rejects future-dated readiness evidence", () => {
     const now = new Date("2026-07-19T12:00:00.000Z");
-    const state = recordPreDeployEvidence();
+    const state = recordPreDeployEvidence(now.toISOString());
     for (const entry of state.paths.duskds.setup.evidenceEntries) {
       entry.observedAt = "2026-07-19T12:00:01.000Z";
     }
@@ -125,7 +137,7 @@ describe("DuskDS deploy readiness", () => {
 
   it("rejects a mixed Build window when any required observation is future-dated", () => {
     const now = new Date("2026-07-19T12:00:00.000Z");
-    const state = recordPreDeployEvidence();
+    const state = recordPreDeployEvidence(now.toISOString());
     state.paths.duskds.build.evidenceEntries[0].observedAt = "2026-07-19T11:59:59.000Z";
     state.paths.duskds.build.evidenceEntries[1].observedAt = "2026-07-19T12:00:01.000Z";
     state.paths.duskds.build.evidenceEntries[2].observedAt = "2026-07-19T11:59:58.000Z";

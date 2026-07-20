@@ -17,14 +17,14 @@ Install [Node.js 24 LTS](https://nodejs.org/en/download/archive/v24.18.0) at ver
 node --version
 ```
 
-The local Studio supports Windows x64, Linux x64, and Apple Silicon macOS. The Hosted guide remains available from any modern browser.
+The local Studio supports Windows x64, Linux x64, and Apple Silicon macOS. The Hosted guide remains available from any modern browser. DuskDS VM testing is validated natively on Linux and through Ubuntu 24.04 WSL on Windows; the current Studio does not record a native macOS DuskDS VM-test pass.
 
 The package is self-contained, installs no additional runtime dependencies, and does not require a global installation.
 
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio
+npx dusk-developer-studio@1.0.1
 ```
 
 Safe mode starts the local Studio, pairs the browser, and provides the guided experience without running developer tools or creating projects.
@@ -32,10 +32,18 @@ Safe mode starts the local Studio, pairs the browser, and provides the guided ex
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio local-actions
+npx dusk-developer-studio@1.0.1 local-actions
 ```
 
 Local Actions adds allowlisted prerequisite checks and constrained starter creation. It uses developer tools already installed on your machine; it does not install or update them.
+
+To create a DuskDS counter starter directly from the same reviewed package template:
+
+```bash
+npx --yes dusk-developer-studio@1.0.1 create-duskds my-counter
+```
+
+The command writes one new child of your current working directory, refuses an existing target, and preserves the packaged Rust `1.94.0` toolchain, dependency lock, and template provenance. Dusk Forge remains a separate prerequisite for the subsequent check, build, test, and verification commands. Local Actions uses the separate managed DuskDS project root described below.
 
 Both commands open `http://127.0.0.1:5173`. Keep the terminal open while using the Studio and press `Ctrl+C` to stop it.
 
@@ -80,9 +88,11 @@ Projects created through Local Actions are stored outside the npm cache:
 - macOS: `~/Library/Application Support/Dusk/DeveloperStudio/projects`
 - Linux: `${XDG_DATA_HOME:-~/.local/share}/dusk/developer-studio/projects`
 
+DuskDS starters use the `duskds` child folder. After creation, Build shows the exact path and uses it for commands while that page remains active. The path stays in page memory and is not saved to browser storage or journey evidence. After a refresh, re-enter the project as an existing repository or retry the same request while the original companion is still running. To choose another contained DuskDS root, set `DUSK_STUDIO_DUSKDS_PROJECT_ROOT` to a normal absolute local folder before starting Local Actions.
+
 Stopping or updating the Studio does not remove these projects.
 
-Local Actions checks existing tools such as Foundry, Rust, Dusk Forge, WSL, or related utilities only when the selected path needs them. Follow the Studio's link to the relevant official installation instructions when a tool is missing.
+Local Actions checks existing tools such as Foundry, Rust, Dusk Forge, WSL, or related utilities only when the selected path needs them. DuskDS starter creation uses the reviewed template shipped in the exact npm package rather than downloading a moving upstream template. Follow the Studio's link to the relevant official installation instructions when a tool is missing.
 
 ## Security model
 

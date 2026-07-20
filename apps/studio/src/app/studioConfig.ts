@@ -10,6 +10,11 @@ export const localStudioUrl = "http://127.0.0.1:5173";
 export const defaultNetwork = getDefaultDuskEvmNetwork();
 export const studioRuntime = getStudioRuntime(window.location.hostname, STUDIO_RELEASE.channel);
 export const initialCommandPlatform = /Win/i.test(window.navigator.platform) ? "windows" as const : "posix" as const;
+export const initialManualPlatform = /Win/i.test(window.navigator.platform)
+  ? "windows" as const
+  : /Mac/i.test(window.navigator.platform)
+    ? "macos" as const
+    : "linux" as const;
 export const sourceDate = new Date(sourceFreshness.reviewed_at + "T00:00:00.000Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 export const expiryDate = new Date(sourceFreshness.expires_at + "T00:00:00.000Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 export const sourceIsStale = Date.now() > Date.parse(sourceFreshness.expires_at + "T23:59:59.999Z");
@@ -61,13 +66,13 @@ export const steps = {
   ]
 } satisfies Record<BuilderPath, StepInfo[]>;
 
-export const resourceIds = { evm: ["build-on-dusk", "duskevm-deep-dive", "duskevm-bridge", "deploy-on-duskevm", "blockscout-verification"], duskds: ["build-on-dusk", "duskds-smart-contracts", "dusk-forge", "w3sper-integration", "dusk-connect-docs", "duskds-tx-lifecycle"] } satisfies Record<BuilderPath, string[]>;
+export const resourceIds = { evm: ["build-on-dusk", "duskevm-deep-dive", "duskevm-bridge", "deploy-on-duskevm", "blockscout-verification"], duskds: ["build-on-dusk", "duskds-smart-contracts", "dusk-forge", "w3sper-integration", "dusk-connect-docs", "duskds-tx-lifecycle", "studio-local-security-boundary", "windows-wsl-ubuntu-setup"] } satisfies Record<BuilderPath, string[]>;
 export const capabilityIds = { evm: ["duskevm-solidity-contracts", "duskevm-wallets-network", "duskevm-testnet-bridge", "duskevm-confidential-hedger"], duskds: ["duskds-forge-contracts", "duskds-data-drivers", "duskds-w3sper-node-sdk", "dusk-connect-wallets"] } satisfies Record<BuilderPath, string[]>;
-export const troubleIds = { evm: ["wrong-chain", "no-wallet", "insufficient-gas", "rpc-unavailable", "foundry-missing", "verification-failed"], duskds: ["dusk-forge-windows-wasm-opt-shim", "dusk-forge-windows-long-path-linker", "rust-wasm-target-missing", "dusk-forge-rust-stable-drift", "data-driver-build-missing", "dusk-forge-test-linux-required", "duskds-driver-unavailable-after-deploy"] } satisfies Record<BuilderPath, string[]>;
+export const troubleIds = { evm: ["wrong-chain", "no-wallet", "insufficient-gas", "rpc-unavailable", "foundry-missing", "verification-failed"], duskds: ["duskds-browser-public-node-csp", "dusk-forge-windows-wasm-opt-shim", "dusk-forge-windows-long-path-linker", "rust-wasm-target-missing", "dusk-forge-rust-stable-drift", "data-driver-build-missing", "dusk-forge-test-linux-required", "duskds-driver-unavailable-after-deploy"] } satisfies Record<BuilderPath, string[]>;
 
 export const evidenceLabels: Record<EvidenceCode, string> = {
   "evm-rpc-chain": "Future gate: Testnet RPC chain verified", "evm-wallet-chain": "Future gate: wallet chain verified", "evm-wallet-account": "Future gate: selected account observed", "evm-balance-read": "Future gate: read-only balance succeeded", "evm-positive-balance": "Future gate: positive Testnet balance observed", "evm-starter-structure": "Future gate: Counter scaffold verified", "evm-build-test-attestation": "Future gate: build and tests passed", "evm-read-inspection": "Future gate: read-only RPC inspection passed",
-  "duskds-required-preflight": "Required native tool checks recorded", "duskds-node-read-attestation": "W3sper node read result recorded", "duskds-starter-structure": "Forge scaffold structure recorded", "duskds-build-artifact-attestation": "Both WASM outputs recorded as observed", "duskds-vm-test-attestation": "VM test result recorded", "duskds-inspect-latest-block": "Latest block header observed", "duskds-inspect-artifact-revision": "Contract and data-driver source identity matched", "duskds-inspect-driver-availability": "Contract metadata confirms a data driver", "duskds-inspect-driver-schema": "Data-driver schema response confirmed", "duskds-inspect-driver-encode": "Data-driver input encoding confirmed", "duskds-inspect-driver-decode": "Data-driver output decoding confirmed", "duskds-read-inspection-attestation": "Legacy native inspection confirmation"
+  "duskds-required-preflight": "Required native tool checks recorded", "duskds-node-read-attestation": "Dusk node read result recorded", "duskds-starter-structure": "Forge scaffold structure recorded", "duskds-build-artifact-attestation": "Both WASM outputs recorded as observed", "duskds-vm-test-attestation": "VM test result recorded", "duskds-inspect-latest-block": "Latest block header observed", "duskds-inspect-artifact-revision": "Contract and data-driver source identity matched", "duskds-inspect-driver-availability": "Contract metadata confirms a data driver", "duskds-inspect-driver-schema": "Data-driver schema response confirmed", "duskds-inspect-driver-encode": "Data-driver input encoding confirmed", "duskds-inspect-driver-decode": "Data-driver output decoding confirmed", "duskds-read-inspection-attestation": "Legacy native inspection confirmation"
 };
 
 export const blockerLabels: Record<BlockerCode, string> = {

@@ -32,7 +32,17 @@ async function fixture(): Promise<string> {
     ["templates/foundry-counter-dusk-evm/README.md", "# Counter\n"],
     ["templates/foundry-counter-dusk-evm/foundry.toml", "[profile.default]"],
     ["templates/foundry-counter-dusk-evm/src/Counter.sol", "contract Counter {}\n"],
-    ["templates/foundry-counter-dusk-evm/test/Counter.t.sol", "contract CounterTest {}\n"]
+    ["templates/foundry-counter-dusk-evm/test/Counter.t.sol", "contract CounterTest {}\n"],
+    ["templates/duskds-counter-forge/.gitignore.template", "/target/\n"],
+    ["templates/duskds-counter-forge/Cargo.lock", "version = 4\n"],
+    ["templates/duskds-counter-forge/Cargo.toml", "[package]\nname = \"counter\"\n"],
+    ["templates/duskds-counter-forge/LICENSE-MPL-2.0.txt", "Mozilla Public License Version 2.0\n"],
+    ["templates/duskds-counter-forge/Makefile", "all: wasm\n"],
+    ["templates/duskds-counter-forge/PROVENANCE.md", "# Template provenance\n"],
+    ["templates/duskds-counter-forge/README.md", "# DuskDS counter starter\n"],
+    ["templates/duskds-counter-forge/rust-toolchain.toml", "[toolchain]\nchannel = \"1.94.0\"\n"],
+    ["templates/duskds-counter-forge/src/lib.rs", "#![no_std]\n"],
+    ["templates/duskds-counter-forge/tests/contract.rs", "#[test]\nfn contract() {}\n"]
   ]);
   const packageJson = {
     name: "dusk-developer-studio",
@@ -121,6 +131,19 @@ describe("npm package verification", () => {
       platform: "win32",
       architecture: "x64"
     })).rejects.toThrow(/does not match/);
+  });
+
+  it("canonicalizes a symlinked package root while verifying the exact manifest", async () => {
+    const root = await fixture();
+    const linkParent = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-npm-package-link-"));
+    roots.push(linkParent);
+    const linkedRoot = path.join(linkParent, "linked-package");
+    await fs.symlink(root, linkedRoot, process.platform === "win32" ? "junction" : "dir");
+    await expect(verifyNpmPackage(linkedRoot, {
+      nodeVersion: "24.18.0",
+      platform: "linux",
+      architecture: "x64"
+    })).resolves.toMatchObject({ package: "dusk-developer-studio", channel: "npm" });
   });
 
   it("rejects a browser index that references a missing bundle asset", async () => {

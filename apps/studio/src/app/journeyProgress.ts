@@ -63,7 +63,8 @@ export type EvidenceTool =
   | "w3sper"
   | "wasm32-unknown-unknown"
   | "rust-src"
-  | "forge-starter";
+  | "forge-starter"
+  | "studio-reviewed-template";
 export type EvidencePlatform = "windows" | "macos" | "linux" | "wsl" | "browser";
 export type EvidenceTestEnvironment = "windows" | "macos" | "linux" | "wsl-ubuntu-24.04";
 
@@ -192,7 +193,8 @@ const evidenceTools = new Set<EvidenceTool>([
   "w3sper",
   "wasm32-unknown-unknown",
   "rust-src",
-  "forge-starter"
+  "forge-starter",
+  "studio-reviewed-template"
 ]);
 const evidencePlatforms = new Set<EvidencePlatform>(["windows", "macos", "linux", "wsl", "browser"]);
 const evidenceTestEnvironments = new Set<EvidenceTestEnvironment>(["windows", "macos", "linux", "wsl-ubuntu-24.04"]);
@@ -456,8 +458,8 @@ export function getJourneyStatusLabel(status: JourneyStatus): string {
     case "confirmed-manually": return "Confirmed manually";
     case "skipped":
     case "skipped-with-reason": return "Skipped for now";
-    case "not-started": return "Not started";
-    case "ready": return "Ready";
+    case "not-started": return "Waiting on earlier step";
+    case "ready": return "Ready to start";
     case "blocked": return "Blocked";
     case "verified": return "Completed";
   }

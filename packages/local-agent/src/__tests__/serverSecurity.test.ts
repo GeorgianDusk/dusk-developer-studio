@@ -2,11 +2,18 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalAgentServer, type LocalAgentServerOptions } from "../server";
 
 const ORIGIN = "http://127.0.0.1:5173";
 const PAIRING_TOKEN = "t".repeat(32);
+const TEMPLATE_RECEIPT = {
+  template: "duskds-counter-forge",
+  templateSource: "https://github.com/dusk-network/forge",
+  templateRevision: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a",
+  templateLockSha256: "c1ac706c10edf715eebc33c2b04b430911597ffa8dfb393f41f2535468edd3cb"
+} as const;
 const servers = new Set<http.Server>();
 
 interface TestResponse {
@@ -98,6 +105,10 @@ describe("local companion containment boundary", () => {
     expect(() => createLocalAgentServer({ pairingToken: "short" })).toThrow(/at least 32/);
     expect(() => createLocalAgentServer({ pairingToken: PAIRING_TOKEN, allowedOrigins: ["https://studio.example"] })).toThrow(/loopback/);
     expect(() => createLocalAgentServer({ pairingToken: PAIRING_TOKEN, allowedOrigins: ["http://[::1]:5173"] })).toThrow(/loopback/);
+    expect(() => createLocalAgentServer({
+      pairingToken: PAIRING_TOKEN,
+      duskDsProjectRoot: path.resolve("r".repeat(1_100))
+    })).toThrow(/1,024 characters or fewer/);
   });
 
   it("rejects missing origins and untrusted Host headers", async () => {
@@ -274,18 +285,17 @@ describe("local companion containment boundary", () => {
     expect(scaffoldFoundryTemplate).not.toHaveBeenCalled();
   });
 
-  it("returns only bounded reviewed Forge identity in DuskDS scaffold receipts", async () => {
+  it("returns only bounded reviewed-template identity in DuskDS scaffold receipts", async () => {
+    const projectRoot = path.resolve("managed-projects");
+    const projectPath = path.join(projectRoot, "native-demo");
     const scaffoldDuskDsForge = vi.fn(async () => ({
       ok: true,
-      path: "C:\\private\\project",
-      projectRoot: "C:\\private",
-      rustToolchain: "1.94.0",
-      source: "https://github.com/dusk-network/forge" as const,
-      tool: "dusk-forge",
-      forgePackage: "dusk-forge-cli",
-      forgeVersion: "0.4.0",
-      forgeRevision: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a",
-      platform: "windows" as const,
+      path: projectPath,
+      projectRoot,
+      rustToolchain: "1.94.0" as const,
+      ...TEMPLATE_RECEIPT,
+      runtimeOs: "windows" as const,
+      recovered: false,
       structureVerified: true,
       files: ["Cargo.toml", "rust-toolchain.toml"]
     }));
@@ -302,30 +312,166 @@ describe("local companion containment boundary", () => {
     expect(response.body).toEqual({
       ok: true,
       projectName: "native-demo",
-      rustToolchain: "1.94.0",
-      platform: "windows",
+      projectPath,
+      rustToolchain: "1.94.0" as const,
+      runtimeOs: "windows",
+      recovered: false,
       structureVerified: true,
       files: ["Cargo.toml", "rust-toolchain.toml"],
-      forgePackage: "dusk-forge-cli",
-      forgeVersion: "0.4.0",
-      forgeRevision: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a",
-      forgeRepository: "https://github.com/dusk-network/forge"
+      ...TEMPLATE_RECEIPT
     });
-    expect(JSON.stringify(response.body)).not.toContain("private");
+    expect(response.body).not.toHaveProperty("projectRoot");
   });
 
-  it("fails closed instead of returning an invalid Forge scaffold receipt", async () => {
+  it("returns the explicit macOS runtime without inferring it from path syntax", async () => {
+    const scaffoldDuskDsForge = vi.fn(async () => ({
+      ok: true,
+      path: "/managed/native-demo",
+      projectRoot: "/managed",
+      rustToolchain: "1.94.0" as const,
+      ...TEMPLATE_RECEIPT,
+      runtimeOs: "macos" as const,
+      recovered: false,
+      structureVerified: true,
+      files: ["Cargo.toml", "rust-toolchain.toml"]
+    }));
+    const { port } = await startServer({ capabilitiesEnabled: true, dependencies: { scaffoldDuskDsForge } });
+    const cookie = await pair(port);
+    const response = await request(port, {
+      method: "POST",
+      path: "/scaffold-duskds-forge",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "native-demo" })
+    });
+    expect(response.status).toBe(200);
+    expect(response.body.runtimeOs).toBe("macos");
+    expect(response.body.projectPath).toBe("/managed/native-demo");
+  });
+
+  it("rejects a scaffold receipt whose path style contradicts its runtime OS", async () => {
+    const scaffoldDuskDsForge = vi.fn(async () => ({
+      ok: true,
+      path: "C:\\managed\\native-demo",
+      projectRoot: "C:\\managed",
+      rustToolchain: "1.94.0" as const,
+      ...TEMPLATE_RECEIPT,
+      runtimeOs: "macos" as const,
+      recovered: false,
+      structureVerified: true,
+      files: ["Cargo.toml", "rust-toolchain.toml"]
+    }));
+    const { port } = await startServer({ capabilitiesEnabled: true, dependencies: { scaffoldDuskDsForge } });
+    const cookie = await pair(port);
+    const response = await request(port, {
+      method: "POST",
+      path: "/scaffold-duskds-forge",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "native-demo" })
+    });
+    expect(response.status).toBe(500);
+    expect(response.body.code).toBe("internal_error");
+  });
+
+  it("returns a specific client error when a scaffold parent escapes the managed root", async () => {
+    const workspaceRoot = path.resolve("server-workspace");
+    const duskDsProjectRoot = path.resolve("managed-duskds-projects");
+    const { port } = await startServer({ capabilitiesEnabled: true, workspaceRoot, duskDsProjectRoot });
+    const cookie = await pair(port);
+    const response = await request(port, {
+      method: "POST",
+      path: "/scaffold-duskds-forge",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "native-demo", parentDir: path.join(workspaceRoot, "outside") })
+    });
+    expect(response.status).toBe(422);
+    expect(response.body).toEqual({
+      ok: false,
+      error: "Parent folder must stay inside the managed DuskDS project root.",
+      code: "scaffold_parent_outside_root"
+    });
+  });
+
+  it.each(["nested\rchild", "nested\nchild"])(
+    "rejects scaffold parent controls before invoking Forge for %j",
+    async (parentDir) => {
+      const scaffoldDuskDsForge = vi.fn();
+      const { port } = await startServer({
+        capabilitiesEnabled: true,
+        dependencies: { scaffoldDuskDsForge }
+      });
+      const cookie = await pair(port);
+      const response = await request(port, {
+        method: "POST",
+        path: "/scaffold-duskds-forge",
+        session: cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectName: "native-demo", parentDir })
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.code).toBe("invalid_request");
+      expect(scaffoldDuskDsForge).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([" native-demo", "native-demo ", "e\u0301"])(
+    "rejects noncanonical project name %j before any scaffold work",
+    async (projectName) => {
+      const scaffoldDuskDsForge = vi.fn();
+      const { port } = await startServer({
+        capabilitiesEnabled: true,
+        dependencies: { scaffoldDuskDsForge }
+      });
+      const cookie = await pair(port);
+      const response = await request(port, {
+        method: "POST",
+        path: "/scaffold-duskds-forge",
+        session: cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectName })
+      });
+      expect(response.status).toBe(422);
+      expect(response.body.code).toBe("scaffold_project_name_invalid");
+      expect(scaffoldDuskDsForge).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([".", "..", "a..b", "demo.", "CON", "lpt1", "Native", "1demo", "demo_name", "demo.name", "demo-", "demo--name"])(
+    "returns a bounded client error for invalid project name %s",
+    async (projectName) => {
+      const { port } = await startServer({
+        capabilitiesEnabled: true,
+        duskDsProjectRoot: path.resolve("managed-duskds-projects")
+      });
+      const cookie = await pair(port);
+      const response = await request(port, {
+        method: "POST",
+        path: "/scaffold-duskds-forge",
+        session: cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectName })
+      });
+      expect(response.status).toBe(422);
+      expect(response.body).toEqual({
+        ok: false,
+        error: "Project name is not valid for a cross-platform starter folder.",
+        code: "scaffold_project_name_invalid"
+      });
+    }
+  );
+
+  it("fails closed instead of returning an invalid reviewed-template receipt", async () => {
     const scaffoldDuskDsForge = vi.fn(async () => ({
       ok: true,
       path: "C:\\private\\project",
       projectRoot: "C:\\private",
-      rustToolchain: "1.94.0",
-      source: "https://github.com/dusk-network/forge" as const,
-      tool: "dusk-forge",
-      forgePackage: "dusk-forge-cli",
-      forgeVersion: "0.4.0",
-      forgeRevision: "not-a-commit",
-      platform: "windows" as const,
+      rustToolchain: "1.94.0" as const,
+      ...TEMPLATE_RECEIPT,
+      templateRevision: "not-a-commit" as typeof TEMPLATE_RECEIPT.templateRevision,
+      runtimeOs: "windows" as const,
+      recovered: false,
       structureVerified: true,
       files: ["Cargo.toml", "rust-toolchain.toml"]
     }));

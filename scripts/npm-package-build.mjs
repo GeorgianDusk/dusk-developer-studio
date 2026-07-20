@@ -81,6 +81,10 @@ for (const [source, destination] of [
   await fs.mkdir(path.dirname(output), { recursive: true });
   await fs.copyFile(path.join(templateSource, ...source.split("/")), output);
 }
+await copyRegularTree(
+  path.join(productRoot, "packages", "templates", "duskds-counter-forge"),
+  path.join(npmPackageRoot, "templates", "duskds-counter-forge")
+);
 await fs.mkdir(path.join(npmPackageRoot, "app"), { recursive: true });
 await build({
   entryPoints: [path.join(productRoot, "packages", "local-runtime", "src", "main.ts")],

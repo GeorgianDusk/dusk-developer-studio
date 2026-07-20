@@ -8,6 +8,9 @@ import type { CompanionStatus } from "../types";
 
 export function LocalCompanionPage({ companionStatus, refreshCompanion }: { companionStatus: CompanionStatus; refreshCompanion: () => Promise<void> }) {
   const { runtime: studioRuntime, release } = useStudioRuntime();
+  const packageSpecifier = `dusk-developer-studio@${release.version}`;
+  const safeCommand = `npx ${packageSpecifier}`;
+  const localActionsCommand = `${safeCommand} local-actions`;
 
   if (!studioRuntime.companionAvailable) {
     return (
@@ -20,12 +23,12 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
         <div className="focus-card wide">
           <StatusPill tone="good">Available through npm</StatusPill>
           <h2>Choose how much local access this session needs</h2>
-          <p>Use Node.js 24.18 or newer in the Node 24 release line. Safe mode opens the local Studio without machine actions. Local Actions additionally enables the reviewed tool checks and starter scaffolds.</p>
+          <p>Use Node.js 24.18 or newer in the Node 24 release line. Both commands download and execute the exact version shown. Safe mode starts only the Studio and pairing services; it does not run developer tools or create projects. Local Actions additionally enables the reviewed tool checks and starter scaffolds.</p>
           <CommandPair
             firstTitle="Safe mode"
-            first="npx dusk-developer-studio"
+            first={safeCommand}
             secondTitle="Local Actions"
-            second="npx dusk-developer-studio local-actions"
+            second={localActionsCommand}
           />
           <ol>
             <li>Run one command in your terminal. npm downloads the package and starts it in the foreground.</li>
@@ -34,6 +37,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           </ol>
           <div className="button-row">
             <ExternalLink href="https://nodejs.org/en/download">Get Node.js</ExternalLink>
+            <ExternalLink href={`https://www.npmjs.com/package/dusk-developer-studio/v/${release.version}`}>Review this package version and provenance</ExternalLink>
             <a className="secondary-button" href="#overview">Continue in the hosted guide</a>
           </div>
         </div>
@@ -41,7 +45,16 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           <StatusPill tone="neutral">Local boundary</StatusPill>
           <h2>What the npm package does</h2>
           <p>It serves the Studio only on <strong>127.0.0.1:5173</strong> and its companion only on <strong>127.0.0.1:8788</strong>. It installs no service, requests no administrator access, and never asks for wallet secrets.</p>
+          <p>The first local page load uses one in-memory pairing value and a one-use bootstrap. The browser receives only an origin-bound, <strong>HttpOnly</strong>, <strong>SameSite=Strict</strong> session cookie. Other origins, hosts, unpaired requests, oversized requests, and expired sessions are rejected.</p>
           <p>Local Actions can run only the allowlisted prerequisite checks and create approved starter projects. Wallet signing, funded transactions, deployment, arbitrary commands, and writes outside the managed project root remain unavailable.</p>
+          <details>
+            <summary>Where created projects are stored</summary>
+            <ul>
+              <li>Windows: <code>%LOCALAPPDATA%\Dusk\DeveloperStudio\projects</code></li>
+              <li>macOS: <code>~/Library/Application Support/Dusk/DeveloperStudio/projects</code></li>
+              <li>Linux: <code>{"${XDG_DATA_HOME:-~/.local/share}/dusk/developer-studio/projects"}</code></li>
+            </ul>
+          </details>
           <p className="quiet-note">The hosted website never connects to the local companion. Starting the npm package opens a separate local Studio session.</p>
         </div>
       </section>
@@ -55,7 +68,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
   return (
     <section className="reference-page narrow">
       <PageIntro
-        kicker="Automation"
+        kicker="Local Studio"
         title="Local Studio is paired and ready."
         copy="This npm-launched Studio pairs with its local companion automatically. Safe mode cannot perform machine actions; those are available only when you start the separately named Local Actions mode."
       />
@@ -90,8 +103,8 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           </ol>
           <div className="tool-command">
             <span>Local Actions</span>
-            <pre>npx dusk-developer-studio local-actions</pre>
-            <CopyButton value="npx dusk-developer-studio local-actions" label="Copy Local Actions command" />
+            <pre>{localActionsCommand}</pre>
+            <CopyButton value={localActionsCommand} label="Copy Local Actions command" />
           </div>
           <p className="quiet-note">Keep the terminal open while you work. Press <strong>Ctrl+C</strong> to stop the local Studio and companion.</p>
         </div>

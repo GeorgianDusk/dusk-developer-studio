@@ -1,6 +1,6 @@
 {
   "name": "dusk-developer-testnet-studio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Developer cockpit for DuskEVM reference and DuskDS workflows.",
   "license": "Apache-2.0",
@@ -33,7 +33,7 @@
     "check:phase5": "node scripts/check-phase5-evidence.mjs",
     "fingerprint:artifacts": "node scripts/artifact-fingerprint.mjs",
     "build:npm": "node scripts/npm-package-build.mjs",
-    "test:npm": "vitest run packages/local-runtime packages/local-agent/src/__tests__/preflight.test.ts packages/local-agent/src/__tests__/runBoundedProcess.test.ts packages/local-agent/src/__tests__/serverSecurity.test.ts packages/local-agent/src/__tests__/scaffoldTemplate.test.ts && node scripts/test-npm-package.mjs",
+    "test:npm": "vitest run packages/local-runtime packages/templates/src/duskDsCounterForge.test.ts packages/local-agent/src/__tests__/preflight.test.ts packages/local-agent/src/__tests__/runBoundedProcess.test.ts packages/local-agent/src/__tests__/serverSecurity.test.ts packages/local-agent/src/__tests__/safePaths.test.ts packages/local-agent/src/__tests__/transactionalScaffold.test.ts packages/local-agent/src/__tests__/scaffoldTemplate.test.ts packages/local-agent/src/__tests__/cloneDuskDsStarter.test.ts && node scripts/test-npm-package.mjs",
     "pack:npm": "node scripts/npm-package-build.mjs --strict && node scripts/npm-package-pack.mjs"
   },
   "devDependencies": {

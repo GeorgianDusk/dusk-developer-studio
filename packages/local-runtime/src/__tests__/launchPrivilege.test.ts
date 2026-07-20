@@ -209,7 +209,7 @@ describe("non-elevated launch guard", () => {
     const body = source.slice(start, end);
     const guard = body.indexOf("assertNonElevatedLaunch();");
     expect(guard).toBeGreaterThan(-1);
-    expect(guard).toBeLessThan(body.indexOf("path.resolve(options.packageRoot)"));
+    expect(guard).toBeLessThan(body.indexOf("resolveCanonicalNpmPackageRoot(options.packageRoot)"));
     expect(guard).toBeLessThan(body.indexOf("verifyNpmPackage("));
     expect(guard).toBeLessThan(body.indexOf("fs.mkdir("));
     expect(guard).toBeLessThan(body.indexOf("listen("));

@@ -1,20 +1,42 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { STUDIO_PRODUCT, type StudioRelease } from "../release";
+import { STUDIO_PRODUCT, STUDIO_RELEASE, type StudioRelease } from "../release";
 import { App } from "../app/App";
+import { JOURNEY_PROGRESS_STORAGE_KEY } from "../app/journeyProgress";
 import { getStudioRuntime } from "../app/runtime";
 
 const npmCommit = "a".repeat(40);
 const npmRelease: StudioRelease = { product: STUDIO_PRODUCT, version: "1.2.3", commit: npmCommit, channel: "npm" };
+const reviewedTemplateRevision = "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a";
+const reviewedTemplateLock = "c1ac706c10edf715eebc33c2b04b430911597ffa8dfb393f41f2535468edd3cb";
+
+function scaffoldReceipt(projectPath: string, recovered = false, runtimeOs: "windows" | "linux" | "macos" = "windows") {
+  return {
+    ok: true,
+    projectName: "duskds-forge-starter",
+    projectPath,
+    recovered,
+    rustToolchain: "1.94.0",
+    runtimeOs,
+    structureVerified: true,
+    files: ["Cargo.toml", "rust-toolchain.toml"],
+    template: "duskds-counter-forge",
+    templateSource: "https://github.com/dusk-network/forge",
+    templateRevision: reviewedTemplateRevision,
+    templateLockSha256: reviewedTemplateLock
+  };
+}
 
 describe("App", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
     window.location.hash = "";
     Object.defineProperty(window, "scrollTo", { value: vi.fn(), writable: true });
   });
 
   afterEach(() => {
+    window.dispatchEvent(new Event("beforeunload"));
     vi.unstubAllGlobals();
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
   });
@@ -26,19 +48,21 @@ describe("App", () => {
     expect(screen.getByText("Pick the execution model your app actually needs.")).toBeInTheDocument();
     expect(screen.getByText("Guide and local tools available")).toBeInTheDocument();
     expect(screen.getByText("Reference only")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Explore pre-launch reference/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Open pre-launch overview/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Start DuskDS/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reference" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Troubleshoot" })).toBeInTheDocument();
   });
 
-  it("opens DuskEVM as one pre-launch reference without a completion score", () => {
+  it("opens the DuskEVM pre-launch overview and identifier helper without a completion score", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /Explore pre-launch reference/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Open pre-launch overview/i }));
 
-    expect(window.location.hash).toBe("#reference");
-    expect(screen.getByRole("heading", { name: "Source-backed context for the task in front of you." })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "DuskEVM only" })).toHaveAttribute("aria-pressed", "true");
+    expect(window.location.hash).toBe("#setup");
+    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
+    const identifier = screen.getByLabelText("Example identifier");
+    fireEvent.change(identifier, { target: { value: `0x${"b".repeat(40)}` } });
+    expect(screen.getByText("address")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Resume DuskEVM/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
   });
@@ -145,9 +169,14 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime(window.location.hostname, "source-dev")} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByRole("heading", { name: "Run the full Studio locally with npm." })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Continue in the hosted guide" })).toBeInTheDocument();
+    expect(screen.getByText(`npx dusk-developer-studio@${STUDIO_RELEASE.version}`)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Review this package version and provenance/i })).toHaveAttribute(
+      "href",
+      `https://www.npmjs.com/package/dusk-developer-studio/v/${STUDIO_RELEASE.version}`
+    );
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
   });
@@ -157,7 +186,7 @@ describe("App", () => {
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime("127.0.0.1", "hosted")} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByRole("heading", { name: "Run the full Studio locally with npm." })).toBeInTheDocument();
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
@@ -165,19 +194,25 @@ describe("App", () => {
 
   it("bootstraps an npm same-origin session and requires exact release parity", async () => {
     const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease })));
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(screen.getByRole("button", { name: /Automation: Actions ready/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByText("Paired. Local capabilities are enabled.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Local Studio is paired and ready." })).toBeInTheDocument();
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
+      "http://" + window.location.hostname + ":8788/health",
+      expect.objectContaining({ credentials: "include" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
       window.location.origin + "/__dusk/bootstrap",
       expect.objectContaining({
         method: "POST",
@@ -187,7 +222,7 @@ describe("App", () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       "http://" + window.location.hostname + ":8788/health",
       expect.objectContaining({ credentials: "include" }),
     );
@@ -195,17 +230,460 @@ describe("App", () => {
 
   it("blocks local actions when the companion release does not match", async () => {
     const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: { ...npmRelease, commit: "b".repeat(40) } })));
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByText(/release identities do not match/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
     fireEvent.click(screen.getByRole("button", { name: /Start DuskDS/i }));
     fireEvent.click(screen.getByRole("button", { name: /3 Build/i }));
     expect(screen.getByRole("button", { name: "Resolve local release mismatch" })).toBeInTheDocument();
+  });
+
+  it("reuses an existing npm companion session without spending the one-use bootstrap", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        ok: true,
+        service: "dusk-studio-local-agent",
+        paired: true,
+        capabilitiesEnabled: true,
+        release: npmRelease
+      }))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0]).endsWith(":8788/health")).toBe(true);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/__dusk/bootstrap"))).toBe(false);
+  });
+
+  it("waits through a delayed same-origin pair before checking health", async () => {
+    let finishPair!: (response: Response) => void;
+    const delayedPair = new Promise<Response>((resolve) => { finishPair = resolve; });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
+      .mockReturnValueOnce(delayedPair)
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ok: true,
+        service: "dusk-studio-local-agent",
+        paired: true,
+        capabilitiesEnabled: true,
+        release: npmRelease
+      })));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      window.location.origin + "/__dusk/bootstrap",
+      expect.objectContaining({ method: "POST", credentials: "include" })
+    );
+    finishPair(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("recovers a concurrent bootstrap through the session cookie or gives a restart instruction", async () => {
+    const health = {
+      ok: true,
+      service: "dusk-studio-local-agent",
+      paired: true,
+      capabilitiesEnabled: true,
+      release: npmRelease
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_in_progress" }), { status: 409 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(health)));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("explains how to restart after a genuinely expired npm launch", async () => {
+    const unpaired = new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 });
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(unpaired)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_expired" }), { status: 410 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Local Studio/i }));
+    expect(await screen.findByText(/Close this page and run the npm command again/)).toBeInTheDocument();
+  });
+
+  it("refuses automatic Setup evidence for an incompatible Windows wasm-opt shim", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
+      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.includes("/preflight?path=duskds")) {
+        return new Response(JSON.stringify({
+          ok: false,
+          checkedAt: "2026-07-19T00:00:00.000Z",
+          path: "duskds",
+          tools: [{
+            name: "wasm-opt",
+            command: "wasm-opt",
+            ok: false,
+            required: true,
+            failureKind: "unsupported",
+            error: "Check failed.",
+            installHint: "Remove the incompatible shim or install native Binaryen."
+          }]
+        }));
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#setup";
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Run automatic preflight" }));
+
+    await waitFor(() => expect(screen.getByText(/At least one required tool needs a specific fix/)).toBeInTheDocument());
+    expect(screen.getByText(/Remove the incompatible shim or install native Binaryen/)).toBeInTheDocument();
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as {
+        paths: { duskds: { setup: { blocker?: string; evidence: string[] } } };
+      };
+      expect(stored.paths.duskds.setup.blocker).toBe("toolchain-incomplete");
+      expect(stored.paths.duskds.setup.evidence).toEqual([]);
+    });
+  });
+
+  it("uses the successful scaffold's canonical path for follow-on commands without persisting it", async () => {
+    const projectPath = "C:\\Users\\tester\\AppData\\Local\\Dusk\\DeveloperStudio\\projects\\duskds\\duskds-forge-starter";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/__dusk/bootstrap")) {
+        return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
+      }
+      if (url.endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      }
+      if (url.endsWith("/scaffold-duskds-forge")) {
+        return new Response(JSON.stringify({
+          ok: true,
+          projectName: "duskds-forge-starter",
+          projectPath,
+          rustToolchain: "1.94.0",
+          runtimeOs: "windows",
+          structureVerified: true,
+          files: ["Cargo.toml", "rust-toolchain.toml"],
+          template: "duskds-counter-forge",
+          templateSource: "https://github.com/dusk-network/forge",
+          templateRevision: reviewedTemplateRevision,
+          templateLockSha256: reviewedTemplateLock
+        }));
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    expect(screen.getByRole("heading", { name: "Build commands appear after verified creation" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy Build contract + data-driver WASM" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Create and verify DuskDS starter" }));
+
+    await waitFor(() => expect(screen.getByText(projectPath, { selector: "code" })).toBeInTheDocument());
+    expect(screen.getAllByText((content, element) => element?.tagName === "PRE"
+      && content.includes(`Set-Location -LiteralPath '${projectPath}'`)).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Copy Build contract + data-driver WASM" })).toBeInTheDocument();
+    const persistedValues = Array.from(
+      { length: window.localStorage.length },
+      (_, index) => window.localStorage.getItem(window.localStorage.key(index) ?? "")
+    );
+    expect(persistedValues.join("\n")).not.toContain(projectPath);
+
+    fireEvent.change(screen.getByLabelText("Artifact source identity"), {
+      target: { value: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a" }
+    });
+    const filenames = screen.getAllByLabelText("Filename");
+    const hashes = screen.getAllByLabelText("SHA-256");
+    const sizes = screen.getAllByLabelText("Size in bytes");
+    fireEvent.change(filenames[0], { target: { value: "counter-contract.wasm" } });
+    fireEvent.change(hashes[0], { target: { value: "a".repeat(64) } });
+    fireEvent.change(sizes[0], { target: { value: "1234" } });
+    fireEvent.change(filenames[1], { target: { value: "counter-data-driver.wasm" } });
+    fireEvent.change(hashes[1], { target: { value: "b".repeat(64) } });
+    fireEvent.change(sizes[1], { target: { value: "2345" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual artifact evidence" }));
+    fireEvent.click(screen.getByRole("button", { name: "I ran the reviewed WSL environment check successfully" }));
+    fireEvent.click(screen.getByRole("button", { name: "I observed the VM test pass in this environment" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save manual VM-test evidence" }));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as {
+        paths: { duskds: { build: { evidenceEntries: Array<{ code: string; metadata?: { testEnvironment?: string } }> } } };
+      };
+      expect(stored.paths.duskds.build.evidenceEntries.find(
+        (entry) => entry.code === "duskds-vm-test-attestation"
+      )?.metadata?.testEnvironment).toBe("wsl-ubuntu-24.04");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as {
+        paths: { duskds: { build: { evidence: string[] } } };
+      };
+      expect(stored.paths.duskds.build.evidence).toEqual([]);
+    });
+    expect(screen.queryByText(projectPath)).not.toBeInTheDocument();
+  });
+
+  it("uses the companion-reported macOS runtime for automatic scaffold evidence", async () => {
+    const projectPath = "/Users/tester/Library/Application Support/Dusk/DeveloperStudio/projects/duskds/duskds-forge-starter";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/health")) {
+        return new Response(JSON.stringify({
+          ok: true,
+          service: "dusk-studio-local-agent",
+          paired: true,
+          capabilitiesEnabled: true,
+          release: npmRelease
+        }));
+      }
+      if (url.endsWith("/scaffold-duskds-forge")) {
+        return new Response(JSON.stringify(scaffoldReceipt(projectPath, false, "macos")));
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Create and verify DuskDS starter" }));
+    await waitFor(() => expect(screen.getByText(projectPath, { selector: "code" })).toBeInTheDocument());
+    expect(screen.getByText("macOS", { selector: ".command-context .status-pill" })).toBeInTheDocument();
+    await waitFor(() => {
+      const progress = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as {
+        paths: { duskds: { build: { evidenceEntries: Array<{ code: string; metadata?: { platform?: string } }> } } };
+      };
+      expect(progress.paths.duskds.build.evidenceEntries.find(
+        (entry) => entry.code === "duskds-starter-structure"
+      )?.metadata?.platform).toBe("macos");
+    });
+  });
+
+  it("rejects unsafe project names and paths before rendering commands", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    const { container } = render(<App />);
+    const projectName = screen.getByLabelText("Project name");
+
+    for (const invalid of [".", "..", "a..b", "demo.", "CON", "lpt1", "Native", "1demo", "demo_name", "demo--name", "demo-"]) {
+      fireEvent.change(projectName, { target: { value: invalid } });
+      expect(screen.getAllByRole("alert").some((alert) =>
+        /Use 1–80 lowercase letters, numbers, or single hyphens/.test(alert.textContent ?? "")
+      )).toBe(true);
+      expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
+    }
+    for (const keyword of ["type", "mod", "self", "crate", "super", "async", "await", "gen", "macro-rules"]) {
+      fireEvent.change(projectName, { target: { value: keyword } });
+      expect(screen.getAllByRole("alert").some((alert) =>
+        /Rust 2024 keywords and reserved words/.test(alert.textContent ?? "")
+      )).toBe(true);
+      expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
+    }
+
+    fireEvent.change(projectName, { target: { value: "safe-demo" } });
+    fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+    const root = screen.getByLabelText("Existing project root");
+    for (const invalid of ["\\root-relative", "/root-relative", "C:\\", "C:\\bad\0path"]) {
+      fireEvent.change(root, { target: { value: invalid } });
+      expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+      expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    fireEvent.change(root, { target: { value: "/" } });
+    expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+    fireEvent.change(root, { target: { value: "C:\\work\r\nWrite-Host bad" } });
+    expect(root).toHaveValue("C:\\workWrite-Host bad");
+    expect(screen.getByRole("heading", { name: "Prepare project" }).parentElement?.querySelector("pre")?.textContent)
+      .not.toContain("\nWrite-Host bad");
+
+    fireEvent.change(root, { target: { value: "C:\\work\\safe-demo" } });
+    expect(screen.getByRole("button", { name: "Copy Prepare project" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    expect(screen.getAllByRole("alert").some((alert) =>
+      /must be an absolute path/.test(alert.textContent ?? "")
+    )).toBe(true);
+    fireEvent.change(root, { target: { value: "/" } });
+    expect(screen.getAllByRole("alert").some((alert) =>
+      /cannot be a filesystem root/.test(alert.textContent ?? "")
+    )).toBe(true);
+    expect(container.textContent).not.toContain("\nWrite-Host bad");
+  }, 10_000);
+
+  it("locks scaffold context during an in-flight request and restores the exact receipt after SPA navigation", async () => {
+    const projectPath = "C:\\Users\\tester\\AppData\\Local\\Dusk\\DeveloperStudio\\projects\\duskds\\duskds-forge-starter";
+    let resolveScaffold!: (response: Response) => void;
+    const deferredScaffold = new Promise<Response>((resolve) => {
+      resolveScaffold = resolve;
+    });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
+      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.endsWith("/scaffold-duskds-forge")) return deferredScaffold;
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Create and verify DuskDS starter" }));
+    expect(screen.getByLabelText("Project name")).toBeDisabled();
+    expect(screen.getByLabelText("Subfolder inside managed DuskDS root, optional")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Windows PowerShell" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Manual now/ })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: /2 Access/i }));
+    await act(async () => {
+      resolveScaffold(new Response(JSON.stringify(scaffoldReceipt(projectPath))));
+      await deferredScaffold;
+    });
+    await waitFor(() => expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").toContain("duskds-starter-structure"));
+    fireEvent.click(screen.getByRole("button", { name: /3 Build/i }));
+
+    await waitFor(() => expect(screen.getByText(projectPath, { selector: "code" })).toBeInTheDocument());
+    expect(screen.getAllByText((content, element) => element?.tagName === "PRE"
+      && content.includes(`Set-Location -LiteralPath '${projectPath}' -ErrorAction Stop`)).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+  });
+
+  it("forgets the canonical path on refresh without deleting durable Build evidence", async () => {
+    const projectPath = "C:\\Users\\tester\\AppData\\Local\\Dusk\\DeveloperStudio\\projects\\duskds\\duskds-forge-starter";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
+      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.endsWith("/scaffold-duskds-forge")) return new Response(JSON.stringify(scaffoldReceipt(projectPath)));
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    const view = render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Create and verify DuskDS starter" }));
+    await waitFor(() => expect(screen.getByText(projectPath, { selector: "code" })).toBeInTheDocument());
+    window.dispatchEvent(new Event("beforeunload"));
+    view.unmount();
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    await waitFor(() => expect(screen.getByText(/private project path was intentionally not retained after refresh/)).toBeInTheDocument());
+    expect(screen.queryByText(projectPath)).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").toContain("duskds-starter-structure");
+    expect(window.sessionStorage.getItem("dusk-studio-duskds-scaffold-context")).toBeNull();
+  });
+
+  it("offers an explicit same-request recovery after the scaffold browser timeout", async () => {
+    const projectPath = "C:\\Users\\tester\\AppData\\Local\\Dusk\\DeveloperStudio\\projects\\duskds\\duskds-forge-starter";
+    let scaffoldCalls = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
+      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.endsWith("/scaffold-duskds-forge")) {
+        scaffoldCalls += 1;
+        if (scaffoldCalls === 1) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(new DOMException("Aborted", "AbortError")),
+              { once: true }
+            );
+          });
+        }
+        return new Response(JSON.stringify(scaffoldReceipt(projectPath, true)));
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Create and verify DuskDS starter" }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(330_001);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(screen.getByText(/browser wait ended.*recover a content-verified completed target/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Project name")).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByText(/Recovered the existing starter/)).toBeInTheDocument());
+    expect(scaffoldCalls).toBe(2);
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+  });
+
+  it("shows a containment error and emits no commands or blocker for a rejected scaffold parent", async () => {
+    const rejectedPath = "C:\\Windows";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/__dusk/bootstrap")) {
+        return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
+      }
+      if (url.endsWith("/health")) {
+        return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      }
+      if (url.endsWith("/scaffold-duskds-forge")) {
+        return new Response(JSON.stringify({
+          ok: false,
+          error: "Parent folder must stay inside the managed DuskDS project root.",
+          code: "scaffold_parent_outside_root"
+        }), { status: 422 });
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Subfolder inside managed DuskDS root, optional"), { target: { value: rejectedPath } });
+    fireEvent.click(screen.getByRole("button", { name: "Create and verify DuskDS starter" }));
+
+    await waitFor(() => expect(screen.getByText(/must be a relative subfolder inside the managed DuskDS root/)).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Copy Build contract + data-driver WASM" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Build commands appear after verified creation" })).toBeInTheDocument();
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("companion-unavailable");
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/scaffold-duskds-forge"))).toBe(false);
+    expect(document.body.textContent).not.toContain(`Set-Location -LiteralPath '${rejectedPath}'`);
   });
 });

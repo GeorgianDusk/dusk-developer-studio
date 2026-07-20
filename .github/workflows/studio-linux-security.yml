@@ -53,7 +53,7 @@ jobs:
           pnpm build:npm
           pnpm test:npm
           pnpm pack:npm
-          TARBALL="output/npm/dusk-developer-studio-1.0.0.tgz"
+          TARBALL="output/npm/dusk-developer-studio-1.0.1.tgz"
           INSTALL_ROOT="$RUNNER_TEMP/npm-install"
           PRIMARY="$INSTALL_ROOT/node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs"
           test -f "$TARBALL"
@@ -152,7 +152,7 @@ jobs:
           pnpm build:npm
           pnpm test:npm
           pnpm pack:npm
-          $tarball = 'output/npm/dusk-developer-studio-1.0.0.tgz'
+          $tarball = 'output/npm/dusk-developer-studio-1.0.1.tgz'
           if (-not (Test-Path -LiteralPath $tarball -PathType Leaf)) { throw 'npm tarball is missing.' }
           $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
           if (-not $isAdmin) { throw 'Windows assurance runner must provide the separate elevated-refusal lane.' }

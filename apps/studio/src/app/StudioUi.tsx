@@ -1,5 +1,5 @@
 import { ArrowUpRight, CheckCircle2, Clipboard, Search } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type ReactNode, type Ref } from "react";
 import type { JourneyStatus } from "./journeyProgress";
 import type { Tone } from "./types";
 
@@ -40,8 +40,8 @@ export function ExternalLink({ href, children }: { href: string; children: React
   return <a className="text-link" href={href} target="_blank" rel="noreferrer">{children}<ArrowUpRight size={14} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>;
 }
 
-export function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
-  return <label className="search-field"><Search size={16} /><span className="sr-only">Search</span><input value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>;
+export function SearchBox({ value, onChange, placeholder, inputRef }: { value: string; onChange: (value: string) => void; placeholder: string; inputRef?: Ref<HTMLInputElement> }) {
+  return <label className="search-field"><Search size={16} /><span className="sr-only">Search</span><input ref={inputRef} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></label>;
 }
 
 export function AsyncNotice({ state, title, message, onRetry }: { state: AsyncState; title?: string; message: string; onRetry?: () => void | Promise<void> }) {

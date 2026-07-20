@@ -18,7 +18,11 @@ const URL_TOKEN_RE = /(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s<>"']+/gi;
 const NATIVE_SMOKE_WORKFLOW = ".github/workflows/duskds-native-smoke.yml";
 const PUBLIC_ASSURANCE_WORKFLOW = ".github/workflows/studio-public-staging.yml";
 const NPM_ASSURANCE_WORKFLOW = ".github/workflows/studio-npm-package-assurance.yml";
-const NPM_PUBLICATION_WORKFLOW = ".github/workflows/studio-npm-publish.yml";
+const INITIAL_NPM_PACKAGE_VERSION = "1.0.0";
+const INITIAL_NPM_TAG = "v1.0.0";
+const INITIAL_NPM_PUBLICATION_WORKFLOW = ".github/workflows/studio-npm-publish.yml";
+const OIDC_NPM_PUBLICATION_WORKFLOW = ".github/workflows/studio-npm-oidc-publish.yml";
+const OIDC_NPM_PUBLICATION_ENVIRONMENT = "npm-trusted-publication";
 const EXTERNAL_SYNTHETIC_CHECKS = new Set(["external_dead_man", "external_direct_health"]);
 const CLOSED_PORT_OBSERVATIONS = new Set(["filtered-or-closed", "econnrefused", "etimedout", "ehostunreach", "enetunreach"]);
 const MAX_RECEIPT_BYTES = 512_000;
@@ -397,7 +401,7 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const now = options.now ?? new Date();
   const blockers = [];
   if (!policy || policy.schema_version !== 1) blockers.push("Phase 5 policy schema is unsupported.");
-  if (!evidence || evidence.schema_version !== 5) blockers.push("Phase 5 evidence schema is unsupported.");
+  if (!evidence || evidence.schema_version !== 8) blockers.push("Phase 5 evidence schema is unsupported.");
   if (blockers.length) return { decision: "no-go", blockers };
 
   const productionPaths = Array.isArray(policy.production_paths) ? policy.production_paths : [];
@@ -476,7 +480,7 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   exactKeys(blockers, "npm distribution evidence", distribution, [
     "package_name", "package_version", "node_engine", "registry_url", "integrity",
     "package_inventory_sha256", "platform_smoke", "assurance", "publication",
-    "post_publication_controls"
+    "bootstrap_controls"
   ]);
   if (distribution.package_name !== distributionPolicy.package_name
       || distribution.package_version !== distributionPolicy.package_version
@@ -491,22 +495,65 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || distributionPolicy.expected_oidc_publisher !== "GitHub Actions"
       || distributionPolicy.expected_oidc_trusted_publisher_id !== "github"
       || distributionPolicy.expected_provenance_repository !== "https://github.com/GeorgianDusk/dusk-developer-studio"
-      || distributionPolicy.expected_initial_provenance_workflow !== NPM_PUBLICATION_WORKFLOW) {
-    blockers.push("npm distribution policy lacks the confirmed expected maintainer and exact initial provenance source.");
+      || distributionPolicy.expected_initial_provenance_workflow !== INITIAL_NPM_PUBLICATION_WORKFLOW
+      || distributionPolicy.initial_package_version !== INITIAL_NPM_PACKAGE_VERSION
+      || distributionPolicy.initial_tag !== INITIAL_NPM_TAG
+      || distributionPolicy.initial_publication_environment !== "npm-initial-publication"
+      || distributionPolicy.publication_workflow !== OIDC_NPM_PUBLICATION_WORKFLOW
+      || distributionPolicy.publication_environment !== OIDC_NPM_PUBLICATION_ENVIRONMENT
+      || distributionPolicy.subsequent_workflow_path !== distributionPolicy.publication_workflow
+      || distributionPolicy.subsequent_registry_authentication !== "github-oidc") {
+    blockers.push("npm distribution policy lacks the confirmed maintainer, historical bootstrap identity, or active OIDC publication identity.");
   }
+  const initialPublicationPolicy = distributionPolicy.initial_publication_evidence ?? {};
+  exactKeys(blockers, "npm initial-publication policy evidence", initialPublicationPolicy, [
+    "candidate_commit", "integrity", "package_inventory_sha256", "run_id", "artifact_id",
+    "artifact_name", "artifact_expires_at", "preserved_receipt_path", "receipt_sha256", "observed_at"
+  ]);
+  if (!/^[0-9a-f]{40}$/u.test(initialPublicationPolicy.candidate_commit ?? "")
+      || !SRI_SHA512_RE.test(initialPublicationPolicy.integrity ?? "")
+      || !SHA256_RE.test(initialPublicationPolicy.package_inventory_sha256 ?? "")
+      || !Number.isSafeInteger(initialPublicationPolicy.run_id)
+      || initialPublicationPolicy.run_id <= 0
+      || !Number.isSafeInteger(initialPublicationPolicy.artifact_id)
+      || initialPublicationPolicy.artifact_id <= 0
+      || initialPublicationPolicy.artifact_name
+        !== `studio-npm-publication-receipt-${initialPublicationPolicy.run_id ?? "invalid"}.json`
+      || !validDate(initialPublicationPolicy.artifact_expires_at)
+      || initialPublicationPolicy.preserved_receipt_path
+        !== `docs/evidence/npm-initial-publication-receipt-${initialPublicationPolicy.run_id ?? "invalid"}.json`
+      || !SHA256_RE.test(initialPublicationPolicy.receipt_sha256 ?? "")
+      || !validDate(initialPublicationPolicy.observed_at)
+      || Date.parse(initialPublicationPolicy.artifact_expires_at)
+        <= Date.parse(initialPublicationPolicy.observed_at)
+      || Date.parse(initialPublicationPolicy.observed_at) >= candidateBuiltAt
+      || Date.parse(initialPublicationPolicy.observed_at) > now.getTime()) {
+    blockers.push("npm initial-publication policy evidence does not identify the preserved immutable 1.0.0 receipt, run, artifact, and chronology.");
+  }
+  const activePublicationWorkflow = distributionPolicy.publication_workflow;
+  const activePublicationArtifact = (runId) =>
+    `studio-npm-oidc-publication-receipt-${runId ?? "invalid"}.json`;
   const platformSmoke = distribution.platform_smoke ?? {};
   exactKeys(blockers, "npm platform-smoke evidence", platformSmoke, distributionPolicy.required_platforms ?? []);
   for (const platform of distributionPolicy.required_platforms ?? []) {
     const record = platformSmoke[platform];
     exactKeys(blockers, `npm platform smoke ${platform}`, record, [
-      "status", "runner", "node_version", "safe_smoke", "local_actions_capability_contract_smoke",
+      "schema_version", "status", "runner", "node_version",
+      "safe_smoke", "local_actions_capability_contract_smoke",
+      "direct_cli_scaffold_smoke", "local_actions_scaffold_smoke",
+      "scaffold_preservation_smoke", "shutdown_smoke",
       "elevated_refusal", "candidate_commit", "integrity", "package_inventory_sha256", "observed_at"
     ]);
-    if (record?.status !== "passed"
+    if (record?.schema_version !== 2
+        || record.status !== "passed"
         || record.runner !== platform
         || record.node_version !== "24.18.0"
         || record.safe_smoke !== "passed"
         || record.local_actions_capability_contract_smoke !== "passed"
+        || record.direct_cli_scaffold_smoke !== "passed"
+        || record.local_actions_scaffold_smoke !== "passed"
+        || record.scaffold_preservation_smoke !== "passed"
+        || record.shutdown_smoke !== "passed"
         || record.elevated_refusal !== "passed"
         || record.candidate_commit !== candidate.commit
         || record.integrity !== distribution.integrity
@@ -520,10 +567,21 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
 
   const assurance = distribution.assurance ?? {};
   exactKeys(blockers, "npm assurance receipt", assurance, [
-    "candidate_commit", "receipt_sha256", "receipt_json", "workflow_path",
+    "candidate_commit",
+    "exact_tarball_direct_cli_scaffold_smoke",
+    "exact_tarball_local_actions_scaffold_smoke",
+    "exact_tarball_scaffold_preservation_smoke",
+    "exact_tarball_shutdown_smoke",
+    "receipt_sha256", "receipt_json", "workflow_path",
     "run_url", "artifact_name", "observed_at", "provenance"
   ]);
   if (assurance.candidate_commit !== candidate.commit) blockers.push("npm assurance is not bound to the exact candidate commit.");
+  if (assurance.exact_tarball_direct_cli_scaffold_smoke !== "passed"
+      || assurance.exact_tarball_local_actions_scaffold_smoke !== "passed"
+      || assurance.exact_tarball_scaffold_preservation_smoke !== "passed"
+      || assurance.exact_tarball_shutdown_smoke !== "passed") {
+    blockers.push("npm assurance does not declare the required three-platform exact-tarball direct CLI, Local Actions scaffold, preservation, and shutdown results.");
+  }
   checkActionsReference(blockers, "npm assurance", assurance, policy.monitoring_evidence?.canonical_repository, NPM_ASSURANCE_WORKFLOW);
   const assuranceRunId = actionsRunId(assurance.run_url, policy.monitoring_evidence?.canonical_repository);
   if (assurance.artifact_name !== `studio-npm-assurance-receipt-${assuranceRunId ?? "invalid"}.json`) blockers.push("npm assurance artifact name is not bound to its Actions run.");
@@ -531,9 +589,14 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   exactKeys(blockers, "npm assurance receipt JSON", assuranceReceipt, [
     "schema_version", "status", "package_name", "package_version", "node_engine",
     "candidate_commit", "workflow_path", "observed_at", "integrity",
-    "package_inventory_sha256", "browser_boot_and_pairing_smoke", "platform_smoke"
+    "package_inventory_sha256", "browser_boot_and_pairing_smoke",
+    "exact_tarball_direct_cli_scaffold_smoke",
+    "exact_tarball_local_actions_scaffold_smoke",
+    "exact_tarball_scaffold_preservation_smoke",
+    "exact_tarball_shutdown_smoke",
+    "platform_smoke"
   ]);
-  if (assuranceReceipt.schema_version !== 1
+  if (assuranceReceipt.schema_version !== 2
       || assuranceReceipt.status !== "passed"
       || assuranceReceipt.package_name !== distribution.package_name
       || assuranceReceipt.package_version !== distribution.package_version
@@ -544,8 +607,15 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || assuranceReceipt.integrity !== distribution.integrity
       || assuranceReceipt.package_inventory_sha256 !== distribution.package_inventory_sha256
       || assuranceReceipt.browser_boot_and_pairing_smoke !== "passed"
+      || assuranceReceipt.exact_tarball_direct_cli_scaffold_smoke
+        !== assurance.exact_tarball_direct_cli_scaffold_smoke
+      || assuranceReceipt.exact_tarball_local_actions_scaffold_smoke
+        !== assurance.exact_tarball_local_actions_scaffold_smoke
+      || assuranceReceipt.exact_tarball_scaffold_preservation_smoke
+        !== assurance.exact_tarball_scaffold_preservation_smoke
+      || assuranceReceipt.exact_tarball_shutdown_smoke !== assurance.exact_tarball_shutdown_smoke
       || JSON.stringify(assuranceReceipt.platform_smoke) !== JSON.stringify(platformSmoke)) {
-    blockers.push("npm assurance receipt does not prove the exact package inventory, browser boot and pairing, and three-platform lifecycle smoke.");
+    blockers.push("npm assurance receipt does not prove the exact package inventory, browser boot and pairing, direct CLI, Local Actions scaffold, preservation, shutdown, and three-platform lifecycle smoke.");
   }
   if (timestampAfterBuild(blockers, "npm assurance", assurance.observed_at, candidate.built_at, now)) {
     gatingTimestamps.push(Date.parse(assurance.observed_at));
@@ -568,20 +638,21 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     "run_url", "artifact_name", "observed_at", "provenance"
   ]);
   if (publication.candidate_commit !== candidate.commit) blockers.push("npm publication is not bound to the exact candidate commit.");
-  checkActionsReference(blockers, "npm publication", publication, policy.monitoring_evidence?.canonical_repository, NPM_PUBLICATION_WORKFLOW);
+  checkActionsReference(blockers, "npm publication", publication, policy.monitoring_evidence?.canonical_repository, activePublicationWorkflow);
   const publicationRunId = actionsRunId(publication.run_url, policy.monitoring_evidence?.canonical_repository);
-  if (publication.artifact_name !== `studio-npm-publication-receipt-${publicationRunId ?? "invalid"}.json`) blockers.push("npm publication artifact name is not bound to its Actions run.");
+  if (publication.artifact_name !== activePublicationArtifact(publicationRunId)) blockers.push("npm publication artifact name is not bound to its Actions run.");
   const publicationReceipt = parseBoundReceipt(blockers, "npm publication", publication);
   exactKeys(blockers, "npm publication receipt JSON", publicationReceipt, [
     "schema_version", "status", "package_name", "package_version", "node_engine",
     "registry_url", "tag", "candidate_commit", "workflow_path", "observed_at",
     "integrity", "package_inventory_sha256", "npm_maintainer", "registry_authentication",
+    "npm_publisher", "trusted_publisher_id",
     "provenance_verification", "provenance_predicate_type", "provenance_subject",
     "provenance_subject_sha512", "provenance_repository", "provenance_workflow",
     "provenance_ref", "provenance_resolved_commit"
   ]);
   const expectedRegistryAuthentication = publicationReceipt.status === "published"
-    ? distributionPolicy.initial_registry_authentication
+    ? distributionPolicy.subsequent_registry_authentication
     : "not-used-idempotent-verification";
   const expectedProvenanceSubject = `pkg:npm/${distribution.package_name}@${distribution.package_version}`;
   const expectedProvenanceSha512 = SRI_SHA512_RE.test(distribution.integrity ?? "")
@@ -595,22 +666,24 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || publicationReceipt.registry_url !== distribution.registry_url
       || publicationReceipt.tag !== distributionPolicy.tag
       || publicationReceipt.candidate_commit !== candidate.commit
-      || publicationReceipt.workflow_path !== NPM_PUBLICATION_WORKFLOW
+      || publicationReceipt.workflow_path !== activePublicationWorkflow
       || publicationReceipt.observed_at !== publication.observed_at
       || publicationReceipt.integrity !== distribution.integrity
       || publicationReceipt.package_inventory_sha256 !== distribution.package_inventory_sha256
       || publicationReceipt.npm_maintainer !== distributionPolicy.expected_npm_maintainer
+      || publicationReceipt.npm_publisher !== distributionPolicy.expected_oidc_publisher
+      || publicationReceipt.trusted_publisher_id !== distributionPolicy.expected_oidc_trusted_publisher_id
       || publicationReceipt.registry_authentication !== expectedRegistryAuthentication
       || publicationReceipt.provenance_verification !== "npm-audit-signatures-and-slsa-source-bound"
       || publicationReceipt.provenance_predicate_type !== "https://slsa.dev/provenance/v1"
       || publicationReceipt.provenance_subject !== expectedProvenanceSubject
       || publicationReceipt.provenance_subject_sha512 !== expectedProvenanceSha512
       || publicationReceipt.provenance_repository !== distributionPolicy.expected_provenance_repository
-      || publicationReceipt.provenance_workflow !== distributionPolicy.expected_initial_provenance_workflow
+      || publicationReceipt.provenance_workflow !== activePublicationWorkflow
       || publicationReceipt.provenance_ref !== `refs/tags/${distributionPolicy.tag}`
       || publicationReceipt.provenance_resolved_commit !== candidate.commit
       || Date.parse(publication.observed_at) < Date.parse(assurance.observed_at)) {
-    blockers.push("npm publication receipt does not prove exact-tag initial publication or idempotent exact-byte recovery with cryptographically verified provenance and exact SLSA source binding.");
+    blockers.push("npm publication receipt does not prove exact-tag OIDC publication or idempotent exact-byte recovery with cryptographically verified provenance and exact SLSA source binding.");
   }
   if (timestampAfterBuild(blockers, "npm publication", publication.observed_at, candidate.built_at, now)) {
     gatingTimestamps.push(Date.parse(publication.observed_at));
@@ -622,13 +695,14 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     candidate,
     policy.monitoring_evidence?.canonical_repository,
     ["push"],
-    `studio-npm-publication-receipt-${publicationRunId ?? "invalid"}.json`,
+    activePublicationArtifact(publicationRunId),
     now,
     gatingTimestamps
   );
 
-  const postPublication = distribution.post_publication_controls ?? {};
-  exactKeys(blockers, "npm post-publication controls", postPublication, [
+  const bootstrapControls = distribution.bootstrap_controls ?? {};
+  exactKeys(blockers, "npm bootstrap controls", bootstrapControls, [
+    "package_version", "tag", "workflow_path", "environment", "initial_publication",
     "token_created_at", "token_permissions", "token_package_access", "token_bypass_2fa",
     "token_revoked", "token_revoked_at",
     "token_revocation_evidence_reference", "token_revocation_evidence_sha256",
@@ -638,60 +712,151 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     "trusted_publisher_evidence_reference", "trusted_publisher_evidence_sha256",
     "verified_by", "verified_at"
   ]);
-  const tokenCreatedAt = Date.parse(postPublication.token_created_at);
-  const tokenRevokedAt = Date.parse(postPublication.token_revoked_at);
-  const environmentSecretRemovedAt = Date.parse(postPublication.environment_secret_removed_at);
-  const trustedPublisherConfiguredAt = Date.parse(postPublication.trusted_publisher_configured_at);
-  const controlsVerifiedAt = Date.parse(postPublication.verified_at);
-  const publicationObservedAt = Date.parse(publication.observed_at);
+  const initialPublication = bootstrapControls.initial_publication ?? {};
+  exactKeys(blockers, "npm initial publication receipt", initialPublication, [
+    "candidate_commit", "receipt_sha256", "receipt_json", "workflow_path",
+    "run_url", "artifact_name", "observed_at", "provenance"
+  ]);
+  checkActionsReference(
+    blockers,
+    "npm initial publication",
+    initialPublication,
+    policy.monitoring_evidence?.canonical_repository,
+    INITIAL_NPM_PUBLICATION_WORKFLOW
+  );
+  const initialPublicationRunId = actionsRunId(
+    initialPublication.run_url,
+    policy.monitoring_evidence?.canonical_repository
+  );
+  const initialPublicationReceipt = parseBoundReceipt(
+    blockers,
+    "npm initial publication",
+    initialPublication
+  );
+  exactKeys(blockers, "npm initial publication receipt JSON", initialPublicationReceipt, [
+    "schema_version", "status", "package_name", "package_version", "node_engine",
+    "registry_url", "tag", "candidate_commit", "workflow_path", "observed_at",
+    "integrity", "package_inventory_sha256", "npm_maintainer", "registry_authentication",
+    "provenance_verification", "provenance_predicate_type", "provenance_subject",
+    "provenance_subject_sha512", "provenance_repository", "provenance_workflow",
+    "provenance_ref", "provenance_resolved_commit"
+  ]);
+  const initialExpectedProvenanceSha512 = SRI_SHA512_RE.test(initialPublicationPolicy.integrity ?? "")
+    ? Buffer.from(initialPublicationPolicy.integrity.slice("sha512-".length), "base64").toString("hex")
+    : "";
+  if (initialPublication.candidate_commit !== initialPublicationPolicy.candidate_commit
+      || initialPublication.receipt_sha256 !== initialPublicationPolicy.receipt_sha256
+      || String(initialPublicationRunId) !== String(initialPublicationPolicy.run_id)
+      || initialPublication.artifact_name !== initialPublicationPolicy.artifact_name
+      || initialPublication.observed_at !== initialPublicationPolicy.observed_at
+      || initialPublicationReceipt.schema_version !== 1
+      || initialPublicationReceipt.status !== "published"
+      || initialPublicationReceipt.package_name !== distribution.package_name
+      || initialPublicationReceipt.package_version !== distributionPolicy.initial_package_version
+      || initialPublicationReceipt.node_engine !== distribution.node_engine
+      || initialPublicationReceipt.registry_url !== distribution.registry_url
+      || initialPublicationReceipt.tag !== distributionPolicy.initial_tag
+      || initialPublicationReceipt.candidate_commit !== initialPublicationPolicy.candidate_commit
+      || initialPublicationReceipt.workflow_path !== INITIAL_NPM_PUBLICATION_WORKFLOW
+      || initialPublicationReceipt.observed_at !== initialPublicationPolicy.observed_at
+      || initialPublicationReceipt.integrity !== initialPublicationPolicy.integrity
+      || initialPublicationReceipt.package_inventory_sha256
+        !== initialPublicationPolicy.package_inventory_sha256
+      || initialPublicationReceipt.npm_maintainer !== distributionPolicy.expected_npm_maintainer
+      || initialPublicationReceipt.registry_authentication
+        !== distributionPolicy.initial_registry_authentication
+      || initialPublicationReceipt.provenance_verification
+        !== "npm-audit-signatures-and-slsa-source-bound"
+      || initialPublicationReceipt.provenance_predicate_type !== "https://slsa.dev/provenance/v1"
+      || initialPublicationReceipt.provenance_subject
+        !== `pkg:npm/${distribution.package_name}@${distributionPolicy.initial_package_version}`
+      || initialPublicationReceipt.provenance_subject_sha512 !== initialExpectedProvenanceSha512
+      || initialPublicationReceipt.provenance_repository
+        !== distributionPolicy.expected_provenance_repository
+      || initialPublicationReceipt.provenance_workflow !== INITIAL_NPM_PUBLICATION_WORKFLOW
+      || initialPublicationReceipt.provenance_ref !== `refs/tags/${distributionPolicy.initial_tag}`
+      || initialPublicationReceipt.provenance_resolved_commit
+        !== initialPublicationPolicy.candidate_commit) {
+    blockers.push("Historical npm bootstrap controls are not bound to the preserved immutable 1.0.0 publication receipt and provenance identity.");
+  }
+  const initialProvenanceTimestamps = [];
+  checkActionsProvenance(
+    blockers,
+    "npm initial publication",
+    initialPublication,
+    { commit: initialPublicationPolicy.candidate_commit },
+    policy.monitoring_evidence?.canonical_repository,
+    ["push"],
+    initialPublicationPolicy.artifact_name,
+    now,
+    initialProvenanceTimestamps
+  );
+  if (initialPublication.provenance?.artifact_id !== initialPublicationPolicy.artifact_id
+      || initialPublication.provenance?.artifact_digest_sha256
+        !== initialPublicationPolicy.receipt_sha256) {
+    blockers.push("npm initial publication provenance is not bound to the reviewed historical artifact ID and receipt digest.");
+  }
+  const initialPublicationObservedAt = Date.parse(initialPublication.observed_at);
+  const initialPublicationDownloadedAt = Date.parse(initialPublication.provenance?.downloaded_at);
+  const tokenCreatedAt = Date.parse(bootstrapControls.token_created_at);
+  const tokenRevokedAt = Date.parse(bootstrapControls.token_revoked_at);
+  const environmentSecretRemovedAt = Date.parse(bootstrapControls.environment_secret_removed_at);
+  const trustedPublisherConfiguredAt = Date.parse(bootstrapControls.trusted_publisher_configured_at);
+  const controlsVerifiedAt = Date.parse(bootstrapControls.verified_at);
   const maximumTokenLifetime = distributionPolicy.initial_token_max_lifetime_hours * 60 * 60 * 1_000;
   const controlReferences = [
-    postPublication.token_revocation_evidence_reference,
-    postPublication.environment_secret_removal_evidence_reference,
-    postPublication.trusted_publisher_evidence_reference
+    bootstrapControls.token_revocation_evidence_reference,
+    bootstrapControls.environment_secret_removal_evidence_reference,
+    bootstrapControls.trusted_publisher_evidence_reference
   ];
   const controlDigests = [
-    postPublication.token_revocation_evidence_sha256,
-    postPublication.environment_secret_removal_evidence_sha256,
-    postPublication.trusted_publisher_evidence_sha256
+    bootstrapControls.token_revocation_evidence_sha256,
+    bootstrapControls.environment_secret_removal_evidence_sha256,
+    bootstrapControls.trusted_publisher_evidence_sha256
   ];
-  const verifierAliases = identityAliases(postPublication.verified_by);
+  const verifierAliases = identityAliases(bootstrapControls.verified_by);
   if (distributionPolicy.initial_registry_authentication !== "short-lived-granular-token"
+      || bootstrapControls.package_version !== distributionPolicy.initial_package_version
+      || bootstrapControls.tag !== distributionPolicy.initial_tag
+      || bootstrapControls.workflow_path !== distributionPolicy.expected_initial_provenance_workflow
+      || bootstrapControls.environment !== distributionPolicy.initial_publication_environment
       || distributionPolicy.subsequent_registry_authentication !== "github-oidc"
       || distributionPolicy.token_revocation_required !== true
       || distributionPolicy.environment_secret_removal_required !== true
       || distributionPolicy.trusted_publisher_configuration_required !== true
-      || distributionPolicy.subsequent_workflow_path !== ".github/workflows/studio-npm-oidc-publish.yml"
+      || distributionPolicy.subsequent_workflow_path !== OIDC_NPM_PUBLICATION_WORKFLOW
       || !Number.isSafeInteger(distributionPolicy.initial_token_max_lifetime_hours)
       || distributionPolicy.initial_token_max_lifetime_hours <= 0
-      || postPublication.token_permissions !== distributionPolicy.initial_token_scope?.permissions
-      || postPublication.token_package_access !== distributionPolicy.initial_token_scope?.package_access
-      || postPublication.token_bypass_2fa !== distributionPolicy.initial_token_scope?.bypass_2fa
-      || postPublication.token_revoked !== true
-      || postPublication.environment_secret_removed !== true
-      || postPublication.trusted_publisher_configured !== true
-      || !validDate(postPublication.token_created_at)
-      || !validDate(postPublication.token_revoked_at)
-      || !validDate(postPublication.environment_secret_removed_at)
-      || !validDate(postPublication.trusted_publisher_configured_at)
-      || !validDate(postPublication.verified_at)
-      || tokenCreatedAt < candidateBuiltAt
-      || tokenCreatedAt > publicationObservedAt
-      || tokenRevokedAt < publicationObservedAt
+      || bootstrapControls.token_permissions !== distributionPolicy.initial_token_scope?.permissions
+      || bootstrapControls.token_package_access !== distributionPolicy.initial_token_scope?.package_access
+      || bootstrapControls.token_bypass_2fa !== distributionPolicy.initial_token_scope?.bypass_2fa
+      || bootstrapControls.token_revoked !== true
+      || bootstrapControls.environment_secret_removed !== true
+      || bootstrapControls.trusted_publisher_configured !== true
+      || !validDate(bootstrapControls.token_created_at)
+      || !validDate(bootstrapControls.token_revoked_at)
+      || !validDate(bootstrapControls.environment_secret_removed_at)
+      || !validDate(bootstrapControls.trusted_publisher_configured_at)
+      || !validDate(bootstrapControls.verified_at)
+      || tokenCreatedAt > initialPublicationObservedAt
+      || initialPublicationObservedAt > tokenRevokedAt
       || tokenRevokedAt - tokenCreatedAt > maximumTokenLifetime
       || environmentSecretRemovedAt < tokenRevokedAt
-      || trustedPublisherConfiguredAt < publicationObservedAt
-      || controlsVerifiedAt < Math.max(tokenRevokedAt, environmentSecretRemovedAt, trustedPublisherConfiguredAt)
+      || trustedPublisherConfiguredAt < tokenRevokedAt
+      || controlsVerifiedAt < Math.max(
+        tokenRevokedAt,
+        environmentSecretRemovedAt,
+        trustedPublisherConfiguredAt,
+        initialPublicationDownloadedAt
+      )
       || controlsVerifiedAt > now.getTime()
-      || !present(postPublication.verified_by)
+      || !present(bootstrapControls.verified_by)
       || implementationAliasSets.some((identity) => aliasesOverlap(verifierAliases, identity))
       || controlReferences.some((reference) => !validEvidenceReference(reference))
       || new Set(controlReferences.map(normalizeReference)).size !== controlReferences.length
       || controlDigests.some((value) => !SHA256_RE.test(value ?? ""))
       || new Set(controlDigests).size !== controlDigests.length) {
-    blockers.push("npm post-publication controls do not independently evidence timely token revocation, environment-secret removal, and subsequent GitHub OIDC trusted-publisher configuration.");
-  } else {
-    gatingTimestamps.push(controlsVerifiedAt);
+    blockers.push("Historical npm bootstrap controls do not independently evidence timely token revocation, environment-secret removal, and subsequent GitHub OIDC trusted-publisher configuration.");
   }
 
   const owners = evidence.owners ?? {};

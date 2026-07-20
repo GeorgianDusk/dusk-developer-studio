@@ -15,11 +15,11 @@
     },
     {
       "path": "data/dusk/resources.json",
-      "sha256": "f61c1e04855aaeb80f5c9e84c08236a6c51bebf5455578a81503072fcd29baeb"
+      "sha256": "204dcb3707aa993ca8b2a6ce8f14435c1d11443171271b59508b38df07eed34d"
     },
     {
       "path": "data/dusk/troubleshooting.json",
-      "sha256": "b426708f41b1f86233ce67d8b0f2cc2a716d162f6e7d5359c33928379e582056"
+      "sha256": "99ea0346efa6c4af633a39105185ddf316182810cd1766f933f135d8d9e2a1f5"
     }
   ],
   "sources": [
@@ -70,6 +70,7 @@
       "explorer.testnet.evm.dusk.network",
       "github.com",
       "jsr.io",
+      "learn.microsoft.com",
       "rpc.devnet.evm.dusk.network",
       "rpc.evm.dusk.network",
       "rpc.testnet.evm.dusk.network",
@@ -80,8 +81,8 @@
     "record_counts": {
       "capabilities": 22,
       "networks": 3,
-      "resources": 49,
-      "troubleshooting": 43
+      "resources": 51,
+      "troubleshooting": 44
     }
   }
 }

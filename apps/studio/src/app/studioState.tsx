@@ -17,9 +17,9 @@ import {
   type RecordEvidenceOptions,
   type StepRoute
 } from "./journeyProgress";
-import { isCompanionHealth, isPairingResult } from "./responseSchemas";
+import { isCompanionHealth, isPairingResult, type CompanionHealth } from "./responseSchemas";
 import { hasLocalReleaseParity, type StudioRuntime } from "./runtime";
-import { requestJson, safeRequestMessage } from "./safeRequest";
+import { requestJson, safeRequestMessage, SafeRequestError } from "./safeRequest";
 import { localAgentUrl, studioRuntime } from "./studioConfig";
 import type { CompanionStatus, RouteId } from "./types";
 
@@ -88,6 +88,28 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
       ? "Local companion has not been checked."
       : "Hosted preview is read-only. Run the local companion for preflights or starter files."
   });
+  const readHealth = useCallback(async (): Promise<CompanionHealth> => {
+    if (!companionBaseUrl) throw new SafeRequestError("unavailable", "The local companion is unavailable.", true);
+    return requestJson(companionBaseUrl + "/health", {
+      init: { credentials: "include" }, timeoutMs: 1_200, validate: isCompanionHealth
+    });
+  }, [companionBaseUrl]);
+  const applyHealth = useCallback((data: CompanionHealth) => {
+    if (runtime.channel === "npm" && !hasLocalReleaseParity(release, data.release)) {
+      setStatus({
+        state: "mismatch",
+        message: "Local actions are blocked because the Studio and local runtime release identities do not match.",
+        release: data.release
+      });
+      return;
+    }
+    setStatus({
+      state: "available",
+      message: data.capabilitiesEnabled ? "Paired. Local capabilities are enabled." : "Paired. Local capabilities are disabled until explicitly enabled.",
+      capabilitiesEnabled: data.capabilitiesEnabled,
+      release: data.release
+    });
+  }, [release, runtime.channel]);
   const refresh = useCallback(async () => {
     if (!runtime.companionAvailable || !companionBaseUrl) {
       setStatus({ state: "unavailable", message: "Open the Studio locally to check the companion. The hosted site never runs machine actions." });
@@ -95,46 +117,51 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
     }
     setStatus({ state: "checking", message: "Checking local companion..." });
     try {
-      const data = await requestJson(companionBaseUrl + "/health", {
-        init: { credentials: "include" }, timeoutMs: 1_200, validate: isCompanionHealth
-      });
-      if (runtime.channel === "npm" && !hasLocalReleaseParity(release, data.release)) {
-        setStatus({
-          state: "mismatch",
-          message: "Local actions are blocked because the Studio and local runtime release identities do not match.",
-          release: data.release
-        });
-        return;
-      }
-      setStatus({
-        state: "available",
-        message: data.capabilitiesEnabled ? "Paired. Local capabilities are enabled." : "Paired. Local capabilities are disabled until explicitly enabled.",
-        capabilitiesEnabled: data.capabilitiesEnabled,
-        release: data.release
-      });
+      applyHealth(await readHealth());
     } catch (error) {
       setStatus({ state: "unavailable", message: safeRequestMessage(error) });
     }
-  }, [companionBaseUrl, release, runtime.channel, runtime.companionAvailable]);
+  }, [applyHealth, companionBaseUrl, readHealth, runtime.companionAvailable]);
   useEffect(() => {
     if (runtime.channel !== "npm" || !runtime.companionAvailable || !companionBaseUrl || localBootstrapStarted.current) return;
     localBootstrapStarted.current = true;
     const bootstrap = async () => {
       setStatus({ state: "checking", message: "Starting the local session..." });
       try {
+        try {
+          applyHealth(await readHealth());
+          return;
+        } catch (error) {
+          if (!(error instanceof SafeRequestError) || error.status !== 401) {
+            setStatus({ state: "unavailable", message: safeRequestMessage(error) });
+            return;
+          }
+        }
         await requestJson(window.location.origin + "/__dusk/bootstrap", {
           init: { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}" },
-          timeoutMs: 2_500,
+          timeoutMs: 6_500,
           maxBytes: 4 * 1024,
           validate: isPairingResult
         });
         await refresh();
       } catch (error) {
+        if (error instanceof SafeRequestError && (error.status === 409 || error.status === 410)) {
+          try {
+            applyHealth(await readHealth());
+            return;
+          } catch {
+            setStatus({
+              state: "unavailable",
+              message: "This Local Studio launch has expired. Close this page and run the npm command again to start a new local session."
+            });
+            return;
+          }
+        }
         setStatus({ state: "unavailable", message: safeRequestMessage(error) });
       }
     };
     void bootstrap();
-  }, [companionBaseUrl, refresh, runtime.channel, runtime.companionAvailable]);
+  }, [applyHealth, companionBaseUrl, readHealth, refresh, runtime.channel, runtime.companionAvailable]);
   return [status, refresh];
 }
 

@@ -48,6 +48,7 @@ describe("npm local static server", () => {
     expect(page.status).toBe(200);
     expect(page.headers["content-security-policy"]).toContain(`http://127.0.0.1:${companionPort}`);
     expect(page.headers["content-security-policy"]).toContain(`http://localhost:${companionPort}`);
+    expect(page.headers["content-security-policy"]).toContain("https://testnet.nodes.dusk.network");
     expect(page.headers["cache-control"]).toBe("no-store");
     const denied = await request(port, { method: "POST", path: "/__dusk/bootstrap", origin: "https://attacker.example", contentType: "application/json" });
     expect(denied.status).toBe(403); expect(observedToken).toBe("");

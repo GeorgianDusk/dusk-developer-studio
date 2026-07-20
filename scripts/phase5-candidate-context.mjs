@@ -9,7 +9,8 @@ export const PHASE5_EVALUATOR_PATHS = Object.freeze([
   "scripts/check-phase5-evidence.mjs",
   "scripts/phase5-candidate-context.mjs",
   "scripts/phase5-evidence.mjs",
-  "scripts/github-actions-provenance.mjs"
+  "scripts/github-actions-provenance.mjs",
+  "docs/evidence/npm-initial-publication-receipt-29686128164.json"
 ]);
 
 function sha256(bytes) {
