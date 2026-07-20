@@ -1,5 +1,5 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "candidate": {
     "artifact_fingerprint_sha256": "replace-with-64-character-digest",
     "public_fingerprint_sha256": "replace-with-64-character-digest",
@@ -17,44 +17,56 @@
   },
   "owners": {
     "product": "George",
-    "engineering": "pending",
-    "protocol_docs": "pending",
-    "security": "pending",
-    "platform": "pending",
-    "brand": "pending",
-    "accessibility": "pending",
-    "devrel_support": "pending"
+    "engineering": "George",
+    "protocol_docs": "George",
+    "security": "George",
+    "platform": "George",
+    "brand": "George",
+    "accessibility": "George",
+    "devrel_support": "George"
   },
   "reviews": {
     "companion_security": {
       "status": "pending",
-      "reviewer": "pending",
+      "reviewer_identity": "pending",
+      "reviewer_type": "codex-subagent",
+      "separate_agent": true,
+      "external_independent": false,
       "reviewed_at": "pending",
-      "independent": false,
       "evidence_reference": "pending",
       "candidate_commit": "pending",
       "candidate_artifact_fingerprint_sha256": "pending"
     },
     "platform": {
       "status": "pending",
-      "reviewer": "pending",
+      "reviewer_identity": "pending",
+      "reviewer_type": "codex-subagent",
+      "separate_agent": true,
+      "external_independent": false,
       "reviewed_at": "pending",
-      "independent": false,
       "evidence_reference": "pending",
       "candidate_commit": "pending",
       "candidate_artifact_fingerprint_sha256": "pending"
     },
     "accessibility": {
       "status": "pending",
-      "reviewer": "pending",
+      "reviewer_identity": "pending",
+      "reviewer_type": "codex-subagent",
+      "separate_agent": true,
+      "external_independent": false,
       "reviewed_at": "pending",
-      "independent": false,
       "evidence_reference": "pending",
       "candidate_commit": "pending",
       "candidate_artifact_fingerprint_sha256": "pending"
     }
   },
   "pilot": {
+    "evidence_class": "agent-operated-simulations",
+    "operator_type": "codex-agent",
+    "operator_identity": "Codex",
+    "confidence_score_semantics": "heuristic-agent-confidence-not-human-trust",
+    "receipt_assurance": "operator-attested-hash-bound-not-independent-execution-proof",
+    "fixed_limitation": "Agent-operated Codex simulations provide reproducible flow coverage but do not prove external-human comprehension, usability, confidence, or adoption; receipt hashes bind operator-attested evidence bytes but do not independently prove execution, Linux and macOS additionally require GitHub Actions run and artifact provenance, and Windows and WSL remain operator-attested machine-collected evidence rather than independent validation.",
     "sessions": []
   },
   "live_smoke": {
@@ -311,10 +323,10 @@
   },
   "issues": [],
   "support": {
-    "on_call_owner": "pending",
+    "on_call_owner": "George",
     "support_channel_confirmed": true,
-    "launch_message_owner": "pending",
-    "incident_message_owner": "pending"
+    "launch_message_owner": "George",
+    "incident_message_owner": "George"
   },
   "product_signoff": {
     "decision": "pending",

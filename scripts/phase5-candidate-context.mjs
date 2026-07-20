@@ -7,6 +7,9 @@ const SHA256_RE = /^[a-f0-9]{64}$/;
 export const PHASE5_EVALUATOR_PATHS = Object.freeze([
   "config/phase5-policy.json",
   "scripts/check-phase5-evidence.mjs",
+  "scripts/agent-pilot-collector.mjs",
+  "scripts/agent-pilot-plan.mjs",
+  "scripts/assemble-agent-pilot-evidence.mjs",
   "scripts/phase5-candidate-context.mjs",
   "scripts/phase5-evidence.mjs",
   "scripts/github-actions-provenance.mjs",

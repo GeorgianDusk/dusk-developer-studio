@@ -539,10 +539,17 @@ assert.match(watchdogWorkflow, /ref: \$\{\{ github\.sha \}\}[\s\S]*git rev-parse
 const phase5Policy = JSON.parse(read("config/phase5-policy.json"));
 const phase5Checker = read("scripts/check-phase5-evidence.mjs");
 const phase5CandidateContext = read("scripts/phase5-candidate-context.mjs");
+const phase5Evaluator = read("scripts/phase5-evidence.mjs");
 const phase5ProvenanceVerifier = read("scripts/github-actions-provenance.mjs");
+const agentPilotCollector = read("scripts/agent-pilot-collector.mjs");
+const agentPilotPlan = read("scripts/agent-pilot-plan.mjs");
+const agentPilotAssembler = read("scripts/assemble-agent-pilot-evidence.mjs");
 assert.match(phase5Checker, /GH_TOKEN[\s\S]*GITHUB_TOKEN[\s\S]*evaluatePhase5EvidenceOnline/);
 assert.match(phase5Checker, /verifyCandidateBoundPhase5Context[\s\S]*policyBytes[\s\S]*candidateContext/);
 assert.match(phase5CandidateContext, /rev-parse[\s\S]*status[\s\S]*--untracked-files=no[\s\S]*cat-file/);
+assert.match(phase5CandidateContext, /scripts\/agent-pilot-collector\.mjs/);
+assert.match(phase5CandidateContext, /scripts\/agent-pilot-plan\.mjs/);
+assert.match(phase5CandidateContext, /scripts\/assemble-agent-pilot-evidence\.mjs/);
 assert.match(phase5CandidateContext, /docs\/evidence\/npm-initial-publication-receipt-29686128164\.json/);
 assert.match(phase5ProvenanceVerifier, /run_attempt !== 1/);
 assert.match(phase5ProvenanceVerifier, /redirect: "manual"[\s\S]*redirect: "error"/);
@@ -553,6 +560,20 @@ assert.match(phase5ProvenanceVerifier, /npm-registry-slsa-fallback[\s\S]*cryptog
 assert.match(phase5ProvenanceVerifier, /"audit",[\s\S]*"signatures"/);
 assert.match(phase5ProvenanceVerifier, /label: "npm initial publication"[\s\S]*historicalInitialPublication: true/);
 assert.match(read("package.json"), /scripts\/test-github-actions-provenance\.mjs/);
+assert.match(read("package.json"), /scripts\/test-agent-pilot-collector\.mjs/);
+assert.match(read("package.json"), /scripts\/test-agent-pilot-plan\.mjs/);
+assert.match(read("package.json"), /scripts\/test-agent-pilot-evidence-assembler\.mjs/);
+assert.match(agentPilotCollector, /operator-attested-machine-collected/);
+assert.match(agentPilotCollector, /canonicalSha256\(result\.receipt\.plan\)/);
+assert.match(agentPilotPlan, /win-keyboard-recovery/);
+assert.match(agentPilotCollector, /operator-attested-machine-collected/);
+assert.match(agentPilotCollector, /independent_execution: false/);
+assert.match(agentPilotCollector, /raw_observation_bundle_sha256/);
+assert.match(agentPilotCollector, /github_actions_provenance_input/);
+assert.match(agentPilotAssembler, /verifyAgentPilotResult\(wrapper\)/);
+assert.match(agentPilotAssembler, /downloadGitHubActionsReceipt/);
+assert.match(agentPilotAssembler, /envelope\.ref !== "refs\/heads\/main"/);
+assert.match(agentPilotAssembler, /flag: "wx"/);
 assert.deepEqual(phase5Policy.production_paths, ["duskds"]);
 assert.deepEqual(phase5Policy.preview_paths, ["evm"]);
 assert.deepEqual(phase5Policy.candidate_hosts, [
@@ -566,14 +587,98 @@ assert.deepEqual(phase5Policy.required_owners, [
   "product", "engineering", "protocol_docs", "security", "platform", "brand", "accessibility", "devrel_support"
 ]);
 assert.deepEqual(phase5Policy.required_reviews, ["companion_security", "platform", "accessibility"]);
+assert.deepEqual(phase5Policy.responsibility_model, {
+  mode: "single-human-owner-with-codex-agent-execution",
+  human_owner: "George",
+  agent_operator: "Codex",
+  role_reuse_allowed: true,
+  review_model: "separate-codex-subagent-challenge-reviews",
+  reviewer_type: "codex-subagent",
+  external_independent_review: false,
+  fixed_limitation: "Owner fields identify accountability to George rather than distinct people; separate Codex subagent challenge reviews are not external independent human or security audits."
+});
 assert.deepEqual(phase5Policy.pilot, {
+  evidence_class: "agent-operated-simulations",
+  operator_type: "codex-agent",
+  operator_identity: "Codex",
+  confidence_score_semantics: "heuristic-agent-confidence-not-human-trust",
+  receipt_assurance: "operator-attested-hash-bound-not-independent-execution-proof",
+  fixed_limitation: "Agent-operated Codex simulations provide reproducible flow coverage but do not prove external-human comprehension, usability, confidence, or adoption; receipt hashes bind operator-attested evidence bytes but do not independently prove execution, Linux and macOS additionally require GitHub Actions run and artifact provenance, and Windows and WSL remain operator-attested machine-collected evidence rather than independent validation.",
   minimum_total: 8,
   minimum_duskds: 8,
+  required_scenarios: [
+    {
+      id: "win-safe-boundary",
+      context: "windows",
+      experience: "novice",
+      capability: "mode-boundary",
+      execution_surface: "local-safe-to-local-actions",
+      failure_class: "safe-mode-machine-action-refusal"
+    },
+    {
+      id: "win-keyboard-recovery",
+      context: "windows",
+      experience: "novice",
+      capability: "keyboard-accessibility",
+      execution_surface: "local-browser",
+      failure_class: "empty-search-result"
+    },
+    {
+      id: "win-containment-recovery",
+      context: "windows",
+      experience: "experienced",
+      capability: "path-containment",
+      execution_surface: "local-actions",
+      failure_class: "outside-root-parent-refusal"
+    },
+    {
+      id: "win-overwrite-refusal",
+      context: "windows",
+      experience: "experienced",
+      capability: "overwrite-protection",
+      execution_surface: "direct-cli",
+      failure_class: "existing-target-refusal"
+    },
+    {
+      id: "wsl-managed-root-recovery",
+      context: "wsl",
+      experience: "novice",
+      capability: "managed-root-safety",
+      execution_surface: "local-actions-wsl",
+      failure_class: "unsafe-managed-root-refusal"
+    },
+    {
+      id: "wsl-native-toolchain-recovery",
+      context: "wsl",
+      experience: "experienced",
+      capability: "native-toolchain",
+      execution_surface: "native-duskds-wsl",
+      failure_class: "toolchain-mismatch"
+    },
+    {
+      id: "linux-port-conflict-recovery",
+      context: "linux",
+      experience: "experienced",
+      capability: "loopback-port-safety",
+      execution_surface: "local-runtime-linux",
+      failure_class: "loopback-port-conflict"
+    },
+    {
+      id: "macos-privilege-recovery",
+      context: "macos",
+      experience: "experienced",
+      capability: "privilege-boundary",
+      execution_surface: "local-runtime-macos",
+      failure_class: "elevated-execution-refusal"
+    }
+  ],
   required_experience: ["novice", "experienced"],
   required_contexts: ["windows", "wsl", "linux", "macos"],
-  minimum_completion_rate: 0.83,
-  minimum_recovery_rate: 0.8,
-  minimum_average_trust_score: 4,
+  local_operator_attested_contexts: ["windows", "wsl"],
+  github_actions_provenance_contexts: ["linux", "macos"],
+  required_observation_kinds: ["command", "file-probe", "hash-probe"],
+  minimum_completion_rate: 1,
+  minimum_recovery_rate: 1,
   maximum_blocking_confusion: 0
 });
 assert.deepEqual(phase5Policy.required_synthetic_checks, [
@@ -651,8 +756,32 @@ assert.equal(phase5Policy.monitoring_evidence.accepted_risk.owner, "George");
 assert.equal(phase5Policy.monitoring_evidence.accepted_risk.authority_reference, "docs/operations/public-monitoring.md");
 assert.ok(phase5Policy.monitoring_evidence.accepted_risk.revisit_triggers.length >= 2);
 const phase5Template = JSON.parse(read("config/phase5-evidence.template.json"));
-assert.equal(phase5Template.schema_version, 8);
+assert.equal(phase5Template.schema_version, 9);
 assert.equal(Object.hasOwn(phase5Template, "companion_distribution"), false);
+assert.equal(phase5Template.pilot.evidence_class, phase5Policy.pilot.evidence_class);
+assert.equal(phase5Template.pilot.operator_type, phase5Policy.pilot.operator_type);
+assert.equal(phase5Template.pilot.operator_identity, phase5Policy.pilot.operator_identity);
+assert.equal(
+  phase5Template.pilot.confidence_score_semantics,
+  phase5Policy.pilot.confidence_score_semantics
+);
+assert.equal(phase5Template.pilot.fixed_limitation, phase5Policy.pilot.fixed_limitation);
+assert.match(phase5Template.pilot.fixed_limitation, /do not prove external-human comprehension[\s\S]*adoption/iu);
+assert.equal(phase5Template.pilot.receipt_assurance, phase5Policy.pilot.receipt_assurance);
+assert.match(phase5Template.pilot.fixed_limitation, /do not independently prove execution/iu);
+assert.equal(phase5Template.support.on_call_owner, phase5Policy.responsibility_model.human_owner);
+assert.equal(phase5Template.support.launch_message_owner, phase5Policy.responsibility_model.human_owner);
+assert.equal(phase5Template.support.incident_message_owner, phase5Policy.responsibility_model.human_owner);
+assert.match(phase5Evaluator, /schema_version !== 9/);
+assert.match(phase5Evaluator, /agent_operated_simulations/);
+assert.match(phase5Evaluator, /human_attestations: \["product_signoff"\]/);
+assert.match(phase5Evaluator, /agent_attestations: \["separate_agent_challenge_reviews", "support_assignments", "rollback_execution"\]/);
+assert.doesNotMatch(phase5Evaluator, /trusted_human_attestations:/);
+assert.match(phase5Evaluator, /parseBoundReceipt\([\s\S]*Pilot session/);
+assert.match(phase5Evaluator, /package_inventory_sha256/);
+assert.match(phase5Evaluator, /environment_identity/);
+assert.match(phase5Evaluator, /raw_observation_bundle_sha256/);
+assert.match(phase5Evaluator, /operator-attested-machine-collected/);
 assert.equal(phase5Template.npm_distribution.package_name, phase5Policy.npm_distribution.package_name);
 assert.equal(phase5Template.npm_distribution.package_version, phase5Policy.npm_distribution.package_version);
 assert.equal(phase5Template.npm_distribution.node_engine, phase5Policy.npm_distribution.node_engine);
@@ -775,7 +904,10 @@ assert.ok(Object.hasOwn(phase5Template.synthetics.alert_delivery, "provenance"))
 assert.ok(Object.hasOwn(phase5Template.synthetics.checks.monitor_heartbeat, "receipt_json"));
 assert.ok(Object.hasOwn(phase5Template.synthetics.checks.monitor_heartbeat, "provenance"));
 for (const reviewName of phase5Policy.required_reviews) {
-  assert.equal(phase5Template.reviews[reviewName].independent, false);
+  assert.equal(phase5Template.reviews[reviewName].reviewer_type, phase5Policy.responsibility_model.reviewer_type);
+  assert.equal(phase5Template.reviews[reviewName].separate_agent, true);
+  assert.equal(phase5Template.reviews[reviewName].external_independent, false);
+  assert.ok(Object.hasOwn(phase5Template.reviews[reviewName], "reviewer_identity"));
   assert.ok(Object.hasOwn(phase5Template.reviews[reviewName], "candidate_commit"));
   assert.ok(Object.hasOwn(phase5Template.reviews[reviewName], "candidate_artifact_fingerprint_sha256"));
 }

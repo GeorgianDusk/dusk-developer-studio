@@ -1,6 +1,11 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { URL } from "node:url";
+import {
+  buildCanonicalAgentPilotPlan,
+  canonicalJson,
+  canonicalSha256
+} from "./agent-pilot-collector.mjs";
 import { verifyPhase5GitHubProvenance } from "./github-actions-provenance.mjs";
 
 const SHA256_RE = /^[a-f0-9]{64}$/;
@@ -12,9 +17,22 @@ const PSEUDONYMOUS_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const NPM_USERNAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const UNASSIGNED_RE = /^(?:tbd|todo|unknown|unassigned|pending)$/i;
 const SECRET_KEY_RE = /(?:private[_-]?key|mnemonic|seed(?:er|phrase)?|recovery[_-]?phrase|profile[_-]?entropy|wallet[_-]?password|pairing[_-]?token|api[_-]?key|access[_-]?token|client[_-]?secret)/i;
+const AUTH_SECRET_KEY_RE = /^(?:authorization|cookie|set[_-]?cookie|session[_-]?token|refresh[_-]?token)$/i;
 const SECRET_VALUE_RE = /(?:mnemonic|seed phrase|recovery phrase|private key|wallet password|pairing token|api key|client secret|access token)(?:\s*(?::|=|\bis\b)\s*|\s+)\S+/i;
-const GITHUB_TOKEN_RE = /\bgh[pousr]_[A-Za-z0-9_]{10,}\b/;
-const URL_TOKEN_RE = /(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s<>"']+/gi;
+const SECRET_TOKEN_RE = /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,}|npm_[A-Za-z0-9]{20,})\b/;
+const AUTH_HEADER_RE = /\b(?:authorization|cookie|set-cookie)\s*:\s*\S+/i;
+const BEARER_TOKEN_RE = /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/i;
+const SESSION_VALUE_RE = /\b(?:session[_-]?token|refresh[_-]?token)\s*(?::|=)\s*\S+/i;
+const URL_TOKEN_RE = /[a-z][a-z0-9+.-]{0,31}:\/\/[^\s<>"']{1,2048}/gi;
+const PROTOCOL_RELATIVE_URL_RE = /(?:^|[\s([{])\/\/[^\s<>"'\])}]{1,2048}/gi;
+const EMPTY_SHA256 = createHash("sha256").update(Buffer.alloc(0)).digest("hex");
+const PILOT_SAFE_COMMANDS = new Set(["node", "cargo", "rustc", "git", "make"]);
+const PILOT_SAFE_ROLES = new Set([
+  "setup", "controlled-failure", "recovery", "verification", "final-verification"
+]);
+const PILOT_SAFE_KINDS = new Set(["command", "file-probe", "hash-probe"]);
+const PILOT_SAFE_ARCHES = new Set(["x64", "arm64"]);
+const MAX_PILOT_PROBE_BYTES = 64 * 1024 * 1024;
 const NATIVE_SMOKE_WORKFLOW = ".github/workflows/duskds-native-smoke.yml";
 const PUBLIC_ASSURANCE_WORKFLOW = ".github/workflows/studio-public-staging.yml";
 const NPM_ASSURANCE_WORKFLOW = ".github/workflows/studio-npm-package-assurance.yml";
@@ -26,6 +44,10 @@ const OIDC_NPM_PUBLICATION_ENVIRONMENT = "npm-trusted-publication";
 const EXTERNAL_SYNTHETIC_CHECKS = new Set(["external_dead_man", "external_direct_health"]);
 const CLOSED_PORT_OBSERVATIONS = new Set(["filtered-or-closed", "econnrefused", "etimedout", "ehostunreach", "enetunreach"]);
 const MAX_RECEIPT_BYTES = 512_000;
+export const MAX_PHASE5_EVIDENCE_BYTES = 4_000_000;
+const MAX_EVIDENCE_DEPTH = 32;
+const MAX_EVIDENCE_NODES = 50_000;
+const MAX_COLLECTION_ITEMS = 10_000;
 const EXCEPTION_FIELDS = ["owner", "rationale", "compensating_control", "residual_risk", "monitoring", "expiry", "revalidation_trigger", "accepted_by", "accepted_at"];
 
 function present(value) {
@@ -108,12 +130,16 @@ function expectedDirectHealthTarget(value, manifestUrl) {
 
 function checkForSecretMaterial(value, path = "evidence", findings = []) {
   if (typeof value === "string") {
-    if (SECRET_VALUE_RE.test(value) || GITHUB_TOKEN_RE.test(value)) findings.push(path);
+    if (Buffer.byteLength(value, "utf8") > MAX_RECEIPT_BYTES) {
+      findings.push(path);
+      return findings;
+    }
+    if (SECRET_VALUE_RE.test(value)
+        || SECRET_TOKEN_RE.test(value)
+        || AUTH_HEADER_RE.test(value)
+        || BEARER_TOKEN_RE.test(value)
+        || SESSION_VALUE_RE.test(value)) findings.push(path);
     for (const [matched] of value.matchAll(URL_TOKEN_RE)) {
-      if (matched.startsWith("//")) {
-        findings.push(path);
-        continue;
-      }
       try {
         const url = new URL(matched);
         if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash) findings.push(path);
@@ -121,12 +147,59 @@ function checkForSecretMaterial(value, path = "evidence", findings = []) {
         findings.push(path);
       }
     }
+    if (PROTOCOL_RELATIVE_URL_RE.test(value)) findings.push(path);
+    PROTOCOL_RELATIVE_URL_RE.lastIndex = 0;
   }
   else if (Array.isArray(value)) value.forEach((item, index) => checkForSecretMaterial(item, `${path}[${index}]`, findings));
   else if (value && typeof value === "object") {
     for (const [key, item] of Object.entries(value)) {
-      if (SECRET_KEY_RE.test(key)) findings.push(`${path}.${key}`);
+      if (SECRET_KEY_RE.test(key) || AUTH_SECRET_KEY_RE.test(key)) findings.push(`${path}.${key}`);
       checkForSecretMaterial(item, `${path}.${key}`, findings);
+    }
+  }
+  return findings;
+}
+
+function inspectEvidenceShape(value) {
+  const findings = [];
+  const seen = new WeakSet();
+  const stack = [{ value, depth: 0 }];
+  let nodes = 0;
+
+  while (stack.length) {
+    const current = stack.pop();
+    nodes += 1;
+    if (nodes > MAX_EVIDENCE_NODES) {
+      findings.push(`more than ${MAX_EVIDENCE_NODES} values`);
+      break;
+    }
+    if (current.depth > MAX_EVIDENCE_DEPTH) {
+      findings.push(`nesting deeper than ${MAX_EVIDENCE_DEPTH}`);
+      break;
+    }
+    if (!current.value || typeof current.value !== "object") continue;
+    if (seen.has(current.value)) {
+      findings.push("a cyclic object");
+      break;
+    }
+    seen.add(current.value);
+    const entries = Array.isArray(current.value)
+      ? current.value.map((item, index) => [index, item])
+      : Object.entries(current.value);
+    if (entries.length > MAX_COLLECTION_ITEMS) {
+      findings.push(`a collection with more than ${MAX_COLLECTION_ITEMS} items`);
+      break;
+    }
+    for (const [, item] of entries) stack.push({ value: item, depth: current.depth + 1 });
+  }
+
+  if (!findings.length) {
+    try {
+      if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_PHASE5_EVIDENCE_BYTES) {
+        findings.push(`more than ${MAX_PHASE5_EVIDENCE_BYTES} serialized bytes`);
+      }
+    } catch {
+      findings.push("a value that cannot be serialized as JSON");
     }
   }
   return findings;
@@ -217,8 +290,210 @@ function validEvidenceReference(value) {
   return segments.every((segment) => segment && segment !== "." && segment !== "..");
 }
 
+function validPilotRelativePath(value) {
+  if (typeof value !== "string"
+      || value.length === 0
+      || value.length > 512
+      || value.includes("\\")
+      || value.startsWith("/")
+      || /^(?:[a-z]:|~(?:\/|$))/iu.test(value)
+      || [...value].some((character) => {
+        const codePoint = character.codePointAt(0);
+        return codePoint <= 0x1f || codePoint === 0x7f;
+      })) return false;
+  const segments = value.split("/");
+  return segments.every((segment) => segment && segment !== "." && segment !== "..");
+}
+
+function validPilotArgument(value) {
+  return typeof value === "string"
+    && value.length <= 2_048
+    && !/[\0\r\n]/u.test(value)
+    && !/^(?:[a-z]:[\\/]|\\\\|\/(?:Users|home|root|tmp|var|etc|opt|private)(?:\/|$)|~[\\/])/iu.test(value);
+}
+
+function pilotEnvironmentIdentity(environment) {
+  try {
+    const identityInputs = {
+      context: environment.context,
+      platform: environment.platform,
+      os_version: environment.os_version,
+      os_release: environment.os_release,
+      arch: environment.arch,
+      node_version: environment.node_version,
+      privilege: environment.privilege
+    };
+    return `env-${canonicalSha256(identityInputs).slice(0, 24)}`;
+  } catch {
+    return "";
+  }
+}
+
+function checkPilotEnvironment(blockers, label, environment, context) {
+  const privilege = environment?.privilege ?? {};
+  const expectedPlatform = { windows: "win32", wsl: "linux", linux: "linux", macos: "darwin" }[context];
+  const windowsTuple = context === "windows"
+    && environment?.platform === "win32"
+    && privilege.level === "standard"
+    && privilege.mechanism === "windows-integrity-level"
+    && privilege.uid === null;
+  const posixTuple = ["wsl", "linux", "macos"].includes(context)
+    && environment?.platform === expectedPlatform
+    && privilege.level === "standard"
+    && privilege.mechanism === "posix-euid"
+    && Number.isSafeInteger(privilege.uid)
+    && privilege.uid > 0;
+  const wslIdentity = context !== "wsl"
+    || /(?:microsoft|wsl)/iu.test(`${environment?.os_version ?? ""} ${environment?.os_release ?? ""}`);
+  const valid = environment?.context === context
+    && environment?.platform === expectedPlatform
+    && present(environment?.os_version)
+    && present(environment?.os_release)
+    && PILOT_SAFE_ARCHES.has(environment?.arch)
+    && environment?.node_version === "v24.18.0"
+    && (windowsTuple || posixTuple)
+    && wslIdentity
+    && environment?.environment_identity === pilotEnvironmentIdentity(environment);
+  if (!valid) {
+    blockers.push(`${label} is not a coherent standard-privilege Windows, WSL, Linux, or macOS tuple with a recomputed environment identity.`);
+  }
+  return valid;
+}
+
+function checkPilotPlan(
+  blockers,
+  label,
+  plan,
+  session,
+  scenario,
+  receiptCandidate,
+  distribution,
+  candidate,
+  policy
+) {
+  let valid = exactKeys(blockers, label, plan, [
+    "schema_version", "scenario_id", "path", "agent_confidence_score", "blocking_confusion",
+    "candidate", "steps", "final_verification_step_id"
+  ]);
+  const planCandidate = plan?.candidate;
+  valid = exactKeys(blockers, `${label} candidate`, planCandidate, [
+    "package_name", "package_version", "package_commit", "tarball_sha256", "npm_integrity",
+    "package_inventory_sha256", "candidate_artifact_fingerprint_sha256"
+  ]) && valid;
+  if (plan?.schema_version !== 1
+      || plan?.scenario_id !== scenario?.id
+      || plan?.path !== "duskds"
+      || plan?.agent_confidence_score !== session?.agent_confidence_score
+      || plan?.blocking_confusion !== session?.blocking_confusion
+      || planCandidate?.package_name !== distribution?.package_name
+      || planCandidate?.package_version !== distribution?.package_version
+      || planCandidate?.package_commit !== candidate?.commit
+      || planCandidate?.tarball_sha256 !== receiptCandidate?.tarball_sha256
+      || planCandidate?.npm_integrity !== receiptCandidate?.npm_integrity
+      || planCandidate?.package_inventory_sha256 !== receiptCandidate?.package_inventory_sha256
+      || planCandidate?.candidate_artifact_fingerprint_sha256 !== candidate?.artifact_fingerprint_sha256) valid = false;
+
+  const steps = Array.isArray(plan?.steps) ? plan.steps : [];
+  if (steps.length < 3 || steps.length > 64) valid = false;
+  const ids = steps.map((step) => step?.id);
+  if (new Set(ids).size !== steps.length || ids.some((id) => !PSEUDONYMOUS_ID_RE.test(id ?? ""))) valid = false;
+  for (const step of steps) {
+    if (!PILOT_SAFE_KINDS.has(step?.kind) || !PILOT_SAFE_ROLES.has(step?.role)) {
+      valid = false;
+      continue;
+    }
+    if (step.kind === "command") {
+      valid = exactKeys(blockers, `${label} command step ${step.id ?? "unknown"}`, step, [
+        "id", "kind", "role", "command", "args", "cwd", "expect", "timeout_ms", "max_output_bytes"
+      ]) && valid;
+      valid = exactKeys(blockers, `${label} command expectation ${step.id ?? "unknown"}`, step.expect, ["outcome"]) && valid;
+      if (!PILOT_SAFE_COMMANDS.has(step.command)
+          || !Array.isArray(step.args)
+          || step.args.length > 64
+          || step.args.some((argument) => !validPilotArgument(argument))
+          || (step.cwd !== "." && !validPilotRelativePath(step.cwd))
+          || !["success", "failure"].includes(step.expect?.outcome)
+          || !Number.isSafeInteger(step.timeout_ms)
+          || step.timeout_ms < 10
+          || step.timeout_ms > 900_000
+          || !Number.isSafeInteger(step.max_output_bytes)
+          || step.max_output_bytes < 0
+          || step.max_output_bytes > 1_048_576) valid = false;
+    } else if (step.kind === "file-probe") {
+      valid = exactKeys(blockers, `${label} file probe ${step.id ?? "unknown"}`, step, [
+        "id", "kind", "role", "path", "expect"
+      ]) && valid;
+      valid = exactKeys(blockers, `${label} file expectation ${step.id ?? "unknown"}`, step.expect, [
+        "exists", "type", "min_bytes", "max_bytes"
+      ]) && valid;
+      if (!validPilotRelativePath(step.path)
+          || step.expect?.exists !== true
+          || !["file", "directory"].includes(step.expect?.type)
+          || !Number.isSafeInteger(step.expect?.min_bytes)
+          || step.expect.min_bytes < 0
+          || !Number.isSafeInteger(step.expect?.max_bytes)
+          || step.expect.max_bytes < step.expect.min_bytes
+          || step.expect.max_bytes > MAX_PILOT_PROBE_BYTES) valid = false;
+    } else {
+      valid = exactKeys(blockers, `${label} hash probe ${step.id ?? "unknown"}`, step, [
+        "id", "kind", "role", "path", "algorithm", "expected_digest"
+      ]) && valid;
+      if (!validPilotRelativePath(step.path)
+          || step.algorithm !== "sha256"
+          || !SHA256_RE.test(step.expected_digest ?? "")) valid = false;
+    }
+  }
+  const controlled = steps.filter((step) => step?.role === "controlled-failure");
+  const recoveries = steps.filter((step) => step?.role === "recovery");
+  const finalIndex = steps.findIndex((step) => step?.id === plan?.final_verification_step_id);
+  const failureIndex = controlled.length === 1 ? steps.indexOf(controlled[0]) : -1;
+  const firstRecoveryIndex = recoveries.length ? Math.min(...recoveries.map((step) => steps.indexOf(step))) : -1;
+  if (controlled.length !== 1
+      || controlled[0]?.id !== scenario?.failure_class
+      || controlled[0]?.kind !== "command"
+      || controlled[0]?.expect?.outcome !== "failure"
+      || recoveries.length < 1
+      || recoveries.some((step) => step.kind === "command" && step.expect?.outcome !== "success")
+      || !steps.some((step) => step.kind === "file-probe")
+      || !steps.some((step) => step.kind === "hash-probe")
+      || finalIndex !== steps.length - 1
+      || steps[finalIndex]?.role !== "final-verification"
+      || (steps[finalIndex]?.kind === "command" && steps[finalIndex]?.expect?.outcome !== "success")
+      || failureIndex < 0
+      || firstRecoveryIndex <= failureIndex
+      || finalIndex <= firstRecoveryIndex) valid = false;
+  try {
+    const canonicalPlan = buildCanonicalAgentPilotPlan(
+      policy,
+      scenario?.id,
+      planCandidate
+    );
+    if (canonicalJson(plan) !== canonicalJson(canonicalPlan)) valid = false;
+  } catch {
+    valid = false;
+  }
+  if (!valid) blockers.push(`${label} does not exactly bind the reviewed scenario, candidate, bounded commands/probes, and failure-recovery order.`);
+  return steps;
+}
+
 function sha256(value) {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function canonicalJsonMatches(value, serialized) {
+  try {
+    return canonicalJson(value) === serialized;
+  } catch {
+    return false;
+  }
+}
+
+function canonicalDigestMatches(value, digest) {
+  try {
+    return SHA256_RE.test(digest ?? "") && canonicalSha256(value) === digest;
+  } catch {
+    return false;
+  }
 }
 
 function parseBoundReceipt(blockers, label, record) {
@@ -401,7 +676,7 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const now = options.now ?? new Date();
   const blockers = [];
   if (!policy || policy.schema_version !== 1) blockers.push("Phase 5 policy schema is unsupported.");
-  if (!evidence || evidence.schema_version !== 8) blockers.push("Phase 5 evidence schema is unsupported.");
+  if (!evidence || evidence.schema_version !== 9) blockers.push("Phase 5 evidence schema is unsupported.");
   if (blockers.length) return { decision: "no-go", blockers };
 
   const productionPaths = Array.isArray(policy.production_paths) ? policy.production_paths : [];
@@ -433,7 +708,11 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     "schema_version", "candidate", "owners", "reviews", "pilot", "live_smoke", "synthetics",
     "rollback", "issues", "support", "product_signoff", "npm_distribution"
   ]);
-  const secretMaterial = checkForSecretMaterial(evidence);
+  const evidenceShapeFindings = inspectEvidenceShape(evidence);
+  if (evidenceShapeFindings.length) {
+    blockers.push(`Evidence exceeds the reviewed size, depth, or collection boundary: ${evidenceShapeFindings.join(", ")}.`);
+  }
+  const secretMaterial = evidenceShapeFindings.length ? [] : checkForSecretMaterial(evidence);
   if (secretMaterial.length) blockers.push(`Evidence contains forbidden secret-shaped fields or values: ${secretMaterial.join(", ")}.`);
 
   const candidate = evidence.candidate ?? {};
@@ -859,70 +1138,172 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     blockers.push("Historical npm bootstrap controls do not independently evidence timely token revocation, environment-secret removal, and subsequent GitHub OIDC trusted-publisher configuration.");
   }
 
+  const responsibilityModel = policy.responsibility_model ?? {};
+  exactKeys(blockers, "Responsibility model policy", responsibilityModel, [
+    "mode", "human_owner", "agent_operator", "role_reuse_allowed", "review_model",
+    "reviewer_type", "external_independent_review", "fixed_limitation"
+  ]);
+  if (responsibilityModel.mode !== "single-human-owner-with-codex-agent-execution"
+      || responsibilityModel.human_owner !== "George"
+      || responsibilityModel.agent_operator !== "Codex"
+      || responsibilityModel.role_reuse_allowed !== true
+      || responsibilityModel.review_model !== "separate-codex-subagent-challenge-reviews"
+      || responsibilityModel.reviewer_type !== "codex-subagent"
+      || responsibilityModel.external_independent_review !== false
+      || !present(responsibilityModel.fixed_limitation)
+      || !/accountability to George[\s\S]*not external independent human or security audits/iu.test(
+        responsibilityModel.fixed_limitation
+      )) {
+    blockers.push("Responsibility policy does not preserve the reviewed George-plus-Codex operating model and non-external review limitation.");
+  }
+
   const owners = evidence.owners ?? {};
-  exactKeys(blockers, "Owner assignments", owners, policy.required_owners);
-  for (const owner of policy.required_owners) if (!present(owners[owner])) blockers.push(`Required owner ${owner} is unassigned.`);
-  const ownerAliasSets = Object.values(owners).filter(present).map(identityAliases);
-  if (aliasSetsOverlap(ownerAliasSets)) blockers.push("Owner assignments must use distinct people under normalized identity matching.");
+  exactKeys(blockers, "Responsible role assignments", owners, policy.required_owners);
+  for (const owner of policy.required_owners) {
+    if (owners[owner] !== responsibilityModel.human_owner) {
+      blockers.push(`Responsible role ${owner} is not assigned to the declared human owner.`);
+    }
+  }
   const disallowedReviewerAliases = [
-    ...ownerAliasSets,
+    identityAliases(responsibilityModel.human_owner),
     ...implementationAliasSets
   ];
 
   const reviews = evidence.reviews ?? {};
-  exactKeys(blockers, "Independent reviews", reviews, policy.required_reviews);
+  exactKeys(blockers, "Separate-agent challenge reviews", reviews, policy.required_reviews);
   const acceptedReviewerAliases = [];
   const reviewEvidenceReferences = [];
   for (const reviewName of policy.required_reviews) {
     const review = reviews[reviewName];
-    exactKeys(blockers, `Independent review ${reviewName}`, review, [
-      "status", "reviewer", "reviewed_at", "independent", "evidence_reference",
+    exactKeys(blockers, `Separate-agent challenge review ${reviewName}`, review, [
+      "status", "reviewer_identity", "reviewer_type", "separate_agent", "external_independent",
+      "reviewed_at", "evidence_reference",
       "candidate_commit", "candidate_artifact_fingerprint_sha256"
     ]);
-    if (!review || review.status !== "accepted" || !present(review.reviewer) || !validDate(review.reviewed_at)) {
-      blockers.push(`Independent review ${reviewName} is not accepted with reviewer/date evidence.`);
+    if (!review
+        || review.status !== "accepted"
+        || !present(review.reviewer_identity)
+        || review.reviewer_type !== responsibilityModel.reviewer_type
+        || review.separate_agent !== true
+        || review.external_independent !== responsibilityModel.external_independent_review
+        || !validDate(review.reviewed_at)) {
+      blockers.push(`Separate-agent challenge review ${reviewName} is not accepted with the declared Codex subagent and date evidence.`);
     }
-    const reviewerAliases = identityAliases(review?.reviewer);
-    if (review?.independent !== true || disallowedReviewerAliases.some((identity) => aliasesOverlap(reviewerAliases, identity))) {
-      blockers.push(`Reviewer for ${reviewName} is not independent from every owner and implementation identity.`);
+    const reviewerAliases = identityAliases(review?.reviewer_identity);
+    if (disallowedReviewerAliases.some((identity) => aliasesOverlap(reviewerAliases, identity))) {
+      blockers.push(`Challenge reviewer for ${reviewName} is not a separately identified Codex subagent.`);
     }
     if (reviewerAliases.size) acceptedReviewerAliases.push(reviewerAliases);
-    if (timestampAfterBuild(blockers, `Independent review ${reviewName}`, review?.reviewed_at, candidate.built_at, now)) {
+    if (timestampAfterBuild(blockers, `Separate-agent challenge review ${reviewName}`, review?.reviewed_at, candidate.built_at, now)) {
       gatingTimestamps.push(Date.parse(review.reviewed_at));
     }
-    if (!validEvidenceReference(review?.evidence_reference)) blockers.push(`Independent review ${reviewName} lacks a safe redacted evidence reference.`);
+    if (!validEvidenceReference(review?.evidence_reference)) blockers.push(`Separate-agent challenge review ${reviewName} lacks a safe redacted evidence reference.`);
     reviewEvidenceReferences.push(normalizeReference(review?.evidence_reference));
-    checkCandidateBinding(blockers, `Independent review ${reviewName}`, review, candidate, "artifact");
+    checkCandidateBinding(blockers, `Separate-agent challenge review ${reviewName}`, review, candidate, "artifact");
   }
-  if (aliasSetsOverlap(acceptedReviewerAliases)) blockers.push("Security, platform, and accessibility reviews must have distinct independent reviewers.");
+  if (aliasSetsOverlap(acceptedReviewerAliases)) {
+    blockers.push("Security, platform, and accessibility challenge reviews must use distinct Codex subagent identities.");
+  }
   if (reviewEvidenceReferences.some((reference) => !reference) || new Set(reviewEvidenceReferences).size !== reviewEvidenceReferences.length) {
-    blockers.push("Security, platform, and accessibility reviews must use distinct evidence references.");
+    blockers.push("Security, platform, and accessibility challenge reviews must use distinct evidence references.");
   }
 
-  exactKeys(blockers, "Pilot evidence", evidence.pilot, ["sessions"]);
+  const pilotPolicy = policy.pilot ?? {};
+  exactKeys(blockers, "Agent-operated simulation evidence", evidence.pilot, [
+    "evidence_class", "operator_type", "operator_identity", "confidence_score_semantics",
+    "receipt_assurance", "fixed_limitation", "sessions"
+  ]);
+  if (pilotPolicy.evidence_class !== "agent-operated-simulations"
+      || pilotPolicy.operator_type !== "codex-agent"
+      || pilotPolicy.operator_identity !== "Codex"
+      || pilotPolicy.confidence_score_semantics !== "heuristic-agent-confidence-not-human-trust"
+      || pilotPolicy.receipt_assurance !== "operator-attested-hash-bound-not-independent-execution-proof"
+      || !present(pilotPolicy.fixed_limitation)
+      || !/do not prove external-human comprehension[\s\S]*adoption/iu.test(pilotPolicy.fixed_limitation)
+      || !/do not independently prove execution/iu.test(pilotPolicy.fixed_limitation)
+      || evidence.pilot?.evidence_class !== pilotPolicy.evidence_class
+      || evidence.pilot?.operator_type !== pilotPolicy.operator_type
+      || evidence.pilot?.operator_identity !== pilotPolicy.operator_identity
+      || evidence.pilot?.confidence_score_semantics !== pilotPolicy.confidence_score_semantics
+      || evidence.pilot?.receipt_assurance !== pilotPolicy.receipt_assurance
+      || evidence.pilot?.fixed_limitation !== pilotPolicy.fixed_limitation) {
+    blockers.push("Agent-operated simulation evidence does not preserve the reviewed Codex operator, heuristic-confidence semantics, receipt assurance, and non-independent/external-human limitations.");
+  }
+  const requiredScenarios = Array.isArray(pilotPolicy.required_scenarios)
+    ? pilotPolicy.required_scenarios
+    : [];
+  if (requiredScenarios.length !== 8
+      || pilotPolicy.minimum_total !== 8
+      || pilotPolicy.minimum_duskds !== 8
+      || pilotPolicy.minimum_completion_rate !== 1
+      || pilotPolicy.minimum_recovery_rate !== 1
+      || pilotPolicy.maximum_blocking_confusion !== 0
+      || JSON.stringify(pilotPolicy.local_operator_attested_contexts) !== JSON.stringify(["windows", "wsl"])
+      || JSON.stringify(pilotPolicy.github_actions_provenance_contexts) !== JSON.stringify(["linux", "macos"])
+      || JSON.stringify(pilotPolicy.required_observation_kinds) !== JSON.stringify([
+        "command", "file-probe", "hash-probe"
+      ])) {
+    blockers.push("Pilot policy must require exactly eight successful DuskDS scenarios with full recovery and no blocking confusion.");
+  }
+  for (const scenario of requiredScenarios) {
+    exactKeys(blockers, `Required pilot scenario ${scenario?.id ?? "unknown"}`, scenario, [
+      "id", "context", "experience", "capability", "execution_surface", "failure_class"
+    ]);
+    if (!PSEUDONYMOUS_ID_RE.test(scenario?.id ?? "")
+        || !pilotPolicy.required_contexts?.includes(scenario?.context)
+        || !pilotPolicy.required_experience?.includes(scenario?.experience)
+        || !PSEUDONYMOUS_ID_RE.test(scenario?.capability ?? "")
+        || !PSEUDONYMOUS_ID_RE.test(scenario?.execution_surface ?? "")
+        || !PSEUDONYMOUS_ID_RE.test(scenario?.failure_class ?? "")) {
+      blockers.push(`Required pilot scenario ${scenario?.id ?? "unknown"} has invalid identity, cohort, capability, surface, or controlled-failure class.`);
+    }
+  }
+  for (const [field, label] of [
+    ["id", "scenario ids"],
+    ["capability", "capabilities"],
+    ["execution_surface", "execution surfaces"],
+    ["failure_class", "controlled-failure classes"]
+  ]) {
+    const values = requiredScenarios.map((scenario) => normalizeReference(scenario?.[field]));
+    if (values.some((value) => !value) || new Set(values).size !== requiredScenarios.length) {
+      blockers.push(`Required pilot ${label} must be complete and unique.`);
+    }
+  }
+  const scenarioById = new Map(requiredScenarios.map((scenario) => [scenario.id, scenario]));
   if (!Array.isArray(evidence.pilot?.sessions)) blockers.push("Pilot sessions must be an array.");
   const sessions = Array.isArray(evidence.pilot?.sessions) ? evidence.pilot.sessions : [];
-  if (sessions.length < policy.pilot.minimum_total) blockers.push(`Pilot has ${sessions.length}/${policy.pilot.minimum_total} required sessions.`);
+  if (sessions.length !== pilotPolicy.minimum_total) blockers.push(`Pilot has ${sessions.length}/${pilotPolicy.minimum_total} exact required sessions.`);
   const duskds = sessions.filter((session) => session.path === "duskds");
-  if (duskds.length < policy.pilot.minimum_duskds) blockers.push(`Pilot has ${duskds.length}/${policy.pilot.minimum_duskds} required DuskDS sessions.`);
+  if (duskds.length !== pilotPolicy.minimum_duskds) blockers.push(`Pilot has ${duskds.length}/${pilotPolicy.minimum_duskds} exact required DuskDS sessions.`);
   if (productionPaths.includes("evm")) {
     const evm = sessions.filter((session) => session.path === "evm");
-    if (evm.length < policy.pilot.minimum_evm) blockers.push(`Pilot has ${evm.length}/${policy.pilot.minimum_evm} required EVM sessions.`);
+    if (evm.length < pilotPolicy.minimum_evm) blockers.push(`Pilot has ${evm.length}/${pilotPolicy.minimum_evm} required EVM sessions.`);
   }
   if (sessions.some((session) => !productionPaths.includes(session.path))) blockers.push("Pilot evidence includes a non-production path.");
-  for (const experience of policy.pilot.required_experience) if (!sessions.some((session) => session.experience === experience)) blockers.push(`Pilot lacks ${experience} experience coverage.`);
-  for (const context of policy.pilot.required_contexts) if (!sessions.some((session) => session.context === context)) blockers.push(`Pilot lacks ${context} context coverage.`);
+  for (const experience of pilotPolicy.required_experience) if (!sessions.some((session) => session.experience === experience)) blockers.push(`Pilot lacks ${experience} experience coverage.`);
+  for (const context of pilotPolicy.required_contexts) if (!sessions.some((session) => session.context === context)) blockers.push(`Pilot lacks ${context} context coverage.`);
+  const observedScenarioIds = sessions.map((session) => normalizeReference(session.scenario_id));
+  if (observedScenarioIds.some((scenarioId) => !scenarioId)
+      || new Set(observedScenarioIds).size !== requiredScenarios.length
+      || requiredScenarios.some((scenario) => !observedScenarioIds.includes(normalizeReference(scenario.id)))) {
+    blockers.push("Pilot must execute every exact required scenario once, with no duplicate or unknown scenario ids.");
+  }
   const completionRate = sessions.length ? sessions.filter((session) => session.completed === true).length / sessions.length : 0;
-  if (completionRate < policy.pilot.minimum_completion_rate) blockers.push(`Pilot completion rate ${completionRate.toFixed(2)} is below ${policy.pilot.minimum_completion_rate}.`);
+  if (completionRate < pilotPolicy.minimum_completion_rate) blockers.push(`Pilot completion rate ${completionRate.toFixed(2)} is below ${pilotPolicy.minimum_completion_rate}.`);
   const recoveryAttempts = sessions.filter((session) => session.recovery_attempted === true);
   const recoveryRate = recoveryAttempts.length ? recoveryAttempts.filter((session) => session.recovered === true).length / recoveryAttempts.length : 0;
-  if (!recoveryAttempts.length || recoveryRate < policy.pilot.minimum_recovery_rate) blockers.push(`Pilot recovery rate ${recoveryRate.toFixed(2)} is below ${policy.pilot.minimum_recovery_rate}.`);
-  const trustScores = sessions.map((session) => session.trust_score).filter((score) => Number.isFinite(score));
-  const averageTrust = trustScores.length === sessions.length && sessions.length ? trustScores.reduce((sum, score) => sum + score, 0) / sessions.length : 0;
-  if (averageTrust < policy.pilot.minimum_average_trust_score) blockers.push(`Pilot trust score ${averageTrust.toFixed(2)} is below ${policy.pilot.minimum_average_trust_score}.`);
+  if (!recoveryAttempts.length || recoveryRate < pilotPolicy.minimum_recovery_rate) blockers.push(`Pilot recovery rate ${recoveryRate.toFixed(2)} is below ${pilotPolicy.minimum_recovery_rate}.`);
+  const agentConfidenceScores = sessions.map((session) => session.agent_confidence_score).filter((score) => Number.isFinite(score));
+  const averageAgentConfidence = agentConfidenceScores.length === sessions.length && sessions.length
+    ? agentConfidenceScores.reduce((sum, score) => sum + score, 0) / sessions.length
+    : 0;
   const blockingConfusion = sessions.filter((session) => session.blocking_confusion === true).length;
-  if (blockingConfusion > policy.pilot.maximum_blocking_confusion) blockers.push(`Pilot recorded ${blockingConfusion} blocking confusion events.`);
-  if (sessions.some((session) => !PSEUDONYMOUS_ID_RE.test(session.id ?? "") || !Number.isFinite(session.duration_minutes) || session.duration_minutes <= 0)) blockers.push("Every pilot session needs a non-identifying pseudonymous id and positive duration.");
+  if (blockingConfusion > pilotPolicy.maximum_blocking_confusion) blockers.push(`Pilot recorded ${blockingConfusion} blocking confusion events.`);
+  if (sessions.some((session) =>
+    !PSEUDONYMOUS_ID_RE.test(session.id ?? "")
+    || !Number.isSafeInteger(session.duration_seconds)
+    || session.duration_seconds <= 0
+  )) blockers.push("Every pilot session needs a non-identifying pseudonymous id and positive whole-second duration.");
   if (new Set(sessions.map((session) => normalizeReference(session.id))).size !== sessions.length) blockers.push("Pilot session ids must be unique.");
   const attemptedRecoveryReferences = sessions
     .filter((session) => session.recovery_attempted === true)
@@ -937,35 +1318,380 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || sessionRecordReferences.some((reference) => attemptedRecoveryReferences.includes(reference))) {
     blockers.push("Every pilot session must use its own unique canonical session record reference.");
   }
+  const sessionReceiptDigests = sessions.map((session) => normalizeReference(session.receipt_sha256));
+  if (sessionReceiptDigests.some((reference) => !reference)
+      || new Set(sessionReceiptDigests).size !== sessionReceiptDigests.length) {
+    blockers.push("Every agent-operated simulation must use its own unique canonical receipt digest.");
+  }
+  const pilotInvocationIds = [];
+  const rawObservationBundleDigests = [];
+  const pilotTarballDigests = [];
   for (const session of sessions) {
     exactKeys(blockers, `Pilot session ${session.id ?? "unknown"}`, session, [
-      "id", "path", "experience", "context", "completed", "controlled_failure", "failure_scenario",
+      "id", "scenario_id", "path", "experience", "context", "capability", "execution_surface",
+      "failure_class", "operator_type", "operator_identity", "completed", "controlled_failure",
       "recovery_attempted", "recovered", "recovery_evidence_reference", "started_at", "completed_at",
-      "candidate_commit", "candidate_artifact_fingerprint_sha256", "trust_score",
-      "blocking_confusion", "duration_minutes", "session_record_reference"
+      "candidate_commit", "candidate_artifact_fingerprint_sha256", "agent_confidence_score",
+      "blocking_confusion", "duration_seconds", "session_record_reference",
+      "receipt_sha256", "receipt_json", "run_url", "artifact_name", "provenance"
     ]);
+    const requiredScenario = scenarioById.get(session.scenario_id);
     checkCandidateBinding(blockers, `Pilot session ${session.id ?? "unknown"}`, session, candidate, "artifact");
     if (!productionPaths.includes(session.path)
-        || !policy.pilot.required_experience.includes(session.experience)
-        || !policy.pilot.required_contexts.includes(session.context)
-        || typeof session.completed !== "boolean"
-        || typeof session.blocking_confusion !== "boolean"
-        || !Number.isFinite(session.trust_score)
-        || session.trust_score < 1
-        || session.trust_score > 5) {
-      blockers.push(`Pilot session ${session.id ?? "unknown"} has invalid path, cohort, outcome, confusion, or 1-5 trust evidence.`);
+        || !pilotPolicy.required_experience.includes(session.experience)
+        || !pilotPolicy.required_contexts.includes(session.context)
+        || !requiredScenario
+        || session.context !== requiredScenario?.context
+        || session.experience !== requiredScenario?.experience
+        || session.capability !== requiredScenario?.capability
+        || session.execution_surface !== requiredScenario?.execution_surface
+        || session.failure_class !== requiredScenario?.failure_class
+        || session.operator_type !== pilotPolicy.operator_type
+        || session.operator_identity !== pilotPolicy.operator_identity
+        || session.completed !== true
+        || session.controlled_failure !== true
+        || session.recovery_attempted !== true
+        || session.recovered !== true
+        || session.blocking_confusion !== false
+        || !Number.isFinite(session.agent_confidence_score)
+        || session.agent_confidence_score < 1
+        || session.agent_confidence_score > 5) {
+      blockers.push(`Pilot session ${session.id ?? "unknown"} does not exactly match its required scenario, Codex operator, successful failure/recovery outcome, or 1-5 informational agent-confidence evidence.`);
+    }
+    const sessionReceipt = parseBoundReceipt(
+      blockers,
+      `Pilot session ${session.id ?? "unknown"}`,
+      session
+    );
+    exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} machine receipt`, sessionReceipt, [
+      "schema_version", "evidence_class", "independent_execution", "operator_type",
+      "operator_identity", "scenario", "invocation_id", "plan", "plan_sha256", "collector",
+      "candidate", "environment", "execution", "github_actions_provenance_input", "redacted"
+    ]);
+    const receiptScenario = sessionReceipt.scenario ?? {};
+    const receiptPlan = sessionReceipt.plan ?? {};
+    const receiptCollector = sessionReceipt.collector ?? {};
+    const receiptCandidate = sessionReceipt.candidate ?? {};
+    const receiptEnvironment = sessionReceipt.environment ?? {};
+    const receiptExecution = sessionReceipt.execution ?? {};
+    exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} receipt collector`, receiptCollector, [
+      "path", "commit", "source_sha256"
+    ]);
+    exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} receipt candidate`, receiptCandidate, [
+      "tarball_sha256", "tarball_bytes", "npm_integrity", "package_inventory_sha256",
+      "package_file_count", "package_name", "package_version", "package_commit",
+      "phase5_artifact_fingerprint_sha256"
+    ]);
+    exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} receipt environment`, receiptEnvironment, [
+      "context", "platform", "os_version", "os_release", "arch", "node_version",
+      "privilege", "environment_identity"
+    ]);
+    exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} receipt privilege`, receiptEnvironment.privilege, [
+      "level", "mechanism", "uid"
+    ]);
+    exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} receipt execution`, receiptExecution, [
+      "started_at", "completed_at", "duration_seconds", "step_count",
+      "controlled_failure_step_id", "recovery_step_ids", "final_verification_step_id",
+      "observations", "raw_observation_bundle_sha256"
+    ]);
+    const planSteps = checkPilotPlan(
+      blockers,
+      `Pilot session ${session.id ?? "unknown"} embedded plan`,
+      receiptPlan,
+      session,
+      requiredScenario,
+      receiptCandidate,
+      distribution,
+      candidate,
+      policy
+    );
+    const observations = Array.isArray(receiptExecution.observations)
+      ? receiptExecution.observations
+      : [];
+    const controlledObservation = observations.find(
+      (observation) => observation?.id === receiptExecution.controlled_failure_step_id
+    );
+    const recoveryObservations = Array.isArray(receiptExecution.recovery_step_ids)
+      ? receiptExecution.recovery_step_ids.map(
+        (stepId) => observations.find((observation) => observation?.id === stepId)
+      )
+      : [];
+    const finalObservation = observations.find(
+      (observation) => observation?.id === receiptExecution.final_verification_step_id
+    );
+    pilotInvocationIds.push(normalizeReference(sessionReceipt.invocation_id));
+    rawObservationBundleDigests.push(normalizeReference(receiptExecution.raw_observation_bundle_sha256));
+    pilotTarballDigests.push(normalizeReference(receiptCandidate.tarball_sha256));
+    for (const observation of observations) {
+      const commonObservationKeys = [
+        "id", "role", "kind", "started_at", "completed_at", "duration_ms",
+        "expected_outcome", "observed_outcome", "exit_code", "stdout_bytes",
+        "stdout_sha256", "stderr_bytes", "stderr_sha256", "passed"
+      ];
+      if (observation?.kind === "command") {
+        exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} command observation ${observation?.id ?? "unknown"}`, observation, [
+          ...commonObservationKeys, "command", "args", "cwd", "signal"
+        ]);
+      } else {
+        exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} probe observation ${observation?.id ?? "unknown"}`, observation, [
+          ...commonObservationKeys, "artifact"
+        ]);
+        exactKeys(
+          blockers,
+          `Pilot session ${session.id ?? "unknown"} probe artifact ${observation?.id ?? "unknown"}`,
+          observation?.artifact,
+          observation?.kind === "hash-probe"
+            ? ["relative_path", "type", "bytes", "sha256"]
+            : ["relative_path", "type", "bytes"]
+        );
+      }
+    }
+    checkPilotEnvironment(
+      blockers,
+      `Pilot session ${session.id ?? "unknown"} receipt environment`,
+      receiptEnvironment,
+      session.context
+    );
+    const localContext = pilotPolicy.local_operator_attested_contexts.includes(session.context);
+    const actionsInput = sessionReceipt.github_actions_provenance_input;
+    if (localContext) {
+      if (session.run_url !== null
+          || session.artifact_name !== null
+          || session.provenance !== null
+          || actionsInput !== null) {
+        blockers.push(`Pilot session ${session.id ?? "unknown"} local machine evidence must not claim GitHub Actions provenance.`);
+      }
+    } else if (pilotPolicy.github_actions_provenance_contexts.includes(session.context)) {
+      exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} Actions input`, actionsInput, [
+        "schema_version", "repository", "workflow_path", "run_id", "run_attempt",
+        "job_name", "event_name", "ref", "sha", "artifact_name"
+      ]);
+      const expectedRunUrl = `https://github.com/${policy.monitoring_evidence?.canonical_repository}/actions/runs/${actionsInput?.run_id ?? "invalid"}`;
+      const expectedArtifactName =
+        `studio-agent-pilot-${session.scenario_id}-${actionsInput?.run_id ?? "invalid"}.json`;
+      if (actionsInput?.schema_version !== 1
+          || actionsInput.repository !== policy.monitoring_evidence?.canonical_repository
+          || actionsInput.workflow_path !== NPM_ASSURANCE_WORKFLOW
+          || actionsInput.run_attempt !== 1
+          || actionsInput.job_name !== `agent-pilot-${session.scenario_id}`
+          || actionsInput.event_name !== "workflow_dispatch"
+          || actionsInput.ref !== "refs/heads/main"
+          || actionsInput.sha !== candidate.commit
+          || actionsInput.artifact_name !== expectedArtifactName
+          || session.run_url !== expectedRunUrl
+          || session.artifact_name !== expectedArtifactName
+          || !session.provenance) {
+        blockers.push(`Pilot session ${session.id ?? "unknown"} lacks exact first-attempt GitHub Actions candidate provenance.`);
+      } else {
+        const actionsRecord = {
+          ...session,
+          workflow_path: NPM_ASSURANCE_WORKFLOW,
+          observed_at: session.completed_at
+        };
+        checkActionsReference(
+          blockers,
+          `Pilot session ${session.id ?? "unknown"}`,
+          actionsRecord,
+          policy.monitoring_evidence?.canonical_repository,
+          NPM_ASSURANCE_WORKFLOW
+        );
+        checkActionsProvenance(
+          blockers,
+          `Pilot session ${session.id ?? "unknown"}`,
+          actionsRecord,
+          candidate,
+          policy.monitoring_evidence?.canonical_repository,
+          ["workflow_dispatch"],
+          session.artifact_name,
+          now,
+          gatingTimestamps
+        );
+      }
+    } else blockers.push(`Pilot session ${session.id ?? "unknown"} has no reviewed provenance class for its context.`);
+    const observationIds = observations.map((observation) => observation?.id);
+    const observationDigests = observations.flatMap((observation) => [
+      observation?.stdout_sha256,
+      observation?.stderr_sha256
+    ]);
+    const receiptStartedAt = Date.parse(receiptExecution.started_at);
+    const receiptCompletedAt = Date.parse(receiptExecution.completed_at);
+    const recoveryStepIds = Array.isArray(receiptExecution.recovery_step_ids)
+      ? receiptExecution.recovery_step_ids
+      : [];
+    const plannedRecoveryStepIds = planSteps
+      .filter((step) => step?.role === "recovery")
+      .map((step) => step.id);
+    const observationsMatchPlan = observations.length === planSteps.length
+      && observations.every((observation, index) => {
+        const step = planSteps[index];
+        if (!step
+            || observation?.id !== step.id
+            || observation?.role !== step.role
+            || observation?.kind !== step.kind) return false;
+        if (step.kind === "command") {
+          const expectedSuccess = step.expect.outcome === "success";
+          return observation.command === step.command
+            && Array.isArray(step.args)
+            && canonicalJsonMatches(observation.args, canonicalJson(step.args))
+            && observation.cwd === step.cwd
+            && observation.expected_outcome === step.expect.outcome
+            && observation.observed_outcome === step.expect.outcome
+            && Number.isInteger(observation.exit_code)
+            && (expectedSuccess ? observation.exit_code === 0 : observation.exit_code !== 0);
+        }
+        const artifact = observation?.artifact ?? {};
+        if (artifact.relative_path !== step.path || !validPilotRelativePath(artifact.relative_path)) return false;
+        if (step.kind === "file-probe") {
+          return observation.expected_outcome === "success"
+            && artifact.type === step.expect.type
+            && Number.isSafeInteger(artifact.bytes)
+            && artifact.bytes >= step.expect.min_bytes
+            && artifact.bytes <= step.expect.max_bytes;
+        }
+        return observation.expected_outcome === "success"
+          && artifact.type === "file"
+          && Number.isSafeInteger(artifact.bytes)
+          && artifact.bytes >= 0
+          && artifact.bytes <= MAX_PILOT_PROBE_BYTES
+          && artifact.sha256 === step.expected_digest;
+      });
+    const observationChronologyValid = observations.every((observation, index) => {
+      const started = Date.parse(observation?.started_at);
+      const completed = Date.parse(observation?.completed_at);
+      const previousCompleted = index ? Date.parse(observations[index - 1]?.completed_at) : receiptStartedAt;
+      return validDate(observation?.started_at)
+        && validDate(observation?.completed_at)
+        && started >= receiptStartedAt
+        && completed <= receiptCompletedAt
+        && started >= previousCompleted
+        && completed >= started
+        && Number.isSafeInteger(observation?.duration_ms)
+        && observation.duration_ms === completed - started;
+    });
+    const probeObservationsValid = observations
+      .filter((observation) => observation?.kind !== "command")
+      .every((observation) => {
+        const artifact = observation?.artifact ?? {};
+        return validPilotRelativePath(artifact.relative_path)
+          && ["file", "directory"].includes(artifact.type)
+          && Number.isSafeInteger(artifact.bytes)
+          && artifact.bytes >= 0
+          && artifact.bytes <= MAX_PILOT_PROBE_BYTES
+          && observation.expected_outcome === "success"
+          && observation.observed_outcome === "success"
+          && observation.exit_code === 0
+          && observation.stdout_bytes === 0
+          && observation.stdout_sha256 === EMPTY_SHA256
+          && observation.stderr_bytes === 0
+          && observation.stderr_sha256 === EMPTY_SHA256
+          && (observation.kind !== "hash-probe"
+            || (artifact.type === "file" && SHA256_RE.test(artifact.sha256 ?? "")));
+      });
+    if (observations.length < 3
+        || observations.length > 64
+        || receiptExecution.step_count !== observations.length
+        || receiptExecution.controlled_failure_step_id !== session.failure_class
+        || receiptExecution.controlled_failure_step_id !== planSteps.find(
+          (step) => step?.role === "controlled-failure"
+        )?.id
+        || new Set(observationIds).size !== observations.length
+        || observationIds.some((id) => !PSEUDONYMOUS_ID_RE.test(id ?? ""))
+        || recoveryStepIds.length < 1
+        || new Set(recoveryStepIds).size !== recoveryStepIds.length
+        || !canonicalJsonMatches(recoveryStepIds, canonicalJson(plannedRecoveryStepIds))
+        || receiptExecution.final_verification_step_id !== receiptPlan.final_verification_step_id
+        || pilotPolicy.required_observation_kinds.some(
+          (kind) => !observations.some((observation) => observation?.kind === kind)
+        )
+        || observationDigests.some((digest) => !SHA256_RE.test(digest ?? ""))
+        || observations.some((observation) =>
+          (observation?.stdout_bytes === 0 && observation.stdout_sha256 !== EMPTY_SHA256)
+          || (observation?.stderr_bytes === 0 && observation.stderr_sha256 !== EMPTY_SHA256)
+        )
+        || !observationsMatchPlan
+        || !observationChronologyValid
+        || !probeObservationsValid
+        || observations.some((observation) =>
+          observation?.passed !== true
+          || !PILOT_SAFE_ROLES.has(observation?.role)
+          || !PILOT_SAFE_KINDS.has(observation?.kind)
+          || !Number.isSafeInteger(observation?.stdout_bytes)
+          || observation.stdout_bytes < 0
+          || observation.stdout_bytes > 1_048_576
+          || !Number.isSafeInteger(observation?.stderr_bytes)
+          || observation.stderr_bytes < 0
+          || observation.stderr_bytes > 1_048_576
+          || (observation.kind === "command" && observation.signal !== null)
+        )
+        || !canonicalDigestMatches(observations, receiptExecution.raw_observation_bundle_sha256)
+        || controlledObservation?.kind !== "command"
+        || controlledObservation?.role !== "controlled-failure"
+        || controlledObservation?.expected_outcome !== "failure"
+        || controlledObservation?.observed_outcome !== "failure"
+        || !Number.isInteger(controlledObservation?.exit_code)
+        || controlledObservation.exit_code === 0
+        || recoveryObservations.length < 1
+        || recoveryObservations.some((observation) =>
+          !observation
+          || observation.role !== "recovery"
+          || observation.expected_outcome !== "success"
+          || observation.observed_outcome !== "success"
+          || observation.exit_code !== 0
+        )
+        || finalObservation !== observations.at(-1)
+        || finalObservation?.role !== "final-verification"
+        || finalObservation?.expected_outcome !== "success"
+        || finalObservation?.observed_outcome !== "success"
+        || finalObservation?.exit_code !== 0) {
+      blockers.push(`Pilot session ${session.id ?? "unknown"} machine observations do not prove bounded controlled failure, recovery, and final verification.`);
+    }
+    if (sessionReceipt.schema_version !== 1
+        || sessionReceipt.evidence_class !== "operator-attested-machine-collected"
+        || sessionReceipt.independent_execution !== false
+        || sessionReceipt.operator_type !== session.operator_type
+        || sessionReceipt.operator_identity !== session.operator_identity
+        || canonicalJson(receiptScenario) !== canonicalJson(requiredScenario ?? {})
+        || !/^[a-f0-9]{32}$/u.test(sessionReceipt.invocation_id ?? "")
+        || !canonicalDigestMatches(receiptPlan, sessionReceipt.plan_sha256)
+        || receiptCollector.path !== "scripts/agent-pilot-collector.mjs"
+        || receiptCollector.commit !== candidate.commit
+        || !SHA256_RE.test(receiptCollector.source_sha256 ?? "")
+        || !SHA256_RE.test(receiptCandidate.tarball_sha256 ?? "")
+        || !Number.isSafeInteger(receiptCandidate.tarball_bytes)
+        || receiptCandidate.tarball_bytes <= 0
+        || receiptCandidate.npm_integrity !== distribution.integrity
+        || receiptCandidate.package_inventory_sha256 !== distribution.package_inventory_sha256
+        || !Number.isSafeInteger(receiptCandidate.package_file_count)
+        || receiptCandidate.package_file_count <= 0
+        || receiptCandidate.package_name !== distribution.package_name
+        || receiptCandidate.package_version !== distribution.package_version
+        || receiptCandidate.package_commit !== candidate.commit
+        || receiptCandidate.phase5_artifact_fingerprint_sha256 !== candidate.artifact_fingerprint_sha256
+        || receiptExecution.started_at !== session.started_at
+        || receiptExecution.completed_at !== session.completed_at
+        || receiptExecution.duration_seconds !== session.duration_seconds
+        || !canonicalJsonMatches(sessionReceipt, session.receipt_json)
+        || sessionReceipt.redacted !== true) {
+      blockers.push(`Pilot session ${session.id ?? "unknown"} machine receipt does not exact-match the policy scenario, collector, candidate, environment, execution summary, and redaction contract.`);
     }
     const startedAt = Date.parse(session.started_at);
     const completedAt = Date.parse(session.completed_at);
-    const exactDurationMinutes = (completedAt - startedAt) / 60_000;
+    const exactDurationSeconds = (completedAt - startedAt) / 1_000;
+    const exactRecoveryEvidenceReference =
+      `agent-pilots/${requiredScenario?.id}/${receiptExecution.raw_observation_bundle_sha256}.recovery.json`;
+    const exactSessionRecordReference =
+      `agent-pilots/${requiredScenario?.id}/${session.receipt_sha256}.json`;
+    if (session.recovery_evidence_reference !== exactRecoveryEvidenceReference
+        || session.session_record_reference !== exactSessionRecordReference) {
+      blockers.push(`Pilot session ${session.id ?? "unknown"} evidence references do not exact-match its scenario and canonical receipt or raw-observation digests.`);
+    }
     if (session.controlled_failure !== true
         || session.recovery_attempted !== true
-        || typeof session.recovered !== "boolean"
-        || !present(session.failure_scenario)
+        || session.recovered !== true
         || !validEvidenceReference(session.recovery_evidence_reference)
         || !validEvidenceReference(session.session_record_reference)
-        || !Number.isSafeInteger(session.duration_minutes)
-        || session.duration_minutes !== exactDurationMinutes
+        || !Number.isSafeInteger(session.duration_seconds)
+        || session.duration_seconds !== exactDurationSeconds
         || !timestampAfterBuild(blockers, `Pilot session ${session.id ?? "unknown"} start`, session.started_at, candidate.built_at, now)
         || !timestampAfterBuild(blockers, `Pilot session ${session.id ?? "unknown"} completion`, session.completed_at, candidate.built_at, now)
         || completedAt <= startedAt) {
@@ -973,6 +1699,18 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     } else {
       gatingTimestamps.push(completedAt);
     }
+  }
+  if (pilotInvocationIds.some((value) => !value)
+      || new Set(pilotInvocationIds).size !== sessions.length) {
+    blockers.push("Every pilot machine receipt must use its own unique collector invocation id.");
+  }
+  if (rawObservationBundleDigests.some((value) => !value)
+      || new Set(rawObservationBundleDigests).size !== sessions.length) {
+    blockers.push("Every pilot machine receipt must use its own unique raw-observation bundle digest.");
+  }
+  if (pilotTarballDigests.some((value) => !value)
+      || new Set(pilotTarballDigests).size !== 1) {
+    blockers.push("Every pilot machine receipt must bind the same exact npm tarball SHA-256.");
   }
 
   const liveSmoke = evidence.live_smoke ?? {};
@@ -1420,7 +2158,12 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
 
   const support = evidence.support ?? {};
   exactKeys(blockers, "Support evidence", support, ["on_call_owner", "support_channel_confirmed", "launch_message_owner", "incident_message_owner"]);
-  if (!present(support.on_call_owner) || support.support_channel_confirmed !== true || !present(support.launch_message_owner) || !present(support.incident_message_owner)) blockers.push("Support/on-call/status communication ownership is incomplete.");
+  if (support.on_call_owner !== responsibilityModel.human_owner
+      || support.support_channel_confirmed !== true
+      || support.launch_message_owner !== responsibilityModel.human_owner
+      || support.incident_message_owner !== responsibilityModel.human_owner) {
+    blockers.push("Support/on-call/status communication assignments are not bound to the declared human owner.");
+  }
 
   const signoff = evidence.product_signoff ?? {};
   exactKeys(blockers, "Product sign-off", signoff, ["decision", "owner", "signed_at", "artifact_fingerprint_sha256"]);
@@ -1440,9 +2183,16 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     metrics: {
       pilot_sessions: sessions.length,
       duskds_pilot_sessions: duskds.length,
+      github_actions_pilot_sessions: sessions.filter(
+        (session) => pilotPolicy.github_actions_provenance_contexts.includes(session.context)
+          && session.provenance
+      ).length,
+      local_operator_attested_pilot_sessions: sessions.filter(
+        (session) => pilotPolicy.local_operator_attested_contexts.includes(session.context)
+      ).length,
       completion_rate: completionRate,
       recovery_rate: recoveryRate,
-      average_trust_score: averageTrust,
+      average_agent_confidence_score: averageAgentConfidence,
       open_p0: issues.filter((issue) => issue.status !== "closed" && issue.severity === "P0").length,
       open_p1: issues.filter((issue) => issue.status !== "closed" && issue.severity === "P1").length
     }
@@ -1469,8 +2219,24 @@ export async function evaluatePhase5EvidenceOnline(policy, evidence, options = {
     const verified = await verifyPhase5GitHubProvenance(policy, evidence, options);
     return {
       ...result,
-      assurance_scope: "policy-complete-under-trusted-operator-assembly",
-      trusted_human_attestations: ["reviews", "pilots", "support", "rollback", "product_signoff"],
+      assurance_scope: "policy-complete-under-declared-human-and-agent-assembly",
+      human_attestations: ["product_signoff"],
+      agent_attestations: ["separate_agent_challenge_reviews", "support_assignments", "rollback_execution"],
+      agent_operated_simulations: {
+        evidence_class: policy.pilot.evidence_class,
+        operator_type: policy.pilot.operator_type,
+        operator_identity: policy.pilot.operator_identity,
+        receipt_assurance: policy.pilot.receipt_assurance,
+        sessions: result.metrics.pilot_sessions,
+        duskds_sessions: result.metrics.duskds_pilot_sessions,
+        github_actions_provenance_sessions: result.metrics.github_actions_pilot_sessions,
+        local_operator_attested_sessions: result.metrics.local_operator_attested_pilot_sessions,
+        average_agent_confidence_score: result.metrics.average_agent_confidence_score
+      },
+      limitations: [
+        policy.pilot.fixed_limitation,
+        policy.responsibility_model.fixed_limitation
+      ],
       github_actions: {
         verified_at: (options.now ?? new Date()).toISOString(),
         records: verified

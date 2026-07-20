@@ -45,9 +45,91 @@
     "platform",
     "accessibility"
   ],
+  "responsibility_model": {
+    "mode": "single-human-owner-with-codex-agent-execution",
+    "human_owner": "George",
+    "agent_operator": "Codex",
+    "role_reuse_allowed": true,
+    "review_model": "separate-codex-subagent-challenge-reviews",
+    "reviewer_type": "codex-subagent",
+    "external_independent_review": false,
+    "fixed_limitation": "Owner fields identify accountability to George rather than distinct people; separate Codex subagent challenge reviews are not external independent human or security audits."
+  },
   "pilot": {
+    "evidence_class": "agent-operated-simulations",
+    "operator_type": "codex-agent",
+    "operator_identity": "Codex",
+    "confidence_score_semantics": "heuristic-agent-confidence-not-human-trust",
+    "receipt_assurance": "operator-attested-hash-bound-not-independent-execution-proof",
+    "fixed_limitation": "Agent-operated Codex simulations provide reproducible flow coverage but do not prove external-human comprehension, usability, confidence, or adoption; receipt hashes bind operator-attested evidence bytes but do not independently prove execution, Linux and macOS additionally require GitHub Actions run and artifact provenance, and Windows and WSL remain operator-attested machine-collected evidence rather than independent validation.",
     "minimum_total": 8,
     "minimum_duskds": 8,
+    "required_scenarios": [
+      {
+        "id": "win-safe-boundary",
+        "context": "windows",
+        "experience": "novice",
+        "capability": "mode-boundary",
+        "execution_surface": "local-safe-to-local-actions",
+        "failure_class": "safe-mode-machine-action-refusal"
+      },
+      {
+        "id": "win-keyboard-recovery",
+        "context": "windows",
+        "experience": "novice",
+        "capability": "keyboard-accessibility",
+        "execution_surface": "local-browser",
+        "failure_class": "empty-search-result"
+      },
+      {
+        "id": "win-containment-recovery",
+        "context": "windows",
+        "experience": "experienced",
+        "capability": "path-containment",
+        "execution_surface": "local-actions",
+        "failure_class": "outside-root-parent-refusal"
+      },
+      {
+        "id": "win-overwrite-refusal",
+        "context": "windows",
+        "experience": "experienced",
+        "capability": "overwrite-protection",
+        "execution_surface": "direct-cli",
+        "failure_class": "existing-target-refusal"
+      },
+      {
+        "id": "wsl-managed-root-recovery",
+        "context": "wsl",
+        "experience": "novice",
+        "capability": "managed-root-safety",
+        "execution_surface": "local-actions-wsl",
+        "failure_class": "unsafe-managed-root-refusal"
+      },
+      {
+        "id": "wsl-native-toolchain-recovery",
+        "context": "wsl",
+        "experience": "experienced",
+        "capability": "native-toolchain",
+        "execution_surface": "native-duskds-wsl",
+        "failure_class": "toolchain-mismatch"
+      },
+      {
+        "id": "linux-port-conflict-recovery",
+        "context": "linux",
+        "experience": "experienced",
+        "capability": "loopback-port-safety",
+        "execution_surface": "local-runtime-linux",
+        "failure_class": "loopback-port-conflict"
+      },
+      {
+        "id": "macos-privilege-recovery",
+        "context": "macos",
+        "experience": "experienced",
+        "capability": "privilege-boundary",
+        "execution_surface": "local-runtime-macos",
+        "failure_class": "elevated-execution-refusal"
+      }
+    ],
     "required_experience": [
       "novice",
       "experienced"
@@ -58,9 +140,21 @@
       "linux",
       "macos"
     ],
-    "minimum_completion_rate": 0.83,
-    "minimum_recovery_rate": 0.8,
-    "minimum_average_trust_score": 4,
+    "local_operator_attested_contexts": [
+      "windows",
+      "wsl"
+    ],
+    "github_actions_provenance_contexts": [
+      "linux",
+      "macos"
+    ],
+    "required_observation_kinds": [
+      "command",
+      "file-probe",
+      "hash-probe"
+    ],
+    "minimum_completion_rate": 1,
+    "minimum_recovery_rate": 1,
     "maximum_blocking_confusion": 0
   },
   "required_synthetic_checks": [

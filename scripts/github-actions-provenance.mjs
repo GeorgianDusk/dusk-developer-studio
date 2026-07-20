@@ -24,6 +24,26 @@ const GITHUB_ACTIONS_BUILD_TYPE_V1 = "https://slsa-framework.github.io/github-ac
 const GITHUB_HOSTED_BUILDER = "https://github.com/actions/runner/github-hosted";
 const NPM_VERIFICATION_TIMEOUT_MS = 120_000;
 const MAX_NPM_COMMAND_OUTPUT_BYTES = 1_000_000;
+const ACTIONS_PROVENANCE_KEYS = [
+  "schema_version",
+  "repository",
+  "workflow_path",
+  "run_id",
+  "run_url",
+  "run_attempt",
+  "run_event",
+  "run_commit",
+  "run_conclusion",
+  "artifact_id",
+  "artifact_name",
+  "artifact_api_url",
+  "artifact_digest_sha256",
+  "artifact_sha256",
+  "artifact_expired",
+  "receipt_path",
+  "receipt_sha256",
+  "downloaded_at"
+];
 
 function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex");
@@ -31,6 +51,13 @@ function sha256(bytes) {
 
 function safeInteger(value) {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function hasExactKeys(value, keys) {
+  return Boolean(value)
+    && typeof value === "object"
+    && !Array.isArray(value)
+    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...keys].sort());
 }
 
 function parsedDate(value) {
@@ -516,6 +543,12 @@ function validateRun(requirement, run, runId, now) {
   const startedAt = parsedDate(run?.run_started_at);
   const updatedAt = parsedDate(run?.updated_at);
   const repositoryId = run?.repository?.id;
+  const expectedHeadBranch = requirement.expectedRef === undefined
+    ? undefined
+    : typeof requirement.expectedRef === "string"
+        && requirement.expectedRef.startsWith("refs/heads/")
+      ? requirement.expectedRef.slice("refs/heads/".length)
+      : "";
   if (run?.id !== runId
       || run?.url !== expectedRunApi
       || run?.html_url !== expectedRunHtml
@@ -525,6 +558,8 @@ function validateRun(requirement, run, runId, now) {
       || !safeInteger(repositoryId)
       || run?.head_repository?.id !== repositoryId
       || expectedWorkflowPath(run?.path) !== requirement.workflowPath
+      || (expectedHeadBranch !== undefined
+        && (!expectedHeadBranch || run?.head_branch !== expectedHeadBranch))
       || run?.head_sha !== requirement.candidateCommit
       || run?.status !== "completed"
       || run?.conclusion !== "success"
@@ -580,8 +615,15 @@ function validateArtifact(requirement, result, runId, runWindow, now) {
       || createdAt > runWindow.updatedAt + MAX_CLOCK_SKEW_MS) {
     throw new Error(`${requirement.label} GitHub artifact is not the exact unexpired run-scoped candidate receipt.`);
   }
+  if (artifact.expired === true || expiresAt <= now.getTime()) {
+    throw new Error(`${requirement.label} GitHub artifact is not the exact unexpired run-scoped candidate receipt.`);
+  }
+  return { artifact, digest };
+}
+
+function validateRecordedArtifactMetadata(requirement, artifact, digest) {
   const provenance = requirement.record?.provenance;
-  if (provenance?.artifact_id !== artifactId
+  if (provenance?.artifact_id !== artifact.id
       || provenance.artifact_name !== artifact.name
       || provenance.artifact_api_url !== artifact.url
       || provenance.artifact_digest_sha256 !== digest
@@ -589,10 +631,6 @@ function validateArtifact(requirement, result, runId, runWindow, now) {
       || provenance.artifact_expired !== false) {
     throw new Error(`${requirement.label} recorded artifact provenance does not match GitHub.`);
   }
-  if (artifact.expired === true || expiresAt <= now.getTime()) {
-    throw new Error(`${requirement.label} GitHub artifact is not the exact unexpired run-scoped candidate receipt.`);
-  }
-  return { artifact, digest };
 }
 
 async function downloadDirectReceipt(fetchImpl, artifact, token, timeoutMs, label) {
@@ -636,13 +674,7 @@ async function downloadDirectReceipt(fetchImpl, artifact, token, timeoutMs, labe
   return readBoundedBytes(response, MAX_RECEIPT_BYTES, label);
 }
 
-export async function verifyGitHubActionsReceipt(requirement, options = {}) {
-  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
-  const token = options.token ?? "";
-  const now = options.now ?? new Date();
-  const timeoutMs = options.timeoutMs ?? 15_000;
-  if (typeof fetchImpl !== "function") throw new Error(`${requirement?.label ?? "GitHub receipt"} has no HTTP client.`);
-  if (typeof token !== "string" || !token.trim()) throw new Error(`${requirement?.label ?? "GitHub receipt"} requires GH_TOKEN or GITHUB_TOKEN with Actions read access.`);
+function validateReceiptDownloadRequirement(requirement) {
   if (!requirement
       || !REPOSITORY_RE.test(requirement.repository ?? "")
       || !requirement.label
@@ -651,9 +683,22 @@ export async function verifyGitHubActionsReceipt(requirement, options = {}) {
       || !/^[a-f0-9]{40}$/.test(requirement.candidateCommit ?? "")
       || !requirement.artifactName
       || requirement.record?.artifact_name !== requirement.artifactName
-      || requirement.record?.provenance?.receipt_path !== requirement.artifactName) {
+      || requirement.record?.provenance === undefined
+      || !SHA256_RE.test(requirement.record?.receipt_sha256 ?? "")
+      || typeof requirement.record?.receipt_json !== "string"
+      || Buffer.byteLength(requirement.record.receipt_json, "utf8") > MAX_RECEIPT_BYTES) {
     throw new Error(`${requirement?.label ?? "GitHub receipt"} verification requirement is invalid.`);
   }
+}
+
+export async function downloadGitHubActionsReceipt(requirement, options = {}) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const token = options.token ?? "";
+  const now = options.now ?? new Date();
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  if (typeof fetchImpl !== "function") throw new Error(`${requirement?.label ?? "GitHub receipt"} has no HTTP client.`);
+  if (typeof token !== "string" || !token.trim()) throw new Error(`${requirement?.label ?? "GitHub receipt"} requires GH_TOKEN or GITHUB_TOKEN with Actions read access.`);
+  validateReceiptDownloadRequirement(requirement);
   const runId = runIdFromUrl(requirement.record.run_url, requirement.repository);
   if (runId === undefined) throw new Error(`${requirement.label} run URL is invalid.`);
   const runUrl = `${API_BASE}/repos/${requirement.repository}/actions/runs/${runId}`;
@@ -680,6 +725,9 @@ export async function verifyGitHubActionsReceipt(requirement, options = {}) {
     runWindow,
     now
   );
+  if (options.requireRecordedProvenance === true) {
+    validateRecordedArtifactMetadata(requirement, artifact, digest);
+  }
   const bytes = await downloadDirectReceipt(
     fetchImpl,
     artifact,
@@ -692,13 +740,12 @@ export async function verifyGitHubActionsReceipt(requirement, options = {}) {
   if (artifact.size_in_bytes !== bytes.length
       || digest !== downloadedDigest
       || requirement.record.receipt_sha256 !== downloadedDigest
-      || requirement.record.provenance?.receipt_sha256 !== downloadedDigest
       || !embeddedBytes.equals(bytes)) {
     throw new Error(`${requirement.label} downloaded receipt bytes do not match GitHub, the recorded SHA-256, and the embedded evidence.`);
   }
   const receipt = parseJsonObject(bytes, `${requirement.label} downloaded receipt`);
-  return {
-    label: requirement.label,
+  const provenance = {
+    schema_version: 1,
     repository: requirement.repository,
     workflow_path: requirement.workflowPath,
     run_id: runId,
@@ -707,14 +754,69 @@ export async function verifyGitHubActionsReceipt(requirement, options = {}) {
     run_event: requirement.event,
     run_commit: requirement.candidateCommit,
     run_conclusion: "success",
-    run_completed_at: new Date(runWindow.updatedAt).toISOString(),
     artifact_id: artifact.id,
     artifact_name: artifact.name,
-    artifact_digest_sha256: downloadedDigest,
+    artifact_api_url: artifact.url,
+    artifact_digest_sha256: digest,
+    artifact_sha256: downloadedDigest,
+    artifact_expired: false,
+    receipt_path: requirement.artifactName,
     receipt_sha256: downloadedDigest,
-    verified_at: now.toISOString(),
+    downloaded_at: now.toISOString()
+  };
+  if (!hasExactKeys(provenance, ACTIONS_PROVENANCE_KEYS)) {
+    throw new Error(`${requirement.label} generated provenance has an invalid exact shape.`);
+  }
+  return {
+    provenance,
+    receipt,
+    receipt_bytes: bytes,
+    run_completed_at: new Date(runWindow.updatedAt).toISOString()
+  };
+}
+
+export async function verifyGitHubActionsReceipt(requirement, options = {}) {
+  if (requirement?.record?.provenance?.receipt_path !== requirement?.artifactName) {
+    throw new Error(`${requirement?.label ?? "GitHub receipt"} verification requirement is invalid.`);
+  }
+  const downloaded = await downloadGitHubActionsReceipt(requirement, {
+    ...options,
+    requireRecordedProvenance: true
+  });
+  const expectedProvenance = downloaded.provenance;
+  const recordedProvenance = requirement.record.provenance;
+  const recordedDownloadedAt = parsedDate(recordedProvenance?.downloaded_at);
+  const observedAt = parsedDate(requirement.record.observed_at);
+  const verificationNow = (options.now ?? new Date()).getTime();
+  if (!hasExactKeys(recordedProvenance, ACTIONS_PROVENANCE_KEYS)
+      || ACTIONS_PROVENANCE_KEYS.some(
+        (key) => key !== "downloaded_at"
+          && recordedProvenance[key] !== expectedProvenance[key]
+      )
+      || recordedDownloadedAt === undefined
+      || observedAt === undefined
+      || recordedDownloadedAt < observedAt
+      || recordedDownloadedAt > verificationNow) {
+    throw new Error(`${requirement.label} recorded artifact provenance does not match GitHub.`);
+  }
+  return {
+    label: requirement.label,
+    repository: requirement.repository,
+    workflow_path: requirement.workflowPath,
+    run_id: expectedProvenance.run_id,
+    run_url: requirement.record.run_url,
+    run_attempt: 1,
+    run_event: requirement.event,
+    run_commit: requirement.candidateCommit,
+    run_conclusion: "success",
+    run_completed_at: downloaded.run_completed_at,
+    artifact_id: expectedProvenance.artifact_id,
+    artifact_name: expectedProvenance.artifact_name,
+    artifact_digest_sha256: expectedProvenance.artifact_digest_sha256,
+    receipt_sha256: expectedProvenance.receipt_sha256,
+    verified_at: expectedProvenance.downloaded_at,
     verification_source: "github-actions-artifact",
-    receipt
+    receipt: downloaded.receipt
   };
 }
 
@@ -807,6 +909,21 @@ export function phase5GitHubRequirements(policy, evidence) {
   const npmInitialPublication = evidence?.npm_distribution?.bootstrap_controls?.initial_publication ?? {};
   const npmInitialPolicy = policy?.npm_distribution?.initial_publication_evidence ?? {};
   const npmPublicationWorkflow = policy?.npm_distribution?.publication_workflow;
+  const githubPilotRequirements = (evidence?.pilot?.sessions ?? [])
+    .filter((session) => ["linux", "macos"].includes(session?.context))
+    .map((session) => ({
+      label: `Agent pilot ${session.scenario_id}`,
+      repository,
+      workflowPath: policy?.npm_distribution?.assurance_workflow,
+      event: "workflow_dispatch",
+      candidateCommit,
+      artifactName: session.artifact_name,
+      record: {
+        ...session,
+        workflow_path: policy?.npm_distribution?.assurance_workflow,
+        observed_at: session.completed_at
+      }
+    }));
   return [
     {
       label: "DuskDS production smoke",
@@ -872,7 +989,8 @@ export function phase5GitHubRequirements(policy, evidence) {
       expectedArtifactExpiresAt: npmInitialPolicy.artifact_expires_at,
       record: npmInitialPublication,
       historicalInitialPublication: true
-    }
+    },
+    ...githubPilotRequirements
   ];
 }
 

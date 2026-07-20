@@ -61,6 +61,17 @@ describe("Phase 3 interaction semantics", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
 
     const search = screen.getByPlaceholderText(/Search docs, capabilities/i);
+    fireEvent.change(search, { target: { value: "agent-pilot-deliberate-empty-query" } });
+    const clear = screen.getByRole("button", { name: "Clear search" });
+    clear.focus();
+    fireEvent.click(clear);
+
+    await waitFor(() => expect(search).toHaveFocus());
+    expect(search).toHaveValue("");
+    expect(
+      screen.getByText("Search cleared. References in the current scope restored.")
+    ).toBeInTheDocument();
+
     fireEvent.change(search, { target: { value: "Hedger" } });
     const broaden = screen.getByRole("button", { name: "Search all references" });
     broaden.focus();

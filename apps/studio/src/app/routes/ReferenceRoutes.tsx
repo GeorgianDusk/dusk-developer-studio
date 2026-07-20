@@ -118,6 +118,12 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
     window.requestAnimationFrame(() => searchInputRef.current?.focus());
   }
 
+  function clearSearch() {
+    updateQuery("");
+    setResultAnnouncement("Search cleared. References in the current scope restored.");
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
+
   return (
     <section className="reference-page">
       <PageIntro
@@ -137,7 +143,7 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
         <div className="empty-reference-actions">
           <AsyncNotice state="empty" message="No reviewed reference matches this search and scope. Try a broader term or search all references." />
           <div className="button-row">
-            {normalizedQuery ? <button className="secondary-button" type="button" onClick={() => updateQuery("")}>Clear search</button> : null}
+            {normalizedQuery ? <button className="secondary-button" type="button" onClick={clearSearch}>Clear search</button> : null}
             {scope === "path" ? <button className="secondary-button" type="button" onClick={searchAllReferences}>Search all references</button> : null}
           </div>
         </div>
