@@ -1,5 +1,11 @@
-import type { CommandPlatform } from "@dusk/core/commands";
 import type { BuilderPath } from "./journeyProgress";
+import {
+  DUSKDS_FORGE_COMMIT,
+  DUSKDS_RUST_TOOLCHAIN,
+  DUSKDS_TEMPLATE_ID,
+  DUSKDS_TEMPLATE_LOCK_SHA256,
+  type ManualPlatform
+} from "./manualJourneyConfig";
 
 export interface PreflightTool {
   name: string;
@@ -39,14 +45,16 @@ export interface PairingResult { ok: boolean; paired: boolean; expiresInSeconds:
 export interface ScaffoldEvidence {
   ok: boolean;
   projectName: string;
+  projectPath: string;
+  recovered?: boolean;
   structureVerified: boolean;
   files: string[];
-  rustToolchain?: string;
-  platform?: CommandPlatform;
-  forgePackage?: string;
-  forgeVersion?: string;
-  forgeRevision?: string;
-  forgeRepository?: string;
+  rustToolchain: string;
+  runtimeOs: ManualPlatform;
+  template: string;
+  templateSource: string;
+  templateRevision: string;
+  templateLockSha256: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -97,12 +105,18 @@ export function isPreflightResult(value: unknown): value is PreflightResult {
 
 export function isScaffoldEvidence(value: unknown): value is ScaffoldEvidence {
   if (!isRecord(value) || typeof value.ok !== "boolean" || !boundedString(value.projectName, 96)
+      || !boundedString(value.projectPath, 1_024)
+      || !(/^([a-zA-Z]:[\\/]|\/)/.test(value.projectPath)) || /[\0\r\n]/.test(value.projectPath)
+      || (value.recovered !== undefined && typeof value.recovered !== "boolean")
       || typeof value.structureVerified !== "boolean" || !Array.isArray(value.files)
       || value.files.length > 256 || !value.files.every((file) => boundedString(file, 256))) return false;
-  return optionalBoundedString(value.rustToolchain, 64)
-    && (value.platform === undefined || value.platform === "windows" || value.platform === "wsl" || value.platform === "posix")
-    && optionalBoundedString(value.forgePackage, 64)
-    && optionalBoundedString(value.forgeVersion, 64)
-    && (value.forgeRevision === undefined || (boundedString(value.forgeRevision, 40) && /^[0-9a-f]{40}$/.test(value.forgeRevision)))
-    && (value.forgeRepository === undefined || value.forgeRepository === "https://github.com/dusk-network/forge");
+  return value.rustToolchain === DUSKDS_RUST_TOOLCHAIN
+    && (value.runtimeOs === "windows" || value.runtimeOs === "linux" || value.runtimeOs === "macos")
+    && (value.runtimeOs === "windows"
+      ? /^[a-zA-Z]:[\\/]/.test(value.projectPath)
+      : value.projectPath.startsWith("/"))
+    && value.template === DUSKDS_TEMPLATE_ID
+    && value.templateSource === "https://github.com/dusk-network/forge"
+    && value.templateRevision === DUSKDS_FORGE_COMMIT
+    && value.templateLockSha256 === DUSKDS_TEMPLATE_LOCK_SHA256;
 }

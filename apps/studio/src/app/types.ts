@@ -27,10 +27,10 @@ export interface ScaffoldEvidence {
   files: string[];
   rustToolchain?: string;
   platform?: CommandPlatform;
-  forgePackage?: string;
-  forgeVersion?: string;
-  forgeRevision?: string;
-  forgeRepository?: string;
+  template?: string;
+  templateSource?: string;
+  templateRevision?: string;
+  templateLockSha256?: string;
 }
 
 export interface CompletionSummary {

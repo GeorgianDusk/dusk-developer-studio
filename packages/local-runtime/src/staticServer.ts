@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 
 const HOST = "127.0.0.1";
+const DUSKDS_TESTNET_ORIGIN = "https://testnet.nodes.dusk.network";
 const MAX_BOOTSTRAP_RESPONSE_BYTES = 8 * 1024;
 const MAX_BOOTSTRAP_REQUEST_BYTES = 1024;
 const MIME = new Map([
@@ -27,7 +28,7 @@ export interface LocalStaticServerOptions {
 function securityHeaders(companionPort: number): Record<string, string> {
   return {
     "cache-control": "no-store",
-    "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://${HOST}:${companionPort} http://localhost:${companionPort}; frame-ancestors 'none'; base-uri 'self'; form-action 'none'`,
+    "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://${HOST}:${companionPort} http://localhost:${companionPort} ${DUSKDS_TESTNET_ORIGIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'none'`,
     "cross-origin-opener-policy": "same-origin",
     "cross-origin-resource-policy": "same-origin",
     "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=()",
@@ -50,7 +51,12 @@ function validBootstrapOrigin(origin: string | undefined, port: number): boolean
   return origin === `http://${HOST}:${port}` || origin === `http://localhost:${port}`;
 }
 
-async function proxyPair(companionPort: number, origin: string, pairingToken: string): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+async function proxyPair(
+  companionPort: number,
+  origin: string,
+  pairingToken: string,
+  signal?: AbortSignal
+): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
   return new Promise((resolve, reject) => {
     const request = http.request({
       hostname: HOST,
@@ -77,7 +83,11 @@ async function proxyPair(companionPort: number, origin: string, pairingToken: st
       });
     });
     request.setTimeout(5_000, () => request.destroy(new Error("Companion bootstrap timed out.")));
+    const abort = () => request.destroy(new Error("Companion bootstrap client disconnected."));
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
     request.once("error", reject);
+    request.once("close", () => signal?.removeEventListener("abort", abort));
     request.end(pairingToken);
   });
 }
@@ -161,9 +171,15 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
           sendJson(response, 410, { ok: false, code: "bootstrap_expired" }, options.companionPort); return;
         }
         bootstrapState = "in-flight";
+        const clientAbort = new AbortController();
+        const abortOnDisconnect = () => {
+          if (!response.writableEnded) clientAbort.abort();
+        };
+        request.once("aborted", abortOnDisconnect);
+        response.once("close", abortOnDisconnect);
         try {
           await readBootstrapBody(request);
-          const paired = await proxyPair(options.companionPort, origin!, options.pairingToken);
+          const paired = await proxyPair(options.companionPort, origin!, options.pairingToken, clientAbort.signal);
           bootstrapState = paired.status === 200 || now() > bootstrapExpiresAt ? "burned" : "available";
           const setCookie = paired.headers["set-cookie"];
           response.writeHead(paired.status, {
@@ -175,6 +191,9 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
         } catch (error) {
           if (bootstrapState === "in-flight") bootstrapState = now() > bootstrapExpiresAt ? "burned" : "available";
           throw error;
+        } finally {
+          request.removeListener("aborted", abortOnDisconnect);
+          response.removeListener("close", abortOnDisconnect);
         }
       }
       if (url.pathname === "/healthz") {

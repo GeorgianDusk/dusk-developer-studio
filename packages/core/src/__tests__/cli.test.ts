@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildDuskDsCommandSet,
   buildDuskDsDeployCommandSet,
   quotePosixArg,
   quotePowerShellArg,
+  resolveDuskDsProjectParent,
+  resolveDuskDsProjectPath,
   windowsPathToWsl
 } from "../index";
 
@@ -21,18 +22,28 @@ describe("command generation", () => {
     expect(() => windowsPathToWsl("\\\\server\\share")).toThrow("absolute Windows drive path");
   });
 
-  it("separates Windows build commands from Ubuntu-24.04 VM tests", () => {
-    const commands = buildDuskDsCommandSet({ parentDir: "", projectName: "native-demo", platform: "windows" });
-    expect(commands.build).toContain("Set-Location -LiteralPath 'C:\\tmp\\dusk-studio-projects\\native-demo'");
-    expect(commands.test).toContain("wsl -d Ubuntu-24.04 -- bash -lc");
-    expect(commands.test).toContain("cd ''/mnt/c/tmp/dusk-studio-projects/native-demo'' && dusk-forge test");
-    expect(commands.testEnvironment).toBe("Ubuntu-24.04 WSL");
+  it("resolves platform project paths without emitting an unsafe command sequence", () => {
+    expect(resolveDuskDsProjectPath("", "native-demo", "windows"))
+      .toBe("C:\\tmp\\dusk-studio-projects\\native-demo");
+    expect(resolveDuskDsProjectPath("examples", "native-demo", "posix"))
+      .toBe(".generated/examples/native-demo");
   });
 
-  it("uses the local generated root on POSIX", () => {
-    const commands = buildDuskDsCommandSet({ parentDir: "examples", projectName: "native-demo", platform: "posix" });
-    expect(commands.projectPath).toBe(".generated/examples/native-demo");
-    expect(commands.testEnvironment).toBe("native Linux");
+  it("preserves Windows and POSIX filesystem roots when resolving and reversing project paths", () => {
+    const windowsProject = resolveDuskDsProjectPath("C:\\", "native-demo", "windows");
+    const posixProject = resolveDuskDsProjectPath("/", "native-demo", "posix");
+
+    expect(windowsProject).toBe("C:\\native-demo");
+    expect(resolveDuskDsProjectParent(windowsProject, "native-demo", "windows")).toBe("C:\\");
+    expect(posixProject).toBe("/native-demo");
+    expect(resolveDuskDsProjectParent(posixProject, "native-demo", "posix")).toBe("/");
+  });
+
+  it("fails closed instead of deriving a parent from an unrelated project path", () => {
+    expect(() => resolveDuskDsProjectParent("C:\\other", "native-demo", "windows"))
+      .toThrow("expected project folder");
+    expect(() => resolveDuskDsProjectParent("/other", "native-demo", "posix"))
+      .toThrow("expected project folder");
   });
 
   it("builds a non-executable-by-default POSIX deploy template", () => {

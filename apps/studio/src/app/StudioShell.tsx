@@ -20,7 +20,8 @@ export function Shell({ route, setRoute, builderPath, companionStatus, children 
   const { runtime: studioRuntime } = useStudioRuntime();
   const { progress } = useJourney();
   const completion = builderPath ? getJourneyCompletionCounts(progress, builderPath) : null;
-  const showJourneyContext = Boolean(builderPath && route !== "overview" && !(builderPath === "evm" && route === "reference"));
+  const supportRoute = route === "reference" || route === "troubleshooting" || route === "companion" || route === "settings";
+  const showJourneyContext = Boolean(builderPath && supportRoute);
   const storedGuideRoute = window.sessionStorage.getItem("dusk-studio-last-guide-route");
   const lastGuideRoute = STEP_ROUTES.includes(route as StepRoute)
     ? route as StepRoute
@@ -38,10 +39,9 @@ export function Shell({ route, setRoute, builderPath, companionStatus, children 
         return !isJourneyComplete(status) && status !== "skipped" && status !== "skipped-with-reason";
       }) ?? "inspect"
     : "setup";
-  const supportRoute = route === "reference" || route === "troubleshooting" || route === "companion" || route === "settings";
   const contextRoute = supportRoute && lastGuideRoute ? lastGuideRoute : resumeRoute;
   const contextLabel = steps[builderPath ?? "duskds"].find((step) => step.id === contextRoute)?.label ?? "Setup";
-  const contextVerb = supportRoute && lastGuideRoute ? "Return to" : "Resume";
+  const contextVerb = "Return to";
   const localRuntimeState = !studioRuntime.companionAvailable
     ? "Manual guide"
     : companionStatus.state === "available"
@@ -65,15 +65,15 @@ export function Shell({ route, setRoute, builderPath, companionStatus, children 
           <button className={route === "overview" ? "active" : ""} type="button" aria-current={route === "overview" ? "page" : undefined} onClick={() => setRoute("overview")}><Gauge size={15} />Paths</button>
           <button className={route === "reference" ? "active" : ""} aria-current={route === "reference" ? "page" : undefined} type="button" onClick={() => setRoute("reference")}>Reference</button>
           <button className={route === "troubleshooting" ? "active" : ""} aria-current={route === "troubleshooting" ? "page" : undefined} type="button" onClick={() => setRoute("troubleshooting")}>Troubleshoot</button>
-          <button className={route === "companion" ? "active local-tools-button" : "local-tools-button"} aria-label={"Automation: " + localRuntimeState} aria-current={route === "companion" ? "page" : undefined} type="button" onClick={() => setRoute("companion")}><span>Automation</span><small>{localRuntimeState}</small></button>
+          <button className={route === "companion" ? "active local-tools-button" : "local-tools-button"} aria-label={"Local Studio: " + localRuntimeState} aria-current={route === "companion" ? "page" : undefined} type="button" onClick={() => setRoute("companion")}><span>Local Studio</span><small>{localRuntimeState}</small></button>
         </nav>
         {showJourneyContext && builderPath ? (
-          <button className="journey-context" type="button" aria-label={builderPath === "evm" ? "Return to DuskEVM pre-launch reference" : `${contextVerb} ${pathText[builderPath].label} at ${contextLabel}`} onClick={() => setRoute(builderPath === "evm" ? "reference" : contextRoute)}>
+          <button className="journey-context" type="button" aria-label={builderPath === "evm" ? "Return to DuskEVM pre-launch overview" : `${contextVerb} ${pathText[builderPath].label} at ${contextLabel}`} onClick={() => setRoute(builderPath === "evm" ? "setup" : contextRoute)}>
             <span>{builderPath === "evm" ? "DuskEVM pre-launch" : `${contextVerb} ${pathText[builderPath].label} · ${contextLabel}`}</span>
             <strong>
               <span className="state-sprite" aria-hidden="true" />
               {builderPath === "evm"
-                ? "Return to reference"
+                ? "Return to pre-launch overview"
                 : `${completion?.completed ?? 0}/4 complete · ${completion?.automatic ?? 0} automatic · ${completion?.manual ?? 0} manual`}
             </strong>
           </button>
@@ -112,13 +112,13 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
           <span className="section-kicker">Choose your path</span>
           <h1 data-route-heading tabIndex={-1}>{pendingStep ? `Choose a path to continue to ${pendingStep.label}.` : "Pick the execution model your app actually needs."}</h1>
           <p>{pendingStep
-            ? `Choose DuskDS to continue to ${pendingStep.label}. DuskEVM opens its single pre-launch reference because live tasks are not active yet.`
+            ? `Choose DuskDS to continue to ${pendingStep.label}. DuskEVM opens its pre-launch overview because live tasks are not active yet.`
             : isLocalStudio
-              ? "Local Studio provides reviewed commands, records manual or automatic results, and can use its allowlisted companion for DuskDS tool checks and starter creation. DuskEVM remains a single pre-launch reference."
-              : "The hosted guide provides reviewed commands and records manual confirmations without accessing your machine. Run Local Studio through npm when you want DuskDS tool checks or starter creation. DuskEVM remains a single pre-launch reference."}</p>
+              ? "Local Studio provides reviewed commands, records manual or automatic results, and can use its allowlisted companion for DuskDS tool checks and starter creation. DuskEVM remains a pre-launch overview."
+              : "The hosted guide provides reviewed commands and records manual confirmations without accessing your machine. Run Local Studio through npm when you want DuskDS tool checks or starter creation. DuskEVM remains a pre-launch overview."}</p>
           <div className="mission-flags">
             <span className="active"><i aria-hidden="true" />{isLocalStudio ? "DUSKDS LOCAL TOOLS AVAILABLE" : "DUSKDS GUIDE AVAILABLE"}</span>
-            <span className="preview"><i aria-hidden="true" />DUSKEVM PRE-LAUNCH REFERENCE</span>
+            <span className="preview"><i aria-hidden="true" />DUSKEVM PRE-LAUNCH OVERVIEW</span>
             <span className="hosted-guide"><i aria-hidden="true" />{isLocalStudio ? "LOCAL · SAFE / ACTIONS MODES" : "HOSTED · NO MACHINE ACCESS"}</span>
           </div>
         </div>
@@ -128,7 +128,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
         {(["evm", "duskds"] as BuilderPath[]).map((path) => {
           const counts = getJourneyCompletionCounts(progress, path);
           const hasActivity = Object.values(progress.paths[path]).some((step) => step.evidence.length > 0 || Boolean(step.blocker) || step.status === "skipped" || step.status === "skipped-with-reason");
-          const pathStart = path === "duskds" ? "Start DuskDS" : pathText[path].start;
+          const pathStart = path === "duskds" ? "Start DuskDS" : "Open pre-launch overview";
           const availabilityId = `path-${path}-availability`;
           const summaryId = `path-${path}-summary`;
           const resultId = `path-${path}-result`;
@@ -142,7 +142,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
               aria-describedby={`${availabilityId} ${summaryId} ${resultId} ${progressId}`}
               onClick={() => {
                 setBuilderPath(path);
-                setRoute(path === "evm" ? "reference" : pendingRoute ?? "setup");
+                setRoute(path === "evm" ? "setup" : pendingRoute ?? "setup");
               }}
             >
               <span className="path-card-code">{path === "evm" ? "CAMPAIGN EVM_01" : "CAMPAIGN DS_02"}</span>
@@ -154,7 +154,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
               <strong>{pathText[path].label}</strong>
               <p id={summaryId}>{pathText[path].summary}</p>
               <span className="path-card-result" id={resultId}><span>First useful result</span>{pathText[path].result}</span>
-              <span className="path-card-progress" id={progressId}><span className="state-sprite" aria-hidden="true" />{path === "evm" ? "One pre-launch reference · no completion score" : `${counts.completed}/4 complete · ${counts.automatic} automatic · ${counts.manual} manual · ${hasActivity ? "progress saved" : "not started"}`}</span>
+              <span className="path-card-progress" id={progressId}><span className="state-sprite" aria-hidden="true" />{path === "evm" ? "One pre-launch overview · no completion score" : `${counts.completed}/4 complete · ${counts.automatic} automatic · ${counts.manual} manual · ${hasActivity ? "progress saved" : "not started"}`}</span>
               <em>{pathStart}<ArrowRight size={16} /></em>
             </button>
           );
@@ -165,7 +165,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
           <caption>Quick comparison of the two Dusk builder paths</caption>
           <thead><tr><th scope="col">Decision</th><th scope="col">DuskEVM</th><th scope="col">DuskDS</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Status</th><td>Single pre-launch reference; no completion score</td><td>Hosted guide and npm-powered local tools available</td></tr>
+            <tr><th scope="row">Status</th><td>Single pre-launch overview; no completion score</td><td>Hosted guide and npm-powered local tools available</td></tr>
             <tr><th scope="row">What can I do today?</th><td>Review the planned architecture, tooling, and launch requirements</td><td>Check prerequisites, run read-only queries, create a starter, build locally, and record results</td></tr>
             <tr><th scope="row">Requires local software?</th><td>No for the pre-launch reference</td><td>Yes for commands and builds; use the hosted guide manually or run Local Studio with Node/npm</td></tr>
             <tr><th scope="row">Language</th><td>Solidity</td><td>Rust + WASM</td></tr>
@@ -180,7 +180,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
         <div className="result-brief">
           <span className="section-kicker">After you choose</span>
           <h2 id="journey-preview-title">DuskDS uses four practical stages.</h2>
-          <p>DuskEVM stays one pre-launch reference until its live developer workflow is reviewed and activated.</p>
+          <p>DuskEVM stays one pre-launch overview until its live developer workflow is reviewed and activated.</p>
         </div>
         <ol>{previewSteps.map(([number, label, copy]) => <li key={number}><span>{number}</span><strong>{label}</strong><small>{copy}</small></li>)}</ol>
       </section>

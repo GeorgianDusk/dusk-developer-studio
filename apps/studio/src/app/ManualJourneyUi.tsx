@@ -14,12 +14,18 @@ export function CompletionMethodPicker({
   value,
   onChange,
   automaticAvailable,
-  automaticLabel = "Local Studio"
+  disabled = false,
+  automaticLabel = "Local Studio",
+  automaticDescription = "Allowlisted local checks with bounded, redacted results.",
+  automaticAvailabilityLabel = automaticAvailable ? "available locally" : "start with npm"
 }: {
   value: CompletionMethod;
   onChange: (method: CompletionMethod) => void;
   automaticAvailable: boolean;
+  disabled?: boolean;
   automaticLabel?: string;
+  automaticDescription?: string;
+  automaticAvailabilityLabel?: string;
 }) {
   return (
     <div className="method-picker" role="group" aria-label="Choose how to complete this task">
@@ -27,6 +33,7 @@ export function CompletionMethodPicker({
         className={value === "manual" ? "method-option active" : "method-option"}
         type="button"
         aria-pressed={value === "manual"}
+        disabled={disabled}
         onClick={() => onChange("manual")}
       >
         <Laptop size={18} aria-hidden="true" />
@@ -37,21 +44,23 @@ export function CompletionMethodPicker({
         className={value === "automatic" ? "method-option active" : "method-option"}
         type="button"
         aria-pressed={value === "automatic"}
+        disabled={disabled}
         onClick={() => onChange("automatic")}
       >
         <ShieldCheck size={18} aria-hidden="true" />
-        <span><strong>{automaticLabel}</strong><small>Allowlisted local checks with bounded, redacted results.</small></span>
-        <StatusPill tone={automaticAvailable ? "good" : "neutral"}>{automaticAvailable ? "available locally" : "start with npm"}</StatusPill>
+        <span><strong>{automaticLabel}</strong><small>{automaticDescription}</small></span>
+        <StatusPill tone={automaticAvailable ? "good" : "neutral"}>{automaticAvailabilityLabel}</StatusPill>
       </button>
     </div>
   );
 }
 
-export function PlatformPicker({ value, onChange }: { value: ManualPlatform; onChange: (platform: ManualPlatform) => void }) {
+export function PlatformPicker({ value, onChange, disabled = false }: { value: ManualPlatform; onChange: (platform: ManualPlatform) => void; disabled?: boolean }) {
   return (
     <div className="platform-picker" role="group" aria-label="Command platform">
-      <button type="button" className={value === "windows" ? "active" : ""} aria-pressed={value === "windows"} onClick={() => onChange("windows")}>Windows PowerShell</button>
-      <button type="button" className={value === "posix" ? "active" : ""} aria-pressed={value === "posix"} onClick={() => onChange("posix")}>Linux / macOS shell</button>
+      <button type="button" disabled={disabled} className={value === "windows" ? "active" : ""} aria-pressed={value === "windows"} onClick={() => onChange("windows")}>Windows PowerShell</button>
+      <button type="button" disabled={disabled} className={value === "linux" ? "active" : ""} aria-pressed={value === "linux"} onClick={() => onChange("linux")}>Linux shell</button>
+      <button type="button" disabled={disabled} className={value === "macos" ? "active" : ""} aria-pressed={value === "macos"} onClick={() => onChange("macos")}>macOS shell</button>
     </div>
   );
 }
@@ -71,7 +80,7 @@ export function ManualToolChecklist({
   confirmed: Set<string>;
   onToggle: (toolId: string) => void;
 }) {
-  const tools = manualToolsFor(scope);
+  const tools = manualToolsFor(scope).filter((tool) => tool.id !== "wsl" || platform === "windows");
   const required = tools.filter((tool) => tool.requirement === "required");
   const supporting = tools.filter((tool) => tool.requirement !== "required");
   return (

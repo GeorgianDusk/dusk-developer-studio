@@ -40,8 +40,8 @@ For non-sensitive product or documentation problems, follow [SUPPORT.md](SUPPORT
 For a version-pinned invocation that also refuses npm install lifecycle scripts:
 
 ```bash
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.0 -- dusk-developer-studio
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.0 -- dusk-developer-studio local-actions
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.1 -- dusk-developer-studio
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.1 -- dusk-developer-studio local-actions
 ```
 
 ## Hard boundaries

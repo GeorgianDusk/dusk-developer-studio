@@ -71,6 +71,10 @@ if (JSON.stringify(packedFiles) !== JSON.stringify(expectedFiles)) {
 }
 if (
   !packedFiles.includes("templates/foundry-counter-dusk-evm/.env.example")
+  || !packedFiles.includes("templates/duskds-counter-forge/Cargo.lock")
+  || !packedFiles.includes("templates/duskds-counter-forge/LICENSE-MPL-2.0.txt")
+  || !packedFiles.includes("templates/duskds-counter-forge/PROVENANCE.md")
+  || !packedFiles.includes("templates/duskds-counter-forge/.gitignore.template")
   || packedFiles.some((file) => file.endsWith("/.gitignore") || file.endsWith("/AGENTS.md"))
 ) {
   throw new Error("The tarball template inventory is not safe for npm distribution.");

@@ -29,6 +29,16 @@ export const DUSK_FORGE_PACKAGE = requirePolicyValue(
   "Dusk Forge package",
   SAFE_PACKAGE_RE
 );
+export const DUSK_FORGE_PACKAGE_VERSION = requirePolicyValue(
+  policy.dusk_forge.package_version,
+  "Dusk Forge package version",
+  SAFE_VERSION_RE
+);
+const dependencySnapshotSha256 = (policy.dusk_forge as { dependency_snapshot_sha256?: unknown })
+  .dependency_snapshot_sha256;
+export const DUSK_FORGE_DEPENDENCY_SNAPSHOT_SHA256 = dependencySnapshotSha256 === null
+  ? null
+  : requirePolicyValue(dependencySnapshotSha256, "Dusk Forge dependency snapshot SHA-256", /^[0-9a-f]{64}$/);
 export const DUSK_FORGE_BINARY = requirePolicyValue(
   policy.dusk_forge.binary,
   "Dusk Forge binary",
@@ -39,6 +49,21 @@ export const DUSK_FORGE_REVISION = requirePolicyValue(
   "Dusk Forge revision",
   FORTY_HEX_RE
 );
+export const DUSKDS_TEMPLATE_ID = requirePolicyValue(
+  policy.dusk_forge.reviewed_template.id,
+  "DuskDS reviewed template id",
+  /^[a-z][a-z0-9-]{0,63}$/
+);
+export const DUSKDS_TEMPLATE_GENERATED_LOCK_SHA256 = requirePolicyValue(
+  policy.dusk_forge.reviewed_template.generated_lock_sha256,
+  "DuskDS generated Cargo.lock SHA-256",
+  /^[0-9a-f]{64}$/
+);
+export const DUSKDS_TEMPLATE_LOCK_SHA256 = requirePolicyValue(
+  policy.dusk_forge.reviewed_template.template_lock_sha256,
+  "DuskDS template Cargo.lock SHA-256",
+  /^[0-9a-f]{64}$/
+);
 
 if (policy.schema_version !== 1) {
   throw new Error("DuskDS toolchain policy schema is unsupported.");
@@ -48,7 +73,6 @@ export const DUSK_FORGE_INSTALL_COMMAND = [
   "cargo",
   `+${DUSKDS_RUST_TOOLCHAIN}`,
   "install",
-  "--locked",
   "--force",
   "--git",
   DUSK_FORGE_REPOSITORY,
@@ -125,8 +149,12 @@ export function parseDuskForgeCargoInstallMetadata(raw: string): DuskForgeInstal
     const bins = Array.isArray(record?.bins) ? record.bins.filter((value): value is string => typeof value === "string") : [];
     const trackedBinary = process.platform === "win32" ? `${DUSK_FORGE_BINARY}.exe` : DUSK_FORGE_BINARY;
     if (!bins.includes(trackedBinary) && !bins.includes(DUSK_FORGE_BINARY)) continue;
-    if (parsed.repository !== DUSK_FORGE_REPOSITORY || parsed.revision !== DUSK_FORGE_REVISION) {
-      throw new Error("Installed Dusk Forge does not match the reviewed source revision.");
+    if (
+      parsed.packageVersion !== DUSK_FORGE_PACKAGE_VERSION
+      || parsed.repository !== DUSK_FORGE_REPOSITORY
+      || parsed.revision !== DUSK_FORGE_REVISION
+    ) {
+      throw new Error("Installed Dusk Forge does not match the reviewed package version and source revision.");
     }
     return { ...parsed, binary: DUSK_FORGE_BINARY };
   }
@@ -146,12 +174,12 @@ export async function readReviewedDuskForgeIdentity(
 export function assertReviewedDuskForgeIdentity(identity: DuskForgeInstallIdentity): DuskForgeInstallIdentity {
   if (
     identity.package !== DUSK_FORGE_PACKAGE
-    || !SAFE_VERSION_RE.test(identity.packageVersion)
+    || identity.packageVersion !== DUSK_FORGE_PACKAGE_VERSION
     || identity.binary !== DUSK_FORGE_BINARY
     || identity.repository !== DUSK_FORGE_REPOSITORY
     || identity.revision !== DUSK_FORGE_REVISION
   ) {
-    throw new Error("Installed Dusk Forge does not match the reviewed source revision.");
+    throw new Error("Installed Dusk Forge does not match the reviewed package version and source revision.");
   }
   return identity;
 }

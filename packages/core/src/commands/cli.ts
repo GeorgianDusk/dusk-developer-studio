@@ -1,13 +1,5 @@
 export type CommandPlatform = "windows" | "posix";
 
-export interface DuskDsCommandSet {
-  platform: CommandPlatform;
-  projectPath: string;
-  build: string;
-  test: string;
-  testEnvironment: "Ubuntu-24.04 WSL" | "native Linux";
-}
-
 export interface DuskDsDeployCommandSet {
   platform: CommandPlatform;
   prerequisiteChecks: string;
@@ -46,6 +38,12 @@ export function windowsPathToWsl(value: string): string {
 
 function joinPath(parent: string, child: string, separator: "\\" | "/"): string {
   const cleaned = parent.replace(/[\\/]+$/, "");
+  if (separator === "/" && parent.startsWith("/") && cleaned === "") {
+    return `/${child}`;
+  }
+  if (separator === "\\" && /^[a-zA-Z]:[\\/]+$/.test(parent)) {
+    return `${parent.slice(0, 2)}\\${child}`;
+  }
   return `${cleaned}${separator}${child}`;
 }
 
@@ -59,34 +57,19 @@ export function resolveDuskDsProjectPath(parentDir: string, projectName: string,
   return joinPath(base, projectName, separator);
 }
 
-export function buildDuskDsCommandSet(options: {
-  parentDir: string;
-  projectName: string;
-  platform: CommandPlatform;
-}): DuskDsCommandSet {
-  const projectPath = resolveDuskDsProjectPath(options.parentDir, options.projectName, options.platform);
-  if (options.platform === "windows") {
-    return {
-      platform: "windows",
-      projectPath,
-      build: [
-        `Set-Location -LiteralPath ${quotePowerShellArg(projectPath)}`,
-        "dusk-forge check",
-        "dusk-forge build all"
-      ].join("\n"),
-      test: `wsl -d Ubuntu-24.04 -- bash -lc ${quotePowerShellArg(
-        `cd ${quotePosixArg(windowsPathToWsl(projectPath))} && dusk-forge test`
-      )}`,
-      testEnvironment: "Ubuntu-24.04 WSL"
-    };
+export function resolveDuskDsProjectParent(projectPath: string, projectName: string, platform: CommandPlatform): string {
+  assertSafeArgument(projectPath);
+  assertSafeArgument(projectName);
+  const separator = platform === "windows" ? "\\" : "/";
+  const suffix = `${separator}${projectName}`;
+  if (!projectName || !projectPath.endsWith(suffix)) {
+    throw new Error("Project path does not end with the expected project folder.");
   }
-  return {
-    platform: "posix",
-    projectPath,
-    build: [`cd ${quotePosixArg(projectPath)}`, "dusk-forge check", "dusk-forge build all"].join("\n"),
-    test: [`cd ${quotePosixArg(projectPath)}`, "dusk-forge test"].join("\n"),
-    testEnvironment: "native Linux"
-  };
+  const parent = projectPath.slice(0, -suffix.length);
+  if (platform === "posix" && parent === "") return "/";
+  if (platform === "windows" && /^[a-zA-Z]:$/.test(parent)) return `${parent}\\`;
+  if (!parent) throw new Error("Project path has no usable parent folder.");
+  return parent;
 }
 
 /**

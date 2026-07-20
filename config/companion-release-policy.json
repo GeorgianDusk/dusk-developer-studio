@@ -4,13 +4,13 @@
   "distribution": "npm",
   "package": {
     "name": "dusk-developer-studio",
-    "version": "1.0.0",
-    "tag": "v1.0.0",
+    "version": "1.0.1",
+    "tag": "v1.0.1",
     "registry": "https://registry.npmjs.org",
     "access": "public",
     "node_engine": ">=24.18.0 <25",
     "package_root": "packages/cli",
-    "tarball_path": "output/npm/dusk-developer-studio-1.0.0.tgz",
+    "tarball_path": "output/npm/dusk-developer-studio-1.0.1.tgz",
     "primary_entrypoint": "bin/dusk-developer-studio.mjs",
     "safe_smoke_arguments": [
       "--lifecycle-self-test",
@@ -44,7 +44,17 @@
       "templates/foundry-counter-dusk-evm/README.md",
       "templates/foundry-counter-dusk-evm/foundry.toml",
       "templates/foundry-counter-dusk-evm/src/Counter.sol",
-      "templates/foundry-counter-dusk-evm/test/Counter.t.sol"
+      "templates/foundry-counter-dusk-evm/test/Counter.t.sol",
+      "templates/duskds-counter-forge/.gitignore.template",
+      "templates/duskds-counter-forge/Cargo.lock",
+      "templates/duskds-counter-forge/Cargo.toml",
+      "templates/duskds-counter-forge/LICENSE-MPL-2.0.txt",
+      "templates/duskds-counter-forge/Makefile",
+      "templates/duskds-counter-forge/PROVENANCE.md",
+      "templates/duskds-counter-forge/README.md",
+      "templates/duskds-counter-forge/rust-toolchain.toml",
+      "templates/duskds-counter-forge/src/lib.rs",
+      "templates/duskds-counter-forge/tests/contract.rs"
     ],
     "allowed_root_files": [
       "package.json",
@@ -76,6 +86,8 @@
     "required_checks": [
       "exact-package-inventory",
       "exact-tarball-browser-boot-and-pairing-smoke",
+      "three-platform-exact-tarball-direct-cli-scaffold-and-overwrite-refusal-smoke",
+      "three-platform-exact-tarball-local-actions-scaffold-preservation-shutdown-smoke",
       "clean-install",
       "safe-functional-smoke",
       "local-actions-capability-contract-smoke",
@@ -83,9 +95,24 @@
     ]
   },
   "publication": {
-    "workflow_path": ".github/workflows/studio-npm-publish.yml",
+    "workflow_path": ".github/workflows/studio-npm-oidc-publish.yml",
     "trigger": "exact-tag",
-    "environment": "npm-initial-publication",
+    "environment": "npm-trusted-publication",
+    "initial_package_version": "1.0.0",
+    "initial_tag": "v1.0.0",
+    "initial_publication_environment": "npm-initial-publication",
+    "initial_publication_evidence": {
+      "candidate_commit": "5447a6eb008157e1e9bd6b38de1a3789d17a67b7",
+      "integrity": "sha512-8wimo6v5iexej2r8r3r+k/eFf/or1WbPkblM5sLmg+QANzpJs328NZqH/Elzc0Y3dF37a6Elsadm9I9PiQpF3A==",
+      "package_inventory_sha256": "01addb99e9a1a7484b180ea42da2ded9decb64113e709f5848daa93087d34ff3",
+      "run_id": 29686128164,
+      "artifact_id": 8442414228,
+      "artifact_name": "studio-npm-publication-receipt-29686128164.json",
+      "artifact_expires_at": "2026-10-17T11:58:51Z",
+      "preserved_receipt_path": "docs/evidence/npm-initial-publication-receipt-29686128164.json",
+      "receipt_sha256": "72c60fabe5378c8ef5fa81434e01953cbaf5739fdd1fe3364862d0ddfec041e5",
+      "observed_at": "2026-07-19T12:30:25.617Z"
+    },
     "initial_registry_authentication": "short-lived-granular-token",
     "initial_token_secret_name": "NPM_INITIAL_PUBLISH_TOKEN",
     "initial_token_max_lifetime_hours": 24,

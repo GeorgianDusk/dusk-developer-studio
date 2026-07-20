@@ -75,6 +75,18 @@ assert.deepEqual(resolveCliInvocation(["local-actions", "--no-open"]), {
   capabilitiesEnabled: true,
   runtimeArgs: ["--no-open"]
 });
+assert.deepEqual(resolveCliInvocation(["create-duskds", "my-counter"]), {
+  kind: "create-duskds",
+  projectName: "my-counter"
+});
+assert.throws(
+  () => resolveCliInvocation(["create-duskds"]),
+  /create-duskds <project-name>/
+);
+assert.throws(
+  () => resolveCliInvocation(["create-duskds", "counter", "extra"]),
+  /create-duskds <project-name>/
+);
 assert.deepEqual(resolveCliInvocation(["--no-open", "local-actions"]), {
   kind: "run",
   capabilitiesEnabled: false,
@@ -104,7 +116,8 @@ for (const flag of ["--help", "-h"]) {
     windowsHide: true
   });
   assert.equal(result.status, 0);
-  assert.match(result.stdout, /Usage: npx dusk-developer-studio \[local-actions\] \[--no-open\]/);
+  assert.match(result.stdout, /npx dusk-developer-studio \[local-actions\] \[--no-open\]/);
+  assert.match(result.stdout, /npx dusk-developer-studio create-duskds <project-name>/);
 }
 const mixedInformation = spawnSync(process.execPath, [primaryBin, "--help", "--no-open"], {
   cwd: productRoot,
@@ -142,6 +155,10 @@ try {
     fs.mkdir(path.join(fixture, "templates", "foundry-counter-dusk-evm", "src"), { recursive: true }),
     fs.mkdir(path.join(fixture, "templates", "foundry-counter-dusk-evm", "test"), { recursive: true })
   ]);
+  await copyRegularTree(
+    path.join(productRoot, "packages", "templates", "duskds-counter-forge"),
+    path.join(fixture, "templates", "duskds-counter-forge")
+  );
   await Promise.all([
     fs.writeFile(path.join(fixture, "app", "runtime.mjs"), "export const runtime = true;\n", "utf8"),
     fs.writeFile(
@@ -212,6 +229,16 @@ try {
     "README.md",
     "THIRD-PARTY-LICENSES.txt"
   ]);
+  assert.ok(
+    verified.manifest.files.some((file) =>
+      file.path === "templates/duskds-counter-forge/LICENSE-MPL-2.0.txt"
+    )
+  );
+  assert.ok(
+    verified.manifest.files.some((file) =>
+      file.path === "templates/duskds-counter-forge/Cargo.lock"
+    )
+  );
 
   await fs.appendFile(path.join(fixture, "app", "runtime.mjs"), "// tampered\n", "utf8");
   await assert.rejects(

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CAPABILITIES,
   DUSK_EVM_NETWORKS,
@@ -73,6 +73,8 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
   const [scope, setScope] = useState<"path" | "all">(builderPath ? "path" : "all");
   const [showAllResources, setShowAllResources] = useState(false);
   const [showAllCapabilities, setShowAllCapabilities] = useState(false);
+  const [resultAnnouncement, setResultAnnouncement] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim();
   const pathResourceIds = builderPath ? new Set(resourceIds[builderPath]) : null;
 
@@ -107,6 +109,19 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
     setQuery(nextQuery);
     setShowAllResources(false);
     setShowAllCapabilities(false);
+    setResultAnnouncement("");
+  }
+
+  function searchAllReferences() {
+    chooseScope("all");
+    setResultAnnouncement("Search expanded to all reviewed references. Results updated.");
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
+
+  function clearSearch() {
+    updateQuery("");
+    setResultAnnouncement("Search cleared. References in the current scope restored.");
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
   }
 
   return (
@@ -122,13 +137,14 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
         <button className={scope === "all" ? "active" : ""} type="button" aria-pressed={scope === "all"} onClick={() => chooseScope("all")}>All references</button>
         <StatusPill tone={sourceIsStale ? "warn" : "good"}>sources reviewed {sourceDate}</StatusPill>
       </div>
-      <SearchBox value={query} onChange={updateQuery} placeholder="Search docs, capabilities, W3sper, Hedger, Citadel, data drivers..." />
+      <SearchBox inputRef={searchInputRef} value={query} onChange={updateQuery} placeholder="Search docs, capabilities, W3sper, Hedger, Citadel, data drivers..." />
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{resultAnnouncement}</p>
       {!hasResults ? (
         <div className="empty-reference-actions">
           <AsyncNotice state="empty" message="No reviewed reference matches this search and scope. Try a broader term or search all references." />
           <div className="button-row">
-            {normalizedQuery ? <button className="secondary-button" type="button" onClick={() => updateQuery("")}>Clear search</button> : null}
-            {scope === "path" ? <button className="secondary-button" type="button" onClick={() => chooseScope("all")}>Search all references</button> : null}
+            {normalizedQuery ? <button className="secondary-button" type="button" onClick={clearSearch}>Clear search</button> : null}
+            {scope === "path" ? <button className="secondary-button" type="button" onClick={searchAllReferences}>Search all references</button> : null}
           </div>
         </div>
       ) : (
@@ -288,18 +304,23 @@ export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath 
         placeholder={prelaunch ? "Search wallet, RPC, gas, Foundry..." : "Search Forge, Rust, WASM, data driver, VM tests..."}
       />
       <p className="quiet-note" role="status">{items.length} {prelaunch ? "planning" : "recovery"} {items.length === 1 ? "entry" : "entries"} found.</p>
-      {items.length ? <div className="trouble-list">{items.map((item) => <TroubleRow key={item.id} item={item} prelaunch={prelaunch} />)}</div> : <AsyncNotice state="empty" message="No entry matches this search. Try the failed tool or symptom wording, or open project support." />}
+      {items.length ? <div className="trouble-list">{items.map((item) => <TroubleRow key={item.id} item={item} prelaunch={prelaunch} />)}</div> : (
+        <div className="empty-reference-actions">
+          <AsyncNotice state="empty" message="No entry matches this search. Try the failed tool or symptom wording, or open project support." />
+          {normalizedQuery ? <button className="secondary-button" type="button" onClick={() => setQuery("")}>Clear search</button> : null}
+        </div>
+      )}
     </section>
   );
 }
 
 const duskDsTroubleActions: Partial<Record<string, { route: "setup" | "build"; label: string; command?: string }>> = {
   "dusk-forge-windows-wasm-opt-shim": { route: "setup", label: "Open Setup" },
-  "dusk-forge-windows-long-path-linker": { route: "build", label: "Open Build", command: "dusk-forge check\ndusk-forge build all" },
+  "dusk-forge-windows-long-path-linker": { route: "build", label: "Open Build" },
   "rust-wasm-target-missing": { route: "setup", label: "Open Setup", command: "rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown" },
   "dusk-forge-rust-stable-drift": { route: "setup", label: "Open Setup", command: "rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown" },
-  "data-driver-build-missing": { route: "build", label: "Open Build", command: "dusk-forge build all" },
-  "dusk-forge-test-linux-required": { route: "build", label: "Open Build", command: "dusk-forge test" }
+  "data-driver-build-missing": { route: "build", label: "Open Build" },
+  "dusk-forge-test-linux-required": { route: "build", label: "Open Build" }
 };
 
 function TroubleRow({ item, prelaunch }: { item: TroubleshootingItem; prelaunch: boolean }) {

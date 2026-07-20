@@ -12,7 +12,7 @@
                      ],
         "severity":  "medium",
         "fix":  "Switch to DuskEVM Testnet and confirm chain ID 745 / 0x2e9 before funding or deploying.",
-        "safeNextStep":  "Use DuskEVM Setup to add or switch the wallet network, then re-run the RPC health check."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the expected chain metadata. Do not add or switch a wallet network until the live workflow is activated."
     },
     {
         "id":  "no-wallet",
@@ -26,7 +26,7 @@
                      ],
         "severity":  "low",
         "fix":  "Install or unlock an EIP-1193 compatible wallet such as MetaMask or Rabby, then refresh the Studio.",
-        "safeNextStep":  "You can still create local starters without connecting a wallet."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview. Wallet connection and EVM starter actions are not active in Studio yet."
     },
     {
         "id":  "user-rejected",
@@ -40,7 +40,7 @@
                      ],
         "severity":  "low",
         "fix":  "The wallet declined the request. Retry only if you understand the requested network action.",
-        "safeNextStep":  "Review the network details before approving wallet_addEthereumChain or wallet_switchEthereumChain."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned wallet boundary before approving any future network request."
     },
     {
         "id":  "insufficient-gas",
@@ -54,7 +54,7 @@
                      ],
         "severity":  "medium",
         "fix":  "Fund the EVM wallet with testnet DUSK. Studio routes to the official DuskEVM bridge guide and does not dispense faucet tokens.",
-        "safeNextStep":  "Open Access and follow the official bridge route."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Access stage. Funding is not active in Studio until an official route is reviewed and activated."
     },
     {
         "id":  "rpc-unavailable",
@@ -70,7 +70,7 @@
                      ],
         "severity":  "medium",
         "fix":  "Retry the RPC health check. If the browser says Failed to fetch, it can be RPC availability, firewall/proxy, DNS, TLS, or CORS behavior rather than a wallet issue.",
-        "safeNextStep":  "Check the official explorer and avoid repeated transaction attempts. If shell and browser requests both fail, treat it as endpoint/network availability before debugging wallet code."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview. Studio does not run an EVM network check yet; use current official sources before treating any endpoint as live."
     },
     {
         "id":  "blockscout-unavailable",
@@ -84,7 +84,7 @@
                      ],
         "severity":  "low",
         "fix":  "A contract may still be deployed even if the explorer is lagging or unavailable.",
-        "safeNextStep":  "Keep the tx hash and contract address, then retry the explorer later."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Inspect stage. Studio does not treat the explorer as an active inspection surface yet."
     },
     {
         "id":  "foundry-missing",
@@ -98,7 +98,7 @@
                      ],
         "severity":  "medium",
         "fix":  "Install Foundry so forge and cast are available before running build, test, or deploy commands.",
-        "safeNextStep":  "Install Foundry, then return to Build before using deploy commands."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Build stage. Studio does not run EVM builds or deploy commands yet."
     },
     {
         "id":  "bridge-pending",
@@ -112,7 +112,7 @@
                      ],
         "severity":  "medium",
         "fix":  "Bridge timing can vary. Keep source and destination transaction details and avoid sending duplicate bridge attempts without checking status.",
-        "safeNextStep":  "Use official Dusk support paths if funds remain unavailable after the documented wait."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview. Funding is not an active Studio flow; use official Dusk support if this concerns an external transaction."
     },
     {
         "id":  "verification-failed",
@@ -126,7 +126,24 @@
                      ],
         "severity":  "low",
         "fix":  "Confirm compiler version, optimizer settings, constructor args, and exact contract path match the deployed bytecode.",
-        "safeNextStep":  "Use Blockscout UI first; Studio does not automate verification submission."
+        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Inspect stage. Studio does not submit contract verification."
+    },
+    {
+        "id":  "duskds-browser-public-node-csp",
+        "title":  "Browser blocks the public Dusk node check",
+        "symptoms":  [
+                         "duskds",
+                         "access check",
+                         "public node",
+                         "failed to fetch",
+                         "browser blocked",
+                         "csp",
+                         "content security policy",
+                         "connect-src"
+                     ],
+        "severity":  "medium",
+        "fix":  "Start the exact current npm package shown on Studio's Local Studio page. It includes the reviewed public Testnet node origin in its browser security policy; do not reuse a stale local build.",
+        "safeNextStep":  "Do not weaken browser security or add CSP, certificate, or network exceptions. If the check still fails, confirm endpoint and network availability, then use the manual W3sper Access lane."
     },
     {
         "id":  "dusk-forge-windows-wasm-opt-shim",
@@ -161,8 +178,8 @@
                          "long path"
                      ],
         "severity":  "medium",
-        "fix":  "On Windows, native Rust build scripts can fail when a Forge project is nested under a deep workspace path. Scaffold DuskDS projects under a short parent such as C:\\tmp\\dusk-studio-projects, then re-run dusk-forge check and dusk-forge build all.",
-        "safeNextStep":  "Use the DuskDS build page default parent path or set DUSK_STUDIO_DUSKDS_PROJECT_ROOT to another short local folder."
+        "fix":  "On Windows, native Rust build scripts can fail when a Forge project is nested under a deep path. Local Actions creates the starter beneath its managed DuskDS root and shows the exact created path after success. Use only a relative subfolder in Build, then re-run dusk-forge check and dusk-forge build all.",
+        "safeNextStep":  "Leave the optional Build subfolder blank, or restart Local Studio with DUSK_STUDIO_DUSKDS_PROJECT_ROOT set to a normal absolute short local folder before creating the starter."
     },
     {
         "id":  "rust-wasm-target-missing",

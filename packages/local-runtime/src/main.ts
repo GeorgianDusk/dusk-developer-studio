@@ -6,7 +6,11 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createLocalAgentServer } from "@dusk/local-agent/server";
+import {
+  createLocalAgentServer,
+  MAX_SCAFFOLD_PATH_LENGTH,
+  scaffoldDuskDsForge
+} from "@dusk/local-agent/server";
 import { terminateAllBoundedProcesses } from "@dusk/local-agent/process";
 import { assertNonElevatedLaunch } from "./launchPrivilege";
 import { createLocalStudioServer } from "./staticServer";
@@ -43,6 +47,13 @@ export interface LocalRuntimeCliMode {
   lifecycleSelfTest: boolean;
 }
 
+export interface DuskDsTemplateCliOptions {
+  packageRoot?: string;
+  projectName: string;
+  cwd?: string;
+  verification?: NpmPackageVerificationOptions;
+}
+
 const LOCAL_RUNTIME_FLAGS = new Set(["--no-open", "--lifecycle-self-test"]);
 
 export function resolveLocalRuntimeCliMode(args: string[]): LocalRuntimeCliMode {
@@ -66,6 +77,49 @@ function defaultProjectRoot(): string {
   }
   const dataHome = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share");
   return path.join(dataHome, "dusk", "developer-studio", "projects");
+}
+
+export function resolveDuskDsProjectRoot(
+  managedProjectRoot: string,
+  configured = process.env.DUSK_STUDIO_DUSKDS_PROJECT_ROOT
+): string {
+  const managed = path.resolve(managedProjectRoot);
+  const candidate = configured?.trim();
+  if (!candidate) {
+    const defaultRoot = path.join(managed, "duskds");
+    if (defaultRoot.length > MAX_SCAFFOLD_PATH_LENGTH) {
+      throw new Error(`Managed DuskDS project root must be ${MAX_SCAFFOLD_PATH_LENGTH.toLocaleString("en-US")} characters or fewer.`);
+    }
+    return defaultRoot;
+  }
+  if (
+    !path.isAbsolute(candidate)
+    || (process.platform === "win32" && !/^[a-zA-Z]:[\\/]/.test(candidate))
+    || candidate.includes("\0")
+    || /[\r\n]/.test(candidate)
+    || candidate.startsWith("\\\\")
+    || candidate.startsWith("\\\\?\\")
+  ) {
+    throw new Error("DUSK_STUDIO_DUSKDS_PROJECT_ROOT must be a normal absolute local path.");
+  }
+  const resolved = path.resolve(candidate);
+  if (resolved === path.parse(resolved).root) {
+    throw new Error("DUSK_STUDIO_DUSKDS_PROJECT_ROOT cannot be a filesystem root.");
+  }
+  if (resolved.length > MAX_SCAFFOLD_PATH_LENGTH) {
+    throw new Error(`DUSK_STUDIO_DUSKDS_PROJECT_ROOT must be ${MAX_SCAFFOLD_PATH_LENGTH.toLocaleString("en-US")} characters or fewer.`);
+  }
+  return resolved;
+}
+
+export async function resolveCanonicalNpmPackageRoot(packageRoot: string): Promise<string> {
+  const requested = path.resolve(packageRoot);
+  const canonical = await fs.realpath(requested);
+  const stat = await fs.lstat(canonical);
+  if (!stat.isDirectory() || stat.isSymbolicLink() || canonical === path.parse(canonical).root) {
+    throw new Error("The verified npm package root is unsafe.");
+  }
+  return canonical;
 }
 
 function listen(server: http.Server, port: number): Promise<void> {
@@ -113,11 +167,12 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
   studioServer: http.Server;
   companionServer: http.Server;
   projectRoot: string;
+  duskDsProjectRoot: string;
   shutdown: () => Promise<void>;
 }> {
   assertSupportedNodeVersion(options.verification?.nodeVersion ?? process.versions.node);
   assertNonElevatedLaunch();
-  const packageRoot = path.resolve(options.packageRoot);
+  const packageRoot = await resolveCanonicalNpmPackageRoot(options.packageRoot);
   const manifest = await verifyNpmPackage(packageRoot, options.verification);
   const studioPort = options.studioPort ?? STUDIO_PORT;
   const companionPort = options.companionPort ?? COMPANION_PORT;
@@ -127,6 +182,7 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
 
   const pairingToken = randomBytes(32).toString("base64url");
   const projectRoot = path.resolve(options.projectRoot ?? defaultProjectRoot());
+  const duskDsProjectRoot = resolveDuskDsProjectRoot(projectRoot);
   await fs.mkdir(projectRoot, { recursive: true, mode: 0o700 });
   const releaseIdentity = {
     product: "Dusk Developer Studio",
@@ -139,7 +195,8 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
     port: companionPort,
     workspaceRoot: projectRoot,
     foundryTemplateRoot: path.join(packageRoot, "templates", "foundry-counter-dusk-evm"),
-    duskDsProjectRoot: path.join(projectRoot, "duskds"),
+    duskDsTemplateRoot: path.join(packageRoot, "templates", "duskds-counter-forge"),
+    duskDsProjectRoot,
     allowedOrigins: [`http://${HOST}:${studioPort}`, `http://localhost:${studioPort}`],
     capabilitiesEnabled: options.capabilitiesEnabled,
     evmScaffoldEnabled: false,
@@ -169,7 +226,7 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
     await Promise.all([close(studioServer), close(companionServer)]);
   };
   if (options.openBrowser) openLocalBrowser(`http://${HOST}:${studioPort}/#companion`);
-  return { manifest, studioServer, companionServer, projectRoot, shutdown };
+  return { manifest, studioServer, companionServer, projectRoot, duskDsProjectRoot, shutdown };
 }
 
 interface SelfTestResponse {
@@ -179,7 +236,7 @@ interface SelfTestResponse {
 }
 
 interface LifecycleSelfTestResult {
-  schema_version: 1;
+  schema_version: 2;
   mode: "safe" | "local-actions";
   release: {
     product: string;
@@ -195,7 +252,19 @@ interface LifecycleSelfTestResult {
   expected_studio_listening_endpoints: ["127.0.0.1:5173", "127.0.0.1:8788"];
   unexpected_studio_listening_endpoints: [];
   isolated_project_root_verified: true;
+  local_actions_scaffold_smoke: "passed" | "not-applicable";
+  scaffold_preservation_smoke: "passed" | "not-applicable";
+  shutdown_smoke: "passed";
   studio_loopback_services_stopped: true;
+}
+
+interface LifecycleSelfTestExecution {
+  receipt: Omit<
+    LifecycleSelfTestResult,
+    "scaffold_preservation_smoke" | "shutdown_smoke" | "studio_loopback_services_stopped"
+  >;
+  createdProjectPath?: string;
+  createdProjectFiles?: string[];
 }
 
 const SELF_TEST_RESULT_PREFIX = "DUSK_STUDIO_LIFECYCLE=";
@@ -352,10 +421,35 @@ async function assertStudioLoopbackServicesStopped(): Promise<void> {
   }
 }
 
+async function exactRegularFileInventory(
+  root: string,
+  directory = root,
+  prefix = ""
+): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of (await fs.readdir(directory, { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name))) {
+    const absolute = path.join(directory, entry.name);
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const stat = await fs.lstat(absolute);
+    if (entry.isSymbolicLink() || stat.isSymbolicLink()) {
+      throw new Error(`Lifecycle scaffold retained a link: ${relative}.`);
+    }
+    if (entry.isDirectory() && stat.isDirectory()) {
+      files.push(...await exactRegularFileInventory(root, absolute, relative));
+    } else if (entry.isFile() && stat.isFile()) {
+      files.push(relative);
+    } else {
+      throw new Error(`Lifecycle scaffold retained a non-regular entry: ${relative}.`);
+    }
+  }
+  return files.sort();
+}
+
 async function runLifecycleSelfTest(
   runtime: Awaited<ReturnType<typeof startLocalRuntime>>,
   capabilitiesEnabled: boolean
-): Promise<Omit<LifecycleSelfTestResult, "studio_loopback_services_stopped">> {
+): Promise<LifecycleSelfTestExecution> {
   const expectedEndpoints = [`${HOST}:${STUDIO_PORT}`, `${HOST}:${COMPANION_PORT}`] as const;
   const serverEndpoints = [runtime.studioServer.address(), runtime.companionServer.address()]
     .map((address) => {
@@ -473,28 +567,100 @@ async function runLifecycleSelfTest(
   if (runtime.projectRoot !== expectedProjectRoot) {
     throw new Error("Lifecycle project root did not use the isolated platform user-data root.");
   }
+  if (runtime.duskDsProjectRoot !== resolveDuskDsProjectRoot(expectedProjectRoot)) {
+    throw new Error("Lifecycle DuskDS project root did not match the managed containment root.");
+  }
   const projectStat = await fs.lstat(runtime.projectRoot);
   if (!projectStat.isDirectory() || projectStat.isSymbolicLink()) {
     throw new Error("Lifecycle isolated project root is unsafe.");
   }
 
+  let createdProjectPath: string | undefined;
+  let createdProjectFiles: string[] | undefined;
+  if (capabilitiesEnabled) {
+    const projectName = `lifecycle-self-test-${randomBytes(6).toString("hex")}`;
+    const scaffoldRequest = JSON.stringify({ projectName });
+    const scaffold = await selfTestRequest({
+      host: HOST,
+      port: COMPANION_PORT,
+      path: "/scaffold-duskds-forge",
+      method: "POST",
+      headers: {
+        host: `${HOST}:${COMPANION_PORT}`,
+        origin,
+        cookie,
+        "content-type": "application/json",
+        "content-length": Buffer.byteLength(scaffoldRequest).toString()
+      }
+    }, scaffoldRequest, 120_000);
+    const scaffoldBody = parseSelfTestJson(scaffold, "Local Actions scaffold");
+    if (
+      scaffold.status !== 200
+      || scaffoldBody.ok !== true
+      || scaffoldBody.projectName !== projectName
+      || scaffoldBody.template !== "duskds-counter-forge"
+      || typeof scaffoldBody.templateRevision !== "string"
+      || !/^[a-f0-9]{40}$/u.test(scaffoldBody.templateRevision)
+      || typeof scaffoldBody.templateLockSha256 !== "string"
+      || !/^[a-f0-9]{64}$/u.test(scaffoldBody.templateLockSha256)
+      || scaffoldBody.rustToolchain !== "1.94.0"
+      || scaffoldBody.structureVerified !== true
+      || !Array.isArray(scaffoldBody.files)
+      || scaffoldBody.files.some((file) => typeof file !== "string")
+      || !scaffoldBody.files.includes("Cargo.lock")
+      || !scaffoldBody.files.includes("Cargo.toml")
+      || !scaffoldBody.files.includes("PROVENANCE.md")
+      || !scaffoldBody.files.includes("rust-toolchain.toml")
+      || !scaffoldBody.files.includes("src/lib.rs")
+      || !scaffoldBody.files.includes("tests/contract.rs")
+      || typeof scaffoldBody.projectPath !== "string"
+    ) {
+      throw new Error("Lifecycle Local Actions scaffold did not return the reviewed starter contract.");
+    }
+    createdProjectPath = await fs.realpath(scaffoldBody.projectPath);
+    if (
+      path.dirname(createdProjectPath) !== await fs.realpath(runtime.duskDsProjectRoot)
+      || path.basename(createdProjectPath) !== projectName
+    ) {
+      throw new Error("Lifecycle Local Actions scaffold escaped the managed DuskDS root.");
+    }
+    const createdStat = await fs.lstat(createdProjectPath);
+    if (!createdStat.isDirectory() || createdStat.isSymbolicLink()) {
+      throw new Error("Lifecycle Local Actions scaffold is not a real managed directory.");
+    }
+    createdProjectFiles = [...scaffoldBody.files as string[]].sort();
+    if (JSON.stringify(await exactRegularFileInventory(createdProjectPath))
+        !== JSON.stringify(createdProjectFiles)) {
+      throw new Error("Lifecycle Local Actions scaffold inventory differs from its reviewed receipt.");
+    }
+  }
+  if (JSON.stringify(ownedListeningEndpoints()) !== JSON.stringify([...expectedEndpoints].sort())) {
+    throw new Error("Lifecycle scaffold changed the Studio-owned listening endpoint set.");
+  }
+
   return {
-    schema_version: 1,
-    mode: capabilitiesEnabled ? "local-actions" : "safe",
-    release: {
-      product: "Dusk Developer Studio",
-      version: runtime.manifest.version,
-      commit: runtime.manifest.commit,
-      channel: "npm"
+    receipt: {
+      schema_version: 2,
+      mode: capabilitiesEnabled ? "local-actions" : "safe",
+      release: {
+        product: "Dusk Developer Studio",
+        version: runtime.manifest.version,
+        commit: runtime.manifest.commit,
+        channel: "npm"
+      },
+      bootstrap_succeeded: true,
+      bootstrap_replay_denied: true,
+      authenticated_session_verified: true,
+      exact_release_parity_verified: true,
+      capability_contract_verified: true,
+      expected_studio_listening_endpoints: ["127.0.0.1:5173", "127.0.0.1:8788"],
+      unexpected_studio_listening_endpoints: [],
+      isolated_project_root_verified: true,
+      local_actions_scaffold_smoke: createdProjectPath ? "passed" : "not-applicable"
     },
-    bootstrap_succeeded: true,
-    bootstrap_replay_denied: true,
-    authenticated_session_verified: true,
-    exact_release_parity_verified: true,
-    capability_contract_verified: true,
-    expected_studio_listening_endpoints: ["127.0.0.1:5173", "127.0.0.1:8788"],
-    unexpected_studio_listening_endpoints: [],
-    isolated_project_root_verified: true
+    ...(createdProjectPath && createdProjectFiles
+      ? { createdProjectPath, createdProjectFiles }
+      : {})
   };
 }
 
@@ -520,9 +686,9 @@ export async function runLocalRuntimeCli(options: LocalRuntimeCliOptions): Promi
   console.log(`Open http://${HOST}:${STUDIO_PORT}/`);
 
   if (mode.lifecycleSelfTest) {
-    let result: Omit<LifecycleSelfTestResult, "studio_loopback_services_stopped">;
+    let execution: LifecycleSelfTestExecution;
     try {
-      result = await runLifecycleSelfTest(runtime, options.capabilitiesEnabled);
+      execution = await runLifecycleSelfTest(runtime, options.capabilitiesEnabled);
     } finally {
       await runtime.shutdown();
     }
@@ -530,18 +696,39 @@ export async function runLocalRuntimeCli(options: LocalRuntimeCliOptions): Promi
       throw new Error("Lifecycle local servers still report a listening state.");
     }
     await assertStudioLoopbackServicesStopped();
+    let scaffoldPreserved = false;
+    if (execution.createdProjectPath && execution.createdProjectFiles) {
+      const createdStat = await fs.lstat(execution.createdProjectPath);
+      const [cargoLock, provenance] = await Promise.all([
+        fs.readFile(path.join(execution.createdProjectPath, "Cargo.lock"), "utf8"),
+        fs.readFile(path.join(execution.createdProjectPath, "PROVENANCE.md"), "utf8")
+      ]);
+      if (!createdStat.isDirectory()
+          || createdStat.isSymbolicLink()
+          || JSON.stringify(await exactRegularFileInventory(execution.createdProjectPath))
+            !== JSON.stringify(execution.createdProjectFiles)
+          || !/^version = 4$/mu.test(cargoLock)
+          || !/d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a/u.test(provenance)) {
+        throw new Error("Lifecycle Local Actions scaffold was not preserved after shutdown.");
+      }
+      scaffoldPreserved = true;
+    } else if (execution.createdProjectPath || execution.createdProjectFiles) {
+      throw new Error("Lifecycle Local Actions scaffold preservation state is incomplete.");
+    }
     const completed: LifecycleSelfTestResult = {
-      ...result,
+      ...execution.receipt,
+      scaffold_preservation_smoke: scaffoldPreserved ? "passed" : "not-applicable",
+      shutdown_smoke: "passed",
       studio_loopback_services_stopped: true
     };
     console.log(`${SELF_TEST_RESULT_PREFIX}${JSON.stringify(completed)}`);
     console.log(
-      "Lifecycle self-test passed; bootstrap, session, release parity, capabilities, and shutdown verified."
+      "Lifecycle self-test passed; bootstrap, session, release parity, capabilities, scaffold policy, and shutdown verified."
     );
     return;
   }
 
-  console.log("Press Ctrl+C to stop. Projects remain in your user data folder.");
+  console.log("Press Ctrl+C to stop. Projects remain under the managed DuskDS project root.");
   await new Promise<void>((resolve, reject) => {
     const onSignal = async () => {
       process.off("SIGINT", onSignal);
@@ -556,6 +743,37 @@ export async function runLocalRuntimeCli(options: LocalRuntimeCliOptions): Promi
     process.on("SIGINT", onSignal);
     process.on("SIGTERM", onSignal);
   });
+}
+
+export async function runDuskDsTemplateCli(options: DuskDsTemplateCliOptions): Promise<void> {
+  assertSupportedNodeVersion(options.verification?.nodeVersion ?? process.versions.node);
+  assertNonElevatedLaunch();
+  const packageRoot = await resolveCanonicalNpmPackageRoot(
+    options.packageRoot ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+  );
+  const manifest = await verifyNpmPackage(packageRoot, options.verification);
+  const requestedCwd = path.resolve(options.cwd ?? process.cwd());
+  if (requestedCwd === path.parse(requestedCwd).root || requestedCwd.length > MAX_SCAFFOLD_PATH_LENGTH) {
+    throw new Error("create-duskds must run from a bounded project parent, not a filesystem root.");
+  }
+  const cwdStat = await fs.lstat(requestedCwd);
+  if (!cwdStat.isDirectory() || cwdStat.isSymbolicLink()) {
+    throw new Error("create-duskds must run from a real local directory.");
+  }
+  const canonicalCwd = await fs.realpath(requestedCwd);
+  const result = await scaffoldDuskDsForge(
+    { cwd: canonicalCwd, projectName: options.projectName },
+    {
+      projectRoot: canonicalCwd,
+      templateRoot: path.join(packageRoot, "templates", "duskds-counter-forge")
+    }
+  );
+  if (path.dirname(result.path) !== canonicalCwd || result.projectRoot !== canonicalCwd) {
+    throw new Error("create-duskds returned a project outside the selected parent directory.");
+  }
+  console.log(`Dusk Developer Studio ${manifest.version} (${manifest.commit.slice(0, 8)})`);
+  console.log(`Created ${result.template} at ${result.path}`);
+  console.log(`Rust ${result.rustToolchain}; template source ${result.templateRevision.slice(0, 12)}; packaged Cargo.lock verified.`);
 }
 
 const isMainModule = process.argv[1]

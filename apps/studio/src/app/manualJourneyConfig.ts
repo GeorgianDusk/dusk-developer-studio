@@ -1,10 +1,16 @@
 import toolchainPolicy from "../../../../config/duskds-toolchain-policy.json";
+import npmPackage from "../../../../packages/cli/package.json";
 
-export type ManualPlatform = "windows" | "posix";
+export type ManualPlatform = "windows" | "linux" | "macos";
 export type ManualToolScope = "setup" | "access" | "build" | "inspect";
 
 export const DUSKDS_RUST_TOOLCHAIN = toolchainPolicy.rust_toolchain;
 export const DUSKDS_FORGE_COMMIT = toolchainPolicy.dusk_forge.revision;
+export const DUSKDS_FORGE_PACKAGE_VERSION = toolchainPolicy.dusk_forge.package_version;
+export const DUSKDS_TEMPLATE_ID = toolchainPolicy.dusk_forge.reviewed_template.id;
+export const DUSKDS_TEMPLATE_LOCK_SHA256 = toolchainPolicy.dusk_forge.reviewed_template.template_lock_sha256;
+export const DUSK_STUDIO_NPM_PACKAGE_VERSION = npmPackage.version;
+export const W3SPER_VERSION = toolchainPolicy.w3sper.version;
 export const DUSKDS_TESTNET_NODE = "https://testnet.nodes.dusk.network";
 
 export interface ManualToolRequirement {
@@ -22,8 +28,61 @@ export interface ManualToolRequirement {
 
 const same = (command: string): Record<ManualPlatform, string> => ({
   windows: command,
-  posix: command
+  linux: command,
+  macos: command
 });
+
+const POSIX_PIN_TOOLCHAIN_COMMAND = `sed -i.bak 's/channel[[:space:]]*=[[:space:]]*"[^"]*"/channel = "${DUSKDS_RUST_TOOLCHAIN}"/' rust-toolchain.toml && rm -f rust-toolchain.toml.bak`;
+
+export function reviewedDuskForgeGuardCommands(platform: ManualPlatform): string[] {
+  if (platform === "windows") {
+    return [
+      "$forgeRootCandidate = if ($env:CARGO_INSTALL_ROOT) { $env:CARGO_INSTALL_ROOT } elseif ($env:CARGO_HOME) { $env:CARGO_HOME } else { Join-Path $HOME '.cargo' }",
+      "$forgeRoot = [System.IO.Path]::GetFullPath($forgeRootCandidate)",
+      "$forgeReceipt = Join-Path $forgeRoot '.crates2.json'",
+      "$forgeBin = Join-Path $forgeRoot 'bin'",
+      "$forgeExe = Join-Path $forgeBin 'dusk-forge.exe'",
+      "if (-not (Test-Path -LiteralPath $forgeReceipt -PathType Leaf)) { throw 'Dusk Forge Cargo receipt is missing.' }",
+      `$forgeMatches = @(Select-String -LiteralPath $forgeReceipt -Pattern 'dusk-forge-cli\\s+v?${DUSKDS_FORGE_PACKAGE_VERSION.replaceAll(".", "\\.")}.*${DUSKDS_FORGE_COMMIT}' -ErrorAction Stop)`,
+      "if ($forgeMatches.Count -eq 0) { throw 'Reviewed Dusk Forge commit is not installed in this Cargo root.' }",
+      "if (-not (Test-Path -LiteralPath $forgeExe -PathType Leaf)) { throw 'Reviewed Dusk Forge executable is missing from this Cargo root.' }",
+      "$env:PATH = \"$forgeBin;$env:PATH\"",
+      "& $forgeExe --version",
+      "if ($LASTEXITCODE -ne 0) { throw 'Reviewed Dusk Forge executable check failed.' }"
+    ];
+  }
+  return [
+    'forgeRoot="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"',
+    'forgeReceipt="$forgeRoot/.crates2.json"',
+    'forgeBin="$forgeRoot/bin"',
+    'forgeExe="$forgeBin/dusk-forge"',
+    'test -f "$forgeReceipt"',
+    `grep -Eq "dusk-forge-cli[[:space:]]+v?${DUSKDS_FORGE_PACKAGE_VERSION.replaceAll(".", "\\.")}.*${DUSKDS_FORGE_COMMIT}" "$forgeReceipt"`,
+    'test -x "$forgeExe"',
+    'PATH="$forgeBin:$PATH"',
+    "export PATH",
+    '"$forgeExe" --version'
+  ];
+}
+
+export function reviewedDuskForgeInvocation(platform: ManualPlatform, args: string): string {
+  return platform === "windows" ? `& $forgeExe ${args}` : `"$forgeExe" ${args}`;
+}
+
+export const DUSKDS_PIN_TOOLCHAIN_COMMAND: Record<ManualPlatform, string> = {
+  windows: [
+    "$toolchainPath = (Resolve-Path -LiteralPath '.\\rust-toolchain.toml' -ErrorAction Stop).Path",
+    "$toolchainText = Get-Content -Raw -LiteralPath $toolchainPath -ErrorAction Stop",
+    "if ($toolchainText -notmatch 'channel\\s*=\\s*\"[^\"]+\"') { throw 'rust-toolchain.toml has no channel to pin.' }",
+    `$toolchainText = $toolchainText -replace 'channel\\s*=\\s*"[^"]+"', 'channel = "${DUSKDS_RUST_TOOLCHAIN}"'`,
+    "$utf8NoBom = [System.Text.UTF8Encoding]::new($false)",
+    "[System.IO.File]::WriteAllText($toolchainPath, $toolchainText, $utf8NoBom)",
+    "$verifiedToolchainText = Get-Content -Raw -LiteralPath $toolchainPath -ErrorAction Stop",
+    `if ($verifiedToolchainText -notmatch 'channel\\s*=\\s*"${DUSKDS_RUST_TOOLCHAIN.replaceAll(".", "\\.")}"') { throw 'Rust toolchain pin verification failed.' }`
+  ].join("; "),
+  linux: POSIX_PIN_TOOLCHAIN_COMMAND,
+  macos: POSIX_PIN_TOOLCHAIN_COMMAND
+};
 
 export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
   {
@@ -47,7 +106,8 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
     checkCommand: same("rustup --version"),
     installCommand: {
       windows: "winget install Rustlang.Rustup",
-      posix: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
+      linux: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
+      macos: "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"
     },
     helpUrl: "https://rustup.rs/",
     expectedResult: "A rustup version is printed."
@@ -59,7 +119,11 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
     requirement: "required",
     reviewedIdentity: `Exact Studio-reviewed toolchain ${DUSKDS_RUST_TOOLCHAIN}`,
     purpose: "Builds the native contract and data-driver WASM using the same toolchain as the Studio smoke path.",
-    checkCommand: same(`rustup run ${DUSKDS_RUST_TOOLCHAIN} rustc --version && rustup run ${DUSKDS_RUST_TOOLCHAIN} cargo --version`),
+    checkCommand: {
+      windows: `rustup run ${DUSKDS_RUST_TOOLCHAIN} rustc --version; if ($LASTEXITCODE -ne 0) { throw 'Rust ${DUSKDS_RUST_TOOLCHAIN} rustc check failed.' }; rustup run ${DUSKDS_RUST_TOOLCHAIN} cargo --version; if ($LASTEXITCODE -ne 0) { throw 'Rust ${DUSKDS_RUST_TOOLCHAIN} Cargo check failed.' }`,
+      linux: `rustup run ${DUSKDS_RUST_TOOLCHAIN} rustc --version && rustup run ${DUSKDS_RUST_TOOLCHAIN} cargo --version`,
+      macos: `rustup run ${DUSKDS_RUST_TOOLCHAIN} rustc --version && rustup run ${DUSKDS_RUST_TOOLCHAIN} cargo --version`
+    },
     installCommand: same(`rustup toolchain install ${DUSKDS_RUST_TOOLCHAIN} --component rust-src --target wasm32-unknown-unknown`),
     helpUrl: "https://rust-lang.github.io/rustup/",
     expectedResult: `Both commands report ${DUSKDS_RUST_TOOLCHAIN}.`
@@ -93,15 +157,16 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
     name: "Dusk Forge CLI",
     scopes: ["setup", "build", "inspect"],
     requirement: "required",
-    reviewedIdentity: `Git commit ${DUSKDS_FORGE_COMMIT}`,
-    purpose: "Creates, checks, builds, and VM-tests the native starter with a reproducible source identity.",
+    reviewedIdentity: `dusk-forge-cli ${DUSKDS_FORGE_PACKAGE_VERSION} from Git commit ${DUSKDS_FORGE_COMMIT}`,
+    purpose: "Creates, checks, builds, and VM-tests the native starter from the exact reviewed Forge source commit.",
     checkCommand: {
-      windows: `dusk-forge --version; Select-String -LiteralPath "$HOME\\.cargo\\.crates2.json" -Pattern "dusk-forge-cli.*${DUSKDS_FORGE_COMMIT}"`,
-      posix: `dusk-forge --version && grep -E 'dusk-forge-cli.*${DUSKDS_FORGE_COMMIT}' "\${CARGO_INSTALL_ROOT:-\${CARGO_HOME:-$HOME/.cargo}}/.crates2.json"`
+      windows: reviewedDuskForgeGuardCommands("windows").join("; "),
+      linux: `( set -e; ${reviewedDuskForgeGuardCommands("linux").join("; ")} )`,
+      macos: `( set -e; ${reviewedDuskForgeGuardCommands("macos").join("; ")} )`
     },
-    installCommand: same(`cargo +${DUSKDS_RUST_TOOLCHAIN} install --locked --force --git https://github.com/dusk-network/forge --rev ${DUSKDS_FORGE_COMMIT} dusk-forge-cli`),
+    installCommand: same(`cargo +${DUSKDS_RUST_TOOLCHAIN} install --force --git https://github.com/dusk-network/forge --rev ${DUSKDS_FORGE_COMMIT} dusk-forge-cli`),
     helpUrl: "https://github.com/dusk-network/forge",
-    expectedResult: `The version command succeeds and Cargo's install receipt contains dusk-forge-cli at exact commit ${DUSKDS_FORGE_COMMIT}.`
+    expectedResult: `The version command succeeds and Cargo's install receipt contains dusk-forge-cli ${DUSKDS_FORGE_PACKAGE_VERSION} at exact commit ${DUSKDS_FORGE_COMMIT}. The receipt does not attest executable bytes or the transitive dependency graph.`
   },
   {
     id: "deno",
@@ -113,7 +178,8 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
     checkCommand: same("deno --version"),
     installCommand: {
       windows: "winget install DenoLand.Deno",
-      posix: "curl -fsSL https://deno.land/install.sh | sh"
+      linux: "curl -fsSL https://deno.land/install.sh | sh",
+      macos: "curl -fsSL https://deno.land/install.sh | sh"
     },
     helpUrl: "https://docs.deno.com/runtime/getting_started/installation/",
     expectedResult: "A Deno version is printed."
@@ -121,16 +187,27 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
   {
     id: "wsl",
     name: "WSL with Ubuntu 24.04",
-    scopes: ["build"],
+    scopes: ["setup", "build"],
     requirement: "conditional",
     reviewedIdentity: "Windows VM-test lane",
     purpose: "Runs the currently reviewed Linux-backed Dusk Forge VM test on Windows.",
     checkCommand: {
-      windows: "wsl -d Ubuntu-24.04 -- bash -lc \"dusk-forge --version && rustup run 1.94.0 rustc --version\"",
-      posix: "uname -s"
+      windows: `wsl -d Ubuntu-24.04 -- bash -lc 'set -e; command -v make >/dev/null; command -v jq >/dev/null; command -v wasm-opt >/dev/null; rustup run ${DUSKDS_RUST_TOOLCHAIN} rustc --version; rustup target list --installed --toolchain ${DUSKDS_RUST_TOOLCHAIN} | grep -q wasm32-unknown-unknown; rustup component list --installed --toolchain ${DUSKDS_RUST_TOOLCHAIN} | grep -q rust-src; ${reviewedDuskForgeGuardCommands("linux").join("; ")}'`,
+      linux: "uname -s | grep -qx Linux",
+      macos: "uname -s"
+    },
+    installCommand: {
+      windows: [
+        "wsl -d Ubuntu-24.04 -- true",
+        "if ($LASTEXITCODE -ne 0) { wsl --install -d Ubuntu-24.04; if ($LASTEXITCODE -ne 0) { throw 'Ubuntu 24.04 WSL installation failed or requires a reboot.' } }",
+        `wsl -d Ubuntu-24.04 -- bash -lc 'set -e; sudo apt-get update; sudo apt-get install -y build-essential jq binaryen curl git; if ! command -v rustup >/dev/null; then curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y; fi; . "$HOME/.cargo/env"; rustup toolchain install ${DUSKDS_RUST_TOOLCHAIN} --component rust-src --target wasm32-unknown-unknown; cargo +${DUSKDS_RUST_TOOLCHAIN} install --force --git https://github.com/dusk-network/forge --rev ${DUSKDS_FORGE_COMMIT} dusk-forge-cli'`,
+        "if ($LASTEXITCODE -ne 0) { throw 'Reviewed Ubuntu DuskDS tool installation failed.' }"
+      ].join("; "),
+      linux: "Use the native Linux Setup checks; WSL is not used.",
+      macos: "WSL is Windows-only."
     },
     helpUrl: "https://learn.microsoft.com/windows/wsl/install",
-    expectedResult: "Windows: Ubuntu 24.04 reports Dusk Forge and Rust 1.94.0. Linux: use the native test lane. macOS needs a Linux VM or container for the reviewed VM test."
+    expectedResult: "Windows: Ubuntu 24.04 reports the Dusk Forge executable from the exact Cargo root and Rust 1.94.0. Linux: use the native test lane. macOS needs a Linux VM or container for the reviewed VM test."
   },
   {
     id: "make",
@@ -150,7 +227,11 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
     requirement: "optional",
     reviewedIdentity: "Native Binaryen executable preferred on Windows",
     purpose: "Optimizes WASM size after the required build succeeds.",
-    checkCommand: same("wasm-opt --version"),
+    checkCommand: {
+      windows: "$wasmOpt = Get-Command wasm-opt -ErrorAction Stop; if ($wasmOpt.CommandType -ne 'Application' -or $wasmOpt.Source -notmatch '\\.exe$') { throw 'wasm-opt must resolve to a native .exe, not an extensionless npm shim.' }; & $wasmOpt.Source --version",
+      linux: "wasm-opt --version",
+      macos: "wasm-opt --version"
+    },
     helpUrl: "https://github.com/WebAssembly/binaryen",
     expectedResult: "A native wasm-opt version is printed; an extensionless Windows shim is not accepted."
   },
@@ -182,36 +263,37 @@ export function manualToolsFor(scope: ManualToolScope): ManualToolRequirement[] 
   return DUSKDS_MANUAL_TOOLS.filter((tool) => tool.scopes.includes(scope));
 }
 
-export function buildManualForgeCommands(options: {
-  projectMode: "new" | "existing";
-  projectName: string;
-  projectLabel: string;
-  platform: ManualPlatform;
-}): { prepare: string; build: string; test: string; revision: string } {
-  const safeName = options.projectName.trim().replace(/[^a-zA-Z0-9_-]/g, "-") || "duskds-forge-starter";
-  const target = options.projectMode === "new" ? safeName : options.projectLabel.trim() || "<existing-project>";
-  const enter = options.platform === "windows" ? `Set-Location "${target}"` : `cd "${target}"`;
-  const prepare = options.projectMode === "new"
-    ? [
-        `dusk-forge new ${safeName} --no-git --template counter`,
-        enter,
-        `rustup override set ${DUSKDS_RUST_TOOLCHAIN}`
-      ].join(options.platform === "windows" ? "\r\n" : "\n")
-    : [enter, `rustup override set ${DUSKDS_RUST_TOOLCHAIN}`, "dusk-forge check"].join(options.platform === "windows" ? "\r\n" : "\n");
-  const build = [enter, "dusk-forge check", "dusk-forge build all"].join(options.platform === "windows" ? "\r\n" : "\n");
-  const testCommand = options.platform === "windows"
-    ? `wsl -d Ubuntu-24.04 -- bash -lc 'cd "${target}" && dusk-forge test'`
-    : [enter, "dusk-forge test"].join("\n");
-  const revision = options.projectMode === "new" ? "git init && git add . && git commit -m \"Create reviewed DuskDS starter\" && git rev-parse HEAD" : "git rev-parse HEAD";
-  return { prepare, build, test: testCommand, revision };
-}
-
-export const W3SPER_INSTALL_COMMAND = "deno add jsr:@dusk/w3sper";
-export const W3SPER_RUN_COMMAND = "deno run --allow-net=testnet.nodes.dusk.network check-duskds.ts";
+const W3SPER_POSIX_WORKSPACE = "duskds-w3sper-check";
+const W3SPER_WINDOWS_ENTER = "Set-Location -LiteralPath 'duskds-w3sper-check' -ErrorAction Stop";
+const W3SPER_POSIX_ENTER = `cd '${W3SPER_POSIX_WORKSPACE}'`;
+export const W3SPER_INSTALL_COMMAND: Record<ManualPlatform, string> = {
+  windows: `${W3SPER_WINDOWS_ENTER}; deno add --save-exact jsr:@dusk/w3sper@${W3SPER_VERSION}; if ($LASTEXITCODE -ne 0) { throw 'W3sper installation failed.' }`,
+  linux: `( set -e; ${W3SPER_POSIX_ENTER}; deno add --save-exact jsr:@dusk/w3sper@${W3SPER_VERSION} )`,
+  macos: `( set -e; ${W3SPER_POSIX_ENTER}; deno add --save-exact jsr:@dusk/w3sper@${W3SPER_VERSION} )`
+};
+export const W3SPER_RUN_COMMAND: Record<ManualPlatform, string> = {
+  windows: `${W3SPER_WINDOWS_ENTER}; deno run --frozen --allow-net=testnet.nodes.dusk.network check-duskds.ts; if ($LASTEXITCODE -ne 0) { throw 'W3sper node read failed.' }`,
+  linux: `( set -e; ${W3SPER_POSIX_ENTER}; deno run --frozen --allow-net=testnet.nodes.dusk.network check-duskds.ts )`,
+  macos: `( set -e; ${W3SPER_POSIX_ENTER}; deno run --frozen --allow-net=testnet.nodes.dusk.network check-duskds.ts )`
+};
+export const W3SPER_WORKSPACE_COMMAND: Record<ManualPlatform, string> = {
+  windows: "if (Test-Path -LiteralPath 'duskds-w3sper-check') { throw 'Dedicated W3sper folder already exists.' }; New-Item -ItemType Directory 'duskds-w3sper-check' -ErrorAction Stop | Out-Null",
+  linux: `( set -e; if [ -e '${W3SPER_POSIX_WORKSPACE}' ]; then echo 'Dedicated W3sper folder already exists.' >&2; exit 1; fi; mkdir '${W3SPER_POSIX_WORKSPACE}' )`,
+  macos: `( set -e; if [ -e '${W3SPER_POSIX_WORKSPACE}' ]; then echo 'Dedicated W3sper folder already exists.' >&2; exit 1; fi; mkdir '${W3SPER_POSIX_WORKSPACE}' )`
+};
+export const W3SPER_CREATE_FILE_COMMAND: Record<ManualPlatform, string> = {
+  windows: `${W3SPER_WINDOWS_ENTER}; if (Test-Path -LiteralPath 'check-duskds.ts') { throw 'check-duskds.ts already exists.' }; New-Item -ItemType File 'check-duskds.ts' -ErrorAction Stop | Out-Null`,
+  linux: `( set -e; ${W3SPER_POSIX_ENTER}; if [ -e 'check-duskds.ts' ]; then echo 'check-duskds.ts already exists.' >&2; exit 1; fi; : > 'check-duskds.ts' )`,
+  macos: `( set -e; ${W3SPER_POSIX_ENTER}; if [ -e 'check-duskds.ts' ]; then echo 'check-duskds.ts already exists.' >&2; exit 1; fi; : > 'check-duskds.ts' )`
+};
 export const W3SPER_NODE_READ_SNIPPET = [
   'import { Network } from "@dusk/w3sper";',
   "",
   `const network = await Network.connect("${DUSKDS_TESTNET_NODE}");`,
-  'const tip = await network.query("block(height: -1) { header { height hash } }");',
-  "console.log(JSON.stringify(tip.block.header));"
+  "try {",
+  '  const tip = await network.query("block(height: -1) { header { height hash } }");',
+  "  console.log(JSON.stringify(tip.block.header));",
+  "} finally {",
+  "  await network.disconnect();",
+  "}"
 ].join("\n");

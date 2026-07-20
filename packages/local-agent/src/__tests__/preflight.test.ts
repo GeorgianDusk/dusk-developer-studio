@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runPreflightAsync } from "../commands/preflight";
+import { isNativeWindowsWasmOptPath, runPreflightAsync } from "../commands/preflight";
 import {
   DUSK_FORGE_INSTALL_COMMAND,
   DUSK_FORGE_REVISION,
@@ -11,7 +11,7 @@ import type { BoundedProcessOptions } from "../commands/runBoundedProcess";
 
 const REVIEWED_FORGE_IDENTITY: DuskForgeInstallIdentity = {
   package: "dusk-forge-cli",
-  packageVersion: "0.4.0",
+  packageVersion: "0.1.0",
   binary: "dusk-forge",
   repository: "https://github.com/dusk-network/forge",
   revision: DUSK_FORGE_REVISION
@@ -29,6 +29,12 @@ function successfulOutput(options: BoundedProcessOptions): string {
 }
 
 describe("path preflight", () => {
+  it("accepts only a native Windows wasm-opt executable path", () => {
+    expect(isNativeWindowsWasmOptPath("C:\\tools\\wasm-opt.exe")).toBe(true);
+    expect(isNativeWindowsWasmOptPath("C:\\tools\\wasm-opt.cmd")).toBe(false);
+    expect(isNativeWindowsWasmOptPath("C:\\tools\\wasm-opt")).toBe(false);
+  });
+
   it("runs the EVM allowlist through bounded asynchronous workers", async () => {
     const runProcess = vi.fn(async (options: BoundedProcessOptions) => ({ stdout: successfulOutput(options), stderr: "", exitCode: 0 }));
     const result = await runPreflightAsync("evm", { runProcess });
@@ -57,9 +63,9 @@ describe("path preflight", () => {
     expect(result.tools.map((tool) => tool.command)).toEqual(expect.arrayContaining(["git", "rustup", "rustc", "cargo", "dusk-forge", "cargo-install-receipt", "wasm-opt", "rusk-wallet"]));
     expect(result.tools.find((tool) => tool.name === "Rust 1.94.0 WASM target")?.ok).toBe(true);
     expect(result.tools.find((tool) => tool.name === "Rust 1.94.0 rust-src")?.ok).toBe(true);
-    expect(result.tools.find((tool) => tool.name === "Dusk Forge source revision")).toMatchObject({
+    expect(result.tools.find((tool) => tool.name === "Dusk Forge Cargo receipt")).toMatchObject({
       ok: true,
-      version: `dusk-forge-cli 0.4.0 @ ${DUSK_FORGE_REVISION}`
+      version: `dusk-forge-cli 0.1.0 @ ${DUSK_FORGE_REVISION}`
     });
     expect(readDuskForgeIdentity).toHaveBeenCalledOnce();
     expect(runProcess.mock.calls.some(([options]) => options.command === reviewedDuskForgeExecutable() && options.args[0] === "--version")).toBe(true);
@@ -99,9 +105,28 @@ describe("path preflight", () => {
       exitCode: 0
     }));
     const result = await runPreflightAsync("duskds", { runProcess, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY });
-    expect(result.tools.find((tool) => tool.command === "wasm-opt")).toMatchObject({ ok: false, required: false });
+    expect(result.tools.find((tool) => tool.command === "wasm-opt")).toMatchObject({ ok: false, required: true });
     const wasmOptExecutions = runProcess.mock.calls.filter(([options]) => logicalCommand(options) === "wasm-opt");
     expect(wasmOptExecutions).toHaveLength(0);
+    expect(result.ok).toBe(false);
+  });
+
+  it("suppresses executable paths from the WSL presence checks", async () => {
+    if (process.platform !== "win32") return;
+    const runProcess = vi.fn(async (options: BoundedProcessOptions) => ({
+      stdout: successfulOutput(options),
+      stderr: "",
+      exitCode: 0
+    }));
+    await runPreflightAsync("duskds", {
+      runProcess,
+      readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY
+    });
+    const wslCall = runProcess.mock.calls.find(([options]) => options.command === "wsl.exe")?.[0];
+    expect(wslCall?.args.join(" ")).toContain("command -v make >/dev/null");
+    expect(wslCall?.args.join(" ")).toContain("command -v jq >/dev/null");
+    expect(wslCall?.args.join(" ")).toContain("command -v wasm-opt >/dev/null");
+    expect(wslCall?.args.join(" ")).toContain("dusk-forge-cli[[:space:]]+v?0\\.1\\.0");
   });
 
   it("fails closed when Cargo cannot bind Dusk Forge to the reviewed revision", async () => {
@@ -110,12 +135,12 @@ describe("path preflight", () => {
       runProcess,
       readDuskForgeIdentity: async () => ({ ...REVIEWED_FORGE_IDENTITY, revision: "f".repeat(40) })
     });
-    const identity = result.tools.find((tool) => tool.name === "Dusk Forge source revision");
+    const identity = result.tools.find((tool) => tool.name === "Dusk Forge Cargo receipt");
     expect(identity).toMatchObject({
       ok: false,
       required: true,
       failureKind: "version-mismatch",
-      installHint: `Reinstall the reviewed revision with: ${DUSK_FORGE_INSTALL_COMMAND}`
+      installHint: `Reinstall the required package version and source revision with: ${DUSK_FORGE_INSTALL_COMMAND}`
     });
     expect(identity?.installHint).toContain(`--rev ${DUSK_FORGE_REVISION}`);
     expect(result.tools.find((tool) => tool.name === "Dusk Forge CLI")).toMatchObject({
@@ -130,12 +155,13 @@ describe("path preflight", () => {
   it("parses only the exact Cargo install receipt and returns bounded Forge identity", () => {
     const raw = JSON.stringify({
       installs: {
-        [`dusk-forge-cli 0.4.0 (git+https://github.com/dusk-network/forge?rev=${DUSK_FORGE_REVISION}#${DUSK_FORGE_REVISION})`]: {
+        [`dusk-forge-cli 0.1.0 (git+https://github.com/dusk-network/forge?rev=${DUSK_FORGE_REVISION}#${DUSK_FORGE_REVISION})`]: {
           bins: ["dusk-forge"]
         }
       }
     });
     expect(parseDuskForgeCargoInstallMetadata(raw)).toEqual(REVIEWED_FORGE_IDENTITY);
-    expect(() => parseDuskForgeCargoInstallMetadata(raw.replaceAll(DUSK_FORGE_REVISION, "f".repeat(40)))).toThrow(/reviewed source revision/);
+    expect(() => parseDuskForgeCargoInstallMetadata(raw.replaceAll(DUSK_FORGE_REVISION, "f".repeat(40)))).toThrow(/reviewed package version and source revision/);
+    expect(() => parseDuskForgeCargoInstallMetadata(raw.replace("dusk-forge-cli 0.1.0", "dusk-forge-cli 0.2.0"))).toThrow(/reviewed package version and source revision/);
   });
 });

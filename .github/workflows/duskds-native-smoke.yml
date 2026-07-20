@@ -99,6 +99,9 @@ jobs:
             || policy.dusk_forge?.repository !== "https://github.com/dusk-network/forge"
             || policy.dusk_forge?.package !== "dusk-forge-cli"
             || !fortyHex.test(policy.dusk_forge?.revision ?? "")
+            || policy.dusk_forge?.reviewed_template?.id !== "duskds-counter-forge"
+            || !/^[0-9a-f]{64}$/.test(policy.dusk_forge?.reviewed_template?.generated_lock_sha256 ?? "")
+            || !/^[0-9a-f]{64}$/.test(policy.dusk_forge?.reviewed_template?.template_lock_sha256 ?? "")
             || !/^dusk-core-\d+\.\d+\.\d+$/.test(policy.rusk?.tag ?? "")
             || !fortyHex.test(policy.rusk?.revision ?? "")
           ) {
@@ -107,6 +110,9 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_ENV, [
             `RUST_TOOLCHAIN=${policy.rust_toolchain}`,
             `FORGE_COMMIT=${policy.dusk_forge.revision}`,
+            `DUSKDS_TEMPLATE_ID=${policy.dusk_forge.reviewed_template.id}`,
+            `DUSKDS_GENERATED_LOCK_SHA256=${policy.dusk_forge.reviewed_template.generated_lock_sha256}`,
+            `DUSKDS_TEMPLATE_LOCK_SHA256=${policy.dusk_forge.reviewed_template.template_lock_sha256}`,
             `RUSK_TAG=${policy.rusk.tag}`,
             `RUSK_COMMIT=${policy.rusk.revision}`,
             ""
@@ -128,6 +134,27 @@ jobs:
             ""
           ].join("\n"));
           NODE
+      - name: Enable repository-pinned pnpm
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          corepack enable
+          corepack install --global pnpm@11.7.0
+      - name: Restore frozen dependencies
+        if: steps.scope.outputs.relevant == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Build and verify the Studio npm package
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          pnpm build:npm
+          pnpm test:npm
+          PRIMARY="output/npm/package/bin/dusk-developer-studio.mjs"
+          TEMPLATE="output/npm/package/templates/$DUSKDS_TEMPLATE_ID"
+          test -f "$PRIMARY"
+          test -f "$TEMPLATE/PROVENANCE.md"
+          test -f "$TEMPLATE/LICENSE-MPL-2.0.txt"
+          test "$(sha256sum "$TEMPLATE/Cargo.lock" | awk '{print $1}')" = "$DUSKDS_TEMPLATE_LOCK_SHA256"
+          grep -Fq "$DUSKDS_GENERATED_LOCK_SHA256" "$TEMPLATE/PROVENANCE.md"
+          grep -Fq "$FORGE_COMMIT" "$TEMPLATE/PROVENANCE.md"
       - name: Install the pinned Rust and Dusk Forge toolchain
         if: steps.scope.outputs.relevant == 'true'
         run: |
@@ -149,16 +176,19 @@ jobs:
           dusk-forge --version
           git --version
           make --version | head -n 1
-      - name: Scaffold through the pinned Forge release
+      - name: Scaffold through the reviewed Studio package
         if: steps.scope.outputs.relevant == 'true'
         run: |
           ROOT="$RUNNER_TEMP/duskds-native-smoke"
           PROJECT="$ROOT/duskds-phase5-smoke"
           mkdir -p "$ROOT"
-          dusk-forge new duskds-phase5-smoke --path "$ROOT" --no-git --template counter
-          sed -i -E 's/channel[[:space:]]*=[[:space:]]*"[^"]+"/channel = "1.94.0"/' "$PROJECT/rust-toolchain.toml"
+          cd "$ROOT"
+          node "$GITHUB_WORKSPACE/output/npm/package/bin/dusk-developer-studio.mjs" create-duskds duskds-phase5-smoke
           grep -Fq 'channel = "1.94.0"' "$PROJECT/rust-toolchain.toml"
           grep -Fq "git+https://github.com/dusk-network/rusk?tag=$RUSK_TAG#$RUSK_COMMIT" "$PROJECT/Cargo.lock"
+          grep -Fq "$DUSKDS_GENERATED_LOCK_SHA256" "$PROJECT/PROVENANCE.md"
+          grep -Fq "$FORGE_COMMIT" "$PROJECT/PROVENANCE.md"
+          test -f "$PROJECT/LICENSE-MPL-2.0.txt"
           test -f "$PROJECT/Cargo.toml"
           test -f "$PROJECT/src/lib.rs"
           test -f "$PROJECT/tests/contract.rs"

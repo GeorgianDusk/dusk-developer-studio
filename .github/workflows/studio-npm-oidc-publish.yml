@@ -30,6 +30,7 @@ jobs:
     timeout-minutes: 20
     env:
       ASSURED_NPM_INTEGRITY: ${{ needs.assurance.outputs.integrity }}
+      ASSURED_PACKAGE_INVENTORY_SHA256: ${{ needs.assurance.outputs.package_inventory_sha256 }}
       ASSURED_CANDIDATE_COMMIT: ${{ needs.assurance.outputs.candidate_commit }}
       ASSURED_CANDIDATE_ARTIFACT: ${{ needs.assurance.outputs.candidate_artifact_name }}
     steps:
@@ -52,6 +53,12 @@ jobs:
           const manifest = JSON.parse(fs.readFileSync("packages/cli/package.json", "utf8"));
           const expectedMaintainer = policy.publication.expected_npm_maintainer;
           if (policy.distribution !== "npm"
+              || policy.publication.workflow_path !== ".github/workflows/studio-npm-oidc-publish.yml"
+              || policy.publication.environment !== "npm-trusted-publication"
+              || policy.publication.initial_package_version !== "1.0.0"
+              || policy.publication.initial_tag !== "v1.0.0"
+              || policy.publication.initial_publication_environment !== "npm-initial-publication"
+              || policy.publication.expected_initial_provenance_workflow !== ".github/workflows/studio-npm-publish.yml"
               || policy.publication.subsequent_registry_authentication !== "github-oidc"
               || policy.publication.subsequent_workflow_path !== ".github/workflows/studio-npm-oidc-publish.yml"
               || policy.publication.expected_oidc_publisher !== "GitHub Actions"
@@ -89,8 +96,9 @@ jobs:
           }
           const tarball = `output/npm/${candidates[0]}`;
           const integrity = `sha512-${createHash("sha512").update(fs.readFileSync(tarball)).digest("base64")}`;
-          if (integrity !== process.env.ASSURED_NPM_INTEGRITY) {
-            throw new Error("OIDC publication tarball differs from cross-platform assurance.");
+          if (integrity !== process.env.ASSURED_NPM_INTEGRITY
+              || !/^[a-f0-9]{64}$/u.test(process.env.ASSURED_PACKAGE_INVENTORY_SHA256 ?? "")) {
+            throw new Error("OIDC publication tarball or package inventory differs from cross-platform assurance.");
           }
           fs.appendFileSync(process.env.GITHUB_ENV, `TARBALL=${tarball}\nLOCAL_NPM_INTEGRITY=${integrity}\n`);
           NODE
@@ -204,20 +212,30 @@ jobs:
           import fs from "node:fs";
           const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
           const provenance = JSON.parse(fs.readFileSync(`${process.env.RUNNER_TEMP}/npm-provenance-binding.json`, "utf8"));
+          if (!["published", "verified-existing"].includes(process.env.PUBLICATION_OUTCOME)) {
+            throw new Error("OIDC publication outcome is missing.");
+          }
           const receipt = {
             schema_version: 1,
             status: process.env.PUBLICATION_OUTCOME,
             package_name: policy.package.name,
             package_version: policy.package.version,
+            node_engine: policy.package.node_engine,
+            registry_url: `${policy.package.registry}/${policy.package.name}`,
+            tag: policy.package.tag,
             candidate_commit: process.env.GITHUB_SHA,
+            workflow_path: policy.publication.workflow_path,
+            observed_at: new Date().toISOString(),
             integrity: process.env.LOCAL_NPM_INTEGRITY,
+            package_inventory_sha256: process.env.ASSURED_PACKAGE_INVENTORY_SHA256,
             npm_maintainer: policy.publication.expected_npm_maintainer,
             npm_publisher: policy.publication.expected_oidc_publisher,
             trusted_publisher_id: policy.publication.expected_oidc_trusted_publisher_id,
-            registry_authentication: "github-oidc",
+            registry_authentication: process.env.PUBLICATION_OUTCOME === "published"
+              ? policy.publication.subsequent_registry_authentication
+              : "not-used-idempotent-verification",
             provenance_verification: "npm-audit-signatures-and-slsa-source-bound",
-            ...provenance,
-            observed_at: new Date().toISOString()
+            ...provenance
           };
           fs.writeFileSync(`output/npm/studio-npm-oidc-publication-receipt-${process.env.GITHUB_RUN_ID}.json`, `${JSON.stringify(receipt, null, 2)}\n`);
           NODE

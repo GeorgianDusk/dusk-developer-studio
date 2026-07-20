@@ -11,7 +11,8 @@ export class SafeRequestError extends Error {
     readonly kind: RequestFailureKind,
     message: string,
     readonly retryable: boolean,
-    readonly status?: number
+    readonly status?: number,
+    readonly code?: string
   ) {
     super(message);
     this.name = "SafeRequestError";
@@ -30,10 +31,35 @@ interface RequestJsonOptions<T> {
 
 const DEFAULT_MAX_BYTES = 64 * 1024;
 
+export const LOCAL_ACTION_TIMEOUT_MS = {
+  // DuskDS preflight runs its bounded tool checks sequentially. Their current
+  // worst-case process budget is 85 seconds, so this leaves bounded response
+  // and filesystem overhead without inheriting the short read-request limit.
+  preflight: 120_000,
+  // Forge starter creation has a 300-second backend process limit, followed by
+  // bounded tree verification and atomic promotion.
+  scaffold: 330_000
+} as const;
+
+function parsePublicError(bytes: Uint8Array): { error?: string; code?: string } {
+  try {
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    const record = value as Record<string, unknown>;
+    return {
+      ...(typeof record.error === "string" && record.error.length <= 512 ? { error: record.error } : {}),
+      ...(typeof record.code === "string" && /^[a-z0-9_]{1,64}$/.test(record.code) ? { code: record.code } : {})
+    };
+  } catch {
+    return {};
+  }
+}
+
 async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
   const rawLength = response.headers?.get?.("content-length") ?? null;
   const length = rawLength ? Number(rawLength) : undefined;
   if (length !== undefined && Number.isFinite(length) && length > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
     throw new SafeRequestError("oversized-response", "The local response exceeded the safe size limit.", false);
   }
 
@@ -77,7 +103,8 @@ export async function requestJson<T>(url: string, options: RequestJsonOptions<T>
   const controller = new AbortController();
   let timedOut = false;
   const onExternalAbort = () => controller.abort();
-  options.signal?.addEventListener("abort", onExternalAbort, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener("abort", onExternalAbort, { once: true });
   const timeoutId = window.setTimeout(() => {
     timedOut = true;
     controller.abort();
@@ -85,9 +112,12 @@ export async function requestJson<T>(url: string, options: RequestJsonOptions<T>
 
   try {
     let response: Response;
+    let bytes: Uint8Array;
     try {
       response = await fetch(url, { ...options.init, signal: controller.signal });
-    } catch {
+      bytes = await readBoundedBody(response, options.maxBytes ?? DEFAULT_MAX_BYTES);
+    } catch (error) {
+      if (error instanceof SafeRequestError) throw error;
       if (controller.signal.aborted) {
         if (timedOut) throw new SafeRequestError("timeout", "The local request timed out.", true);
         throw new SafeRequestError("cancelled", "The local request was cancelled.", true);
@@ -95,17 +125,18 @@ export async function requestJson<T>(url: string, options: RequestJsonOptions<T>
       throw new SafeRequestError("unavailable", "The local companion is unavailable.", true);
     }
     if (!response.ok) {
+      const publicError = parsePublicError(bytes);
       throw new SafeRequestError(
         "http-error",
         response.status === 401
           ? "The local companion needs to be paired."
-          : `The local companion returned HTTP ${response.status}.`,
+          : publicError.error ?? `The local companion returned HTTP ${response.status}.`,
         response.status >= 500 || response.status === 408 || response.status === 429,
-        response.status
+        response.status,
+        publicError.code
       );
     }
 
-    const bytes = await readBoundedBody(response, options.maxBytes ?? DEFAULT_MAX_BYTES);
     let value: unknown;
     try {
       value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));

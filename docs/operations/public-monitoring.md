@@ -42,7 +42,9 @@ Expected DuskEVM pre-launch unavailability does not open an incident or fail the
 
 `Studio same-platform monitor schedule guard` runs separately and reports when the assurance workflow is missing, disabled, has never run on schedule, or has no recent scheduled run.
 
-Both controls use GitHub Actions and GitHub Issues. A repository-wide GitHub outage can affect monitoring and alert delivery at the same time. Reassess that dependency after a monitoring-blindness incident, a service-level commitment, time-critical use, or material growth in external developer usage.
+Both controls use GitHub Actions and GitHub Issues. A repository-wide GitHub outage can affect monitoring and alert delivery at the same time.
+
+The GitHub-only model was reassessed on July 19, 2026 after the npm package became public. It remains the accepted monitoring model for this personal project, and third-party monitoring remains intentionally deferred. Reassess this choice after a monitoring-blindness incident, a service-level or commercial commitment, or material growth in external developer usage.
 
 ## Incident response
 

@@ -5,8 +5,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { runPreflightAsync, type PreflightPath } from "./commands/preflight";
-import { scaffoldDuskDsForge } from "./commands/scaffoldDuskDsForge";
+import { duskDsCounterForgeTemplateIdentity } from "../../templates/src/duskDsCounterForge";
+import {
+  ScaffoldRecoveryError,
+  scaffoldDuskDsForge,
+  type ScaffoldCompletionReceipt
+} from "./commands/scaffoldDuskDsForge";
 import { scaffoldFoundryTemplate } from "./commands/scaffoldTemplate";
+import {
+  assertBoundedScaffoldPath,
+  MAX_SCAFFOLD_PATH_LENGTH,
+  sanitizeProjectName,
+  ScaffoldPathError,
+  ScaffoldProjectNameError
+} from "./commands/safePaths";
+
+export { MAX_SCAFFOLD_PATH_LENGTH };
+export { scaffoldDuskDsForge };
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 8788;
@@ -21,7 +36,9 @@ const DEFAULT_ALLOWED_ORIGINS = ["http://127.0.0.1:5173", "http://localhost:5173
 
 const ScaffoldBodySchema = z.object({
   projectName: z.string().min(1).max(80),
-  parentDir: z.string().max(1_024).optional()
+  parentDir: z.string().max(MAX_SCAFFOLD_PATH_LENGTH)
+    .refine((value) => !/[\0\r\n]/.test(value), "Parent folder contains a forbidden control character.")
+    .optional()
 }).strict();
 
 const ReleaseIdentitySchema = z.object({
@@ -53,6 +70,7 @@ export interface LocalAgentServerOptions {
   port?: number;
   workspaceRoot?: string;
   foundryTemplateRoot?: string;
+  duskDsTemplateRoot?: string;
   duskDsProjectRoot?: string;
   releaseIdentity?: LocalAgentReleaseIdentity;
   allowedOrigins?: string[];
@@ -228,26 +246,70 @@ function sanitizePreflight(result: PreflightResult): PreflightResult {
   };
 }
 
-function sanitizeForgeReceipt(result: ForgeScaffoldResult): {
-  forgePackage: string;
-  forgeVersion: string;
-  forgeRevision: string;
-  forgeRepository: string;
+function sanitizeDuskDsTemplateReceipt(result: ForgeScaffoldResult): {
+  template: string;
+  templateSource: string;
+  templateRevision: string;
+  templateLockSha256: string;
 } {
   if (
-    !/^[a-z0-9][a-z0-9_-]{0,63}$/.test(result.forgePackage)
-    || !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,63}$/.test(result.forgeVersion)
-    || !/^[0-9a-f]{40}$/.test(result.forgeRevision)
-    || result.source !== "https://github.com/dusk-network/forge"
+    result.template !== duskDsCounterForgeTemplateIdentity.templateId
+    || result.templateSource !== duskDsCounterForgeTemplateIdentity.upstreamRepository
+    || result.templateRevision !== duskDsCounterForgeTemplateIdentity.upstreamRevision
+    || result.templateLockSha256 !== duskDsCounterForgeTemplateIdentity.templateLockSha256
   ) {
-    throw new Error("Dusk Forge scaffold receipt is invalid.");
+    throw new Error("DuskDS reviewed-template receipt is invalid.");
   }
   return {
-    forgePackage: result.forgePackage,
-    forgeVersion: result.forgeVersion,
-    forgeRevision: result.forgeRevision,
-    forgeRepository: result.source
+    template: result.template,
+    templateSource: result.templateSource,
+    templateRevision: result.templateRevision,
+    templateLockSha256: result.templateLockSha256
   };
+}
+
+function sanitizeRuntimeOs(value: ForgeScaffoldResult["runtimeOs"]): "windows" | "linux" | "macos" {
+  if (value !== "windows" && value !== "linux" && value !== "macos") {
+    throw new Error("DuskDS scaffold runtime OS is invalid.");
+  }
+  return value;
+}
+
+function sanitizeCreatedProjectPath(
+  result: ForgeScaffoldResult,
+  projectName: string,
+  runtimeOs: "windows" | "linux" | "macos"
+): string {
+  const created = result.path;
+  const root = result.projectRoot;
+  if (
+    typeof created !== "string"
+    || typeof root !== "string"
+    || created.length < 2
+    || created.length > 1_024
+    || root.length < 1
+    || root.length > 1_024
+    || /[\0\r\n]/.test(created)
+    || /[\0\r\n]/.test(root)
+  ) {
+    throw new Error("DuskDS scaffold path receipt is invalid.");
+  }
+  const pathApi = runtimeOs === "windows"
+    ? /^[a-zA-Z]:[\\/]/.test(created) && /^[a-zA-Z]:[\\/]/.test(root) ? path.win32 : undefined
+    : created.startsWith("/") && root.startsWith("/") ? path.posix : undefined;
+  if (!pathApi) throw new Error("DuskDS scaffold path receipt is invalid.");
+  const normalizedRoot = pathApi.resolve(root);
+  const normalizedCreated = pathApi.resolve(created);
+  const relative = pathApi.relative(normalizedRoot, normalizedCreated);
+  if (
+    !relative
+    || relative.startsWith("..")
+    || pathApi.isAbsolute(relative)
+    || pathApi.basename(normalizedCreated) !== projectName
+  ) {
+    throw new Error("DuskDS scaffold path receipt is invalid.");
+  }
+  return normalizedCreated;
 }
 
 function consumeRateLimit(windows: Map<string, RateWindow>, key: string, maximum: number, now = Date.now()): boolean {
@@ -268,7 +330,10 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : path.resolve(__dirname, "../../..");
   const foundryTemplateRoot = options.foundryTemplateRoot?.trim() ? path.resolve(options.foundryTemplateRoot) : undefined;
-  const duskDsProjectRoot = options.duskDsProjectRoot?.trim() ? path.resolve(options.duskDsProjectRoot) : undefined;
+  const duskDsTemplateRoot = options.duskDsTemplateRoot?.trim() ? path.resolve(options.duskDsTemplateRoot) : undefined;
+  const duskDsProjectRoot = options.duskDsProjectRoot?.trim()
+    ? assertBoundedScaffoldPath(options.duskDsProjectRoot, "Configured DuskDS project root")
+    : undefined;
   const allowedOrigins = new Set(options.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
   if (allowedOrigins.size === 0 || [...allowedOrigins].some((origin) => !isLoopbackOrigin(origin))) {
     throw new Error("Local companion origins must be non-empty loopback HTTP origins.");
@@ -283,10 +348,15 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   const pairAttemptsPerMinute = options.pairAttemptsPerMinute ?? DEFAULT_PAIR_ATTEMPTS_PER_MINUTE;
   const sessionRequestsPerMinute = options.sessionRequestsPerMinute ?? DEFAULT_SESSION_REQUESTS_PER_MINUTE;
   const capabilityRequestsPerMinute = options.capabilityRequestsPerMinute ?? DEFAULT_CAPABILITY_REQUESTS_PER_MINUTE;
+  const completedDuskDsScaffolds = new Map<string, ScaffoldCompletionReceipt>();
   const dependencies: LocalAgentDependencies = {
     runPreflight: runPreflightAsync,
     scaffoldFoundryTemplate: (input) => scaffoldFoundryTemplate(input, foundryTemplateRoot ? { templateRoot: foundryTemplateRoot } : {}),
-    scaffoldDuskDsForge: (input) => scaffoldDuskDsForge(input, duskDsProjectRoot ? { projectRoot: duskDsProjectRoot } : {}),
+    scaffoldDuskDsForge: (input) => scaffoldDuskDsForge(input, {
+      ...(duskDsProjectRoot ? { projectRoot: duskDsProjectRoot } : {}),
+      ...(duskDsTemplateRoot ? { templateRoot: duskDsTemplateRoot } : {}),
+      completedScaffoldReceipts: completedDuskDsScaffolds
+    }),
     ...options.dependencies
   };
   const sessions = new Map<string, Session>();
@@ -421,15 +491,20 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
         const release = acquireCapability(sessionId);
         try {
           const body = ScaffoldBodySchema.parse(await readJson(request, bodyLimitBytes, bodyTimeoutMs));
-          const result = await dependencies.scaffoldDuskDsForge({ cwd: workspaceRoot, projectName: body.projectName, parentDir: body.parentDir });
+          const projectName = sanitizeProjectName(body.projectName);
+          if (projectName !== body.projectName) throw new ScaffoldProjectNameError();
+          const result = await dependencies.scaffoldDuskDsForge({ cwd: workspaceRoot, projectName, parentDir: body.parentDir });
+          const runtimeOs = sanitizeRuntimeOs(result.runtimeOs);
           sendJson(response, 200, {
             ok: true,
-            projectName: body.projectName,
+            projectName,
+            projectPath: sanitizeCreatedProjectPath(result, projectName, runtimeOs),
+            recovered: result.recovered,
             rustToolchain: result.rustToolchain,
-            platform: result.platform,
+            runtimeOs,
             structureVerified: result.structureVerified,
             files: result.files.slice(0, 256),
-            ...sanitizeForgeReceipt(result)
+            ...sanitizeDuskDsTemplateReceipt(result)
           }, origin);
         } finally { release(); }
         return;
@@ -437,6 +512,18 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
       throw new RequestError(404, "Route not found.", "not_found");
     } catch (error) {
       if (error instanceof RequestError) { sendError(response, error, origin); return; }
+      if (error instanceof ScaffoldPathError) {
+        sendError(response, new RequestError(422, error.message, error.code), origin);
+        return;
+      }
+      if (error instanceof ScaffoldProjectNameError) {
+        sendError(response, new RequestError(422, error.message, error.code), origin);
+        return;
+      }
+      if (error instanceof ScaffoldRecoveryError) {
+        sendError(response, new RequestError(409, error.message, error.code), origin);
+        return;
+      }
       if (error instanceof z.ZodError) { sendError(response, new RequestError(400, "Request body is invalid.", "invalid_request"), origin); return; }
       const incidentId = randomUUID();
       console.error(`Local companion request failed [${incidentId}].`);
@@ -444,6 +531,12 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
     }
   });
 
-  server.on("close", () => { sessions.clear(); pairWindows.clear(); sessionWindows.clear(); capabilityWindows.clear(); });
+  server.on("close", () => {
+    sessions.clear();
+    pairWindows.clear();
+    sessionWindows.clear();
+    capabilityWindows.clear();
+    completedDuskDsScaffolds.clear();
+  });
   return server;
 }

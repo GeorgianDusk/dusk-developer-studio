@@ -1,9 +1,10 @@
 import { CheckCircle2, Circle, XCircle } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  buildDuskDsCommandSet,
   quotePosixArg,
   quotePowerShellArg,
+  resolveDuskDsProjectParent,
+  resolveDuskDsProjectPath,
   windowsPathToWsl,
   type CommandPlatform
 } from "@dusk/core/commands";
@@ -19,10 +20,15 @@ import {
   DUSKDS_FORGE_COMMIT,
   DUSKDS_RUST_TOOLCHAIN,
   DUSKDS_TESTNET_NODE,
+  DUSK_STUDIO_NPM_PACKAGE_VERSION,
   W3SPER_INSTALL_COMMAND,
+  W3SPER_CREATE_FILE_COMMAND,
   W3SPER_NODE_READ_SNIPPET,
   W3SPER_RUN_COMMAND,
+  W3SPER_WORKSPACE_COMMAND,
   manualToolsFor,
+  reviewedDuskForgeGuardCommands,
+  reviewedDuskForgeInvocation,
   type ManualPlatform
 } from "../manualJourneyConfig";
 import {
@@ -39,7 +45,12 @@ import {
 import { DuskDsDeployReadiness } from "../DuskDsDeployReadiness";
 import { getDuskDsBuildSourceRevision } from "../deployReadiness";
 import { isPreflightResult, isScaffoldEvidence, type PreflightResult } from "../responseSchemas";
-import { requestJson, SafeRequestError, safeRequestMessage } from "../safeRequest";
+import {
+  LOCAL_ACTION_TIMEOUT_MS,
+  requestJson,
+  SafeRequestError,
+  safeRequestMessage
+} from "../safeRequest";
 import { CompanionActionButton, StepFrame } from "../StudioShell";
 import {
   AsyncNotice,
@@ -51,7 +62,7 @@ import {
   StatusPill,
   type AsyncState
 } from "../StudioUi";
-import { defaultNetwork, initialCommandPlatform } from "../studioConfig";
+import { defaultNetwork, initialManualPlatform } from "../studioConfig";
 import { useJourney, useStudioRuntime } from "../studioState";
 import type { CompanionStatus, RouteId } from "../types";
 import type { BuilderPath } from "../journeyProgress";
@@ -68,8 +79,71 @@ function stateForError(error: unknown): AsyncState {
   return "error";
 }
 
-function platformMetadata(platform: ManualPlatform): "windows" | undefined {
-  return platform === "windows" ? "windows" : undefined;
+function platformMetadata(platform: ManualPlatform): ManualPlatform {
+  return platform;
+}
+
+type ResponseFileKey = "metadata" | "schema" | "encode" | "decode";
+
+interface ResponseFetchSpec {
+  key: ResponseFileKey;
+  file: string;
+  url: string;
+  body?: string;
+}
+
+function buildPosixResponseTransaction(
+  requests: ResponseFetchSpec[],
+  platform: "linux" | "macos"
+): string {
+  const tempReferences = requests.map(({ key }) => `"$${key}Temp"`).join(" ");
+  const lines = [
+    "(",
+    "set -e",
+    ...requests.flatMap(({ key, file }) => [
+      `${key}Final=${quotePosixArg(file)}`,
+      `${key}Temp="$${key}Final.tmp.$$"`
+    ]),
+    `rm -f -- ${tempReferences}`,
+    `trap 'rm -f -- ${tempReferences}' EXIT HUP INT TERM`,
+    ...requests.flatMap(({ key, url, body }) => [
+      `curl --fail-with-body --silent --show-error --request POST ${quotePosixArg(url)}${body === undefined ? "" : ` --data-raw ${quotePosixArg(body)}`} --output "$${key}Temp"`,
+      `test -s "$${key}Temp"`
+    ]),
+    ...requests.map(({ key }) => `mv -f -- "$${key}Temp" "$${key}Final"`),
+    "trap - EXIT HUP INT TERM",
+    ...requests.map(({ key }) => `cat -- "$${key}Final"`),
+    platform === "macos"
+      ? `shasum -a 256 ${requests.map(({ key }) => `"$${key}Final"`).join(" ")}`
+      : `sha256sum ${requests.map(({ key }) => `"$${key}Final"`).join(" ")}`,
+    ")"
+  ];
+  return lines.join("\n");
+}
+
+function buildPowerShellResponseTransaction(requests: ResponseFetchSpec[]): string {
+  const lines = [
+    "& {",
+    "  $ErrorActionPreference = 'Stop'",
+    ...requests.flatMap(({ key, file }) => [
+      `  $${key}Final = Join-Path (Get-Location) ${quotePowerShellArg(file)}`,
+      `  $${key}Temp = "$${key}Final.tmp.$PID"`
+    ]),
+    ...requests.map(({ key }) => `  Remove-Item -LiteralPath $${key}Temp -Force -ErrorAction SilentlyContinue`),
+    "  try {",
+    ...requests.flatMap(({ key, url, body }) => [
+      `    Invoke-WebRequest -UseBasicParsing -Method Post -Uri ${quotePowerShellArg(url)}${body === undefined ? "" : ` -Body ${quotePowerShellArg(body)}`} -OutFile $${key}Temp -ErrorAction Stop`,
+      `    if (-not (Test-Path -LiteralPath $${key}Temp -PathType Leaf) -or (Get-Item -LiteralPath $${key}Temp -ErrorAction Stop).Length -eq 0) { throw '${key} response was empty.' }`
+    ]),
+    ...requests.map(({ key }) => `    Move-Item -LiteralPath $${key}Temp -Destination $${key}Final -Force -ErrorAction Stop`),
+    ...requests.map(({ key }) => `    Get-Content -Raw -LiteralPath $${key}Final -ErrorAction Stop`),
+    ...requests.map(({ key }) => `    (Get-FileHash -Algorithm SHA256 -LiteralPath $${key}Final -ErrorAction Stop).Hash`),
+    "  } finally {",
+    ...requests.map(({ key }) => `    Remove-Item -LiteralPath $${key}Temp -Force -ErrorAction SilentlyContinue`),
+    "  }",
+    "}"
+  ];
+  return lines.join("\r\n");
 }
 
 export function SetupPage({
@@ -205,15 +279,28 @@ function DuskDsSetup({
   const { runtime, companionBaseUrl } = useStudioRuntime();
   const automaticAvailable = runtime.companionAvailable;
   const [method, setMethod] = useState<CompletionMethod>(automaticAvailable ? "automatic" : "manual");
-  const [platform, setPlatform] = useState<ManualPlatform>(initialCommandPlatform === "windows" ? "windows" : "posix");
+  const [platform, setPlatform] = useState<ManualPlatform>(initialManualPlatform);
   const [confirmed, setConfirmed] = useState<Set<string>>(() => new Set());
   const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [message, setMessage] = useState("Automatic preflight has not run.");
   const [state, setState] = useState<AsyncState>("idle");
   const requiredTools = manualToolsFor("setup").filter((tool) => tool.requirement === "required");
   const allRequiredConfirmed = requiredTools.every((tool) => confirmed.has(tool.id));
-  const manualSetupRecorded = journey.progress.paths.duskds.setup.evidenceEntries
+  const setupProgress = journey.progress.paths.duskds.setup;
+  const manualSetupRecorded = setupProgress.evidenceEntries
     .some((entry) => entry.code === "duskds-required-preflight" && entry.method === "manual");
+
+  function changeCompletionMethod(next: CompletionMethod) {
+    if (next === method) return;
+    if (setupProgress.evidence.length > 0 || setupProgress.blocker) {
+      journey.invalidate("duskds", "setup");
+    }
+    setPreflight(null);
+    setConfirmed(new Set());
+    setState("idle");
+    setMessage("Automatic preflight has not run.");
+    setMethod(next);
+  }
 
   function toggleTool(toolId: string) {
     if (confirmed.has(toolId) && manualSetupRecorded) {
@@ -230,6 +317,10 @@ function DuskDsSetup({
   function changePlatform(next: ManualPlatform) {
     if (next === platform) return;
     if (manualSetupRecorded) journey.removeEvidence("duskds", "setup", ["duskds-required-preflight"]);
+    setConfirmed(new Set());
+    setPreflight(null);
+    setState("idle");
+    setMessage("Automatic preflight has not run.");
     setPlatform(next);
   }
 
@@ -251,12 +342,13 @@ function DuskDsSetup({
   async function runPreflight() {
     setPreflight(null);
     setState("loading");
-    setMessage("Running the bounded allowlisted preflight.");
+    setMessage("Running the bounded allowlisted preflight. The complete DuskDS check can take up to two minutes.");
     try {
       if (!companionBaseUrl) throw new Error("Local Studio is not connected.");
       const data = await requestJson(companionBaseUrl + "/preflight?path=duskds", {
         init: { credentials: "include" },
         validate: isPreflightResult,
+        timeoutMs: LOCAL_ACTION_TIMEOUT_MS.preflight,
         maxBytes: 64 * 1024
       });
       setPreflight(data);
@@ -280,18 +372,16 @@ function DuskDsSetup({
           }
         });
       } else {
-        journey.block(
-          "duskds",
-          "setup",
-          data.tools.some((tool) => tool.required && tool.failureKind === "unsupported")
-            ? "unsupported-platform"
-            : "toolchain-incomplete"
-        );
+        journey.block("duskds", "setup", "toolchain-incomplete");
       }
     } catch (error) {
       setState(stateForError(error));
-      setMessage(safeRequestMessage(error));
-      journey.block("duskds", "setup", "companion-unavailable");
+      setMessage(error instanceof SafeRequestError && error.kind === "timeout"
+        ? "The two-minute browser wait ended. The companion serializes machine actions, so another check cannot start while the first is still active. Wait briefly, then run the preflight once."
+        : safeRequestMessage(error));
+      if (error instanceof SafeRequestError && error.kind === "unavailable") {
+        journey.block("duskds", "setup", "companion-unavailable");
+      }
     }
   }
 
@@ -307,7 +397,7 @@ function DuskDsSetup({
         <p>Use the complete manual Setup lane in the hosted guide, or run the Studio locally with npm to perform the same allowlisted checks automatically.</p>
         <CompletionMethodPicker
           value={method}
-          onChange={setMethod}
+          onChange={changeCompletionMethod}
           automaticAvailable={automaticAvailable}
         />
       </div>
@@ -317,6 +407,17 @@ function DuskDsSetup({
             <h2>Run the required checks yourself</h2>
             <PlatformPicker value={platform} onChange={changePlatform} />
             <ManualToolChecklist scope="setup" platform={platform} confirmed={confirmed} onToggle={toggleTool} />
+            {platform === "windows" ? (
+              <div className="manual-record-notice">
+                <StatusPill tone="neutral">conditional VM-test lane</StatusPill>
+                <p>Setup also shows the Ubuntu 24.04 WSL check because Build's reviewed VM test runs there. WSL does not block the native Windows WASM build, but it is required before recording a Windows VM-test pass.</p>
+              </div>
+            ) : platform === "macos" ? (
+              <div className="manual-record-notice">
+                <StatusPill tone="warn">Linux VM test required</StatusPill>
+                <p>The npm runtime and Local Actions lifecycle are supported on macOS. Native macOS DuskDS VM tests are not validated; Studio does not yet automate or review a Linux handoff.</p>
+              </div>
+            ) : null}
           </div>
           <div className="focus-card wide">
             <h2>Save the setup result</h2>
@@ -333,6 +434,7 @@ function DuskDsSetup({
         <div className="focus-card wide">
           <h2>Run the allowlisted local preflight</h2>
           <p>The companion returns tool names, required status, bounded versions, and a specific failure category. It never returns environment variables, raw stack traces, secrets, or local paths.</p>
+          <p className="quiet-note">On Windows, the optional Ubuntu 24.04 WSL row is the conditional VM-test lane. A failure there does not block the native WASM build, but it must be fixed before recording a Windows VM-test pass.</p>
           <CompanionActionButton
             companionStatus={companionStatus}
             setRoute={setRoute}
@@ -356,7 +458,7 @@ function DuskDsSetup({
           <h2>Start Local Studio for automatic checks</h2>
           <p>The hosted guide cannot inspect your machine. Start the npm package for allowlisted automatic checks, or complete every required check in the manual lane.</p>
           <div className="button-row">
-            <button className="primary-button" type="button" onClick={() => setMethod("manual")}>Continue manually</button>
+            <button className="primary-button" type="button" onClick={() => changeCompletionMethod("manual")}>Continue manually</button>
             <button className="secondary-button" type="button" onClick={() => setRoute("companion")}>Get the npm command</button>
           </div>
         </div>
@@ -393,15 +495,31 @@ function PreflightPanel({ result }: { result: PreflightResult }) {
 
 function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const journey = useJourney();
-  const [method, setMethod] = useState<CompletionMethod>("automatic");
-  const [platform, setPlatform] = useState<ManualPlatform>(initialCommandPlatform === "windows" ? "windows" : "posix");
+  const savedAccessEvidence = journey.progress.paths.duskds.access.evidenceEntries
+    .find((entry) => entry.code === "duskds-node-read-attestation");
+  const restoredAccessObservation = savedAccessEvidence?.method === "automatic"
+    && typeof savedAccessEvidence.metadata?.blockHeight === "number"
+    && typeof savedAccessEvidence.metadata.blockHash === "string"
+    ? {
+        height: savedAccessEvidence.metadata.blockHeight,
+        hash: savedAccessEvidence.metadata.blockHash,
+        endpoint: savedAccessEvidence.metadata.endpoint ?? DUSKDS_TESTNET_NODE,
+        observedAt: savedAccessEvidence.observedAt
+      }
+    : null;
+  const [method, setMethod] = useState<CompletionMethod>(savedAccessEvidence?.method ?? "automatic");
+  const [platform, setPlatform] = useState<ManualPlatform>(initialManualPlatform);
   const [confirmed, setConfirmed] = useState<Set<string>>(() => new Set());
-  const [blockHeight, setBlockHeight] = useState("");
-  const [blockHash, setBlockHash] = useState("");
+  const [blockHeight, setBlockHeight] = useState(savedAccessEvidence?.method === "manual" ? savedAccessEvidence.metadata?.blockHeight?.toString() ?? "" : "");
+  const [blockHash, setBlockHash] = useState(savedAccessEvidence?.method === "manual" ? savedAccessEvidence.metadata?.blockHash ?? "" : "");
   const [manualError, setManualError] = useState("");
-  const [automaticState, setAutomaticState] = useState<AsyncState>("idle");
-  const [automaticMessage, setAutomaticMessage] = useState("The public node has not been checked from this browser.");
-  const [observation, setObservation] = useState<DuskDsBlockObservation | null>(null);
+  const [automaticState, setAutomaticState] = useState<AsyncState>(restoredAccessObservation ? "success" : "idle");
+  const [automaticMessage, setAutomaticMessage] = useState(
+    restoredAccessObservation
+      ? `Saved observation: block ${restoredAccessObservation.height} at ${new Date(restoredAccessObservation.observedAt).toLocaleString()}.`
+      : "No hosted node check has run in this page visit."
+  );
+  const [observation, setObservation] = useState<DuskDsBlockObservation | null>(restoredAccessObservation);
   const requiredAccessTools = manualToolsFor("access").filter((tool) => tool.requirement === "required");
   const toolsReady = requiredAccessTools.every((tool) => confirmed.has(tool.id));
   const manualAccessRecorded = journey.progress.paths.duskds.access.evidenceEntries
@@ -422,6 +540,10 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
   function changePlatform(next: ManualPlatform) {
     if (next === platform) return;
     if (manualAccessRecorded) journey.removeEvidence("duskds", "access", ["duskds-node-read-attestation"]);
+    setConfirmed(new Set());
+    setBlockHeight("");
+    setBlockHash("");
+    setManualError("");
     setPlatform(next);
   }
 
@@ -498,6 +620,8 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
           onChange={setMethod}
           automaticAvailable
           automaticLabel="Hosted safe check"
+          automaticDescription="One bounded, read-only public-node request from this browser. No companion or wallet is used."
+          automaticAvailabilityLabel="available here"
         />
       </div>
       {method === "automatic" ? (
@@ -522,15 +646,27 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
             <h2>Run the W3sper query in a small Deno app</h2>
             <PlatformPicker value={platform} onChange={changePlatform} />
             <ManualToolChecklist scope="access" platform={platform} confirmed={confirmed} onToggle={toggleTool} />
+            <MiniSteps items={[
+              "Create a new dedicated working folder.",
+              "Create check-duskds.ts and paste the reviewed script below.",
+              "Add W3sper to that folder with Deno.",
+              "Run the read-only script and record only the height and hash."
+            ]} />
             <CommandPair
-              firstTitle="Add W3sper"
-              first={W3SPER_INSTALL_COMMAND}
-              secondTitle="Run the read-only script"
-              second={W3SPER_RUN_COMMAND}
+              firstTitle="Create dedicated working folder"
+              first={W3SPER_WORKSPACE_COMMAND[platform]}
+              secondTitle="Create check-duskds.ts"
+              second={W3SPER_CREATE_FILE_COMMAND[platform]}
             />
-            <h3>check-duskds.ts</h3>
+            <h3>Paste this into check-duskds.ts</h3>
             <pre>{W3SPER_NODE_READ_SNIPPET}</pre>
             <CopyButton value={W3SPER_NODE_READ_SNIPPET} label="Copy the W3sper latest-block script" />
+            <CommandPair
+              firstTitle="Add W3sper"
+              first={W3SPER_INSTALL_COMMAND[platform]}
+              secondTitle="Run the read-only script"
+              second={W3SPER_RUN_COMMAND[platform]}
+            />
           </div>
           <div className="focus-card wide">
             <h2>Record exactly what you observed</h2>
@@ -570,9 +706,103 @@ function BlockReceipt({ observation, label }: { observation: DuskDsBlockObservat
 }
 
 type ProjectMode = "new" | "existing";
+const DUSKDS_BUILD_PROJECT_MODE_KEY = "dusk-studio-duskds-build-project-mode";
 
-function safeProjectName(value: string): string {
-  return value.trim().replace(/[^a-zA-Z0-9_-]/g, "-") || "duskds-forge-starter";
+type ActiveScaffoldContext =
+  | {
+      schemaVersion: 1;
+      status: "pending";
+      requestId: number;
+      projectName: string;
+      parentDir?: string;
+    }
+  | {
+      schemaVersion: 1;
+      status: "complete";
+      requestId: number;
+      projectName: string;
+      projectPath: string;
+      platform: ManualPlatform;
+      files: string[];
+      rustToolchain: string;
+      templateRevision: string;
+      recovered: boolean;
+    };
+
+let activeScaffoldContext: ActiveScaffoldContext | null = null;
+let scaffoldRequestSequence = 0;
+const RUST_2024_RESERVED_PROJECT_NAMES = new Set([
+  "abstract", "as", "async", "await", "become", "box", "break", "const", "continue", "crate",
+  "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if", "impl",
+  "in", "let", "loop", "macro", "macro-rules", "match", "mod", "move", "mut", "override", "priv",
+  "pub", "raw", "ref", "return", "safe", "self", "static", "struct", "super", "trait", "true",
+  "try", "type", "typeof", "union", "unsafe", "unsized", "use", "virtual", "where", "while", "yield"
+]);
+
+function readActiveScaffoldContext(): ActiveScaffoldContext | null {
+  return activeScaffoldContext;
+}
+
+function pathLooksAbsolute(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith("/") || value.startsWith("\\");
+}
+
+function projectNameError(value: string): string {
+  if (
+    value !== value.trim()
+    || value !== value.normalize("NFC")
+    || !/^[a-z](?:[a-z0-9]|-(?=[a-z0-9])){0,79}$/.test(value)
+    || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value)
+  ) {
+    return "Use 1–80 lowercase letters, numbers, or single hyphens. Start with a letter; do not end with or repeat a hyphen.";
+  }
+  if (RUST_2024_RESERVED_PROJECT_NAMES.has(value)) {
+    return "Choose a different project name; Rust 2024 keywords and reserved words cannot be used.";
+  }
+  return "";
+}
+
+function pathFieldError(
+  value: string,
+  options: { label: string; platform: ManualPlatform; requireAbsolute?: boolean; managedSubfolder?: boolean; rejectFilesystemRoot?: boolean }
+): string {
+  if (value.length > 1_024) return `${options.label} must be 1,024 characters or fewer.`;
+  if (/[\0\r\n]/.test(value)) return `${options.label} cannot contain NUL or line-break characters.`;
+  const trimmed = value.trim();
+  if (options.requireAbsolute && !trimmed) return `Enter an absolute ${options.label.toLowerCase()}.`;
+  const platformAbsolute = options.platform === "windows"
+    ? /^[a-zA-Z]:[\\/]/.test(trimmed)
+    : trimmed.startsWith("/");
+  if (options.requireAbsolute && !platformAbsolute) {
+    return `${options.label} must be an absolute path.`;
+  }
+  if (
+    (options.requireAbsolute || options.rejectFilesystemRoot)
+    && (options.platform === "windows" ? /^[a-zA-Z]:[\\/]?$/.test(trimmed) : trimmed === "/")
+  ) {
+    return `${options.label} cannot be a filesystem root.`;
+  }
+  if (
+    options.managedSubfolder
+    && trimmed
+    && (pathLooksAbsolute(trimmed) || trimmed.split(/[\\/]/).some((part) => part === ".."))
+  ) {
+    return `${options.label} must be a relative subfolder inside the managed DuskDS root.`;
+  }
+  return "";
+}
+
+function writeActiveScaffoldContext(value: ActiveScaffoldContext): void {
+  activeScaffoldContext = value;
+}
+
+function clearActiveScaffoldContext(): void {
+  activeScaffoldContext = null;
+}
+
+function activeScaffoldRequestMatches(requestId: number): boolean {
+  return activeScaffoldContext?.status === "pending"
+    && activeScaffoldContext.requestId === requestId;
 }
 
 function buildManualCommands({
@@ -580,56 +810,135 @@ function buildManualCommands({
   projectName,
   parentDir,
   existingRoot,
-  platform
+  platform,
+  createdProjectPath
 }: {
   projectMode: ProjectMode;
   projectName: string;
   parentDir: string;
   existingRoot: string;
-  platform: CommandPlatform;
+  platform: ManualPlatform;
+  createdProjectPath?: string;
 }): {
+  projectPath: string;
   prepare: string;
   build: string;
   test: string;
   revision: string;
-  testEnvironment: "wsl-ubuntu-24.04" | "linux";
 } {
-  const name = safeProjectName(projectName);
+  const name = projectName.trim();
+  const commandPlatform: CommandPlatform = platform === "windows" ? "windows" : "posix";
+  const checkedPowerShell = (command: string, message: string) =>
+    `${command}; if ($LASTEXITCODE -ne 0) { throw '${message}' }`;
+  const enterProject = (projectPath: string) => platform === "windows"
+    ? `Set-Location -LiteralPath ${quotePowerShellArg(projectPath)} -ErrorAction Stop`
+    : `cd ${quotePosixArg(projectPath)}`;
+  const posixBlock = (...commands: string[]) => ["(", "set -e", ...commands, ")"].join("\n");
+  const forgeGuard = reviewedDuskForgeGuardCommands(platform);
+  const forge = (args: string) => reviewedDuskForgeInvocation(platform, args);
+  const wslForgeGuard = reviewedDuskForgeGuardCommands("linux");
+  const wslForge = (args: string) => reviewedDuskForgeInvocation("linux", args);
   if (projectMode === "new") {
-    const commands = buildDuskDsCommandSet({ projectName: name, parentDir: parentDir.trim(), platform });
-    const root = commands.projectPath.slice(0, -(name.length + 1));
+    const createdParent = createdProjectPath
+      ? resolveDuskDsProjectParent(createdProjectPath, name, commandPlatform)
+      : undefined;
+    const projectPath = resolveDuskDsProjectPath(
+      createdParent ?? parentDir.trim(),
+      name,
+      commandPlatform
+    );
+    const root = resolveDuskDsProjectParent(projectPath, name, commandPlatform);
     const create = platform === "windows"
-      ? `dusk-forge new ${quotePowerShellArg(name)} --path ${quotePowerShellArg(root)} --no-git --template counter`
-      : `dusk-forge new ${quotePosixArg(name)} --path ${quotePosixArg(root)} --no-git --template counter`;
-    const enter = platform === "windows"
-      ? `Set-Location -LiteralPath ${quotePowerShellArg(commands.projectPath)}`
-      : `cd ${quotePosixArg(commands.projectPath)}`;
+      ? `npx.cmd --yes dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds ${quotePowerShellArg(name)}`
+      : `npx --yes dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds ${quotePosixArg(name)}`;
+    const enter = enterProject(projectPath);
+    const prepare = platform === "windows"
+      ? [
+          `$parentPath = ${quotePowerShellArg(root)}`,
+          "New-Item -ItemType Directory -Path $parentPath -Force -ErrorAction Stop | Out-Null",
+          "Set-Location -LiteralPath $parentPath -ErrorAction Stop",
+          checkedPowerShell(create, "Reviewed DuskDS template creation failed; no existing target was overwritten."),
+          enter,
+          checkedPowerShell(`rustup override set ${DUSKDS_RUST_TOOLCHAIN}`, "Rust override failed.")
+        ].join("\n")
+      : posixBlock(
+          `mkdir -p -- ${quotePosixArg(root)}`,
+          `cd ${quotePosixArg(root)}`,
+          create,
+          enter,
+          `rustup override set ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)}`
+        );
+    const build = platform === "windows"
+      ? [
+          ...forgeGuard,
+          enter,
+          checkedPowerShell(forge("check"), "Dusk Forge check failed."),
+          checkedPowerShell(forge("build all"), "Dusk Forge build failed.")
+        ].join("\n")
+      : posixBlock(...forgeGuard, enter, forge("check"), forge("build all"));
+    const test = platform === "windows"
+      ? checkedPowerShell(
+          `wsl -d Ubuntu-24.04 -- bash -lc ${quotePowerShellArg(
+            `set -e; ${wslForgeGuard.join("; ")}; cd ${quotePosixArg(windowsPathToWsl(projectPath))}; rustup run ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)} ${wslForge("test")}`
+          )}`,
+          "Reviewed WSL VM test failed."
+        )
+      : platform === "linux"
+        ? posixBlock(...forgeGuard, enter, `rustup run ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)} ${forge("test")}`)
+        : "";
+    const revision = platform === "windows"
+      ? [
+          enter,
+          checkedPowerShell("git init", "git init failed."),
+          checkedPowerShell("git add .", "git add failed."),
+          checkedPowerShell("git write-tree", "git write-tree failed.")
+        ].join("\n")
+      : posixBlock(enter, "git init", "git add .", "git write-tree");
     return {
-      prepare: [create, enter, `rustup override set ${DUSKDS_RUST_TOOLCHAIN}`].join("\n"),
-      build: commands.build,
-      test: commands.test,
-      revision: [enter, "git init", "git add .", "git write-tree"].join("\n"),
-      testEnvironment: platform === "windows" ? "wsl-ubuntu-24.04" : "linux"
+      projectPath,
+      prepare,
+      build,
+      test,
+      revision
     };
   }
-  const root = existingRoot.trim() || (platform === "windows" ? "C:\\path\\to\\your-project" : "/path/to/your-project");
-  const enter = platform === "windows"
-    ? `Set-Location -LiteralPath ${quotePowerShellArg(root)}`
-    : `cd ${quotePosixArg(root)}`;
+  const root = existingRoot.trim();
+  const enter = enterProject(root);
   let test: string;
-  if (platform === "windows" && /^[a-zA-Z]:[\\/]/.test(root)) {
-    test = `wsl -d Ubuntu-24.04 -- bash -lc ${quotePowerShellArg(`cd ${quotePosixArg(windowsPathToWsl(root))} && dusk-forge test`)}`;
-  } else if (platform === "windows") {
-    test = "Use an absolute Windows drive path above, then rerun this page to generate the reviewed WSL test command.";
+  if (platform === "windows") {
+    test = checkedPowerShell(
+      `wsl -d Ubuntu-24.04 -- bash -lc ${quotePowerShellArg(
+        `set -e; ${wslForgeGuard.join("; ")}; cd ${quotePosixArg(windowsPathToWsl(root))}; rustup run ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)} ${wslForge("test")}`
+      )}`,
+      "Reviewed WSL VM test failed."
+    );
+  } else if (platform === "linux") {
+    test = posixBlock(...forgeGuard, enter, `rustup run ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)} ${forge("test")}`);
   } else {
-    test = [enter, "dusk-forge test"].join("\n");
+    test = "";
   }
   return {
-    prepare: [enter, `rustup override set ${DUSKDS_RUST_TOOLCHAIN}`, "dusk-forge check"].join("\n"),
-    build: [enter, "dusk-forge check", "dusk-forge build all"].join("\n"),
+    projectPath: root,
+    prepare: platform === "windows"
+      ? [
+          ...forgeGuard,
+          enter,
+          checkedPowerShell(`rustup override set ${DUSKDS_RUST_TOOLCHAIN}`, "Rust override failed."),
+          checkedPowerShell(forge("check"), "Dusk Forge check failed.")
+        ].join("\n")
+      : posixBlock(...forgeGuard, enter, `rustup override set ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)}`, forge("check")),
+    build: platform === "windows"
+      ? [
+          ...forgeGuard,
+          enter,
+          checkedPowerShell(forge("check"), "Dusk Forge check failed."),
+          checkedPowerShell(forge("build all"), "Dusk Forge build failed.")
+        ].join("\n")
+      : posixBlock(...forgeGuard, enter, forge("check"), forge("build all")),
     test,
-    revision: [enter, "git rev-parse HEAD"].join("\n"),
-    testEnvironment: platform === "windows" ? "wsl-ubuntu-24.04" : "linux"
+    revision: platform === "windows"
+      ? [enter, checkedPowerShell("git rev-parse HEAD", "Git revision read failed.")].join("\n")
+      : posixBlock(enter, "git rev-parse HEAD")
   };
 }
 
@@ -643,19 +952,46 @@ function DuskDsBuild({
   const journey = useJourney();
   const { runtime, companionBaseUrl } = useStudioRuntime();
   const automaticAvailable = runtime.companionAvailable;
-  const [method, setMethod] = useState<CompletionMethod>(automaticAvailable ? "automatic" : "manual");
-  const [platform, setPlatform] = useState<CommandPlatform>(initialCommandPlatform);
-  const [projectMode, setProjectMode] = useState<ProjectMode>("new");
-  const [projectName, setProjectName] = useState("duskds-forge-starter");
-  const [parentDir, setParentDir] = useState("");
+  const storedScaffold = useMemo(() => readActiveScaffoldContext(), []);
+  const restoredScaffold = storedScaffold?.status === "complete" ? storedScaffold : null;
+  const interruptedScaffold = storedScaffold?.status === "pending" ? storedScaffold : null;
+  const retainedAutomaticStructureEvidence = journey.progress.paths.duskds.build.evidenceEntries.some(
+    (entry) => entry.code === "duskds-starter-structure" && entry.method === "automatic"
+  );
+  const mountedRef = useRef(true);
+  const [method, setMethod] = useState<CompletionMethod>(
+    automaticAvailable || storedScaffold ? "automatic" : "manual"
+  );
+  const [platform, setPlatform] = useState<ManualPlatform>(
+    restoredScaffold?.platform ?? initialManualPlatform
+  );
+  const [projectMode, setProjectMode] = useState<ProjectMode>(() =>
+    storedScaffold
+      ? "new"
+      : window.sessionStorage.getItem(DUSKDS_BUILD_PROJECT_MODE_KEY) === "existing" ? "existing" : "new"
+  );
+  const [projectName, setProjectName] = useState(storedScaffold?.projectName ?? "duskds-forge-starter");
+  const [parentDir, setParentDir] = useState(interruptedScaffold?.parentDir ?? "");
   const [existingRoot, setExistingRoot] = useState("");
   const [structureRevision, setStructureRevision] = useState("");
   const [cargoConfirmed, setCargoConfirmed] = useState(false);
   const [toolchainConfirmed, setToolchainConfirmed] = useState(false);
   const [structureError, setStructureError] = useState("");
-  const [files, setFiles] = useState<string[]>([]);
-  const [scaffoldMessage, setScaffoldMessage] = useState("Automatic scaffold has not run.");
-  const [scaffoldState, setScaffoldState] = useState<AsyncState>("idle");
+  const [files, setFiles] = useState<string[]>(restoredScaffold?.files ?? []);
+  const [createdProjectPath, setCreatedProjectPath] = useState(restoredScaffold?.projectPath ?? "");
+  const [scaffoldMessage, setScaffoldMessage] = useState(
+    restoredScaffold
+      ? `${restoredScaffold.recovered ? "Recovered" : "Restored"} verified DuskDS starter context for this tab.`
+      : interruptedScaffold
+        ? "The previous page session ended before the scaffold receipt arrived. Retry the same project to recover a strictly verified existing target without overwriting it."
+        : retainedAutomaticStructureEvidence
+          ? "The prior automatic evidence remains saved, but its private project path was intentionally not retained after refresh. Re-enter the same project name and subfolder to recover through the running companion, or choose Existing repository and attach the path manually."
+        : "Automatic scaffold has not run."
+  );
+  const [scaffoldState, setScaffoldState] = useState<AsyncState>(
+    restoredScaffold ? "success" : interruptedScaffold ? "error" : "idle"
+  );
+  const [scaffoldRecoverable, setScaffoldRecoverable] = useState(Boolean(interruptedScaffold));
   const [artifactInput, setArtifactInput] = useState({
     revision: "",
     contractName: "",
@@ -666,41 +1002,103 @@ function DuskDsBuild({
     dataDriverSize: ""
   });
   const [artifactError, setArtifactError] = useState("");
-  const [testEnvironment, setTestEnvironment] = useState<"wsl-ubuntu-24.04" | "linux">(
-    platform === "windows" ? "wsl-ubuntu-24.04" : "linux"
-  );
   const [testsPassed, setTestsPassed] = useState(false);
+  const [vmEnvironmentConfirmed, setVmEnvironmentConfirmed] = useState(false);
+  const projectInputError = projectMode === "new" ? projectNameError(projectName) : "";
+  const commandPathError = projectMode === "existing"
+    ? pathFieldError(existingRoot, { label: "Existing project root", platform, requireAbsolute: true })
+    : pathFieldError(parentDir, {
+        label: method === "automatic" && automaticAvailable ? "Managed-root subfolder" : "Parent folder",
+        platform,
+        managedSubfolder: method === "automatic" && automaticAvailable,
+        rejectFilesystemRoot: method === "manual"
+      });
+  const commandInputError = projectInputError || commandPathError;
   const commands = useMemo(
-    () => buildManualCommands({ projectMode, projectName, parentDir, existingRoot, platform }),
-    [existingRoot, parentDir, platform, projectMode, projectName]
+    () => commandInputError ? null : buildManualCommands({
+      projectMode,
+      projectName,
+      parentDir,
+      existingRoot,
+      platform,
+      createdProjectPath: method === "automatic" ? createdProjectPath : undefined
+    }),
+    [commandInputError, createdProjectPath, existingRoot, method, parentDir, platform, projectMode, projectName]
   );
-  const artifactCommands = platform === "windows"
-    ? {
+  const artifactCommands = useMemo(() => {
+    if (!commands) return null;
+    if (platform === "windows") {
+      const enter = `Set-Location -LiteralPath ${quotePowerShellArg(commands.projectPath)} -ErrorAction Stop`;
+      return {
         locate: [
-          "Get-ChildItem -File '.\\target\\contract\\wasm32-unknown-unknown\\release\\*.wasm' | Select-Object Name,Length",
-          "Get-ChildItem -File '.\\target\\data-driver\\wasm32-unknown-unknown\\release\\*.wasm' | Select-Object Name,Length"
+          enter,
+          "Get-ChildItem -File '.\\target\\contract\\wasm32-unknown-unknown\\release\\*.wasm' -ErrorAction Stop | Select-Object Name,Length",
+          "Get-ChildItem -File '.\\target\\data-driver\\wasm32-unknown-unknown\\release\\*.wasm' -ErrorAction Stop | Select-Object Name,Length"
         ].join("\n"),
         hash: [
-          "Get-FileHash -Algorithm SHA256 '.\\target\\contract\\wasm32-unknown-unknown\\release\\*.wasm'",
-          "Get-FileHash -Algorithm SHA256 '.\\target\\data-driver\\wasm32-unknown-unknown\\release\\*.wasm'"
-        ].join("\n")
-      }
-    : {
-        locate: [
-          "find target/contract/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' -exec wc -c {} \\;",
-          "find target/data-driver/wasm32-unknown-unknown/release -maxdepth 1 -name '*.wasm' -exec wc -c {} \\;"
-        ].join("\n"),
-        hash: [
-          "shasum -a 256 target/contract/wasm32-unknown-unknown/release/*.wasm",
-          "shasum -a 256 target/data-driver/wasm32-unknown-unknown/release/*.wasm"
+          enter,
+          "Get-FileHash -Algorithm SHA256 '.\\target\\contract\\wasm32-unknown-unknown\\release\\*.wasm' -ErrorAction Stop",
+          "Get-FileHash -Algorithm SHA256 '.\\target\\data-driver\\wasm32-unknown-unknown\\release\\*.wasm' -ErrorAction Stop"
         ].join("\n")
       };
+    }
+    const enter = `cd ${quotePosixArg(commands.projectPath)}`;
+    const hashTool = platform === "macos" ? "shasum -a 256" : "sha256sum";
+    return {
+      locate: [
+        "(",
+        "set -e",
+        enter,
+        "contractFound=0",
+        'for file in target/contract/wasm32-unknown-unknown/release/*.wasm; do if [ -f "$file" ]; then wc -c "$file"; contractFound=1; fi; done',
+        '[ "$contractFound" -eq 1 ] || { echo "No contract WASM artifact found." >&2; exit 1; }',
+        "driverFound=0",
+        'for file in target/data-driver/wasm32-unknown-unknown/release/*.wasm; do if [ -f "$file" ]; then wc -c "$file"; driverFound=1; fi; done',
+        '[ "$driverFound" -eq 1 ] || { echo "No data-driver WASM artifact found." >&2; exit 1; }',
+        ")"
+      ].join("\n"),
+      hash: [
+        "(",
+        "set -e",
+        enter,
+        "contractFound=0",
+        `for file in target/contract/wasm32-unknown-unknown/release/*.wasm; do if [ -f "$file" ]; then ${hashTool} "$file"; contractFound=1; fi; done`,
+        '[ "$contractFound" -eq 1 ] || { echo "No contract WASM artifact found." >&2; exit 1; }',
+        "driverFound=0",
+        `for file in target/data-driver/wasm32-unknown-unknown/release/*.wasm; do if [ -f "$file" ]; then ${hashTool} "$file"; driverFound=1; fi; done`,
+        '[ "$driverFound" -eq 1 ] || { echo "No data-driver WASM artifact found." >&2; exit 1; }',
+        ")"
+      ].join("\n")
+    };
+  }, [commands, platform]);
+  const wasmOptTool = manualToolsFor("build").find((tool) => tool.id === "wasm-opt");
+  const wslTool = manualToolsFor("build").find((tool) => tool.id === "wsl");
   const buildProgress = journey.progress.paths.duskds.build;
   const structureReady = buildProgress.evidence.includes("duskds-starter-structure");
+  const savedArtifactRevision = buildProgress.evidenceEntries
+    .find((entry) => entry.code === "duskds-build-artifact-attestation")
+    ?.metadata?.revision ?? "";
   const hasRecordedBuildContext = buildProgress.evidence.length > 0
     || Boolean(buildProgress.blocker)
     || buildProgress.status === "skipped"
     || buildProgress.status === "skipped-with-reason";
+  const scaffoldContextLocked = scaffoldState === "loading" || scaffoldRecoverable;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const clearPrivateContext = () => clearActiveScaffoldContext();
+    window.addEventListener("beforeunload", clearPrivateContext);
+    return () => {
+      mountedRef.current = false;
+      window.removeEventListener("beforeunload", clearPrivateContext);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (restoredScaffold) {
+      window.sessionStorage.setItem(DUSKDS_BUILD_PROJECT_MODE_KEY, "new");
+    }
+  }, [restoredScaffold]);
 
   function clearDependentBuildInputs() {
     setCargoConfirmed(false);
@@ -718,7 +1116,13 @@ function DuskDsBuild({
     });
     setArtifactError("");
     setTestsPassed(false);
+    setVmEnvironmentConfirmed(false);
     setFiles([]);
+    setCreatedProjectPath("");
+    setScaffoldState("idle");
+    setScaffoldRecoverable(false);
+    setScaffoldMessage("Automatic scaffold has not run.");
+    clearActiveScaffoldContext();
   }
 
   function invalidateRecordedBuildContext() {
@@ -729,16 +1133,22 @@ function DuskDsBuild({
     if (next === projectMode) return;
     invalidateRecordedBuildContext();
     clearDependentBuildInputs();
+    window.sessionStorage.setItem(DUSKDS_BUILD_PROJECT_MODE_KEY, next);
     setProjectMode(next);
   }
 
-  function setBuildPlatform(next: ManualPlatform) {
-    const commandPlatform = next === "windows" ? "windows" : "posix";
-    if (commandPlatform === platform) return;
+  function changeCompletionMethod(next: CompletionMethod) {
+    if (next === method) return;
     invalidateRecordedBuildContext();
     clearDependentBuildInputs();
-    setPlatform(commandPlatform);
-    setTestEnvironment(commandPlatform === "windows" ? "wsl-ubuntu-24.04" : "linux");
+    setMethod(next);
+  }
+
+  function setBuildPlatform(next: ManualPlatform) {
+    if (next === platform) return;
+    invalidateRecordedBuildContext();
+    clearDependentBuildInputs();
+    setPlatform(next);
   }
 
   function recordManualStructure() {
@@ -760,7 +1170,7 @@ function DuskDsBuild({
         tool: "forge-starter",
         version: DUSKDS_RUST_TOOLCHAIN,
         revision: revision.value,
-        platform: platform === "windows" ? "windows" : undefined,
+        platform: platformMetadata(platform),
         checkCount: 2
       }
     });
@@ -768,10 +1178,27 @@ function DuskDsBuild({
   }
 
   async function scaffoldForge() {
+    if (commandInputError) {
+      setScaffoldState("error");
+      setScaffoldMessage(commandInputError);
+      return;
+    }
+    const requestedProjectName = projectName.trim();
+    const requestedParent = parentDir.trim();
+    const requestId = ++scaffoldRequestSequence;
     invalidateRecordedBuildContext();
     setFiles([]);
+    setCreatedProjectPath("");
     setScaffoldState("loading");
-    setScaffoldMessage("Creating the bounded Forge starter under the approved local root.");
+    setScaffoldRecoverable(false);
+    setScaffoldMessage("Creating the reviewed, packaged DuskDS template under the managed project root. No external generator runs during this action.");
+    writeActiveScaffoldContext({
+      schemaVersion: 1,
+      status: "pending",
+      requestId,
+      projectName: requestedProjectName,
+      ...(requestedParent ? { parentDir: requestedParent } : {})
+    });
     try {
       if (!companionBaseUrl) throw new Error("Local Studio is not connected.");
       const data = await requestJson(companionBaseUrl + "/scaffold-duskds-forge", {
@@ -779,33 +1206,73 @@ function DuskDsBuild({
           method: "POST",
           credentials: "include",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ projectName: safeProjectName(projectName), parentDir: parentDir.trim() || undefined })
+          body: JSON.stringify({ projectName: requestedProjectName, parentDir: requestedParent || undefined })
         },
         validate: isScaffoldEvidence,
+        timeoutMs: LOCAL_ACTION_TIMEOUT_MS.scaffold,
         maxBytes: 64 * 1024
       });
-      if (!data.ok || !data.structureVerified) throw new Error("Forge structure could not be verified.");
-      if (data.platform === "windows" || data.platform === "posix") setPlatform(data.platform);
-      setFiles(data.files);
-      setScaffoldState("success");
-      setScaffoldMessage(
-        `Forge structure verified with Rust ${data.rustToolchain ?? DUSKDS_RUST_TOOLCHAIN}${data.forgeRevision ? ` and Forge ${data.forgeRevision.slice(0, 12)}` : ""}.`
-      );
+      if (!activeScaffoldRequestMatches(requestId)) return;
+      if (!data.ok || !data.structureVerified) throw new Error("The DuskDS starter structure could not be verified.");
+      if (data.projectName !== requestedProjectName) {
+        throw new Error("The scaffold receipt did not match the requested project.");
+      }
+      const receiptPlatform = data.runtimeOs;
+      const rustToolchain = data.rustToolchain;
+      const templateRevision = data.templateRevision;
+      writeActiveScaffoldContext({
+        schemaVersion: 1,
+        status: "complete",
+        requestId,
+        projectName: data.projectName,
+        projectPath: data.projectPath,
+        platform: receiptPlatform,
+        files: data.files,
+        rustToolchain,
+        templateRevision,
+        recovered: Boolean(data.recovered)
+      });
+      if (mountedRef.current) {
+        setPlatform(receiptPlatform);
+        setFiles(data.files);
+        setCreatedProjectPath(data.projectPath);
+        setScaffoldState("success");
+        setScaffoldRecoverable(false);
+        setScaffoldMessage(data.recovered
+          ? `Recovered the existing starter after strict content and Rust ${rustToolchain} verification; no files were written or overwritten.`
+          : `Reviewed template ${data.template.slice(0, 64)} verified with Rust ${rustToolchain}, source ${templateRevision.slice(0, 12)}, and its packaged Cargo.lock.`
+        );
+      }
       journey.record("duskds", "build", ["duskds-starter-structure"], {
         method: "automatic",
         metadata: {
           source: "companion",
-          tool: "forge-starter",
-          version: data.rustToolchain ?? DUSKDS_RUST_TOOLCHAIN,
-          revision: data.forgeRevision ?? DUSKDS_FORGE_COMMIT,
-          platform: data.platform === "windows" ? "windows" : data.platform === "posix" ? "linux" : data.platform,
+          tool: "studio-reviewed-template",
+          version: rustToolchain,
+          revision: templateRevision,
+          platform: receiptPlatform,
           checkCount: data.files.length
         }
       });
     } catch (error) {
-      setScaffoldState(stateForError(error));
-      setScaffoldMessage(safeRequestMessage(error));
-      journey.block("duskds", "build", "companion-unavailable");
+      if (!activeScaffoldRequestMatches(requestId)) return;
+      const keepPending = error instanceof SafeRequestError
+        && (error.kind === "timeout" || error.code === "capability_busy");
+      if (!keepPending) clearActiveScaffoldContext();
+      if (mountedRef.current) {
+        setScaffoldState(stateForError(error));
+        setScaffoldRecoverable(keepPending);
+        setScaffoldMessage(error instanceof SafeRequestError && error.code === "scaffold_parent_outside_root"
+          ? `${error.message} Enter only a relative subfolder, or leave it blank. No starter was created and no commands were generated for that path.`
+          : error instanceof SafeRequestError && error.code === "scaffold_target_not_recoverable"
+            ? `${error.message} Choose a new project name or inspect the existing folder yourself; Local Studio did not write or overwrite it.`
+            : error instanceof SafeRequestError && error.kind === "timeout"
+              ? "The browser wait ended. Retry the same project to recover a content-verified completed target; Local Studio will not write the reviewed template over an existing target."
+              : safeRequestMessage(error));
+      }
+      if (mountedRef.current && error instanceof SafeRequestError && error.kind === "unavailable") {
+        journey.block("duskds", "build", "companion-unavailable");
+      }
     }
   }
 
@@ -825,7 +1292,7 @@ function DuskDsBuild({
       method: "manual",
       metadata: {
         ...result.value,
-        platform: platform === "windows" ? "windows" : undefined
+        platform: platformMetadata(platform)
       }
     });
   }
@@ -833,14 +1300,17 @@ function DuskDsBuild({
   function changeArtifactInput(next: typeof artifactInput) {
     const changedFields = (Object.keys(next) as Array<keyof typeof artifactInput>)
       .filter((field) => next[field] !== artifactInput[field]);
-    if (changedFields.length > 0 && buildProgress.evidence.includes("duskds-build-artifact-attestation")) {
-      const removals = ["duskds-build-artifact-attestation"] as const;
+    if (changedFields.length > 0) {
       const revisionChanged = changedFields.includes("revision");
-      journey.removeEvidence(
-        "duskds",
-        "build",
-        revisionChanged ? [...removals, "duskds-vm-test-attestation"] : [...removals]
-      );
+      const removals = [
+        ...(buildProgress.evidence.includes("duskds-build-artifact-attestation")
+          ? ["duskds-build-artifact-attestation" as const]
+          : []),
+        ...(revisionChanged && buildProgress.evidence.includes("duskds-vm-test-attestation")
+          ? ["duskds-vm-test-attestation" as const]
+          : [])
+      ];
+      if (removals.length > 0) journey.removeEvidence("duskds", "build", removals);
       if (revisionChanged) setTestsPassed(false);
     }
     setArtifactInput(next);
@@ -848,7 +1318,14 @@ function DuskDsBuild({
 
   function recordTests() {
     const revision = validateRevision(artifactInput.revision || structureRevision);
-    if (!testsPassed || !revision.value) return;
+    if (
+      platform === "macos"
+      || !testsPassed
+      || !revision.value
+      || !savedArtifactRevision
+      || revision.value !== savedArtifactRevision
+      || (platform === "windows" && !vmEnvironmentConfirmed)
+    ) return;
     journey.record("duskds", "build", ["duskds-vm-test-attestation"], {
       method: "manual",
       metadata: {
@@ -856,7 +1333,7 @@ function DuskDsBuild({
         tool: "dusk-forge",
         version: DUSKDS_RUST_TOOLCHAIN,
         revision: revision.value,
-        testEnvironment,
+        testEnvironment: platform === "windows" ? "wsl-ubuntu-24.04" : "linux",
         testsPassed: true,
         platform: platform === "windows" ? "wsl" : "linux"
       }
@@ -873,38 +1350,38 @@ function DuskDsBuild({
       <div className="focus-card wide">
         <h2>Choose your project and completion method</h2>
         <div className="method-picker compact" role="group" aria-label="Choose project type">
-          <button className={projectMode === "new" ? "method-option active" : "method-option"} type="button" aria-pressed={projectMode === "new"} onClick={() => changeProjectMode("new")}>
+          <button disabled={scaffoldContextLocked} className={projectMode === "new" ? "method-option active" : "method-option"} type="button" aria-pressed={projectMode === "new"} onClick={() => changeProjectMode("new")}>
             <span><strong>New Forge starter</strong><small>Create the reviewed Counter template.</small></span>
           </button>
-          <button className={projectMode === "existing" ? "method-option active" : "method-option"} type="button" aria-pressed={projectMode === "existing"} onClick={() => changeProjectMode("existing")}>
+          <button disabled={scaffoldContextLocked} className={projectMode === "existing" ? "method-option active" : "method-option"} type="button" aria-pressed={projectMode === "existing"} onClick={() => changeProjectMode("existing")}>
             <span><strong>Existing repository</strong><small>Check and build your current Forge project.</small></span>
           </button>
         </div>
-        <CompletionMethodPicker value={method} onChange={setMethod} automaticAvailable={automaticAvailable} />
+        <CompletionMethodPicker value={method} onChange={changeCompletionMethod} automaticAvailable={automaticAvailable} disabled={scaffoldContextLocked} />
       </div>
       <div className="focus-card wide">
         <h2>Set the command context</h2>
-        <PlatformPicker value={platform === "windows" ? "windows" : "posix"} onChange={setBuildPlatform} />
+        <PlatformPicker value={platform} onChange={setBuildPlatform} disabled={scaffoldContextLocked} />
         <div className="form-grid">
           {projectMode === "new" ? (
             <>
-              <label>Project name<input value={projectName} onChange={(event) => {
+              <label>Project name<input disabled={scaffoldContextLocked} value={projectName} onChange={(event) => {
                 if (event.target.value !== projectName) {
                   invalidateRecordedBuildContext();
                   clearDependentBuildInputs();
                   setProjectName(event.target.value);
                 }
               }} /></label>
-              <label>Parent folder, optional<input value={parentDir} onChange={(event) => {
+              <label>{method === "automatic" && automaticAvailable ? "Subfolder inside managed DuskDS root, optional" : "Parent folder, optional"}<input disabled={scaffoldContextLocked} value={parentDir} onChange={(event) => {
                 if (event.target.value !== parentDir) {
                   invalidateRecordedBuildContext();
                   clearDependentBuildInputs();
                   setParentDir(event.target.value);
                 }
-              }} placeholder={platform === "windows" ? "Relative to C:\\tmp\\dusk-studio-projects" : "Relative to .generated"} /></label>
+              }} placeholder={method === "automatic" && automaticAvailable ? "examples" : platform === "windows" ? "C:\\tmp\\dusk-studio-projects" : ".generated"} /></label>
             </>
           ) : (
-            <label>Existing project root<input value={existingRoot} onChange={(event) => {
+            <label>Existing project root<input disabled={scaffoldContextLocked} value={existingRoot} onChange={(event) => {
               if (event.target.value !== existingRoot) {
                 invalidateRecordedBuildContext();
                 clearDependentBuildInputs();
@@ -913,36 +1390,61 @@ function DuskDsBuild({
             }} placeholder={platform === "windows" ? "C:\\absolute\\path\\to\\project" : "/absolute/path/to/project"} /></label>
           )}
         </div>
-        <p className="quiet-note">Paths stay in this tab and are never added to journey evidence or diagnostics.</p>
+        {commandInputError ? <p className="validation-message" role="alert">{commandInputError}</p> : null}
+        <p className="quiet-note">Paths stay only in this tab's active memory and are never written to browser storage, journey evidence, or diagnostics.</p>
       </div>
       {method === "automatic" ? (
-        automaticAvailable && projectMode === "new" ? (
+        projectMode === "existing" ? (
+          <div className="focus-card wide">
+            <StatusPill tone="warn">Existing repository boundary</StatusPill>
+            <h2>Local Actions does not attach to existing repositories</h2>
+            <p>Local Actions checks prerequisites and creates new reviewed starters only. It does not attach to, import, crawl, or write to an existing repository.</p>
+            <p>Use the manual existing-repository checks below for your current project. You can also open Local Studio setup to review its modes and security boundary.</p>
+            <div className="button-row">
+              <button className="primary-button" type="button" onClick={() => changeCompletionMethod("manual")}>Continue with manual existing-repo checks</button>
+              <button className="secondary-button" type="button" onClick={() => setRoute("companion")}>Open Local Studio setup</button>
+            </div>
+          </div>
+        ) : automaticAvailable ? (
           <div className="focus-card wide">
             <h2>Create and inspect the starter locally</h2>
-            <p>The paired companion creates only inside its approved root, uses the exact reviewed Forge revision, and returns relative filenames plus bounded tool identities.</p>
-            <CompanionActionButton companionStatus={companionStatus} setRoute={setRoute} onAction={scaffoldForge} disabled={scaffoldState === "loading"}>
-              Create and verify Forge starter
+            <p>The paired companion creates only inside its managed DuskDS root from the reviewed template and Cargo.lock shipped in this exact npm package. Starter creation does not run Dusk Forge or download a moving upstream template.</p>
+            <CompanionActionButton companionStatus={companionStatus} setRoute={setRoute} onAction={scaffoldForge} disabled={scaffoldState === "loading" || scaffoldState === "success" || scaffoldRecoverable || Boolean(commandInputError)}>
+              Create and verify DuskDS starter
             </CompanionActionButton>
             {scaffoldState === "idle"
               ? <p className="quiet-note">{scaffoldMessage}</p>
-              : <AsyncNotice state={scaffoldState} message={scaffoldMessage} onRetry={scaffoldState === "error" || scaffoldState === "timeout" || scaffoldState === "unavailable" ? scaffoldForge : undefined} />}
-            {files.length ? <FileEvidence files={files} /> : null}
+              : <AsyncNotice state={scaffoldState} message={scaffoldMessage} onRetry={scaffoldRecoverable || scaffoldState === "unavailable" ? scaffoldForge : undefined} />}
+            {files.length && createdProjectPath ? (
+              <>
+                <FileEvidence files={files} projectPath={createdProjectPath} />
+                <div className="tool-command">
+                  <h3>Record the starter source snapshot</h3>
+                  <p>Run this in your terminal, then use the printed tree ID as the source identity below. The command enters the exact created path and does not require a Git author identity.</p>
+                  <pre>{commands?.revision}</pre>
+                  {commands ? <CopyButton value={commands.revision} label="Copy source snapshot command" /> : null}
+                </div>
+              </>
+            ) : null}
           </div>
         ) : (
           <div className="focus-card wide">
-            <StatusPill tone={automaticAvailable ? "warn" : "neutral"}>{automaticAvailable ? "Manual existing-project lane" : "Run locally with npm"}</StatusPill>
-            <h2>{automaticAvailable ? "Existing repositories stay user-controlled" : "Use the complete manual build lane"}</h2>
-            <p>{automaticAvailable
-              ? "The companion scaffold endpoint creates a new bounded starter; it does not crawl arbitrary repositories. Continue manually for an existing project."
-              : "The hosted guide cannot create files. It provides the exact reviewed commands and bounded evidence forms below."}</p>
-            <button className="primary-button" type="button" onClick={() => setMethod("manual")}>Continue manually</button>
+            <StatusPill tone="neutral">Run locally with npm</StatusPill>
+            <h2>Start Local Studio to create the reviewed starter</h2>
+            <p>The hosted guide cannot create files. Local Studio can create the new starter inside its approved project root; the complete manual commands remain available as a fallback.</p>
+            <div className="button-row">
+              <button className="primary-button" type="button" onClick={() => setRoute("companion")}>Open Local Studio setup</button>
+              <button className="secondary-button" type="button" onClick={() => changeCompletionMethod("manual")}>Continue manually</button>
+            </div>
           </div>
         )
       ) : (
         <>
           <div className="focus-card wide">
             <h2>{projectMode === "new" ? "Create the reviewed starter" : "Check the existing project"}</h2>
-            <CommandPair firstTitle="Prepare project" first={commands.prepare} secondTitle={projectMode === "new" ? "Record source snapshot" : "Record source revision"} second={commands.revision} />
+            {commands ? (
+              <CommandPair firstTitle="Prepare project" first={commands.prepare} secondTitle={projectMode === "new" ? "Record source snapshot" : "Record source revision"} second={commands.revision} />
+            ) : <p className="validation-message" role="alert">{commandInputError}</p>}
             <ManualRecordNotice>
               Confirm the two required files and save the exact Git tree or commit ID printed by the command. A new starter uses a tree ID so first-time Git users do not need to invent an author identity. The project path is deliberately not stored.
             </ManualRecordNotice>
@@ -979,40 +1481,116 @@ function DuskDsBuild({
           </div>
         </>
       )}
-      <div className="command-context">
-        <StatusPill tone="neutral">{platform === "windows" ? "Windows + WSL" : "POSIX"}</StatusPill>
-        <span>Build: {platform === "windows" ? "PowerShell" : "Linux / macOS shell"}</span>
-        <span>VM tests: {platform === "windows" ? "Ubuntu 24.04 WSL" : "native Linux"}</span>
-      </div>
-      <CommandPair firstTitle="Build contract + data-driver WASM" first={commands.build} secondTitle="Run the VM test" second={commands.test} />
-      <div className="focus-card wide">
-        <h2>Record the two built artifacts</h2>
-        <p>Run these read-only inspection commands, then enter only basenames, hashes, byte sizes, and the same source identity recorded above. Absolute paths and terminal output are rejected.</p>
-        <CommandPair firstTitle="Locate WASM files and byte sizes" first={artifactCommands.locate} secondTitle="Calculate WASM SHA-256 values" second={artifactCommands.hash} />
-        <ArtifactEvidenceForm value={artifactInput} onChange={changeArtifactInput} />
-        {artifactError ? <p className="validation-message" role="alert">{artifactError}</p> : null}
-        <button className="primary-button" type="button" disabled={!structureReady} onClick={recordArtifacts}>Save manual artifact evidence</button>
-        {!structureReady ? <p className="quiet-note">Save the starter or existing-project structure first.</p> : null}
-      </div>
-      <div className="focus-card wide">
-        <h2>Record the VM test separately</h2>
-        <p>A successful build does not prove the VM test passed. Confirm only after <code>dusk-forge test</code> exits successfully in the reviewed Linux lane.</p>
-        {platform === "windows" ? (
-          <p className="quiet-note">The reviewed Windows lane is Ubuntu 24.04 under WSL; native Windows is not presented as verified.</p>
-        ) : (
-          <p className="quiet-note">The reviewed POSIX VM-test lane is native Linux. macOS users should run the test inside a Linux VM or container; a native macOS pass is not recorded as validated evidence.</p>
-        )}
-        <button className="evidence-toggle" type="button" aria-pressed={testsPassed} onClick={() => {
-          if (buildProgress.evidence.includes("duskds-vm-test-attestation")) journey.invalidate("duskds", "build");
-          setTestsPassed((value) => !value);
-        }}>
-          {testsPassed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
-          I observed the VM test pass in this environment
-        </button>
-        <button className="primary-button" type="button" disabled={!structureReady || !testsPassed || !validateRevision(artifactInput.revision || structureRevision).value} onClick={recordTests}>
-          Save manual VM-test evidence
-        </button>
-      </div>
+      {method === "manual" || (projectMode === "new" && Boolean(createdProjectPath)) ? (
+        <>
+          <div className="command-context">
+            <StatusPill tone="neutral">
+              {platform === "windows" ? "Windows + WSL" : platform === "linux" ? "Linux" : "macOS"}
+            </StatusPill>
+            <span>
+              Build: {platform === "windows" ? "PowerShell" : platform === "linux" ? "Linux shell" : "macOS shell"}
+            </span>
+            <span>
+              VM tests: {platform === "windows"
+                ? "Ubuntu 24.04 WSL"
+                : platform === "linux"
+                  ? "native Linux"
+                  : "self-managed Linux required"}
+            </span>
+          </div>
+          {commands && platform === "macos" ? (
+            <>
+              <div className="tool-command">
+                <h3>Build contract + data-driver WASM</h3>
+                <pre>{commands.build}</pre>
+                <CopyButton value={commands.build} label="Copy Build contract + data-driver WASM" />
+              </div>
+              <div className="manual-record-notice">
+                <StatusPill tone="warn">VM test needs Linux</StatusPill>
+                <p>The npm runtime and Local Actions lifecycle are supported on macOS, but Studio does not present a native macOS DuskDS VM-test pass. Use a self-managed Linux environment; that handoff is not automated or reviewed by Studio.</p>
+              </div>
+            </>
+          ) : commands ? (
+            <CommandPair firstTitle="Build contract + data-driver WASM" first={commands.build} secondTitle="Run the VM test" second={commands.test} />
+          ) : <p className="validation-message" role="alert">{commandInputError}</p>}
+          {platform === "windows" && wslTool ? (
+            <div className="focus-card wide">
+              <StatusPill tone="warn">required before VM evidence</StatusPill>
+              <h2>Verify the reviewed Ubuntu VM-test environment</h2>
+              <p>This fail-closed check verifies Ubuntu 24.04, Make, jq, native wasm-opt, Rust {DUSKDS_RUST_TOOLCHAIN} with WASM target and rust-src, and the exact reviewed Dusk Forge Cargo receipt before a Windows VM-test pass can be saved.</p>
+              <pre>{wslTool.checkCommand.windows}</pre>
+              <CopyButton value={wslTool.checkCommand.windows} label="Copy reviewed WSL environment check" />
+              {wslTool.installCommand ? (
+                <>
+                  <h3>Install or repair the reviewed WSL lane</h3>
+                  <pre>{wslTool.installCommand.windows}</pre>
+                  <CopyButton value={wslTool.installCommand.windows} label="Copy WSL install or repair command" />
+                </>
+              ) : null}
+              <ExternalLink href={wslTool.helpUrl}>Official WSL installation help</ExternalLink>
+              <button className="evidence-toggle" type="button" aria-pressed={vmEnvironmentConfirmed} onClick={() => {
+                if (buildProgress.evidence.includes("duskds-vm-test-attestation")) {
+                  journey.removeEvidence("duskds", "build", ["duskds-vm-test-attestation"]);
+                }
+                setVmEnvironmentConfirmed((value) => !value);
+                setTestsPassed(false);
+              }}>
+                {vmEnvironmentConfirmed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
+                I ran the reviewed WSL environment check successfully
+              </button>
+            </div>
+          ) : null}
+          {platform === "windows" && wasmOptTool ? (
+            <div className="focus-card wide">
+              <StatusPill tone="neutral">optional optimizer</StatusPill>
+              <h2>Confirm wasm-opt is a native Windows executable</h2>
+              <p>An extensionless npm Binaryen shim is not accepted. This check must resolve <code>wasm-opt</code> to an application ending in <code>.exe</code> before it prints the version.</p>
+              <pre>{wasmOptTool.checkCommand.windows}</pre>
+              <CopyButton value={wasmOptTool.checkCommand.windows} label="Copy native wasm-opt check" />
+              <ExternalLink href={wasmOptTool.helpUrl}>Binaryen installation and releases</ExternalLink>
+            </div>
+          ) : null}
+          <div className="focus-card wide">
+            <h2>Record the two built artifacts</h2>
+            <p>Run these read-only inspection commands, then enter only basenames, hashes, byte sizes, and the same source identity recorded above. Absolute paths and terminal output are rejected.</p>
+            {artifactCommands ? (
+              <CommandPair firstTitle="Locate WASM files and byte sizes" first={artifactCommands.locate} secondTitle="Calculate WASM SHA-256 values" second={artifactCommands.hash} />
+            ) : <p className="validation-message" role="alert">{commandInputError}</p>}
+            <ArtifactEvidenceForm value={artifactInput} onChange={changeArtifactInput} />
+            {artifactError ? <p className="validation-message" role="alert">{artifactError}</p> : null}
+            <button className="primary-button" type="button" disabled={!structureReady} onClick={recordArtifacts}>Save manual artifact evidence</button>
+            {!structureReady ? <p className="quiet-note">Save the starter or existing-project structure first.</p> : null}
+          </div>
+          {platform !== "macos" ? <div className="focus-card wide">
+            <h2>Record the VM test separately</h2>
+            <p>A successful build does not prove the VM test passed. Confirm only after the reviewed Forge test command exits successfully in the Linux lane.</p>
+            {platform === "windows" ? (
+              <p className="quiet-note">The reviewed Windows lane is Ubuntu 24.04 under WSL; native Windows is not presented as verified.</p>
+            ) : (
+              <p className="quiet-note">The reviewed Linux VM-test lane is native Linux.</p>
+            )}
+            <button className="evidence-toggle" type="button" disabled={platform === "windows" && !vmEnvironmentConfirmed} aria-pressed={testsPassed} onClick={() => {
+              if (buildProgress.evidence.includes("duskds-vm-test-attestation")) {
+                journey.removeEvidence("duskds", "build", ["duskds-vm-test-attestation"]);
+              }
+              setTestsPassed((value) => !value);
+            }}>
+              {testsPassed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
+              I observed the VM test pass in this environment
+            </button>
+            <button className="primary-button" type="button" disabled={!structureReady || !testsPassed || !savedArtifactRevision || savedArtifactRevision !== validateRevision(artifactInput.revision || structureRevision).value || (platform === "windows" && !vmEnvironmentConfirmed)} onClick={recordTests}>
+              Save manual VM-test evidence
+            </button>
+            {!savedArtifactRevision ? <p className="quiet-note">Save the artifact evidence before recording the VM-test pass.</p> : null}
+            {platform === "windows" && !vmEnvironmentConfirmed ? <p className="quiet-note">Run and confirm the reviewed WSL environment check before recording a VM-test pass.</p> : null}
+          </div> : null}
+        </>
+      ) : projectMode === "new" && method === "automatic" ? (
+        <div className="focus-card wide">
+          <h2>Build commands appear after verified creation</h2>
+          <p>The Studio will use the exact absolute path returned by the successful scaffold. It does not generate copyable commands for a path that was rejected or has not been created.</p>
+        </div>
+      ) : null}
     </StepFrame>
   );
 }
@@ -1060,12 +1638,13 @@ function ArtifactEvidenceForm({
   );
 }
 
-function FileEvidence({ files }: { files: string[] }) {
+function FileEvidence({ files, projectPath }: { files: string[]; projectPath: string }) {
   return (
     <div className="file-evidence">
       <div><strong>{files.length} relative filenames returned</strong></div>
+      <p>Created at <code>{projectPath}</code></p>
       <ul>{files.slice(0, 12).map((file) => <li key={file}><code>{file}</code></li>)}</ul>
-      <small>File contents and absolute local paths are not returned to the browser.</small>
+      <small>This absolute path is held only in this tab's active memory to build the next commands. It is not written to browser storage, journey evidence, or diagnostics.</small>
     </div>
   );
 }
@@ -1133,37 +1712,39 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
       && savedAvailability.metadata?.contractId === normalizedDriverContractId
       && savedAvailability.metadata.revision === normalizedInspectRevision
   );
+  const metadataRequests: ResponseFetchSpec[] = [{
+    key: "metadata",
+    file: "metadata-response.bin",
+    url: `${DUSKDS_TESTNET_NODE}/on/contract:<contract_id>/metadata`
+  }];
   const metadataReadCommands = {
-    posix: [
-      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/contract:<contract_id>/metadata" --output metadata-response.bin`,
-      "cat metadata-response.bin",
-      "shasum -a 256 metadata-response.bin"
-    ].join("\n"),
-    windows: [
-      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/contract:<contract_id>/metadata' -OutFile 'metadata-response.bin'`,
-      "Get-Content -Raw -LiteralPath '.\\metadata-response.bin'",
-      "(Get-FileHash -Algorithm SHA256 -LiteralPath '.\\metadata-response.bin').Hash"
-    ].join("\r\n")
+    linux: buildPosixResponseTransaction(metadataRequests, "linux"),
+    macos: buildPosixResponseTransaction(metadataRequests, "macos"),
+    windows: buildPowerShellResponseTransaction(metadataRequests)
   };
+  const driverRequests: ResponseFetchSpec[] = [
+    {
+      key: "schema",
+      file: "schema-response.bin",
+      url: `${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema`
+    },
+    {
+      key: "encode",
+      file: "encode-response.bin",
+      url: `${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>`,
+      body: "<json_input>"
+    },
+    {
+      key: "decode",
+      file: "decode-response.bin",
+      url: `${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>`,
+      body: "0x<encoded_output>"
+    }
+  ];
   const driverReadCommands = {
-    posix: [
-      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema" --output schema-response.bin`,
-      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>" --data-raw '<json_input>' --output encode-response.bin`,
-      `curl -sS -X POST "${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>" --data-raw '0x<encoded_output>' --output decode-response.bin`,
-      "cat schema-response.bin",
-      "cat encode-response.bin",
-      "cat decode-response.bin",
-      "shasum -a 256 schema-response.bin encode-response.bin decode-response.bin"
-    ].join("\n"),
-    windows: [
-      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/get_schema' -OutFile 'schema-response.bin'`,
-      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/encode_input_fn:<fn_name>' -Body '<json_input>' -OutFile 'encode-response.bin'`,
-      `Invoke-WebRequest -Method Post -Uri '${DUSKDS_TESTNET_NODE}/on/driver:<contract_id>/decode_output_fn:<fn_name>' -Body '0x<encoded_output>' -OutFile 'decode-response.bin'`,
-      "Get-Content -Raw -LiteralPath '.\\schema-response.bin'",
-      "Get-Content -Raw -LiteralPath '.\\encode-response.bin'",
-      "Get-Content -Raw -LiteralPath '.\\decode-response.bin'",
-      "Get-FileHash -Algorithm SHA256 -LiteralPath '.\\schema-response.bin', '.\\encode-response.bin', '.\\decode-response.bin'"
-    ].join("\r\n")
+    linux: buildPosixResponseTransaction(driverRequests, "linux"),
+    macos: buildPosixResponseTransaction(driverRequests, "macos"),
+    windows: buildPowerShellResponseTransaction(driverRequests)
   };
   const driverKinds = ["availability", "schema", "encode", "decode"] as const;
   const driverEvidenceCodes = [
@@ -1459,7 +2040,14 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
       <div className="focus-card wide">
         <h2>1. Observe a latest block</h2>
         <p>Choose a direct hosted read or enter the bounded height and hash you observed yourself. This is independent from the artifact and data-driver checks.</p>
-        <CompletionMethodPicker value={blockMethod} onChange={setBlockMethod} automaticAvailable automaticLabel="Hosted safe check" />
+        <CompletionMethodPicker
+          value={blockMethod}
+          onChange={setBlockMethod}
+          automaticAvailable
+          automaticLabel="Hosted safe check"
+          automaticDescription="One bounded, read-only public-node request from this browser. No companion or wallet is used."
+          automaticAvailabilityLabel="available here"
+        />
         {blockMethod === "automatic" ? (
           <>
             <button className="primary-button" type="button" disabled={blockState === "loading"} onClick={runLatestBlockRead}>Read latest block</button>
@@ -1492,11 +2080,16 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         <p>Use the contract ID only after confirming deployment inclusion and finality outside Studio. First read <code>/on/contract:&lt;contract_id&gt;/metadata</code> and confirm <code>driver_available: true</code>. Deployment alone does not publish a data driver; if that value is false, stop here and use the recovery guidance instead of calling driver routes.</p>
         <button className="secondary-button" type="button" onClick={openDataDriverRecovery}>Open data-driver recovery</button>
         <CommandPair
-          firstTitle="Fetch, inspect + hash metadata on Linux / macOS"
-          first={metadataReadCommands.posix}
-          secondTitle="Fetch, inspect + hash metadata on Windows"
-          second={metadataReadCommands.windows}
+          firstTitle="Fetch, inspect + hash metadata on Linux"
+          first={metadataReadCommands.linux}
+          secondTitle="Fetch, inspect + hash metadata on macOS"
+          second={metadataReadCommands.macos}
         />
+        <div className="tool-command">
+          <h3>Fetch, inspect + hash metadata on Windows</h3>
+          <pre>{metadataReadCommands.windows}</pre>
+          <CopyButton value={metadataReadCommands.windows} label="Copy Fetch, inspect + hash metadata on Windows" />
+        </div>
         <p>Inspect the saved response locally before hashing it. Confirm that metadata explicitly reports <code>driver_available: true</code>, then record only its SHA-256 in Studio. Never paste the response body or terminal output here.</p>
         <div className="evidence-form">
           <label>
@@ -1514,11 +2107,16 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
           <>
             <AsyncNotice state="success" message="This contract's saved metadata evidence reports driver_available: true. Driver read commands are now available." />
             <CommandPair
-              firstTitle="Fetch, inspect + hash driver responses on Linux / macOS"
-              first={driverReadCommands.posix}
-              secondTitle="Fetch, inspect + hash driver responses on Windows"
-              second={driverReadCommands.windows}
+              firstTitle="Fetch, inspect + hash driver responses on Linux"
+              first={driverReadCommands.linux}
+              secondTitle="Fetch, inspect + hash driver responses on macOS"
+              second={driverReadCommands.macos}
             />
+            <div className="tool-command">
+              <h3>Fetch, inspect + hash driver responses on Windows</h3>
+              <pre>{driverReadCommands.windows}</pre>
+              <CopyButton value={driverReadCommands.windows} label="Copy Fetch, inspect + hash driver responses on Windows" />
+            </div>
           </>
         ) : (
           <AsyncNotice state="partial" message="Driver routes stay disabled until you save metadata evidence for this exact contract and source identity with driver_available: true." />

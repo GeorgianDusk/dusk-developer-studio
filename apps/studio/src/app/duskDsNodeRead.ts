@@ -23,6 +23,46 @@ export class DuskDsNodeReadError extends Error {
   }
 }
 
+const MAX_NODE_RESPONSE_BYTES = 32_768;
+
+async function readBoundedNodeBody(response: Response): Promise<Uint8Array> {
+  const rawLength = response.headers.get("content-length");
+  const declaredLength = rawLength === null ? undefined : Number(rawLength);
+  if (declaredLength !== undefined && Number.isFinite(declaredLength) && declaredLength > MAX_NODE_RESPONSE_BYTES) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new DuskDsNodeReadError("oversized-response", "The public node response exceeded the safe size limit.", false);
+  }
+  if (!response.body) {
+    throw new DuskDsNodeReadError("invalid-response", "The public node returned an empty response body.", false);
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > MAX_NODE_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new DuskDsNodeReadError("oversized-response", "The public node response exceeded the safe size limit.", false);
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
+}
+
 function normalizeHeight(value: unknown): number | undefined {
   const number = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
   return typeof number === "number" && Number.isSafeInteger(number) && number >= 0 ? number : undefined;
@@ -67,19 +107,25 @@ export async function readLatestDuskDsBlock(fetcher: typeof fetch = fetch): Prom
       );
     }
     if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
       throw new DuskDsNodeReadError("http-error", `The public Testnet node returned HTTP ${response.status}.`, response.status >= 500 || response.status === 408 || response.status === 429);
     }
-    const declaredLength = Number(response.headers.get("content-length") ?? 0);
-    if (Number.isFinite(declaredLength) && declaredLength > 32_768) {
-      throw new DuskDsNodeReadError("oversized-response", "The public node response exceeded the safe size limit.", false);
-    }
-    const text = await response.text();
-    if (new TextEncoder().encode(text).byteLength > 32_768) {
-      throw new DuskDsNodeReadError("oversized-response", "The public node response exceeded the safe size limit.", false);
+    let bytes: Uint8Array;
+    try {
+      bytes = await readBoundedNodeBody(response);
+    } catch (error) {
+      if (error instanceof DuskDsNodeReadError) throw error;
+      throw new DuskDsNodeReadError(
+        controller.signal.aborted ? "timeout" : "unavailable",
+        controller.signal.aborted
+          ? "The public Testnet node did not finish its response before the five-second limit."
+          : "The public Testnet node response was interrupted.",
+        true
+      );
     }
     let value: unknown;
     try {
-      value = JSON.parse(text);
+      value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
     } catch {
       throw new DuskDsNodeReadError("invalid-response", "The public node returned invalid JSON.", false);
     }

@@ -19,13 +19,14 @@ describe("Phase 4 controlled failures", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "<img src=x onerror=secret>", paired: true, capabilitiesEnabled: "yes" }))));
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
-    fireEvent.click(screen.getByRole("button", { name: /Automation/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     await waitFor(() => expect(screen.getByText("The local companion returned data this Studio cannot safely use.")).toBeInTheDocument());
     expect(screen.queryByText(/onerror=secret/)).not.toBeInTheDocument();
   });
 
   it("routes capability-disabled sessions to explicit enablement", async () => {
     const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: false, release: npmRelease })));
     vi.stubGlobal("fetch", fetchMock);

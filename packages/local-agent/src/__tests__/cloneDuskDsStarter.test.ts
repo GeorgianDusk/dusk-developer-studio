@@ -1,84 +1,73 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-  DUSK_FORGE_REVISION,
-  reviewedDuskForgeExecutable,
-  type DuskForgeInstallIdentity
-} from "../commands/duskDsToolchainPolicy";
-import { scaffoldDuskDsForge } from "../commands/scaffoldDuskDsForge";
+  scaffoldDuskDsForge,
+  type ScaffoldCompletionReceipt
+} from "../commands/scaffoldDuskDsForge";
+import { duskDsCounterForgeTemplateIdentity } from "../../../templates/src/duskDsCounterForge";
 
-const REVIEWED_FORGE_IDENTITY: DuskForgeInstallIdentity = {
-  package: "dusk-forge-cli",
-  packageVersion: "0.4.0",
-  binary: "dusk-forge",
-  repository: "https://github.com/dusk-network/forge",
-  revision: DUSK_FORGE_REVISION
-};
+const templateRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../templates/duskds-counter-forge"
+);
+const roots: string[] = [];
 
-let tempRoots: string[] = [];
-let previousDuskDsProjectRoot: string | undefined;
-
-async function makeTempRoot() {
-  const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-studio-"));
-  tempRoots.push(root);
+async function makeTempRoot(prefix = "dusk-studio-"): Promise<string> {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
+  roots.push(root);
   return root;
 }
 
-async function createMockForgeProject(stageRoot: string, projectName: string) {
-  const target = path.resolve(stageRoot, projectName);
-  await fs.mkdir(path.join(target, "src"), { recursive: true });
-  await fs.writeFile(path.join(target, "Cargo.toml"), '[package]\nname = "counter"\n');
-  await fs.writeFile(path.join(target, "src", "lib.rs"), "pub fn counter() {}\n");
-  await fs.writeFile(path.join(target, "rust-toolchain.toml"), '[toolchain]\nchannel = "stable"\n');
+async function copyTemplate(): Promise<string> {
+  const parent = await makeTempRoot("dusk-template-fixture-");
+  const destination = path.join(parent, "template");
+  await fs.cp(templateRoot, destination, { recursive: true, force: false });
+  return destination;
 }
 
-describe("DuskDS Forge scaffold", () => {
-  beforeEach(() => {
-    previousDuskDsProjectRoot = process.env.DUSK_STUDIO_DUSKDS_PROJECT_ROOT;
-  });
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
+});
 
-  afterEach(async () => {
-    if (previousDuskDsProjectRoot === undefined) delete process.env.DUSK_STUDIO_DUSKDS_PROJECT_ROOT;
-    else process.env.DUSK_STUDIO_DUSKDS_PROJECT_ROOT = previousDuskDsProjectRoot;
-    await Promise.all(tempRoots.map((root) => fs.rm(root, { recursive: true, force: true })));
-    tempRoots = [];
-  });
-
-  it("scaffolds the official Forge counter template into the configured project root transactionally", async () => {
+describe("DuskDS reviewed-template scaffold", () => {
+  it("materializes the packaged template transactionally without invoking an external generator", async () => {
     const workspaceRoot = await makeTempRoot();
     const projectRoot = await makeTempRoot();
-    const runProcess = vi.fn(async (options: { args: string[] }) => {
-      await createMockForgeProject(options.args[3], String(options.args[1]));
-      return { stdout: "ok", stderr: "", exitCode: 0 };
-    });
-
     const result = await scaffoldDuskDsForge(
       { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
-      { runProcess, projectRoot, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY }
+      { projectRoot, templateRoot }
     );
 
     expect(result).toMatchObject({
       ok: true,
-      source: "https://github.com/dusk-network/forge",
-      tool: "dusk-forge",
+      template: duskDsCounterForgeTemplateIdentity.templateId,
+      templateSource: duskDsCounterForgeTemplateIdentity.upstreamRepository,
+      templateRevision: duskDsCounterForgeTemplateIdentity.upstreamRevision,
+      templateLockSha256: duskDsCounterForgeTemplateIdentity.templateLockSha256,
       projectRoot,
       rustToolchain: "1.94.0",
-      forgePackage: "dusk-forge-cli",
-      forgeVersion: "0.4.0",
-      forgeRevision: DUSK_FORGE_REVISION,
-      structureVerified: true
+      structureVerified: true,
+      recovered: false
     });
     expect(result.path).toBe(path.resolve(projectRoot, "tmp/qa", "native-demo"));
-    await expect(fs.readFile(path.join(result.path, "rust-toolchain.toml"), "utf8")).resolves.toContain('channel = "1.94.0"');
-    expect(runProcess).toHaveBeenCalledWith(expect.objectContaining({
-      command: reviewedDuskForgeExecutable(),
-      args: ["new", "native-demo", "--path", expect.stringMatching(/\.dusk-studio-stage-/), "--no-git", "--template", "counter"],
-      timeoutMs: 300_000,
-      maxOutputBytes: 1_048_576
-    }));
-    expect((await fs.readdir(path.dirname(result.path))).filter((name) => name.startsWith(".dusk-studio-stage-"))).toEqual([]);
+    expect(result.files).toEqual(expect.arrayContaining([
+      "Cargo.lock",
+      "Cargo.toml",
+      "Makefile",
+      "PROVENANCE.md",
+      "rust-toolchain.toml",
+      "src/lib.rs",
+      "tests/contract.rs"
+    ]));
+    await expect(fs.readFile(path.join(result.path, "rust-toolchain.toml"), "utf8"))
+      .resolves.toContain('channel = "1.94.0"');
+    await expect(fs.readFile(path.join(result.path, "Cargo.toml"), "utf8"))
+      .resolves.toContain('name = "native-demo"');
+    expect((await fs.readdir(path.dirname(result.path)))
+      .filter((name) => name.startsWith(".dusk-studio-stage-"))).toEqual([]);
   });
 
   it("does not scaffold into an existing target, including an empty directory", async () => {
@@ -86,42 +75,121 @@ describe("DuskDS Forge scaffold", () => {
     const projectRoot = await makeTempRoot();
     const target = path.resolve(projectRoot, "tmp/qa/native-demo");
     await fs.mkdir(target, { recursive: true });
-    const runProcess = vi.fn();
 
     await expect(scaffoldDuskDsForge(
       { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
-      { runProcess, projectRoot, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY }
-    )).rejects.toThrow("already exists");
-    expect(runProcess).not.toHaveBeenCalled();
+      { projectRoot, templateRoot }
+    )).rejects.toThrow("not created by a completed action");
   });
 
-  it("removes the private stage after a bounded process failure", async () => {
+  it("recovers an exact content-verified target without writing it again", async () => {
     const workspaceRoot = await makeTempRoot();
     const projectRoot = await makeTempRoot();
-    const runProcess = vi.fn(async () => { throw new Error("bounded process failed"); });
-    const target = path.resolve(projectRoot, "tmp/qa/native-demo");
+    const completedScaffoldReceipts = new Map();
+    const created = await scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot, templateRoot, completedScaffoldReceipts }
+    );
+    const before = await fs.readFile(path.join(created.path, "Cargo.lock"));
+
+    const recovered = await scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot, templateRoot, completedScaffoldReceipts }
+    );
+
+    expect(recovered).toMatchObject({ recovered: true, structureVerified: true });
+    await expect(fs.readFile(path.join(recovered.path, "Cargo.lock"))).resolves.toEqual(before);
+  });
+
+  it("fails closed when a same-runtime retry finds starter content tampering", async () => {
+    const workspaceRoot = await makeTempRoot();
+    const projectRoot = await makeTempRoot();
+    const completedScaffoldReceipts = new Map();
+    const created = await scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot, templateRoot, completedScaffoldReceipts }
+    );
+    await fs.writeFile(path.join(created.path, "src", "lib.rs"), "pub fn tampered() {}\n");
 
     await expect(scaffoldDuskDsForge(
-      { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
-      { runProcess, projectRoot, readDuskForgeIdentity: async () => REVIEWED_FORGE_IDENTITY }
-    )).rejects.toThrow("bounded process failed");
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot, templateRoot, completedScaffoldReceipts }
+    )).rejects.toThrow("no longer matches the completed Local Studio action receipt");
+  });
+
+  it("rejects a lookalike target without a same-runtime completed-action receipt", async () => {
+    const workspaceRoot = await makeTempRoot();
+    const projectRoot = await makeTempRoot();
+    await scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot, templateRoot }
+    );
+
+    await expect(scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot, templateRoot, completedScaffoldReceipts: new Map() }
+    )).rejects.toThrow("not created by a completed action in this running Local Studio");
+  });
+
+  it("bounds same-runtime completion receipts and evicts the oldest entry", async () => {
+    const workspaceRoot = await makeTempRoot();
+    const projectRoot = await makeTempRoot();
+    const receipts = new Map<string, ScaffoldCompletionReceipt>();
+    const receipt: ScaffoldCompletionReceipt = {
+      files: ["Cargo.toml", "rust-toolchain.toml"],
+      rustToolchain: "1.94.0",
+      templateRevision: duskDsCounterForgeTemplateIdentity.upstreamRevision,
+      templateLockSha256: duskDsCounterForgeTemplateIdentity.templateLockSha256,
+      contentSha256: "0".repeat(64)
+    };
+    for (let index = 0; index < 64; index += 1) receipts.set(`old-${index}`, receipt);
+
+    await scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "bounded-demo" },
+      { projectRoot, templateRoot, completedScaffoldReceipts: receipts }
+    );
+
+    expect(receipts).toHaveLength(64);
+    expect(receipts.has("old-0")).toBe(false);
+    expect(receipts.has("old-63")).toBe(true);
+  });
+
+  it("rejects an incomplete or drifted template before promotion and removes its stage", async () => {
+    const workspaceRoot = await makeTempRoot();
+    const projectRoot = await makeTempRoot();
+    const incomplete = await copyTemplate();
+    await fs.rm(path.join(incomplete, "Cargo.toml"));
+    const target = path.resolve(projectRoot, "native-demo");
+
+    await expect(scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot, templateRoot: incomplete }
+    )).rejects.toThrow("file inventory does not match");
     await expect(fs.lstat(target)).rejects.toMatchObject({ code: "ENOENT" });
-    expect((await fs.readdir(path.dirname(target))).filter((name) => name.startsWith(".dusk-studio-stage-"))).toEqual([]);
+    expect((await fs.readdir(projectRoot)).filter((name) => name.startsWith(".dusk-studio-stage-")))
+      .toEqual([]);
+
+    const drifted = await copyTemplate();
+    await fs.appendFile(path.join(drifted, "Cargo.lock"), "\n# drift\n");
+    await expect(scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "drift-demo" },
+      { projectRoot, templateRoot: drifted }
+    )).rejects.toThrow("Cargo.lock does not match the reviewed dependency resolution");
+    await expect(fs.lstat(path.resolve(projectRoot, "drift-demo"))).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it("refuses to scaffold before execution when the Forge revision is not reviewed", async () => {
+  it("rejects over-bound roots and full target paths before reading template content", async () => {
     const workspaceRoot = await makeTempRoot();
-    const projectRoot = await makeTempRoot();
-    const runProcess = vi.fn();
+    const overlongRoot = path.resolve(workspaceRoot, "r".repeat(1_100));
+    const missingTemplate = path.join(workspaceRoot, "does-not-exist");
 
     await expect(scaffoldDuskDsForge(
-      { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
-      {
-        runProcess,
-        projectRoot,
-        readDuskForgeIdentity: async () => ({ ...REVIEWED_FORGE_IDENTITY, revision: "f".repeat(40) })
-      }
-    )).rejects.toThrow("does not match the reviewed source revision");
-    expect(runProcess).not.toHaveBeenCalled();
+      { cwd: workspaceRoot, projectName: "native-demo" },
+      { projectRoot: overlongRoot, templateRoot: missingTemplate }
+    )).rejects.toThrow("1,024 characters or fewer");
+    await expect(scaffoldDuskDsForge(
+      { cwd: workspaceRoot, projectName: "native-demo", parentDir: "p".repeat(1_100) },
+      { projectRoot: workspaceRoot, templateRoot: missingTemplate }
+    )).rejects.toThrow("1,024 characters or fewer");
   });
 });

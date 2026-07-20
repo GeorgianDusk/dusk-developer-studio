@@ -36,4 +36,75 @@ describe("DuskDS public node read", () => {
     const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
     await expect(readLatestDuskDsBlock(fetcher)).rejects.toMatchObject({ kind: "invalid-response", retryable: false } satisfies Partial<DuskDsNodeReadError>);
   });
+
+  it("cancels an oversized streamed body even when Content-Length understates it", async () => {
+    let cancelled = false;
+    const chunk = new Uint8Array(20_000);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: { "content-length": "1", "content-type": "application/json" }
+    }));
+
+    await expect(readLatestDuskDsBlock(fetcher)).rejects.toMatchObject({
+      kind: "oversized-response",
+      retryable: false
+    } satisfies Partial<DuskDsNodeReadError>);
+    expect(cancelled).toBe(true);
+  });
+
+  it("cancels an HTTP-error response stream without reading it", async () => {
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull() {
+        // Keep the error body open until the reader explicitly cancels it.
+      },
+      cancel() {
+        cancelled = true;
+      }
+    });
+    const fetcher = vi.fn().mockResolvedValue(new Response(stream, { status: 503 }));
+
+    await expect(readLatestDuskDsBlock(fetcher)).rejects.toMatchObject({
+      kind: "http-error",
+      retryable: true
+    } satisfies Partial<DuskDsNodeReadError>);
+    expect(cancelled).toBe(true);
+  });
+
+  it("reports a timeout when headers arrive but the response body stalls", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener(
+              "abort",
+              () => controller.error(new DOMException("Aborted", "AbortError")),
+              { once: true }
+            );
+          }
+        });
+        return new Response(stream, { status: 200 });
+      });
+      const request = readLatestDuskDsBlock(fetcher as typeof fetch);
+      const rejection = expect(request).rejects.toMatchObject({
+        kind: "timeout",
+        retryable: true
+      } satisfies Partial<DuskDsNodeReadError>);
+
+      await vi.advanceTimersByTimeAsync(5_001);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

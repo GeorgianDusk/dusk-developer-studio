@@ -11,6 +11,10 @@ companion on your machine. It opens the Studio at
 - npm
 - Windows x64, Linux x64, or Apple Silicon macOS
 
+The npm runtime is supported on all three platforms. DuskDS VM testing is
+validated natively on Linux and through Ubuntu 24.04 WSL on Windows; Studio
+does not record a native macOS DuskDS VM-test pass.
+
 Builder toolchains such as Foundry, Rust, and Dusk Forge remain separate
 developer prerequisites. Studio checks them when the related action is used; it
 does not silently install or update them.
@@ -18,7 +22,7 @@ does not silently install or update them.
 ## Run Safe mode
 
 ```bash
-npx dusk-developer-studio
+npx dusk-developer-studio@1.0.1
 ```
 
 Safe mode opens the local Studio with machine actions disabled. It can serve the
@@ -28,12 +32,24 @@ information.
 ## Run Local Actions
 
 ```bash
-npx dusk-developer-studio local-actions
+npx dusk-developer-studio@1.0.1 local-actions
 ```
 
 Local Actions enables only the reviewed tool checks and starter creation
 operations exposed by Studio. It does not request wallet secrets, sign
 transactions, dispense funds, deploy to mainnet, or execute arbitrary commands.
+
+## Create a DuskDS starter from the terminal
+
+```bash
+npx --yes dusk-developer-studio@1.0.1 create-duskds my-counter
+```
+
+This renders the reviewed DuskDS counter template shipped in the package as one
+new child of your current working directory. It refuses an existing target and preserves the
+pinned Rust toolchain, dependency lock, MPL-2.0 license text, and provenance
+record. Install the separately reviewed Dusk Forge prerequisite before running
+the generated project's check, build, test, or verification commands.
 
 ## Stop Studio
 
@@ -52,7 +68,7 @@ data folder.
 - Run the command as your normal user. Studio refuses administrator and root
   execution.
 - If PowerShell reports that script execution is disabled, run `npx.cmd
-  dusk-developer-studio` (or add `local-actions`) instead. You do not need to
+  dusk-developer-studio@1.0.1` (or add `local-actions`) instead. You do not need to
   weaken your PowerShell execution policy.
 
 For product problems, use the

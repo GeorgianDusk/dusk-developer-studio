@@ -5,13 +5,13 @@
 Safe mode:
 
 ```bash
-npx dusk-developer-studio
+npx dusk-developer-studio@1.0.1
 ```
 
 Local Actions:
 
 ```bash
-npx dusk-developer-studio local-actions
+npx dusk-developer-studio@1.0.1 local-actions
 ```
 
 Keep the terminal open while using the Studio. Press `Ctrl+C` before changing modes or restarting.
@@ -75,7 +75,7 @@ The Hosted guide provides browser guidance and public read-only checks but never
 That is expected. Stop Safe mode and deliberately start Local Actions:
 
 ```bash
-npx dusk-developer-studio local-actions
+npx dusk-developer-studio@1.0.1 local-actions
 ```
 
 ### A required tool is missing
@@ -90,11 +90,25 @@ Follow the reviewed Forge installation command shown by the Studio. The DuskDS c
 
 ### The project target already exists
 
-Choose a new project name or move the existing directory yourself. The Studio never merges into or overwrites an existing project.
+The Studio never merges into or overwrites an existing project.
+
+If the same running companion completed that exact starter after the browser stopped waiting, use the Build page's retry action. A bounded in-memory completion receipt lets the companion revalidate and return only that result without rendering or writing the template again. If no matching receipt exists, choose a new project name or inspect and move the existing directory yourself.
+
+The direct `create-duskds` command uses the terminal's current working directory
+as its parent and also refuses an existing target. Change to the intended parent
+before running it; it does not use the managed Local Actions root.
+
+### The parent folder was rejected
+
+Build accepts only a relative subfolder beneath the managed DuskDS root. Leave the field blank for the root itself. An absolute folder outside that root is rejected before template staging begins, and the Studio does not generate commands for it.
+
+To use another short root, stop Local Studio, set `DUSK_STUDIO_DUSKDS_PROJECT_ROOT` to a normal absolute local folder, and start Local Actions again. UNC paths, device paths, relative paths, and filesystem roots are rejected. Use a folder on a local fixed drive; a mapped Windows network drive can look like an ordinary drive-letter path and cannot be reliably distinguished at this boundary.
 
 ### Starter creation was interrupted
 
-The final target should remain absent. Stop the Studio before inspecting temporary work. Do not follow or remove a temporary directory beneath a parent whose path or ownership changed unexpectedly.
+If creation failed before promotion, the final target remains absent. If the browser stopped waiting but template creation completed, leave the same companion running and use the retry action in Build; it either reports that the action is still busy or revalidates the completed target from its in-memory receipt. After a companion restart, an existing target is not recovered automatically.
+
+Stop the Studio before inspecting temporary work. Do not follow or remove a temporary directory beneath a parent whose path or ownership changed unexpectedly.
 
 ## Shutdown and projects
 
@@ -107,11 +121,13 @@ Shutdown:
 - terminates active tracked child processes or their ordinary process group; and
 - preserves user projects.
 
-Project locations:
+Browser Local Actions project locations:
 
 - Windows: `%LOCALAPPDATA%\Dusk\DeveloperStudio\projects`
 - macOS: `~/Library/Application Support/Dusk/DeveloperStudio/projects`
 - Linux: `${XDG_DATA_HOME:-~/.local/share}/dusk/developer-studio/projects`
+
+Browser Local Actions uses the `duskds` child by default. A successful scaffold shows its exact canonical path in the active Build page. The path is not saved in browser storage, evidence, or diagnostics, so a page refresh requires the path to be re-entered or recovered through the same running companion.
 
 An external developer tool invoked by Local Actions runs with your account authority. A deliberately detached process can outlive the Studio's tracked process group. If that occurs, identify the exact tool and process before stopping it; do not terminate unrelated processes by name.
 

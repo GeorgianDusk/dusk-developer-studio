@@ -4,6 +4,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { URL } from "node:url";
+import {
+  buildCanonicalAgentPilotPlan,
+  canonicalJson,
+  canonicalSha256,
+  validatePilotPlan
+} from "./agent-pilot-collector.mjs";
 import { verifyCandidateBoundPhase5Context } from "./phase5-candidate-context.mjs";
 import {
   evaluatePhase5Evidence as evaluatePhase5EvidenceRaw,
@@ -15,6 +21,13 @@ const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "phase5-poli
 const now = new Date("2026-07-15T12:00:00Z");
 policy.monitoring_evidence.accepted_risk.accepted_at = "2026-07-15T00:30:00Z";
 policy.npm_distribution.expected_npm_maintainer = "phase5-test-maintainer";
+assert.equal(policy.npm_distribution.package_version, "1.0.1");
+assert.equal(policy.npm_distribution.tag, "v1.0.1");
+assert.equal(policy.npm_distribution.publication_workflow, ".github/workflows/studio-npm-oidc-publish.yml");
+assert.equal(policy.npm_distribution.publication_environment, "npm-trusted-publication");
+assert.equal(policy.npm_distribution.initial_package_version, "1.0.0");
+assert.equal(policy.npm_distribution.initial_tag, "v1.0.0");
+assert.equal(policy.npm_distribution.expected_initial_provenance_workflow, ".github/workflows/studio-npm-publish.yml");
 const digest = "a".repeat(64);
 const restoredDigest = "c".repeat(64);
 const candidateCommit = "b".repeat(40);
@@ -37,6 +50,16 @@ const npmPublicationRunUrl = "https://github.com/GeorgianDusk/dusk-developer-stu
 const npmIntegrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
 const npmIntegrityHex = Buffer.alloc(64, 0x42).toString("hex");
 const npmInventoryDigest = "e".repeat(64);
+const emptySha256 = createHash("sha256").update(Buffer.alloc(0)).digest("hex");
+const environmentIdentity = (environment) => `env-${canonicalSha256({
+  context: environment.context,
+  platform: environment.platform,
+  os_version: environment.os_version,
+  os_release: environment.os_release,
+  arch: environment.arch,
+  node_version: environment.node_version,
+  privilege: environment.privilege
+}).slice(0, 24)}`;
 const boundReceipt = (receipt) => {
   const receipt_json = `${JSON.stringify(receipt, null, 2)}\n`;
   return {
@@ -54,7 +77,46 @@ const rewriteReceipt = (record, mutate) => {
     record.provenance.artifact_sha256 = record.receipt_sha256;
   }
 };
-const provenanceFor = ({ workflowPath, runUrl, runEvent, artifactId, artifactName, receiptPath, receiptSha256, downloadedAt }) => {
+const rewriteMachineReceipt = (record, mutate) => {
+  const receipt = JSON.parse(record.receipt_json);
+  mutate(receipt);
+  record.receipt_json = canonicalJson(receipt);
+  record.receipt_sha256 = createHash("sha256")
+    .update(record.receipt_json, "utf8")
+    .digest("hex");
+  record.recovery_evidence_reference =
+    `agent-pilots/${receipt.scenario.id}/${receipt.execution.raw_observation_bundle_sha256}.recovery.json`;
+  record.session_record_reference =
+    `agent-pilots/${receipt.scenario.id}/${record.receipt_sha256}.json`;
+  if (record.provenance) {
+    record.provenance.receipt_sha256 = record.receipt_sha256;
+    record.provenance.artifact_digest_sha256 = record.receipt_sha256;
+    record.provenance.artifact_sha256 = record.receipt_sha256;
+  }
+};
+const rewritePilotMachineReceipt = (record, mutate, options = {}) => {
+  rewriteMachineReceipt(record, (receipt) => {
+    mutate(receipt);
+    if (options.rehashPlan !== false) receipt.plan_sha256 = canonicalSha256(receipt.plan);
+    if (options.rehashObservations !== false) {
+      receipt.execution.raw_observation_bundle_sha256 = canonicalSha256(receipt.execution.observations);
+    }
+    if (options.rehashEnvironment !== false) {
+      receipt.environment.environment_identity = environmentIdentity(receipt.environment);
+    }
+  });
+};
+const provenanceFor = ({
+  workflowPath,
+  runUrl,
+  runEvent,
+  artifactId,
+  artifactName,
+  receiptPath,
+  receiptSha256,
+  downloadedAt,
+  runCommit = candidateCommit
+}) => {
   const runId = Number(new URL(runUrl).pathname.split("/").at(-1));
   return {
     schema_version: 1,
@@ -64,7 +126,7 @@ const provenanceFor = ({ workflowPath, runUrl, runEvent, artifactId, artifactNam
     run_url: runUrl,
     run_attempt: 1,
     run_event: runEvent,
-    run_commit: candidateCommit,
+    run_commit: runCommit,
     run_conclusion: "success",
     artifact_id: artifactId,
     artifact_name: artifactName,
@@ -77,45 +139,216 @@ const provenanceFor = ({ workflowPath, runUrl, runEvent, artifactId, artifactNam
     downloaded_at: downloadedAt
   };
 };
-const owners = Object.fromEntries(policy.required_owners.map((owner) => [owner, `${owner}-owner`]));
+const owners = Object.fromEntries(policy.required_owners.map((owner) => [owner, policy.responsibility_model.human_owner]));
 const reviews = Object.fromEntries(policy.required_reviews.map((review) => [review, {
   status: "accepted",
-  reviewer: `${review}-reviewer`,
+  reviewer_identity: `codex-${review}-challenge-task`,
+  reviewer_type: policy.responsibility_model.reviewer_type,
+  separate_agent: true,
+  external_independent: false,
   reviewed_at: "2026-07-15T01:00:00Z",
-  independent: true,
   evidence_reference: `review-${review}`,
   candidate_commit: candidateCommit,
   candidate_artifact_fingerprint_sha256: digest
 }]));
-const sessions = [
-  ["p1", "duskds", "novice", "windows", true, true],
-  ["p2", "duskds", "experienced", "wsl", true, true],
-  ["p3", "duskds", "experienced", "linux", true, true],
-  ["p4", "duskds", "novice", "windows", true, true],
-  ["p5", "duskds", "experienced", "wsl", true, true],
-  ["p6", "duskds", "experienced", "linux", true, true],
-  ["p7", "duskds", "experienced", "macos", true, true],
-  ["p8", "duskds", "experienced", "macos", true, true]
-].map(([id, pathName, experience, context, recoveryAttempted, recovered]) => ({
-  id,
-  path: pathName,
-  experience,
-  context,
-  completed: true,
-  controlled_failure: true,
-  failure_scenario: "known-bad local prerequisite",
-  recovery_attempted: recoveryAttempted,
-  recovered,
-  recovery_evidence_reference: `pilot-${id}-recovery`,
-  started_at: "2026-07-15T01:10:00Z",
-  completed_at: "2026-07-15T01:30:00Z",
-  candidate_commit: candidateCommit,
-  candidate_artifact_fingerprint_sha256: digest,
-  trust_score: 5,
-  blocking_confusion: false,
-  duration_minutes: 20,
-  session_record_reference: `pilot-${id}-session-record`
-}));
+const sessions = policy.pilot.required_scenarios.map((scenario, index) => {
+  const id = `p${index + 1}`;
+  const startedAt = "2026-07-15T01:10:00.000Z";
+  const completedAt = "2026-07-15T01:30:00.000Z";
+  const invocationId = createHash("sha256").update(`invocation-${id}`).digest("hex").slice(0, 32);
+  const receiptCandidate = {
+    tarball_sha256: "9".repeat(64),
+    tarball_bytes: 297_456,
+    npm_integrity: npmIntegrity,
+    package_inventory_sha256: npmInventoryDigest,
+    package_file_count: 37,
+    package_name: policy.npm_distribution.package_name,
+    package_version: policy.npm_distribution.package_version,
+    package_commit: candidateCommit,
+    phase5_artifact_fingerprint_sha256: digest
+  };
+  const plan = buildCanonicalAgentPilotPlan(policy, scenario.id, {
+    package_name: receiptCandidate.package_name,
+    package_version: receiptCandidate.package_version,
+    package_commit: receiptCandidate.package_commit,
+    tarball_sha256: receiptCandidate.tarball_sha256,
+    npm_integrity: receiptCandidate.npm_integrity,
+    package_inventory_sha256: receiptCandidate.package_inventory_sha256,
+    candidate_artifact_fingerprint_sha256: digest
+  });
+  const markerBytes = plan.steps.find((step) => step.kind === "file-probe")
+    ?.expect.min_bytes ?? 0;
+  const observationBase = Date.parse("2026-07-15T01:10:01.000Z");
+  const observations = plan.steps.map((step, stepIndex) => {
+    const start = new Date(observationBase + stepIndex * 2_000).toISOString();
+    const complete = new Date(observationBase + stepIndex * 2_000 + 1_000).toISOString();
+    const common = {
+      id: step.id,
+      role: step.role,
+      kind: step.kind,
+      started_at: start,
+      completed_at: complete,
+      duration_ms: 1_000,
+      expected_outcome: step.kind === "command" ? step.expect.outcome : "success",
+      observed_outcome: step.kind === "command" ? step.expect.outcome : "success",
+      exit_code: step.kind === "command" && step.expect.outcome === "failure" ? 1 : 0,
+      stdout_bytes: 0,
+      stdout_sha256: emptySha256,
+      stderr_bytes: 0,
+      stderr_sha256: emptySha256,
+      passed: true
+    };
+    if (step.kind === "command") {
+      return {
+        ...common,
+        command: step.command,
+        args: [...step.args],
+        cwd: step.cwd,
+        signal: null
+      };
+    }
+    return {
+      ...common,
+      artifact: step.kind === "file-probe"
+        ? {
+            relative_path: step.path,
+            type: step.expect.type,
+            bytes: step.expect.min_bytes
+          }
+        : {
+            relative_path: step.path,
+            type: "file",
+            bytes: markerBytes,
+            sha256: step.expected_digest
+          }
+    };
+  });
+  const githubRunId = 223_450 + index;
+  const githubArtifactName = `studio-agent-pilot-${scenario.id}-${githubRunId}.json`;
+  const githubRunUrl =
+    `https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/${githubRunId}`;
+  const githubActionsInput = ["linux", "macos"].includes(scenario.context)
+    ? {
+        schema_version: 1,
+        repository: "GeorgianDusk/dusk-developer-studio",
+        workflow_path: ".github/workflows/studio-npm-package-assurance.yml",
+        run_id: String(githubRunId),
+        run_attempt: 1,
+        job_name: `agent-pilot-${scenario.id}`,
+        event_name: "workflow_dispatch",
+        ref: "refs/heads/main",
+        sha: candidateCommit,
+        artifact_name: githubArtifactName
+      }
+    : null;
+  const summary = {
+    id,
+    scenario_id: scenario.id,
+    path: "duskds",
+    experience: scenario.experience,
+    context: scenario.context,
+    capability: scenario.capability,
+    execution_surface: scenario.execution_surface,
+    failure_class: scenario.failure_class,
+    operator_type: policy.pilot.operator_type,
+    operator_identity: policy.pilot.operator_identity,
+    completed: true,
+    controlled_failure: true,
+    recovery_attempted: true,
+    recovered: true,
+    recovery_evidence_reference: `pilot-${id}-recovery`,
+    started_at: startedAt,
+    completed_at: completedAt,
+    candidate_commit: candidateCommit,
+    candidate_artifact_fingerprint_sha256: digest,
+    agent_confidence_score: 5,
+    blocking_confusion: false,
+    duration_seconds: 1_200,
+    session_record_reference: `pilot-${id}-session-record`,
+    run_url: githubActionsInput ? githubRunUrl : null,
+    artifact_name: githubActionsInput ? githubArtifactName : null,
+    provenance: null
+  };
+  assert.doesNotThrow(() => validatePilotPlan(policy, plan));
+  const environment = {
+    context: scenario.context,
+    platform: {
+      windows: "win32",
+      wsl: "linux",
+      linux: "linux",
+      macos: "darwin"
+    }[scenario.context],
+    os_version: scenario.context === "wsl"
+      ? "Linux fixture under Microsoft WSL2"
+      : `${scenario.context}-fixture-version`,
+    os_release: scenario.context === "wsl"
+      ? "5.15.0-microsoft-standard-WSL2"
+      : `${scenario.context}-fixture-release`,
+    arch: scenario.context === "macos" ? "arm64" : "x64",
+    node_version: "v24.18.0",
+    privilege: {
+      level: "standard",
+      mechanism: scenario.context === "windows" ? "windows-integrity-level" : "posix-euid",
+      uid: scenario.context === "windows" ? null : 1_000
+    },
+    environment_identity: ""
+  };
+  environment.environment_identity = environmentIdentity(environment);
+  const receipt = {
+    schema_version: 1,
+    evidence_class: "operator-attested-machine-collected",
+    independent_execution: false,
+    operator_type: summary.operator_type,
+    operator_identity: summary.operator_identity,
+    scenario,
+    invocation_id: invocationId,
+    plan,
+    plan_sha256: canonicalSha256(plan),
+    collector: {
+      path: "scripts/agent-pilot-collector.mjs",
+      commit: candidateCommit,
+      source_sha256: "8".repeat(64)
+    },
+    candidate: receiptCandidate,
+    environment,
+    execution: {
+      started_at: startedAt,
+      completed_at: completedAt,
+      duration_seconds: 1_200,
+      step_count: observations.length,
+      controlled_failure_step_id: scenario.failure_class,
+      recovery_step_ids: plan.steps
+        .filter((step) => step.role === "recovery")
+        .map((step) => step.id),
+      final_verification_step_id: plan.final_verification_step_id,
+      observations,
+      raw_observation_bundle_sha256: canonicalSha256(observations)
+    },
+    github_actions_provenance_input: githubActionsInput,
+    redacted: true
+  };
+  const receiptJson = canonicalJson(receipt);
+  const receiptSha256 = createHash("sha256").update(receiptJson, "utf8").digest("hex");
+  summary.receipt_json = receiptJson;
+  summary.receipt_sha256 = receiptSha256;
+  summary.recovery_evidence_reference =
+    `agent-pilots/${scenario.id}/${receipt.execution.raw_observation_bundle_sha256}.recovery.json`;
+  summary.session_record_reference =
+    `agent-pilots/${scenario.id}/${receiptSha256}.json`;
+  if (githubActionsInput) {
+    summary.provenance = provenanceFor({
+      workflowPath: githubActionsInput.workflow_path,
+      runUrl: githubRunUrl,
+      runEvent: githubActionsInput.event_name,
+      artifactId: 700 + index,
+      artifactName: githubArtifactName,
+      receiptPath: githubArtifactName,
+      receiptSha256,
+      downloadedAt: "2026-07-15T01:40:00Z"
+    });
+  }
+  return summary;
+});
 const checks = Object.fromEntries(policy.required_synthetic_checks.map((check) => [check, {
   status: "passed",
   owner: "platform-owner",
@@ -242,11 +475,16 @@ const nativeBoundReceipt = boundReceipt(nativeReceipt);
 const publicBoundReceipt = boundReceipt(publicReceipt);
 const alertBoundReceipt = boundReceipt(alertReceipt);
 const npmPlatformSmoke = Object.fromEntries(policy.npm_distribution.required_platforms.map((platform, index) => [platform, {
+  schema_version: 2,
   status: "passed",
   runner: platform,
   node_version: "24.18.0",
   safe_smoke: "passed",
   local_actions_capability_contract_smoke: "passed",
+  direct_cli_scaffold_smoke: "passed",
+  local_actions_scaffold_smoke: "passed",
+  scaffold_preservation_smoke: "passed",
+  shutdown_smoke: "passed",
   elevated_refusal: "passed",
   candidate_commit: candidateCommit,
   integrity: npmIntegrity,
@@ -254,7 +492,7 @@ const npmPlatformSmoke = Object.fromEntries(policy.npm_distribution.required_pla
   observed_at: `2026-07-15T06:3${index}:00Z`
 }]));
 const npmAssuranceReceipt = {
-  schema_version: 1,
+  schema_version: 2,
   status: "passed",
   package_name: policy.npm_distribution.package_name,
   package_version: policy.npm_distribution.package_version,
@@ -265,6 +503,10 @@ const npmAssuranceReceipt = {
   integrity: npmIntegrity,
   package_inventory_sha256: npmInventoryDigest,
   browser_boot_and_pairing_smoke: "passed",
+  exact_tarball_direct_cli_scaffold_smoke: "passed",
+  exact_tarball_local_actions_scaffold_smoke: "passed",
+  exact_tarball_scaffold_preservation_smoke: "passed",
+  exact_tarball_shutdown_smoke: "passed",
   platform_smoke: npmPlatformSmoke
 };
 const npmPublicationReceipt = {
@@ -281,20 +523,72 @@ const npmPublicationReceipt = {
   integrity: npmIntegrity,
   package_inventory_sha256: npmInventoryDigest,
   npm_maintainer: policy.npm_distribution.expected_npm_maintainer,
-  registry_authentication: policy.npm_distribution.initial_registry_authentication,
+  npm_publisher: policy.npm_distribution.expected_oidc_publisher,
+  trusted_publisher_id: policy.npm_distribution.expected_oidc_trusted_publisher_id,
+  registry_authentication: policy.npm_distribution.subsequent_registry_authentication,
   provenance_verification: "npm-audit-signatures-and-slsa-source-bound",
   provenance_predicate_type: "https://slsa.dev/provenance/v1",
   provenance_subject: `pkg:npm/${policy.npm_distribution.package_name}@${policy.npm_distribution.package_version}`,
   provenance_subject_sha512: npmIntegrityHex,
   provenance_repository: policy.npm_distribution.expected_provenance_repository,
-  provenance_workflow: policy.npm_distribution.expected_initial_provenance_workflow,
+  provenance_workflow: policy.npm_distribution.publication_workflow,
   provenance_ref: `refs/tags/${policy.npm_distribution.tag}`,
   provenance_resolved_commit: candidateCommit
 };
+const initialPublicationCommit = "d".repeat(40);
+const initialPublicationRunId = 123449;
+const initialPublicationArtifactId = 449;
+const initialPublicationRunUrl =
+  `https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/${initialPublicationRunId}`;
+const initialPublicationArtifact =
+  `studio-npm-publication-receipt-${initialPublicationRunId}.json`;
+const initialPublicationIntegrity = `sha512-${Buffer.alloc(64, 0x41).toString("base64")}`;
+const initialPublicationIntegrityHex = Buffer.alloc(64, 0x41).toString("hex");
+const initialPublicationInventoryDigest = "f".repeat(64);
+const initialPublicationObservedAt = "2026-07-14T06:47:00Z";
+const initialPublicationReceipt = {
+  schema_version: 1,
+  status: "published",
+  package_name: policy.npm_distribution.package_name,
+  package_version: policy.npm_distribution.initial_package_version,
+  node_engine: policy.npm_distribution.node_engine,
+  registry_url: policy.npm_distribution.registry_url,
+  tag: policy.npm_distribution.initial_tag,
+  candidate_commit: initialPublicationCommit,
+  workflow_path: policy.npm_distribution.expected_initial_provenance_workflow,
+  observed_at: initialPublicationObservedAt,
+  integrity: initialPublicationIntegrity,
+  package_inventory_sha256: initialPublicationInventoryDigest,
+  npm_maintainer: policy.npm_distribution.expected_npm_maintainer,
+  registry_authentication: policy.npm_distribution.initial_registry_authentication,
+  provenance_verification: "npm-audit-signatures-and-slsa-source-bound",
+  provenance_predicate_type: "https://slsa.dev/provenance/v1",
+  provenance_subject:
+    `pkg:npm/${policy.npm_distribution.package_name}@${policy.npm_distribution.initial_package_version}`,
+  provenance_subject_sha512: initialPublicationIntegrityHex,
+  provenance_repository: policy.npm_distribution.expected_provenance_repository,
+  provenance_workflow: policy.npm_distribution.expected_initial_provenance_workflow,
+  provenance_ref: `refs/tags/${policy.npm_distribution.initial_tag}`,
+  provenance_resolved_commit: initialPublicationCommit
+};
 const npmAssuranceBoundReceipt = boundReceipt(npmAssuranceReceipt);
 const npmPublicationBoundReceipt = boundReceipt(npmPublicationReceipt);
+const initialPublicationBoundReceipt = boundReceipt(initialPublicationReceipt);
+policy.npm_distribution.initial_publication_evidence = {
+  candidate_commit: initialPublicationCommit,
+  integrity: initialPublicationIntegrity,
+  package_inventory_sha256: initialPublicationInventoryDigest,
+  run_id: initialPublicationRunId,
+  artifact_id: initialPublicationArtifactId,
+  artifact_name: initialPublicationArtifact,
+  artifact_expires_at: "2026-10-13T06:45:00Z",
+  preserved_receipt_path:
+    `docs/evidence/npm-initial-publication-receipt-${initialPublicationRunId}.json`,
+  receipt_sha256: initialPublicationBoundReceipt.receipt_sha256,
+  observed_at: initialPublicationObservedAt
+};
 const evidence = {
-  schema_version: 5,
+  schema_version: 9,
   candidate: {
     artifact_fingerprint_sha256: digest,
     public_fingerprint_sha256: digest,
@@ -318,6 +612,10 @@ const evidence = {
     platform_smoke: npmPlatformSmoke,
     assurance: {
       candidate_commit: candidateCommit,
+      exact_tarball_direct_cli_scaffold_smoke: "passed",
+      exact_tarball_local_actions_scaffold_smoke: "passed",
+      exact_tarball_scaffold_preservation_smoke: "passed",
+      exact_tarball_shutdown_smoke: "passed",
       ...npmAssuranceBoundReceipt,
       workflow_path: policy.npm_distribution.assurance_workflow,
       run_url: npmAssuranceRunUrl,
@@ -339,43 +637,74 @@ const evidence = {
       ...npmPublicationBoundReceipt,
       workflow_path: policy.npm_distribution.publication_workflow,
       run_url: npmPublicationRunUrl,
-      artifact_name: "studio-npm-publication-receipt-123460.json",
+      artifact_name: "studio-npm-oidc-publication-receipt-123460.json",
       observed_at: npmPublicationReceipt.observed_at,
       provenance: provenanceFor({
         workflowPath: policy.npm_distribution.publication_workflow,
         runUrl: npmPublicationRunUrl,
         runEvent: "push",
         artifactId: 460,
-        artifactName: "studio-npm-publication-receipt-123460.json",
-        receiptPath: "studio-npm-publication-receipt-123460.json",
+        artifactName: "studio-npm-oidc-publication-receipt-123460.json",
+        receiptPath: "studio-npm-oidc-publication-receipt-123460.json",
         receiptSha256: npmPublicationBoundReceipt.receipt_sha256,
         downloadedAt: "2026-07-15T06:55:00Z"
       })
     },
-    post_publication_controls: {
-      token_created_at: "2026-07-15T06:42:00Z",
+    bootstrap_controls: {
+      package_version: policy.npm_distribution.initial_package_version,
+      tag: policy.npm_distribution.initial_tag,
+      workflow_path: policy.npm_distribution.expected_initial_provenance_workflow,
+      environment: policy.npm_distribution.initial_publication_environment,
+      initial_publication: {
+        candidate_commit: initialPublicationCommit,
+        ...initialPublicationBoundReceipt,
+        workflow_path: policy.npm_distribution.expected_initial_provenance_workflow,
+        run_url: initialPublicationRunUrl,
+        artifact_name: initialPublicationArtifact,
+        observed_at: initialPublicationObservedAt,
+        provenance: provenanceFor({
+          workflowPath: policy.npm_distribution.expected_initial_provenance_workflow,
+          runUrl: initialPublicationRunUrl,
+          runEvent: "push",
+          artifactId: initialPublicationArtifactId,
+          artifactName: initialPublicationArtifact,
+          receiptPath: initialPublicationArtifact,
+          receiptSha256: initialPublicationBoundReceipt.receipt_sha256,
+          downloadedAt: "2026-07-14T06:50:00Z",
+          runCommit: initialPublicationCommit
+        })
+      },
+      token_created_at: "2026-07-14T06:42:00Z",
       token_permissions: policy.npm_distribution.initial_token_scope.permissions,
       token_package_access: policy.npm_distribution.initial_token_scope.package_access,
       token_bypass_2fa: policy.npm_distribution.initial_token_scope.bypass_2fa,
       token_revoked: true,
-      token_revoked_at: "2026-07-15T06:52:00Z",
+      token_revoked_at: "2026-07-14T06:52:00Z",
       token_revocation_evidence_reference: "npm-token-revocation-review",
       token_revocation_evidence_sha256: "3".repeat(64),
       environment_secret_removed: true,
-      environment_secret_removed_at: "2026-07-15T06:53:00Z",
+      environment_secret_removed_at: "2026-07-14T06:53:00Z",
       environment_secret_removal_evidence_reference: "github-environment-secret-removal-review",
       environment_secret_removal_evidence_sha256: "4".repeat(64),
       trusted_publisher_configured: true,
-      trusted_publisher_configured_at: "2026-07-15T06:54:00Z",
+      trusted_publisher_configured_at: "2026-07-14T06:54:00Z",
       trusted_publisher_evidence_reference: "npm-trusted-publisher-settings-review",
       trusted_publisher_evidence_sha256: "5".repeat(64),
       verified_by: "npm-control-reviewer",
-      verified_at: "2026-07-15T06:56:00Z"
+      verified_at: "2026-07-14T06:56:00Z"
     }
   },
   owners,
   reviews,
-  pilot: { sessions },
+  pilot: {
+    evidence_class: policy.pilot.evidence_class,
+    operator_type: policy.pilot.operator_type,
+    operator_identity: policy.pilot.operator_identity,
+    confidence_score_semantics: policy.pilot.confidence_score_semantics,
+    receipt_assurance: policy.pilot.receipt_assurance,
+    fixed_limitation: policy.pilot.fixed_limitation,
+    sessions
+  },
   live_smoke: {
     status: "passed",
     authority_reference: "approval-2026-07-15",
@@ -491,11 +820,11 @@ const evidence = {
     })()
   },
   issues: [],
-  support: { on_call_owner: "support-owner", support_channel_confirmed: true, launch_message_owner: "product-owner", incident_message_owner: "platform-owner" },
+  support: { on_call_owner: "George", support_channel_confirmed: true, launch_message_owner: "George", incident_message_owner: "George" },
   product_signoff: { decision: "go", owner: "George", signed_at: "2026-07-15T07:00:00Z", artifact_fingerprint_sha256: digest }
 };
 
-function onlineFetchFor(testEvidence) {
+function onlineFetchFor(testPolicy, testEvidence) {
   const repository = "GeorgianDusk/dusk-developer-studio";
   const records = [
     testEvidence.live_smoke,
@@ -503,7 +832,15 @@ function onlineFetchFor(testEvidence) {
     { ...testEvidence.synthetics.checks.monitor_heartbeat, run_url: testEvidence.synthetics.checks.monitor_heartbeat.guard_run_url },
     testEvidence.synthetics.alert_delivery,
     testEvidence.npm_distribution.assurance,
-    testEvidence.npm_distribution.publication
+    testEvidence.npm_distribution.publication,
+    testEvidence.npm_distribution.bootstrap_controls.initial_publication,
+    ...testEvidence.pilot.sessions
+      .filter((session) => ["linux", "macos"].includes(session.context))
+      .map((session) => ({
+        ...session,
+        workflow_path: testPolicy.npm_distribution.assurance_workflow,
+        observed_at: session.completed_at
+      }))
   ];
   const routes = new Map();
   for (const record of records) {
@@ -511,6 +848,7 @@ function onlineFetchFor(testEvidence) {
     const runId = provenance.run_id;
     const runApi = `https://api.github.com/repos/${repository}/actions/runs/${runId}`;
     const observedAt = Date.parse(record.observed_at);
+    const runCommit = provenance.run_commit;
     const receiptBytes = Buffer.from(record.receipt_json, "utf8");
     const artifactApi = `https://api.github.com/repos/${repository}/actions/artifacts/${provenance.artifact_id}`;
     const artifact = {
@@ -521,13 +859,15 @@ function onlineFetchFor(testEvidence) {
       archive_download_url: `${artifactApi}/zip`,
       expired: false,
       created_at: new Date(observedAt + 60_000).toISOString(),
-      expires_at: new Date(observedAt + 30 * 24 * 60 * 60 * 1_000).toISOString(),
+      expires_at: record === testEvidence.npm_distribution.bootstrap_controls.initial_publication
+        ? testPolicy.npm_distribution.initial_publication_evidence.artifact_expires_at
+        : new Date(observedAt + 30 * 24 * 60 * 60 * 1_000).toISOString(),
       digest: `sha256:${record.receipt_sha256}`,
       workflow_run: {
         id: runId,
         repository_id: 99,
         head_repository_id: 99,
-        head_sha: candidateCommit
+        head_sha: runCommit
       }
     };
     routes.set(runApi, {
@@ -538,7 +878,7 @@ function onlineFetchFor(testEvidence) {
         html_url: record.run_url,
         artifacts_url: `${runApi}/artifacts`,
         path: `${record.workflow_path}@main`,
-        head_sha: candidateCommit,
+        head_sha: runCommit,
         status: "completed",
         conclusion: "success",
         event: provenance.run_event,
@@ -583,7 +923,12 @@ async function formalDecision(testPolicy, testEvidence) {
   return evaluatePhase5EvidenceOnline(testPolicy, policyBoundEvidence, {
     now,
     token: "phase5-test-token",
-    fetchImpl: onlineFetchFor(policyBoundEvidence)
+    fetchImpl: onlineFetchFor(testPolicy, policyBoundEvidence),
+    readFileImpl: async () => Buffer.from(
+      policyBoundEvidence.npm_distribution.bootstrap_controls.initial_publication.receipt_json,
+      "utf8"
+    ),
+    workspaceRoot: "C:\\candidate"
   });
 }
 
@@ -591,8 +936,37 @@ assert.equal(evaluatePhase5Evidence(policy, evidence, { now }).decision, "no-go"
 assert.match(evaluatePhase5Evidence(policy, evidence, { now }).blockers.join("\n"), /Online GitHub Actions/);
 const baselineFormalDecision = await formalDecision(policy, evidence);
 assert.equal(baselineFormalDecision.decision, "go");
-assert.equal(baselineFormalDecision.assurance_scope, "policy-complete-under-trusted-operator-assembly");
-assert.deepEqual(baselineFormalDecision.trusted_human_attestations, ["reviews", "pilots", "support", "rollback", "product_signoff"]);
+assert.equal(baselineFormalDecision.assurance_scope, "policy-complete-under-declared-human-and-agent-assembly");
+assert.equal(Object.hasOwn(baselineFormalDecision, "trusted_human_attestations"), false);
+assert.deepEqual(baselineFormalDecision.human_attestations, ["product_signoff"]);
+assert.deepEqual(
+  baselineFormalDecision.agent_attestations,
+  ["separate_agent_challenge_reviews", "support_assignments", "rollback_execution"]
+);
+assert.deepEqual(baselineFormalDecision.agent_operated_simulations, {
+  evidence_class: policy.pilot.evidence_class,
+  operator_type: policy.pilot.operator_type,
+  operator_identity: policy.pilot.operator_identity,
+  receipt_assurance: policy.pilot.receipt_assurance,
+  sessions: 8,
+  duskds_sessions: 8,
+  github_actions_provenance_sessions: 2,
+  local_operator_attested_sessions: 6,
+  average_agent_confidence_score: 5
+});
+assert.deepEqual(
+  baselineFormalDecision.limitations,
+  [policy.pilot.fixed_limitation, policy.responsibility_model.fixed_limitation]
+);
+assert.match(baselineFormalDecision.limitations[0], /do not prove external-human comprehension[\s\S]*adoption/iu);
+assert.match(baselineFormalDecision.limitations[1], /not external independent human or security audits/iu);
+assert.deepEqual(
+  baselineFormalDecision.github_actions.records
+    .filter((record) => record.label.startsWith("Agent pilot "))
+    .map((record) => record.label)
+    .sort(),
+  ["Agent pilot linux-port-conflict-recovery", "Agent pilot macos-privilege-recovery"]
+);
 assert.match(evaluatePhase5EvidenceRaw(policy, evidence, { now }).blockers.join("\n"), /exact reviewed policy bytes and evaluator commit/);
 const wrongPolicyBinding = JSON.parse(JSON.stringify(evidence));
 wrongPolicyBinding.candidate.policy_sha256 = "d".repeat(64);
@@ -629,6 +1003,7 @@ assert.throws(() => verifyCandidateBoundPhase5Context({
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, schema_version: 2 }, { now }).blockers.join("\n"), /schema is unsupported/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, schema_version: 3 }, { now }).blockers.join("\n"), /schema is unsupported/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, schema_version: 4 }, { now }).blockers.join("\n"), /schema is unsupported/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, schema_version: 5 }, { now }).blockers.join("\n"), /schema is unsupported/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, candidate: { ...evidence.candidate, public_fingerprint_sha256: "c".repeat(64) } }, { now }).blockers.join("\n"), /fingerprints differ/);
 const futureCandidateBuild = JSON.parse(JSON.stringify(evidence));
 futureCandidateBuild.candidate.built_at = "2026-07-15T12:01:00Z";
@@ -679,9 +1054,49 @@ assert.match(evaluatePhase5Evidence(policy, mismatchedRunMetadata, { now }).bloc
 const mismatchedArtifactDigest = JSON.parse(JSON.stringify(evidence));
 mismatchedArtifactDigest.synthetics.alert_delivery.provenance.artifact_sha256 = "d".repeat(64);
 assert.match(evaluatePhase5Evidence(policy, mismatchedArtifactDigest, { now }).blockers.join("\n"), /lacks complete downloaded GitHub run\/artifact provenance/);
-assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { sessions: sessions.slice(0, 7) } }, { now }).blockers.join("\n"), /Pilot has 7\/8/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { ...evidence.pilot, sessions: sessions.slice(0, 7) } }, { now }).blockers.join("\n"), /Pilot has 7\/8/);
+assert.match(
+  evaluatePhase5Evidence(policy, {
+    ...evidence,
+    pilot: { ...evidence.pilot, sessions: [...sessions, JSON.parse(JSON.stringify(sessions[0]))] }
+  }, { now }).blockers.join("\n"),
+  /Pilot has 9\/8 exact required sessions/
+);
 const mixedPathSessions = sessions.map((session, index) => index === 0 ? { ...session, path: "evm" } : session);
-assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { sessions: mixedPathSessions } }, { now }).blockers.join("\n"), /required DuskDS sessions|non-production path/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { ...evidence.pilot, sessions: mixedPathSessions } }, { now }).blockers.join("\n"), /required DuskDS sessions|non-production path/);
+const duplicateScenarioSession = JSON.parse(JSON.stringify(evidence));
+duplicateScenarioSession.pilot.sessions[1].scenario_id = duplicateScenarioSession.pilot.sessions[0].scenario_id;
+rewriteMachineReceipt(duplicateScenarioSession.pilot.sessions[1], (receipt) => {
+  receipt.scenario = JSON.parse(JSON.stringify(receipt.scenario));
+  receipt.scenario.id = duplicateScenarioSession.pilot.sessions[1].scenario_id;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, duplicateScenarioSession, { now }).blockers.join("\n"),
+  /every exact required scenario once/
+);
+const macosWithoutActionsProvenance = JSON.parse(JSON.stringify(evidence));
+const macosWithoutActionsSession = macosWithoutActionsProvenance.pilot.sessions.find(
+  (session) => session.scenario_id === "macos-privilege-recovery"
+);
+macosWithoutActionsSession.run_url = null;
+macosWithoutActionsSession.artifact_name = null;
+macosWithoutActionsSession.provenance = null;
+rewriteMachineReceipt(macosWithoutActionsSession, (receipt) => {
+  receipt.github_actions_provenance_input = null;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, macosWithoutActionsProvenance, { now }).blockers.join("\n"),
+  /lacks exact first-attempt GitHub Actions candidate provenance/
+);
+for (const field of ["capability", "failure_class"]) {
+  const duplicateScenarioPolicy = JSON.parse(JSON.stringify(policy));
+  duplicateScenarioPolicy.pilot.required_scenarios[1][field] =
+    duplicateScenarioPolicy.pilot.required_scenarios[0][field];
+  assert.match(
+    evaluatePhase5Evidence(duplicateScenarioPolicy, evidence, { now }).blockers.join("\n"),
+    new RegExp(field === "capability" ? "capabilities must be complete and unique" : "controlled-failure classes must be complete and unique")
+  );
+}
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, live_smoke: { status: "not-authorized" } }, { now }).blockers.join("\n"), /explicit authority/);
 const incompleteNativeSmoke = JSON.parse(JSON.stringify(evidence));
 delete incompleteNativeSmoke.live_smoke.native_steps.node_read;
@@ -695,40 +1110,30 @@ attemptedEvmActivation.preview_paths = [];
 const attemptedEvmBlockers = evaluatePhase5Evidence(attemptedEvmActivation, evidence, { now }).blockers.join("\n");
 assert.match(attemptedEvmBlockers, /real RPC verification and no active deferral/);
 assert.match(attemptedEvmBlockers, /explicit EVM smoke steps and pilot coverage/);
-assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, companion_security: { ...reviews.companion_security, independent: false } } }, { now }).blockers.join("\n"), /not independent/);
-assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, platform: { ...reviews.platform, independent: false } } }, { now }).blockers.join("\n"), /Reviewer for platform is not independent/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, companion_security: { ...reviews.companion_security, separate_agent: false } } }, { now }).blockers.join("\n"), /separate-agent challenge review companion_security/iu);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, platform: { ...reviews.platform, reviewer_type: "human" } } }, { now }).blockers.join("\n"), /separate-agent challenge review platform/iu);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, accessibility: { ...reviews.accessibility, external_independent: true } } }, { now }).blockers.join("\n"), /separate-agent challenge review accessibility/iu);
 const repeatedReviewer = JSON.parse(JSON.stringify(evidence));
-repeatedReviewer.reviews.accessibility.reviewer = repeatedReviewer.reviews.platform.reviewer;
-assert.match(evaluatePhase5Evidence(policy, repeatedReviewer, { now }).blockers.join("\n"), /distinct independent reviewers/);
+repeatedReviewer.reviews.accessibility.reviewer_identity = repeatedReviewer.reviews.platform.reviewer_identity;
+assert.match(evaluatePhase5Evidence(policy, repeatedReviewer, { now }).blockers.join("\n"), /distinct Codex subagent identities/);
 const repeatedReviewReference = JSON.parse(JSON.stringify(evidence));
 repeatedReviewReference.reviews.accessibility.evidence_reference = ` ${repeatedReviewReference.reviews.platform.evidence_reference.toUpperCase()} `;
-assert.match(evaluatePhase5Evidence(policy, repeatedReviewReference, { now }).blockers.join("\n"), /reviews must use distinct evidence references/);
+assert.match(evaluatePhase5Evidence(policy, repeatedReviewReference, { now }).blockers.join("\n"), /challenge reviews must use distinct evidence references/);
 const ownerReviewer = JSON.parse(JSON.stringify(evidence));
-ownerReviewer.reviews.companion_security.reviewer = ownerReviewer.owners.security;
-assert.match(evaluatePhase5Evidence(policy, ownerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
+ownerReviewer.reviews.companion_security.reviewer_identity = ownerReviewer.owners.security;
+assert.match(evaluatePhase5Evidence(policy, ownerReviewer, { now }).blockers.join("\n"), /not a separately identified Codex subagent/);
 const implementerReviewer = JSON.parse(JSON.stringify(evidence));
-implementerReviewer.reviews.platform.reviewer = implementerReviewer.candidate.implementation_identities[0];
-assert.match(evaluatePhase5Evidence(policy, implementerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
-const aliasedOwnerReviewer = JSON.parse(JSON.stringify(evidence));
-aliasedOwnerReviewer.owners.security = "Alice Smith <alice.security@example.com>";
-aliasedOwnerReviewer.reviews.companion_security.reviewer = "alice.security@example.com";
-assert.match(evaluatePhase5Evidence(policy, aliasedOwnerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
-const dottedOwnerReviewer = JSON.parse(JSON.stringify(evidence));
-dottedOwnerReviewer.owners.security = "Alice Smith";
-dottedOwnerReviewer.reviews.companion_security.reviewer = "alice.smith@example.com";
-assert.match(evaluatePhase5Evidence(policy, dottedOwnerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
-const displayEmailOwnerReviewer = JSON.parse(JSON.stringify(evidence));
-displayEmailOwnerReviewer.owners.security = "Alice Smith <security@example.com>";
-displayEmailOwnerReviewer.reviews.companion_security.reviewer = "alice.smith@example.net";
-assert.match(evaluatePhase5Evidence(policy, displayEmailOwnerReviewer, { now }).blockers.join("\n"), /not independent from every owner/);
-const aliasedOwners = JSON.parse(JSON.stringify(evidence));
-aliasedOwners.owners.security = "Alice Smith";
-aliasedOwners.owners.platform = "alice.smith@example.com";
-assert.match(evaluatePhase5Evidence(policy, aliasedOwners, { now }).blockers.join("\n"), /Owner assignments must use distinct people/);
-const aliasedReviewers = JSON.parse(JSON.stringify(evidence));
-aliasedReviewers.reviews.companion_security.reviewer = "Alice Smith";
-aliasedReviewers.reviews.platform.reviewer = "alice.smith@example.com";
-assert.match(evaluatePhase5Evidence(policy, aliasedReviewers, { now }).blockers.join("\n"), /distinct independent reviewers/);
+implementerReviewer.reviews.platform.reviewer_identity = implementerReviewer.candidate.implementation_identities[0];
+assert.match(evaluatePhase5Evidence(policy, implementerReviewer, { now }).blockers.join("\n"), /not a separately identified Codex subagent/);
+const wrongResponsibleOwner = JSON.parse(JSON.stringify(evidence));
+wrongResponsibleOwner.owners.security = "Alice";
+assert.match(evaluatePhase5Evidence(policy, wrongResponsibleOwner, { now }).blockers.join("\n"), /Responsible role security is not assigned to the declared human owner/);
+const wrongSupportAssignment = JSON.parse(JSON.stringify(evidence));
+wrongSupportAssignment.support.on_call_owner = "Invented support owner";
+assert.match(
+  evaluatePhase5Evidence(policy, wrongSupportAssignment, { now }).blockers.join("\n"),
+  /Support\/on-call\/status communication assignments are not bound/
+);
 const unsafeReviewReference = JSON.parse(JSON.stringify(evidence));
 unsafeReviewReference.reviews.accessibility.evidence_reference = "https://github.com/example/review?token=1";
 assert.match(evaluatePhase5Evidence(policy, unsafeReviewReference, { now }).blockers.join("\n"), /safe redacted evidence reference/);
@@ -752,26 +1157,60 @@ assert.match(evaluatePhase5Evidence(policy, recoveryPhraseWithoutDelimiter, { no
 const accessTokenValue = JSON.parse(JSON.stringify(evidence));
 accessTokenValue.support.on_call_owner = "access token: ghp_abcdefghijklmnopqrstuvwxyz123456";
 assert.match(evaluatePhase5Evidence(policy, accessTokenValue, { now }).blockers.join("\n"), /forbidden secret-shaped fields or values/);
+for (const secretShapedValue of [
+  `npm_${"a".repeat(36)}`,
+  `github_pat_${"A1_".repeat(12)}`,
+  `Bearer ${"b".repeat(32)}`,
+  `Cookie: session=${"c".repeat(32)}`,
+  `session_token=${"d".repeat(32)}`
+]) {
+  const secretShapedEvidence = JSON.parse(JSON.stringify(evidence));
+  secretShapedEvidence.support.on_call_owner = secretShapedValue;
+  assert.match(
+    evaluatePhase5Evidence(policy, secretShapedEvidence, { now }).blockers.join("\n"),
+    /forbidden secret-shaped fields or values/
+  );
+}
 const embeddedCredentialedUrl = JSON.parse(JSON.stringify(evidence));
 embeddedCredentialedUrl.support.on_call_owner = "reviewed at https://user:pass@example.com/evidence";
 assert.match(evaluatePhase5Evidence(policy, embeddedCredentialedUrl, { now }).blockers.join("\n"), /forbidden secret-shaped fields or values/);
+const oversizedEvidence = JSON.parse(JSON.stringify(evidence));
+oversizedEvidence.oversized = "x".repeat(4_000_001);
+assert.match(
+  evaluatePhase5Evidence(policy, oversizedEvidence, { now }).blockers.join("\n"),
+  /exceeds the reviewed size, depth, or collection boundary/
+);
+const deeplyNestedEvidence = JSON.parse(JSON.stringify(evidence));
+deeplyNestedEvidence.deep = {};
+let nestedCursor = deeplyNestedEvidence.deep;
+for (let depth = 0; depth < 40; depth += 1) {
+  nestedCursor.next = {};
+  nestedCursor = nestedCursor.next;
+}
+assert.match(
+  evaluatePhase5Evidence(policy, deeplyNestedEvidence, { now }).blockers.join("\n"),
+  /exceeds the reviewed size, depth, or collection boundary/
+);
 const prebuildReview = JSON.parse(JSON.stringify(evidence));
 prebuildReview.reviews.accessibility.reviewed_at = "2026-07-14T23:59:59Z";
 assert.match(evaluatePhase5Evidence(policy, prebuildReview, { now }).blockers.join("\n"), /at or after the candidate build/);
 const unboundReview = JSON.parse(JSON.stringify(evidence));
 unboundReview.reviews.accessibility.candidate_commit = "d".repeat(40);
-assert.match(evaluatePhase5Evidence(policy, unboundReview, { now }).blockers.join("\n"), /Independent review accessibility is not bound/);
+assert.match(evaluatePhase5Evidence(policy, unboundReview, { now }).blockers.join("\n"), /Separate-agent challenge review accessibility is not bound/);
 const participantWithoutRecovery = JSON.parse(JSON.stringify(evidence));
 participantWithoutRecovery.pilot.sessions[3].controlled_failure = false;
 participantWithoutRecovery.pilot.sessions[3].recovered = false;
 assert.match(evaluatePhase5Evidence(policy, participantWithoutRecovery, { now }).blockers.join("\n"), /Pilot session p4 lacks its own/);
 const oneUnrecoveredPilot = JSON.parse(JSON.stringify(evidence));
 oneUnrecoveredPilot.pilot.sessions[3].recovered = false;
-assert.equal((await formalDecision(policy, oneUnrecoveredPilot)).decision, "go");
+assert.match(
+  evaluatePhase5Evidence(policy, oneUnrecoveredPilot, { now }).blockers.join("\n"),
+  /recovery rate 0\.88 is below 1/
+);
 const twoUnrecoveredPilots = JSON.parse(JSON.stringify(evidence));
 twoUnrecoveredPilots.pilot.sessions[3].recovered = false;
 twoUnrecoveredPilots.pilot.sessions[4].recovered = false;
-assert.match(evaluatePhase5Evidence(policy, twoUnrecoveredPilots, { now }).blockers.join("\n"), /recovery rate 0.75 is below 0.8/);
+assert.match(evaluatePhase5Evidence(policy, twoUnrecoveredPilots, { now }).blockers.join("\n"), /recovery rate 0.75 is below 1/);
 const unboundPilot = JSON.parse(JSON.stringify(evidence));
 unboundPilot.pilot.sessions[0].candidate_artifact_fingerprint_sha256 = "d".repeat(64);
 assert.match(evaluatePhase5Evidence(policy, unboundPilot, { now }).blockers.join("\n"), /Pilot session p1 is not bound/);
@@ -784,11 +1223,25 @@ assert.match(evaluatePhase5Evidence(policy, duplicateSessionReference, { now }).
 const reusedRecoveryAsSessionReference = JSON.parse(JSON.stringify(evidence));
 reusedRecoveryAsSessionReference.pilot.sessions[1].session_record_reference = reusedRecoveryAsSessionReference.pilot.sessions[0].recovery_evidence_reference;
 assert.match(evaluatePhase5Evidence(policy, reusedRecoveryAsSessionReference, { now }).blockers.join("\n"), /unique canonical session record reference/);
+const mismatchedRecoveryDigestReference = JSON.parse(JSON.stringify(evidence));
+mismatchedRecoveryDigestReference.pilot.sessions[0].recovery_evidence_reference =
+  `agent-pilots/${mismatchedRecoveryDigestReference.pilot.sessions[0].scenario_id}/${"d".repeat(64)}.recovery.json`;
+assert.match(
+  evaluatePhase5Evidence(policy, mismatchedRecoveryDigestReference, { now }).blockers.join("\n"),
+  /evidence references do not exact-match/
+);
+const mismatchedSessionDigestReference = JSON.parse(JSON.stringify(evidence));
+mismatchedSessionDigestReference.pilot.sessions[0].session_record_reference =
+  `agent-pilots/${mismatchedSessionDigestReference.pilot.sessions[0].scenario_id}/${"d".repeat(64)}.json`;
+assert.match(
+  evaluatePhase5Evidence(policy, mismatchedSessionDigestReference, { now }).blockers.join("\n"),
+  /evidence references do not exact-match/
+);
 const unsafeSessionReference = JSON.parse(JSON.stringify(evidence));
 unsafeSessionReference.pilot.sessions[0].session_record_reference = "C:\\Users\\Alice\\pilot.json";
 assert.match(evaluatePhase5Evidence(policy, unsafeSessionReference, { now }).blockers.join("\n"), /canonical session/);
 const mismatchedPilotDuration = JSON.parse(JSON.stringify(evidence));
-mismatchedPilotDuration.pilot.sessions[0].duration_minutes = 19;
+mismatchedPilotDuration.pilot.sessions[0].duration_seconds = 19;
 assert.match(evaluatePhase5Evidence(policy, mismatchedPilotDuration, { now }).blockers.join("\n"), /canonical session/);
 const identifyingPilotId = JSON.parse(JSON.stringify(evidence));
 identifyingPilotId.pilot.sessions[0].id = "alice@example.com";
@@ -798,8 +1251,281 @@ prebuildPilot.pilot.sessions[0].started_at = "2026-07-14T23:40:00Z";
 prebuildPilot.pilot.sessions[0].completed_at = "2026-07-15T00:00:00Z";
 assert.match(evaluatePhase5Evidence(policy, prebuildPilot, { now }).blockers.join("\n"), /Pilot session p1 start must be dated at or after/);
 const invalidPilotScale = JSON.parse(JSON.stringify(evidence));
-invalidPilotScale.pilot.sessions[0].trust_score = 6;
-assert.match(evaluatePhase5Evidence(policy, invalidPilotScale, { now }).blockers.join("\n"), /1-5 trust evidence/);
+invalidPilotScale.pilot.sessions[0].agent_confidence_score = 6;
+assert.match(evaluatePhase5Evidence(policy, invalidPilotScale, { now }).blockers.join("\n"), /1-5 informational agent-confidence evidence/);
+const missingPilotReceipt = JSON.parse(JSON.stringify(evidence));
+delete missingPilotReceipt.pilot.sessions[0].receipt_sha256;
+assert.match(evaluatePhase5Evidence(policy, missingPilotReceipt, { now }).blockers.join("\n"), /Pilot session p1 receipt bytes/);
+const forgedPilotReceipt = JSON.parse(JSON.stringify(evidence));
+forgedPilotReceipt.pilot.sessions[0].receipt_json =
+  forgedPilotReceipt.pilot.sessions[0].receipt_json.replace('"redacted":true', '"redacted":false');
+assert.match(evaluatePhase5Evidence(policy, forgedPilotReceipt, { now }).blockers.join("\n"), /Pilot session p1 receipt bytes/);
+const oversizedPilotReceipt = JSON.parse(JSON.stringify(evidence));
+oversizedPilotReceipt.pilot.sessions[0].receipt_json = "x".repeat(512_001);
+oversizedPilotReceipt.pilot.sessions[0].receipt_sha256 = createHash("sha256")
+  .update(oversizedPilotReceipt.pilot.sessions[0].receipt_json, "utf8")
+  .digest("hex");
+assert.match(evaluatePhase5Evidence(policy, oversizedPilotReceipt, { now }).blockers.join("\n"), /Pilot session p1 receipt bytes/);
+const wrongPilotOperator = JSON.parse(JSON.stringify(evidence));
+wrongPilotOperator.pilot.sessions[0].operator_type = "human";
+rewriteMachineReceipt(wrongPilotOperator.pilot.sessions[0], (receipt) => { receipt.operator_type = "human"; });
+assert.match(evaluatePhase5Evidence(policy, wrongPilotOperator, { now }).blockers.join("\n"), /required scenario, Codex operator/);
+const wrongPilotPackageIntegrity = JSON.parse(JSON.stringify(evidence));
+rewriteMachineReceipt(wrongPilotPackageIntegrity.pilot.sessions[0], (receipt) => {
+  receipt.candidate.npm_integrity = `sha512-${Buffer.alloc(64, 0x43).toString("base64")}`;
+});
+assert.match(evaluatePhase5Evidence(policy, wrongPilotPackageIntegrity, { now }).blockers.join("\n"), /machine receipt does not exact-match/);
+const wrongPilotPackageInventory = JSON.parse(JSON.stringify(evidence));
+rewriteMachineReceipt(wrongPilotPackageInventory.pilot.sessions[0], (receipt) => {
+  receipt.candidate.package_inventory_sha256 = "d".repeat(64);
+});
+assert.match(evaluatePhase5Evidence(policy, wrongPilotPackageInventory, { now }).blockers.join("\n"), /machine receipt does not exact-match/);
+const wrongPilotReceiptCommit = JSON.parse(JSON.stringify(evidence));
+rewriteMachineReceipt(wrongPilotReceiptCommit.pilot.sessions[0], (receipt) => {
+  receipt.candidate.package_commit = "d".repeat(40);
+});
+assert.match(evaluatePhase5Evidence(policy, wrongPilotReceiptCommit, { now }).blockers.join("\n"), /machine receipt does not exact-match/);
+const wrongPilotReceiptFingerprint = JSON.parse(JSON.stringify(evidence));
+rewriteMachineReceipt(wrongPilotReceiptFingerprint.pilot.sessions[0], (receipt) => {
+  receipt.candidate.phase5_artifact_fingerprint_sha256 = "d".repeat(64);
+});
+assert.match(evaluatePhase5Evidence(policy, wrongPilotReceiptFingerprint, { now }).blockers.join("\n"), /machine receipt does not exact-match/);
+const mismatchedPilotPlanDigest = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(
+  mismatchedPilotPlanDigest.pilot.sessions[0],
+  (receipt) => { receipt.plan_sha256 = "d".repeat(64); },
+  { rehashPlan: false }
+);
+assert.match(
+  evaluatePhase5Evidence(policy, mismatchedPilotPlanDigest, { now }).blockers.join("\n"),
+  /machine receipt does not exact-match/
+);
+const nonAllowlistedPilotCommand = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(nonAllowlistedPilotCommand.pilot.sessions[0], (receipt) => {
+  const planStep = receipt.plan.steps.find((step) => step.kind === "command");
+  const observation = receipt.execution.observations.find((entry) => entry.id === planStep.id);
+  planStep.command = "powershell";
+  observation.command = "powershell";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, nonAllowlistedPilotCommand, { now }).blockers.join("\n"),
+  /embedded plan does not exactly bind/
+);
+const syntheticPilotCommand = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(syntheticPilotCommand.pilot.sessions[0], (receipt) => {
+  const planStep = receipt.plan.steps.find((step) => step.kind === "command");
+  const observation = receipt.execution.observations.find((entry) => entry.id === planStep.id);
+  planStep.args = ["-e", "process.exitCode = 0"];
+  observation.args = [...planStep.args];
+});
+assert.match(
+  evaluatePhase5Evidence(policy, syntheticPilotCommand, { now }).blockers.join("\n"),
+  /embedded plan does not exactly bind/
+);
+const unboundPilotCommandArguments = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(unboundPilotCommandArguments.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations.find((entry) => entry.kind === "command").args.push("--tampered");
+});
+assert.match(
+  evaluatePhase5Evidence(policy, unboundPilotCommandArguments, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const unboundPilotCommandCwd = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(unboundPilotCommandCwd.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations.find((entry) => entry.kind === "command").cwd = "output";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, unboundPilotCommandCwd, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const failedSetupCommand = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(failedSetupCommand.pilot.sessions[0], (receipt) => {
+  const setup = receipt.execution.observations.find(
+    (observation) => observation.role === "setup"
+  );
+  setup.observed_outcome = "failure";
+  setup.exit_code = 1;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, failedSetupCommand, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const nonCommandControlledFailure = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(nonCommandControlledFailure.pilot.sessions[0], (receipt) => {
+  const observation = receipt.execution.observations.find((entry) => entry.role === "controlled-failure");
+  observation.kind = "file-probe";
+  delete observation.command;
+  delete observation.args;
+  delete observation.cwd;
+  delete observation.signal;
+  observation.artifact = { relative_path: "output/failure.txt", type: "file", bytes: 1 };
+});
+assert.match(
+  evaluatePhase5Evidence(policy, nonCommandControlledFailure, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const failedRecoveryContract = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(failedRecoveryContract.pilot.sessions[0], (receipt) => {
+  const recovery = receipt.execution.observations.find((entry) => entry.role === "recovery");
+  recovery.expected_outcome = "failure";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, failedRecoveryContract, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const failedFinalContract = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(failedFinalContract.pilot.sessions[0], (receipt) => {
+  const final = receipt.execution.observations.at(-1);
+  final.observed_outcome = "failure";
+  final.exit_code = 1;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, failedFinalContract, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const signalledPilotCommand = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(signalledPilotCommand.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations.find((entry) => entry.kind === "command").signal = "SIGTERM";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, signalledPilotCommand, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const unsafePilotProbePath = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(unsafePilotProbePath.pilot.sessions[0], (receipt) => {
+  const planProbe = receipt.plan.steps.find((step) => step.kind === "file-probe");
+  const observation = receipt.execution.observations.find((entry) => entry.id === planProbe.id);
+  planProbe.path = "../private.txt";
+  observation.artifact.relative_path = "../private.txt";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, unsafePilotProbePath, { now }).blockers.join("\n"),
+  /embedded plan does not exactly bind|machine observations do not prove/
+);
+const impossiblePilotProbeType = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(impossiblePilotProbeType.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations.find((entry) => entry.kind === "file-probe").artifact.type = "symlink";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, impossiblePilotProbeType, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const impossiblePilotProbeBytes = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(impossiblePilotProbeBytes.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations.find((entry) => entry.kind === "file-probe").artifact.bytes = -1;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, impossiblePilotProbeBytes, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const unboundPilotHashProbe = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(unboundPilotHashProbe.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations.find((entry) => entry.kind === "hash-probe").artifact.sha256 = "d".repeat(64);
+});
+assert.match(
+  evaluatePhase5Evidence(policy, unboundPilotHashProbe, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const forgedPilotObservationDuration = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(forgedPilotObservationDuration.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations[0].duration_ms += 1;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, forgedPilotObservationDuration, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const outsideSessionPilotObservation = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(outsideSessionPilotObservation.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations[0].started_at = "2026-07-15T01:09:59.000Z";
+  receipt.execution.observations[0].duration_ms = 3_000;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, outsideSessionPilotObservation, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const overlappingPilotObservations = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(overlappingPilotObservations.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations[1].started_at = "2026-07-15T01:10:01.500Z";
+  receipt.execution.observations[1].duration_ms = 2_500;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, overlappingPilotObservations, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const forgedEmptyOutputDigest = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(forgedEmptyOutputDigest.pilot.sessions[0], (receipt) => {
+  receipt.execution.observations[0].stdout_sha256 = "d".repeat(64);
+});
+assert.match(
+  evaluatePhase5Evidence(policy, forgedEmptyOutputDigest, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const duplicatePilotRecoveryIds = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(duplicatePilotRecoveryIds.pilot.sessions[0], (receipt) => {
+  receipt.execution.recovery_step_ids.push(receipt.execution.recovery_step_ids[0]);
+});
+assert.match(
+  evaluatePhase5Evidence(policy, duplicatePilotRecoveryIds, { now }).blockers.join("\n"),
+  /machine observations do not prove/
+);
+const incoherentWindowsPrivilege = JSON.parse(JSON.stringify(evidence));
+const windowsSession = incoherentWindowsPrivilege.pilot.sessions.find((session) => session.context === "windows");
+rewritePilotMachineReceipt(windowsSession, (receipt) => { receipt.environment.privilege.level = "elevated"; });
+assert.match(
+  evaluatePhase5Evidence(policy, incoherentWindowsPrivilege, { now }).blockers.join("\n"),
+  /coherent standard-privilege/
+);
+const incoherentPosixPrivilege = JSON.parse(JSON.stringify(evidence));
+const posixSession = incoherentPosixPrivilege.pilot.sessions.find((session) => session.context === "linux");
+rewritePilotMachineReceipt(posixSession, (receipt) => { receipt.environment.privilege.uid = 0; });
+assert.match(
+  evaluatePhase5Evidence(policy, incoherentPosixPrivilege, { now }).blockers.join("\n"),
+  /coherent standard-privilege/
+);
+const incoherentWslIdentity = JSON.parse(JSON.stringify(evidence));
+const wslSession = incoherentWslIdentity.pilot.sessions.find((session) => session.context === "wsl");
+rewritePilotMachineReceipt(wslSession, (receipt) => {
+  receipt.environment.os_version = "generic-linux-version";
+  receipt.environment.os_release = "generic-linux-release";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, incoherentWslIdentity, { now }).blockers.join("\n"),
+  /coherent standard-privilege/
+);
+const unsupportedPilotArchitecture = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(unsupportedPilotArchitecture.pilot.sessions[0], (receipt) => {
+  receipt.environment.arch = "ia32";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, unsupportedPilotArchitecture, { now }).blockers.join("\n"),
+  /coherent standard-privilege/
+);
+const forgedPilotEnvironmentIdentity = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(
+  forgedPilotEnvironmentIdentity.pilot.sessions[0],
+  (receipt) => { receipt.environment.environment_identity = `env-${"d".repeat(24)}`; },
+  { rehashEnvironment: false }
+);
+assert.match(
+  evaluatePhase5Evidence(policy, forgedPilotEnvironmentIdentity, { now }).blockers.join("\n"),
+  /coherent standard-privilege/
+);
+const safeSriDoubleSlashText = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(safeSriDoubleSlashText.pilot.sessions[0], (receipt) => {
+  receipt.environment.os_version = `sha512-${Buffer.alloc(64, 0xff).toString("base64")}`;
+});
+assert.deepEqual(
+  evaluatePhase5Evidence(policy, safeSriDoubleSlashText, { now }).blockers,
+  evaluatePhase5Evidence(policy, evidence, { now }).blockers
+);
+const standaloneProtocolRelativeUrl = JSON.parse(JSON.stringify(evidence));
+rewritePilotMachineReceipt(standaloneProtocolRelativeUrl.pilot.sessions[0], (receipt) => {
+  receipt.environment.os_version = "//untrusted.example/pilot";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, standaloneProtocolRelativeUrl, { now }).blockers.join("\n"),
+  /parsed receipt contains forbidden secret-shaped or unsafe URL/
+);
 const unboundNativeSmoke = JSON.parse(JSON.stringify(evidence));
 delete unboundNativeSmoke.live_smoke.receipt_sha256;
 assert.match(evaluatePhase5Evidence(policy, unboundNativeSmoke, { now }).blockers.join("\n"), /DuskDS production smoke receipt bytes/);
@@ -1117,6 +1843,26 @@ assert.match(evaluatePhase5Evidence(policy, missingNpmPlatform, { now }).blocker
 const mismatchedNpmPlatform = JSON.parse(JSON.stringify(evidence));
 mismatchedNpmPlatform.npm_distribution.platform_smoke["windows-2025"].integrity = `sha512-${Buffer.alloc(64, 0x43).toString("base64")}`;
 assert.match(evaluatePhase5Evidence(policy, mismatchedNpmPlatform, { now }).blockers.join("\n"), /required lifecycle checks/);
+for (const field of [
+  "direct_cli_scaffold_smoke",
+  "local_actions_scaffold_smoke",
+  "scaffold_preservation_smoke",
+  "shutdown_smoke"
+]) {
+  const failedPlatformProof = JSON.parse(JSON.stringify(evidence));
+  failedPlatformProof.npm_distribution.platform_smoke["windows-2025"][field] = "failed";
+  assert.match(
+    evaluatePhase5Evidence(policy, failedPlatformProof, { now }).blockers.join("\n"),
+    /required lifecycle checks/,
+    field
+  );
+}
+const wrongPlatformSchema = JSON.parse(JSON.stringify(evidence));
+wrongPlatformSchema.npm_distribution.platform_smoke["macos-15"].schema_version = 1;
+assert.match(
+  evaluatePhase5Evidence(policy, wrongPlatformSchema, { now }).blockers.join("\n"),
+  /required lifecycle checks/
+);
 const missingNpmAssuranceReceipt = JSON.parse(JSON.stringify(evidence));
 delete missingNpmAssuranceReceipt.npm_distribution.assurance.receipt_sha256;
 assert.match(evaluatePhase5Evidence(policy, missingNpmAssuranceReceipt, { now }).blockers.join("\n"), /npm assurance receipt bytes/);
@@ -1135,28 +1881,153 @@ rewriteReceipt(failedBrowserBootAndPairing.npm_distribution.assurance, (receipt)
   receipt.browser_boot_and_pairing_smoke = "failed";
 });
 assert.match(evaluatePhase5Evidence(policy, failedBrowserBootAndPairing, { now }).blockers.join("\n"), /browser boot and pairing/);
+const exactTarballAssuranceFields = [
+  "exact_tarball_direct_cli_scaffold_smoke",
+  "exact_tarball_local_actions_scaffold_smoke",
+  "exact_tarball_scaffold_preservation_smoke",
+  "exact_tarball_shutdown_smoke"
+];
+for (const field of exactTarballAssuranceFields) {
+  const missingExactTarballReceiptProof = JSON.parse(JSON.stringify(evidence));
+  rewriteReceipt(missingExactTarballReceiptProof.npm_distribution.assurance, (receipt) => {
+    delete receipt[field];
+  });
+  assert.match(
+    evaluatePhase5Evidence(policy, missingExactTarballReceiptProof, { now }).blockers.join("\n"),
+    /Local Actions scaffold, preservation, shutdown/
+  );
+
+  const failedExactTarballReceiptProof = JSON.parse(JSON.stringify(evidence));
+  rewriteReceipt(failedExactTarballReceiptProof.npm_distribution.assurance, (receipt) => {
+    receipt[field] = "failed";
+  });
+  assert.match(
+    evaluatePhase5Evidence(policy, failedExactTarballReceiptProof, { now }).blockers.join("\n"),
+    /Local Actions scaffold, preservation, shutdown/
+  );
+
+  const failedExactTarballSummary = JSON.parse(JSON.stringify(evidence));
+  failedExactTarballSummary.npm_distribution.assurance[field] = "failed";
+  assert.match(
+    evaluatePhase5Evidence(policy, failedExactTarballSummary, { now }).blockers.join("\n"),
+    /does not declare the required/
+  );
+}
 const wrongPublicationTag = JSON.parse(JSON.stringify(evidence));
-rewriteReceipt(wrongPublicationTag.npm_distribution.publication, (receipt) => { receipt.tag = "v1.0.1"; });
-assert.match(evaluatePhase5Evidence(policy, wrongPublicationTag, { now }).blockers.join("\n"), /exact-tag initial publication/);
+rewriteReceipt(wrongPublicationTag.npm_distribution.publication, (receipt) => { receipt.tag = "v1.0.0"; });
+assert.match(evaluatePhase5Evidence(policy, wrongPublicationTag, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
+const wrongPublicationWorkflow = JSON.parse(JSON.stringify(evidence));
+wrongPublicationWorkflow.npm_distribution.publication.workflow_path = policy.npm_distribution.expected_initial_provenance_workflow;
+assert.match(evaluatePhase5Evidence(policy, wrongPublicationWorkflow, { now }).blockers.join("\n"), /exact canonical Actions workflow and run/);
+const wrongPublicationArtifact = JSON.parse(JSON.stringify(evidence));
+wrongPublicationArtifact.npm_distribution.publication.artifact_name = "studio-npm-publication-receipt-123460.json";
+assert.match(evaluatePhase5Evidence(policy, wrongPublicationArtifact, { now }).blockers.join("\n"), /artifact name is not bound/);
+const wrongOidcAuthentication = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(wrongOidcAuthentication.npm_distribution.publication, (receipt) => {
+  receipt.registry_authentication = policy.npm_distribution.initial_registry_authentication;
+});
+assert.match(evaluatePhase5Evidence(policy, wrongOidcAuthentication, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
+const wrongOidcPublisher = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(wrongOidcPublisher.npm_distribution.publication, (receipt) => {
+  receipt.npm_publisher = "unexpected-publisher";
+});
+assert.match(evaluatePhase5Evidence(policy, wrongOidcPublisher, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
+const wrongTrustedPublisher = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(wrongTrustedPublisher.npm_distribution.publication, (receipt) => {
+  receipt.trusted_publisher_id = "unexpected";
+});
+assert.match(evaluatePhase5Evidence(policy, wrongTrustedPublisher, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
+const wrongOidcProvenanceWorkflow = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(wrongOidcProvenanceWorkflow.npm_distribution.publication, (receipt) => {
+  receipt.provenance_workflow = policy.npm_distribution.expected_initial_provenance_workflow;
+});
+assert.match(evaluatePhase5Evidence(policy, wrongOidcProvenanceWorkflow, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
+const idempotentOidcVerification = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(idempotentOidcVerification.npm_distribution.publication, (receipt) => {
+  receipt.status = "verified-existing";
+  receipt.registry_authentication = "not-used-idempotent-verification";
+});
+assert.equal((await formalDecision(policy, idempotentOidcVerification)).decision, "go");
 const unverifiedPublishedPackage = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(unverifiedPublishedPackage.npm_distribution.publication, (receipt) => { receipt.provenance_verification = "registry-metadata-only"; });
 assert.match(evaluatePhase5Evidence(policy, unverifiedPublishedPackage, { now }).blockers.join("\n"), /cryptographically verified provenance/);
 const publicationBeforeAssurance = JSON.parse(JSON.stringify(evidence));
 publicationBeforeAssurance.npm_distribution.publication.observed_at = "2026-07-15T06:35:00Z";
 rewriteReceipt(publicationBeforeAssurance.npm_distribution.publication, (receipt) => { receipt.observed_at = "2026-07-15T06:35:00Z"; });
-assert.match(evaluatePhase5Evidence(policy, publicationBeforeAssurance, { now }).blockers.join("\n"), /exact-tag initial publication/);
+assert.match(evaluatePhase5Evidence(policy, publicationBeforeAssurance, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
 const unrevokedInitialToken = JSON.parse(JSON.stringify(evidence));
-unrevokedInitialToken.npm_distribution.post_publication_controls.token_revoked = false;
-assert.match(evaluatePhase5Evidence(policy, unrevokedInitialToken, { now }).blockers.join("\n"), /post-publication controls/);
+unrevokedInitialToken.npm_distribution.bootstrap_controls.token_revoked = false;
+assert.match(evaluatePhase5Evidence(policy, unrevokedInitialToken, { now }).blockers.join("\n"), /bootstrap controls/);
+const wrongBootstrapTag = JSON.parse(JSON.stringify(evidence));
+wrongBootstrapTag.npm_distribution.bootstrap_controls.tag = policy.npm_distribution.tag;
+assert.match(evaluatePhase5Evidence(policy, wrongBootstrapTag, { now }).blockers.join("\n"), /bootstrap controls/);
+const missingInitialPublication = JSON.parse(JSON.stringify(evidence));
+delete missingInitialPublication.npm_distribution.bootstrap_controls.initial_publication;
+assert.match(
+  evaluatePhase5Evidence(policy, missingInitialPublication, { now }).blockers.join("\n"),
+  /initial publication/
+);
+const prematureInitialArtifactExpiryPolicy = JSON.parse(JSON.stringify(policy));
+prematureInitialArtifactExpiryPolicy.npm_distribution.initial_publication_evidence.artifact_expires_at =
+  "2026-07-14T06:44:00Z";
+assert.match(
+  evaluatePhase5Evidence(prematureInitialArtifactExpiryPolicy, evidence, { now }).blockers.join("\n"),
+  /initial-publication policy evidence/
+);
+const forgedInitialPublication = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(
+  forgedInitialPublication.npm_distribution.bootstrap_controls.initial_publication,
+  (receipt) => { receipt.package_inventory_sha256 = "0".repeat(64); }
+);
+assert.match(
+  evaluatePhase5Evidence(policy, forgedInitialPublication, { now }).blockers.join("\n"),
+  /preserved immutable 1\.0\.0 publication/
+);
+const wrongInitialPublicationRun = JSON.parse(JSON.stringify(evidence));
+wrongInitialPublicationRun.npm_distribution.bootstrap_controls.initial_publication.run_url =
+  "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/999999";
+assert.match(
+  evaluatePhase5Evidence(policy, wrongInitialPublicationRun, { now }).blockers.join("\n"),
+  /preserved immutable 1\.0\.0 publication/
+);
+const wrongInitialPublicationArtifact = JSON.parse(JSON.stringify(evidence));
+wrongInitialPublicationArtifact.npm_distribution.bootstrap_controls.initial_publication.provenance.artifact_id = 998;
+wrongInitialPublicationArtifact.npm_distribution.bootstrap_controls.initial_publication.provenance.artifact_api_url =
+  "https://api.github.com/repos/GeorgianDusk/dusk-developer-studio/actions/artifacts/998";
+assert.match(
+  evaluatePhase5Evidence(policy, wrongInitialPublicationArtifact, { now }).blockers.join("\n"),
+  /historical artifact ID/
+);
+const tokenRevokedBeforeInitialPublication = JSON.parse(JSON.stringify(evidence));
+tokenRevokedBeforeInitialPublication.npm_distribution.bootstrap_controls.token_revoked_at =
+  "2026-07-14T06:46:00Z";
+assert.match(
+  evaluatePhase5Evidence(policy, tokenRevokedBeforeInitialPublication, { now }).blockers.join("\n"),
+  /bootstrap controls/
+);
+const controlsVerifiedBeforeInitialReceipt = JSON.parse(JSON.stringify(evidence));
+controlsVerifiedBeforeInitialReceipt.npm_distribution.bootstrap_controls.verified_at =
+  "2026-07-14T06:49:00Z";
+assert.match(
+  evaluatePhase5Evidence(policy, controlsVerifiedBeforeInitialReceipt, { now }).blockers.join("\n"),
+  /bootstrap controls/
+);
 const retainedEnvironmentSecret = JSON.parse(JSON.stringify(evidence));
-retainedEnvironmentSecret.npm_distribution.post_publication_controls.environment_secret_removed = false;
-assert.match(evaluatePhase5Evidence(policy, retainedEnvironmentSecret, { now }).blockers.join("\n"), /post-publication controls/);
+retainedEnvironmentSecret.npm_distribution.bootstrap_controls.environment_secret_removed = false;
+assert.match(evaluatePhase5Evidence(policy, retainedEnvironmentSecret, { now }).blockers.join("\n"), /bootstrap controls/);
 const missingTrustedPublisher = JSON.parse(JSON.stringify(evidence));
-missingTrustedPublisher.npm_distribution.post_publication_controls.trusted_publisher_configured = false;
-assert.match(evaluatePhase5Evidence(policy, missingTrustedPublisher, { now }).blockers.join("\n"), /post-publication controls/);
+missingTrustedPublisher.npm_distribution.bootstrap_controls.trusted_publisher_configured = false;
+assert.match(evaluatePhase5Evidence(policy, missingTrustedPublisher, { now }).blockers.join("\n"), /bootstrap controls/);
 const selfVerifiedBootstrapControls = JSON.parse(JSON.stringify(evidence));
-selfVerifiedBootstrapControls.npm_distribution.post_publication_controls.verified_by = selfVerifiedBootstrapControls.candidate.implementation_identities[0];
-assert.match(evaluatePhase5Evidence(policy, selfVerifiedBootstrapControls, { now }).blockers.join("\n"), /post-publication controls/);
+selfVerifiedBootstrapControls.npm_distribution.bootstrap_controls.verified_by = selfVerifiedBootstrapControls.candidate.implementation_identities[0];
+assert.match(evaluatePhase5Evidence(policy, selfVerifiedBootstrapControls, { now }).blockers.join("\n"), /bootstrap controls/);
+const reversedBootstrapChronology = JSON.parse(JSON.stringify(evidence));
+reversedBootstrapChronology.npm_distribution.bootstrap_controls.token_revoked_at = "2026-07-14T06:41:00Z";
+assert.match(evaluatePhase5Evidence(policy, reversedBootstrapChronology, { now }).blockers.join("\n"), /bootstrap controls/);
+const reusedBootstrapEvidence = JSON.parse(JSON.stringify(evidence));
+reusedBootstrapEvidence.npm_distribution.bootstrap_controls.environment_secret_removal_evidence_sha256 =
+  reusedBootstrapEvidence.npm_distribution.bootstrap_controls.token_revocation_evidence_sha256;
+assert.match(evaluatePhase5Evidence(policy, reusedBootstrapEvidence, { now }).blockers.join("\n"), /bootstrap controls/);
 const forbiddenKey = ["private", "key"].join("_");
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, unsafe: { [forbiddenKey]: "redacted" } }, { now }).blockers.join("\n"), /forbidden secret-shaped fields/);
 console.log("Phase 5 evidence go/no-go fixtures passed.");

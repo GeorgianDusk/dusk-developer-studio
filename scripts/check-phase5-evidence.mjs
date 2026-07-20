@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { verifyCandidateBoundPhase5Context } from "./phase5-candidate-context.mjs";
-import { evaluatePhase5EvidenceOnline } from "./phase5-evidence.mjs";
+import {
+  evaluatePhase5EvidenceOnline,
+  MAX_PHASE5_EVIDENCE_BYTES
+} from "./phase5-evidence.mjs";
 
 const root = path.resolve(process.cwd());
 const fileArgument = process.argv.find((argument) => argument.startsWith("--file="));
@@ -16,7 +19,11 @@ try {
   const evidencePath = path.resolve(root, fileArgument.slice("--file=".length));
   const policyBytes = fs.readFileSync(path.join(root, "config", "phase5-policy.json"));
   const policy = JSON.parse(policyBytes.toString("utf8"));
-  const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
+  const evidenceBytes = fs.readFileSync(evidencePath);
+  if (evidenceBytes.byteLength > MAX_PHASE5_EVIDENCE_BYTES) {
+    throw new Error(`Evidence file exceeds the ${MAX_PHASE5_EVIDENCE_BYTES}-byte limit.`);
+  }
+  const evidence = JSON.parse(evidenceBytes.toString("utf8"));
   const candidateContext = verifyCandidateBoundPhase5Context({ root, evidence, policyBytes });
   const result = await evaluatePhase5EvidenceOnline(policy, evidence, { token, ...candidateContext });
   console.log(JSON.stringify(result, null, 2));
