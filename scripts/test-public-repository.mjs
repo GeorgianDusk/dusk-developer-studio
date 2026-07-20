@@ -24,9 +24,12 @@ for (const file of [
   ".github/workflows/studio-monitor-schedule-guard.yml",
   ".github/workflows/duskds-native-smoke.yml",
   "docs/evidence/npm-initial-publication-receipt-29686128164.json",
+  "docs/security/duskds-cargo-advisory-review.md",
   "docs/operations/public-monitoring.md",
+  "scripts/check-cargo-advisory-review.mjs",
   "scripts/phase5-candidate-context.mjs",
   "scripts/verify-npm-provenance.mjs",
+  "config/cargo-advisory-review.json",
   "config/companion-release-policy.json",
   "SUPPORT.md"
 ]) assert.ok(fs.existsSync(path.join(root, file)), `Missing public repository contract: ${file}`);
@@ -69,6 +72,12 @@ const packageJson = JSON.parse(read("package.json"));
 assert.equal(packageJson.private, true, "The workspace must remain protected from accidental npm publication.");
 assert.equal(packageJson.license, "Apache-2.0");
 assert.equal(packageJson.repository.url, "git+https://github.com/GeorgianDusk/dusk-developer-studio.git");
+const dependabotConfig = read(".github/dependabot.yml");
+assert.match(
+  dependabotConfig,
+  /package-ecosystem: cargo[\s\S]*directory: \/packages\/templates\/duskds-counter-forge[\s\S]*versioning-strategy: lockfile-only/u,
+  "The embedded DuskDS Cargo lock must remain under recurring dependency monitoring."
+);
 assert.match(read("LICENSE"), /Apache License[\s\S]*Version 2\.0/);
 assert.doesNotMatch(read("README.md"), /private: true|Project status/);
 assert.match(read("SECURITY.md"), /private vulnerability reporting/i);
@@ -104,15 +113,38 @@ const duskDsTemplateLock = fs.readFileSync(
 );
 assert.equal(
   createHash("sha256").update(duskDsTemplateLock).digest("hex"),
-  "c1ac706c10edf715eebc33c2b04b430911597ffa8dfb393f41f2535468edd3cb"
+  "1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da"
 );
+const duskDsTemplateLockText = duskDsTemplateLock.toString("utf8");
 assert.match(
-  duskDsTemplateLock.toString("utf8"),
+  duskDsTemplateLockText,
   /\[\[package\]\]\nname = "dusk-studio-template-project"\nversion = "0\.1\.0"/u
 );
 assert.match(
-  duskDsTemplateLock.toString("utf8"),
+  duskDsTemplateLockText,
   /git\+https:\/\/github\.com\/dusk-network\/rusk\?tag=dusk-core-1\.6\.0#ae1a38a2079c681126a96f94c17d282ea2639946/u
+);
+assert.match(
+  duskDsTemplateLockText,
+  /\[\[package\]\]\nname = "serde_with"\nversion = "3\.21\.0"/u
+);
+assert.match(
+  duskDsTemplateLockText,
+  /\[\[package\]\]\nname = "time"\nversion = "0\.3\.53"/u
+);
+assert.doesNotMatch(duskDsTemplateLockText, /name = "serde_with"\nversion = "3\.17\.0"/u);
+assert.doesNotMatch(duskDsTemplateLockText, /name = "time"\nversion = "0\.3\.45"/u);
+const duskDsTemplateProvenance = read(`${duskDsTemplateRoot}/PROVENANCE.md`);
+assert.match(duskDsTemplateProvenance, /reviewed security\s+refresh/u);
+assert.match(duskDsTemplateProvenance, /GHSA-7gcf-g7xr-8hxj/u);
+assert.match(duskDsTemplateProvenance, /GHSA-r6v5-fh4h-64xc/u);
+assert.match(
+  duskDsTemplateProvenance,
+  /cargo \+1\.94\.0 update -p serde_with@3\.17\.0 --precise 3\.21\.0/u
+);
+assert.match(
+  duskDsTemplateProvenance,
+  /1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da/u
 );
 const duskDsTemplateCargo = read(`${duskDsTemplateRoot}/Cargo.toml`);
 assert.match(duskDsTemplateCargo, /^\[package\][\s\S]*^name = "dusk-studio-template-project"$/mu);
@@ -123,7 +155,6 @@ assert.match(
   read(`${duskDsTemplateRoot}/rust-toolchain.toml`),
   /^\[toolchain\]\nchannel = "1\.94\.0"$/mu
 );
-const duskDsTemplateProvenance = read(`${duskDsTemplateRoot}/PROVENANCE.md`);
 assert.match(duskDsTemplateProvenance, /d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a/u);
 assert.match(duskDsTemplateProvenance, /6657e6da48dc245860aa8575b0633d88e0cdd7fcedce524789c682d246284ea4/u);
 assert.equal(
@@ -249,6 +280,31 @@ for (const [file, workflow] of workflows) {
 }
 
 const requiredWindowsWorkflow = read(".github/workflows/studio-linux-security.yml");
+assert.match(requiredWindowsWorkflow, /schedule:[\s\S]*cron: "23 4 \* \* 1"/u);
+assert.match(
+  requiredWindowsWorkflow,
+  /rustup toolchain install 1\.94\.0 --profile minimal[\s\S]*cargo \+1\.94\.0 install --locked[\s\S]*--root "\$RUNNER_TEMP\/cargo-audit-0\.22\.2"[\s\S]*--version 0\.22\.2[\s\S]*cargo-audit/u
+);
+assert.match(
+  requiredWindowsWorkflow,
+  /CARGO_AUDIT_BIN: \$\{\{ runner\.temp \}\}\/cargo-audit-0\.22\.2\/bin\/cargo-audit[\s\S]*node scripts\/check-cargo-advisory-review\.mjs/u
+);
+const cargoAdvisoryGate = read("scripts/check-cargo-advisory-review.mjs");
+assert.match(cargoAdvisoryGate, /"audit"[\s\S]*"--json"[\s\S]*"--color"[\s\S]*"never"/u);
+assert.match(cargoAdvisoryGate, /validateCargoAdvisoryReview/u);
+assert.doesNotMatch(cargoAdvisoryGate, /"--ignore"|--deny warnings/u);
+const cargoAdvisoryPolicy = JSON.parse(read("config/cargo-advisory-review.json"));
+assert.equal(cargoAdvisoryPolicy.scanner.version, "0.22.2");
+assert.deepEqual(
+  cargoAdvisoryPolicy.accepted_informational_warnings.map(({ advisory_id: advisoryId }) => advisoryId),
+  [
+    "RUSTSEC-2025-0056",
+    "RUSTSEC-2025-0141",
+    "RUSTSEC-2024-0388",
+    "RUSTSEC-2024-0436",
+    "RUSTSEC-2026-0186"
+  ]
+);
 const elevatedArchiveStepStart = requiredWindowsWorkflow.indexOf(
   "- name: Build, pack, install, and smoke the Windows npm package"
 );
@@ -398,6 +454,10 @@ assert.match(publicStagingWorkflow, /Reclassified into #\$issue by failed schedu
 assert.ok(publicStagingWorkflow.indexOf('issue_url="$(gh issue create') < publicStagingWorkflow.indexOf('for other_title in "Studio public deployment assurance failed"'), "The selected incident must be open before other component titles are reclassified.");
 const duskDsNativeSmokeWorkflow = read(".github/workflows/duskds-native-smoke.yml");
 const duskDsToolchainPolicy = JSON.parse(read("config/duskds-toolchain-policy.json"));
+assert.equal(
+  cargoAdvisoryPolicy.lock_sha256,
+  duskDsToolchainPolicy.dusk_forge.reviewed_template.template_lock_sha256
+);
 assert.equal(duskDsToolchainPolicy.schema_version, 1);
 assert.equal(duskDsToolchainPolicy.rust_toolchain, "1.94.0");
 assert.deepEqual(duskDsToolchainPolicy.dusk_forge, {
@@ -410,7 +470,7 @@ assert.deepEqual(duskDsToolchainPolicy.dusk_forge, {
   reviewed_template: {
     id: "duskds-counter-forge",
     generated_lock_sha256: "6657e6da48dc245860aa8575b0633d88e0cdd7fcedce524789c682d246284ea4",
-    template_lock_sha256: "c1ac706c10edf715eebc33c2b04b430911597ffa8dfb393f41f2535468edd3cb"
+    template_lock_sha256: "1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da"
   }
 });
 assert.deepEqual(duskDsToolchainPolicy.w3sper, { version: "1.6.0" });

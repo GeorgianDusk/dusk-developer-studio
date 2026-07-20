@@ -70,9 +70,9 @@ const RUST_2024_RESERVED_PROJECT_IDENTIFIER_SET = new Set<string>(
 );
 const GENERATED_LOCK_SHA256 = toolchainPolicy.dusk_forge.reviewed_template.generated_lock_sha256;
 
-// Set after the WSL-generated lock is normalized from the pilot identity to the
-// valid template identity above. Keeping this hash here makes lock drift fail
-// closed before any project files are written.
+// Bound to the current policy-reviewed resolution after the documented
+// normalization and security refresh. Keeping this hash here makes lock drift
+// fail closed before any project files are written.
 const TEMPLATE_LOCK_SHA256 = toolchainPolicy.dusk_forge.reviewed_template.template_lock_sha256;
 
 const TEMPLATE_FILE_MAPPINGS = Object.freeze([

@@ -12,7 +12,7 @@ const TEMPLATE_RECEIPT = {
   template: "duskds-counter-forge",
   templateSource: "https://github.com/dusk-network/forge",
   templateRevision: "d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a",
-  templateLockSha256: "c1ac706c10edf715eebc33c2b04b430911597ffa8dfb393f41f2535468edd3cb"
+  templateLockSha256: "1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da"
 } as const;
 const servers = new Set<http.Server>();
 

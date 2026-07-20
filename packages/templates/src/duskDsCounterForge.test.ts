@@ -102,6 +102,15 @@ describe("reviewed DuskDS Forge counter template", () => {
     expect(byPath.get("Cargo.lock")).toMatch(
       /\[\[package\]\]\nname = "private-counter-2"\nversion = "0\.1\.0"/u
     );
+    expect(byPath.get("Cargo.lock")).toMatch(
+      /\[\[package\]\]\nname = "serde_with"\nversion = "3\.21\.0"/u
+    );
+    expect(byPath.get("Cargo.lock")).toMatch(
+      /\[\[package\]\]\nname = "time"\nversion = "0\.3\.53"/u
+    );
+    expect(byPath.get("Cargo.lock")).not.toMatch(
+      /name = "serde_with"\nversion = "3\.17\.0"|name = "time"\nversion = "0\.3\.45"/u
+    );
     expect(byPath.get("src/lib.rs")).toContain("mod private_counter_2");
     expect(byPath.get("src/lib.rs")).toContain("pub struct PrivateCounter2");
     expect(byPath.get("tests/contract.rs")).toContain(
@@ -231,7 +240,7 @@ describe("reviewed DuskDS Forge counter template", () => {
       createHash("sha256")
         .update(await fs.readFile(path.join(first.path, "Cargo.lock")))
         .digest("hex")
-    ).toBe("f124cacd00363869abd8e3c48fdc1562bbea6d1d725744bb07fa809a628f0329");
+    ).toBe("375e5b2e373a378afce7cec91b6f287a53ccb0844c3435827eb8543aaa527d86");
     await expect(
       scaffoldDuskDsCounterForgeTemplate({
         projectName: "counter-safe",

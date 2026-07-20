@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "lock_path": "packages/templates/duskds-counter-forge/Cargo.lock",
+  "lock_sha256": "1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da",
+  "lock_dependency_count": 277,
+  "scanner": {
+    "name": "cargo-audit",
+    "version": "0.22.2"
+  },
+  "accepted_informational_warnings": [
+    {
+      "kind": "unmaintained",
+      "package": "adler",
+      "version": "1.0.2",
+      "advisory_id": "RUSTSEC-2025-0056",
+      "owner": "GeorgianDusk repository maintainer",
+      "reviewed_on": "2026-07-20T08:30:00.000Z",
+      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reachability": "Transitive through dusk-plonk and miniz_oxide in the native dependency lock; absent from the exact contract and data-driver WASM normal and build trees.",
+      "upstream_tracking": "No maintained adler release exists and miniz_oxide 0.8 is outside dusk-plonk's current constraint; resolution requires an upstream Dusk Plonk dependency change."
+    },
+    {
+      "kind": "unmaintained",
+      "package": "bincode",
+      "version": "1.3.3",
+      "advisory_id": "RUSTSEC-2025-0141",
+      "owner": "GeorgianDusk repository maintainer",
+      "reviewed_on": "2026-07-20T08:30:00.000Z",
+      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reachability": "Dev and native-test dependency through dusk-vm, piecrust, and dusk-wasmtime; absent from the exact contract and data-driver WASM normal and build trees.",
+      "upstream_tracking": "No maintained bincode 1.x patch exists; resolution requires an upstream Dusk VM or Piecrust implementation and dependency change."
+    },
+    {
+      "kind": "unmaintained",
+      "package": "derivative",
+      "version": "2.2.0",
+      "advisory_id": "RUSTSEC-2024-0388",
+      "owner": "GeorgianDusk repository maintainer",
+      "reviewed_on": "2026-07-20T08:30:00.000Z",
+      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reachability": "Transitive through ark 0.4 and dusk-core in the native dependency lock; absent from the exact contract and data-driver WASM normal and build trees.",
+      "upstream_tracking": "No patched derivative release exists; resolution requires an upstream arkworks or Dusk dependency and implementation migration."
+    },
+    {
+      "kind": "unmaintained",
+      "package": "paste",
+      "version": "1.0.15",
+      "advisory_id": "RUSTSEC-2024-0436",
+      "owner": "GeorgianDusk repository maintainer",
+      "reviewed_on": "2026-07-20T08:30:00.000Z",
+      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reachability": "Transitive through ark 0.4 and through the native dusk-vm test stack; absent from the exact contract and data-driver WASM normal and build trees.",
+      "upstream_tracking": "No maintained paste release exists; resolution requires upstream arkworks and Dusk dependency or implementation changes."
+    },
+    {
+      "kind": "unsound",
+      "package": "memmap2",
+      "version": "0.7.1",
+      "advisory_id": "RUSTSEC-2026-0186",
+      "owner": "GeorgianDusk repository maintainer",
+      "reviewed_on": "2026-07-20T08:30:00.000Z",
+      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reachability": "Dev and native-test dependency through dusk-vm and piecrust; absent from the exact contract and data-driver WASM normal and build trees. Piecrust 0.30.0 contains no calls to the advisory's affected range-advice or range-flush methods.",
+      "upstream_tracking": "The fixed memmap2 line starts at 0.9.11, outside Piecrust's current 0.7 constraint; resolution requires an upstream Piecrust and Dusk VM dependency change."
+    }
+  ]
+}

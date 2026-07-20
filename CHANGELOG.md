@@ -24,6 +24,7 @@ Notable Dusk Developer Studio changes are recorded here.
 - Tighten project-name, filesystem-root, containment, runtime-platform, timeout, and evidence-identity validation.
 - Verify the packaged DuskDS template inventory, lockfile, provenance, and installed-tarball behavior before publication.
 - Bind historical npm bootstrap controls to the preserved `1.0.0` publication receipt and require explicit exact-tarball scaffold, preservation, and shutdown proofs.
+- Refresh the reviewed DuskDS Cargo lock to remediate `GHSA-7gcf-g7xr-8hxj` and `GHSA-r6v5-fh4h-64xc`, and add recurring Cargo dependency monitoring.
 
 ## 1.0.0 - 2026-07-19
 

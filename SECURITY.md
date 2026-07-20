@@ -44,6 +44,11 @@ npm exec --ignore-scripts --package=dusk-developer-studio@1.0.1 -- dusk-develope
 npm exec --ignore-scripts --package=dusk-developer-studio@1.0.1 -- dusk-developer-studio local-actions
 ```
 
+The embedded DuskDS Cargo lock is checked against GitHub advisories and the
+RustSec database. See the
+[current Cargo advisory review](docs/security/duskds-cargo-advisory-review.md)
+for the exact fail-closed policy and time-bounded upstream warning analysis.
+
 ## Hard boundaries
 
 - The Hosted guide is static and never connects to services on a developer's machine.

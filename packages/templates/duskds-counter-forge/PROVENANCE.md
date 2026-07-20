@@ -34,10 +34,38 @@ The Rusk dependency resolved from tag `dusk-core-1.6.0` at commit:
 ae1a38a2079c681126a96f94c17d282ea2639946
 ```
 
-For this reusable template, only the root package name in the generated lock
-was normalized from the one-off pilot name to the valid placeholder
-`dusk-studio-template-project`. Dependency package records, versions, sources,
-and checksums were not regenerated or changed.
+For the first reusable-template resolution, only the root package name in the
+generated lock was normalized from the one-off pilot name to the valid
+placeholder `dusk-studio-template-project`. Dependency package records,
+versions, sources, and checksums were unchanged at that normalization step. The
+normalized baseline had SHA-256:
+
+```text
+c1ac706c10edf715eebc33c2b04b430911597ffa8dfb393f41f2535468edd3cb
+```
+
+Before the `1.0.1` release, GitHub advisories
+`GHSA-7gcf-g7xr-8hxj` and `GHSA-r6v5-fh4h-64xc` prompted a reviewed security
+refresh in an isolated unprivileged Ubuntu 24.04 WSL2 copy with Cargo 1.94.0:
+
+```text
+cargo +1.94.0 update -p serde_with@3.17.0 --precise 3.21.0
+```
+
+That refresh changed `serde_with` from 3.17.0 to 3.21.0, `time` from 0.3.45 to
+0.3.53, `time-core` from 0.1.7 to 0.1.9, and `num-conv` from 0.1.0 to 0.2.2.
+It added `bs58` 0.5.1 alongside the still-required 0.4.0 record. The current
+template lock contains 277 package records including the root project, is
+68,426 bytes, and has SHA-256:
+
+```text
+1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da
+```
+
+`cargo metadata --locked`, `make test`, and `make wasm-dd` passed against this
+exact lock with Rust 1.94.0. The post-build hash remained unchanged. The Forge
+revision, Rusk tag and revision, template `Cargo.toml`, source, and licensing
+remain unchanged from the reviewed baseline.
 
 ## Studio modifications
 
@@ -47,7 +75,7 @@ and checksums were not regenerated or changed.
 - Use one valid placeholder identity consistently in `Cargo.toml`,
   `Cargo.lock`, the Rust module and struct, and the expected WASM filename.
 - Declare `MPL-2.0` and `publish = false` in the generated Cargo package.
-- Commit the reviewed lockfile.
+- Commit the reviewed, security-refreshed lockfile.
 - Run metadata, build, test, lint, expansion, and documentation commands with
   Cargo's `--locked` gate so normal template commands cannot rewrite the
   reviewed dependency resolution.
