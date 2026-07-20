@@ -92,24 +92,27 @@ test("keyboard order, focus treatment, and Local Studio targets follow the acces
     page.getByRole("link", { name: /Review this package version and provenance/i }),
     page.getByRole("link", { name: "Continue in the hosted guide" })
   ];
+  const storageDisclosure = page.locator("summary", { hasText: "Where created projects are stored" });
   const keyboardSequence = [
     ...commandTargets,
     // WebKit follows Safari's default keyboard preference and skips links unless
-    // Full Keyboard Access is enabled at the OS/browser level.
-    ...(browserName === "webkit" ? [] : linkTargets),
-    page.locator("summary", { hasText: "Where created projects are stored" })
+    // Full Keyboard Access is enabled at the OS/browser level. Its Linux CI build
+    // also skips native summary controls under that preference.
+    ...(browserName === "webkit" ? [] : [...linkTargets, storageDisclosure])
   ];
   for (const target of keyboardSequence) {
     await page.keyboard.press("Tab");
     await expect(target).toBeFocused();
   }
 
-  const storageDisclosure = page.locator("summary", { hasText: "Where created projects are stored" });
+  if (browserName === "webkit") await storageDisclosure.focus();
   await expect(storageDisclosure).toBeFocused();
   await expect(storageDisclosure).toHaveCSS("display", "list-item");
   await expect(storageDisclosure).toHaveCSS("outline-style", "solid");
   await expect(storageDisclosure).toHaveCSS("outline-width", "2px");
   await expect(storageDisclosure).toHaveCSS("outline-offset", "2px");
+  await page.keyboard.press("Enter");
+  await expect(page.locator("details.local-storage-disclosure")).toHaveAttribute("open", "");
 
   const companionTargets = page.locator(".reference-page :is(a, button, summary)");
   const targetCount = await companionTargets.count();
