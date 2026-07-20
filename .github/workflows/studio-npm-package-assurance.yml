@@ -453,8 +453,10 @@ jobs:
             $directProject = Join-Path $directCliRoot 'platform-direct-counter'
             foreach ($required in @('Cargo.lock', 'Cargo.toml', 'PROVENANCE.md', 'rust-toolchain.toml', 'src\lib.rs', 'tests\contract.rs')) {
               $requiredPath = Join-Path $directProject $required
-              if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)
-                  -or ((Get-Item -LiteralPath $requiredPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+              if (
+                -not (Test-Path -LiteralPath $requiredPath -PathType Leaf) -or
+                ((Get-Item -LiteralPath $requiredPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
+              ) {
                 throw "Direct CLI scaffold retained an unsafe required file: $required"
               }
             }
@@ -471,24 +473,30 @@ jobs:
             $lifecycleLines = @($localActionsResult.Output -split "`r?`n" | Where-Object { $_.StartsWith('DUSK_STUDIO_LIFECYCLE=') })
             if ($lifecycleLines.Count -ne 1) { throw 'Local Actions lifecycle receipt is missing or duplicated.' }
             $lifecycle = $lifecycleLines[0].Substring('DUSK_STUDIO_LIFECYCLE='.Length) | ConvertFrom-Json
-            if ($lifecycle.schema_version -ne 2
-                -or $lifecycle.mode -ne 'local-actions'
-                -or $lifecycle.local_actions_scaffold_smoke -ne 'passed'
-                -or $lifecycle.scaffold_preservation_smoke -ne 'passed'
-                -or $lifecycle.shutdown_smoke -ne 'passed'
-                -or $lifecycle.studio_loopback_services_stopped -ne $true) {
+            if (
+              $lifecycle.schema_version -ne 2 -or
+              $lifecycle.mode -ne 'local-actions' -or
+              $lifecycle.local_actions_scaffold_smoke -ne 'passed' -or
+              $lifecycle.scaffold_preservation_smoke -ne 'passed' -or
+              $lifecycle.shutdown_smoke -ne 'passed' -or
+              $lifecycle.studio_loopback_services_stopped -ne $true
+            ) {
               throw 'Local Actions lifecycle did not prove scaffold, preservation, and shutdown.'
             }
             $localProjects = @(Get-ChildItem -LiteralPath $localActionsRoot -Force)
-            if ($localProjects.Count -ne 1
-                -or -not $localProjects[0].PSIsContainer
-                -or ($localProjects[0].Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            if (
+              $localProjects.Count -ne 1 -or
+              -not $localProjects[0].PSIsContainer -or
+              ($localProjects[0].Attributes -band [IO.FileAttributes]::ReparsePoint)
+            ) {
               throw 'Local Actions lifecycle did not retain exactly one regular project.'
             }
             foreach ($required in @('Cargo.lock', 'Cargo.toml', 'PROVENANCE.md', 'rust-toolchain.toml', 'src\lib.rs', 'tests\contract.rs')) {
               $requiredPath = Join-Path $localProjects[0].FullName $required
-              if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)
-                  -or ((Get-Item -LiteralPath $requiredPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+              if (
+                -not (Test-Path -LiteralPath $requiredPath -PathType Leaf) -or
+                ((Get-Item -LiteralPath $requiredPath -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)
+              ) {
                 throw "Local Actions lifecycle retained an unsafe required file: $required"
               }
             }

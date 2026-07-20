@@ -139,16 +139,26 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     const errors = [];
     const responses = new Map();
     const responseEvents = [];
+    const responseByRequest = new Map();
+    const bootstrapRequests = [];
+    const finishedRequests = new Set();
+    const requestFailures = [];
     page.on("console", (message) => {
       if (message.type() === "error") {
         errors.push({ kind: "console", text: message.text(), url: message.location().url });
       }
     });
     page.on("pageerror", (error) => errors.push({ kind: "page", text: error.message, url: "" }));
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/__dusk/bootstrap") {
+        bootstrapRequests.push(request);
+      }
+    });
+    page.on("requestfinished", (request) => finishedRequests.add(request));
     page.on("requestfailed", (request) => {
       if (/^https?:\/\//u.test(request.url())) {
-        errors.push({
-          kind: "request",
+        requestFailures.push({
+          request,
           text: request.failure()?.errorText ?? "failed",
           url: request.url()
         });
@@ -158,6 +168,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       const url = response.url();
       if (/^https?:\/\//u.test(url)) {
         responseEvents.push({ url, status: response.status() });
+        responseByRequest.set(response.request(), { url, status: response.status() });
       }
       if (url.startsWith("http://127.0.0.1:")) {
         responses.set(url, response.status());
@@ -215,34 +226,50 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       probeIndex >= 0 && bootstrapIndex > probeIndex && authenticatedHealthIndex > bootstrapIndex,
       "Local pairing must observe unauthenticated health, successful bootstrap, then authenticated health in order."
     );
+    assert.equal(bootstrapRequests.length, 1, "Local pairing must make exactly one bootstrap request.");
+    const [bootstrapRequest] = bootstrapRequests;
+    assert.equal(bootstrapRequest.url(), expectedBootstrapUrl);
+    assert.equal(bootstrapRequest.method(), "POST");
+    assert.equal(bootstrapRequest.postData(), "{}");
     assert.deepEqual(
-      responseEvents.filter(({ status }) => status >= 400),
-      [{ url: expectedProbeUrl, status: 401 }],
-      "The only expected HTTP failure is the one unauthenticated health probe before pairing."
+      responseByRequest.get(bootstrapRequest),
+      { url: expectedBootstrapUrl, status: 200 },
+      "The single bootstrap request must receive the observed successful response."
     );
     const isExpectedProbeConsoleError = (error) =>
       error.kind === "console"
       && error.text === "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       && error.url === expectedProbeUrl;
-    assert.ok(
-      errors.filter(isExpectedProbeConsoleError).length <= 1,
-      "The expected unauthenticated health probe produced duplicate browser errors."
-    );
-    assert.deepEqual(
-      errors.filter((error) => !isExpectedProbeConsoleError(error)),
-      [],
-      "Browser smoke produced an unexpected console, page, or loopback request error."
-    );
+    // Hosted Chromium can report ERR_ABORTED after this fetch has already
+    // returned 200, supplied valid pairing JSON, and enabled authenticated health.
+    const isExpectedCompletedBootstrapAbort = (failure) =>
+      failure.request === bootstrapRequest
+      && failure.text === "net::ERR_ABORTED"
+      && failure.url === expectedBootstrapUrl;
     if (capabilitiesEnabled) {
-      const scaffold = await page.evaluate(async () => {
-        const response = await globalThis.fetch("http://127.0.0.1:8788/scaffold-duskds-forge", {
-          method: "POST",
-          credentials: "include",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ projectName: "installed-smoke-counter" })
-        });
-        return { status: response.status, body: await response.json() };
-      });
+      const expectedScaffoldUrl = "http://127.0.0.1:8788/scaffold-duskds-forge";
+      const scaffoldResponsePromise = page.waitForResponse(
+        (response) =>
+          response.url() === expectedScaffoldUrl && response.request().method() === "POST",
+        { timeout: BROWSER_TIMEOUT_MS }
+      );
+      const [scaffold, scaffoldResponse] = await Promise.all([
+        page.evaluate(async (scaffoldUrl) => {
+          const response = await globalThis.fetch(scaffoldUrl, {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ projectName: "installed-smoke-counter" })
+          });
+          return { status: response.status, body: await response.json() };
+        }, expectedScaffoldUrl),
+        scaffoldResponsePromise
+      ]);
+      assert.equal(
+        await scaffoldResponse.finished(),
+        null,
+        "The Local Actions scaffold response must finish without a transport error."
+      );
       assert.equal(scaffold.status, 200);
       assert.equal(scaffold.body.ok, true);
       assert.equal(scaffold.body.projectName, "installed-smoke-counter");
@@ -256,6 +283,40 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       createdProjectPath = scaffold.body.projectPath;
       assert.equal(typeof createdProjectPath, "string");
     }
+    assert.deepEqual(
+      responseEvents.filter(({ status }) => status >= 400),
+      [{ url: expectedProbeUrl, status: 401 }],
+      "The only expected HTTP failure is the one unauthenticated health probe before pairing."
+    );
+    const completedBootstrapAborts = requestFailures.filter(isExpectedCompletedBootstrapAbort);
+    assert.ok(
+      finishedRequests.has(bootstrapRequest) || completedBootstrapAborts.length === 1,
+      "The successful bootstrap request must finish or produce only the correlated Chromium abort telemetry."
+    );
+    assert.ok(
+      !(finishedRequests.has(bootstrapRequest) && completedBootstrapAborts.length),
+      "The bootstrap request cannot both finish and fail."
+    );
+    assert.ok(
+      completedBootstrapAborts.length <= 1,
+      "The completed bootstrap produced duplicate Chromium abort telemetry."
+    );
+    assert.deepEqual(
+      requestFailures
+        .filter((failure) => !isExpectedCompletedBootstrapAbort(failure))
+        .map(({ text, url }) => ({ text, url })),
+      [],
+      "Browser smoke produced an unexpected request failure."
+    );
+    assert.ok(
+      errors.filter(isExpectedProbeConsoleError).length <= 1,
+      "The expected unauthenticated health probe produced duplicate browser errors."
+    );
+    assert.deepEqual(
+      errors.filter((error) => !isExpectedProbeConsoleError(error)),
+      [],
+      "Browser smoke produced an unexpected console or page error."
+    );
     result = {
       mode: capabilitiesEnabled ? "local-actions" : "safe",
       paired_ui: expectedMode,
