@@ -286,8 +286,8 @@ describe("local companion containment boundary", () => {
   });
 
   it("returns only bounded reviewed-template identity in DuskDS scaffold receipts", async () => {
-    const projectRoot = path.resolve("managed-projects");
-    const projectPath = path.join(projectRoot, "native-demo");
+    const projectRoot = "C:\\managed-projects";
+    const projectPath = path.win32.join(projectRoot, "native-demo");
     const scaffoldDuskDsForge = vi.fn(async () => ({
       ok: true,
       path: projectPath,
