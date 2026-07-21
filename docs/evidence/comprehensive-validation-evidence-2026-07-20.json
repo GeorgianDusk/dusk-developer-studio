@@ -4362,6 +4362,16 @@
       "root_cause": "Response cardinality was filtered by raw endpoint string, one hostname and expected status before exclusivity was asserted; the smoke lacked complete route-family coverage, a page-request inventory, reference-identity bijection, uniform redirect refusal, Response-field self-validation and a frozen final network snapshot.",
       "fix": "Record every HTTP page request; classify companion routes across the explicit 127/localhost authority set and health/healthz aliases by canonical pathname; require zero route-level preflight requests/responses in Safe mode and exactly one in Local Actions before requiring the sole raw 127 URL/query, method, status, Origin, CORS, ordering, contract, UI and terminal state. Require distinct Request/Response objects, Set.has reference-identity bijection, response.request/url/status back-binding and no redirects for every accepted pairing/preflight exchange. Close the browser context before the final unexpected-status and transport validation over the frozen stream.",
       "regression_test": "Focused adversarial fixtures reject all 33 challenge mutations plus Response URL/status forgery: request-only, 204, encoded/extra-query, localhost and healthz variants; exact or semantic duplicates; wrong methods; shallow clones, mismatched/duplicated/impostor identities; redirects on all pairing/preflight exchanges; wrong Origin/CORS; invalid ordering; missing contract/UI proof; and every invalid terminal or unrelated-failure state. Two real Chrome exact-package previews and the full 346-test local gate passed during remediation; final independent challenge returned GO. Clean native GitHub assurance remains required."
+    },
+    {
+      "defect_id": "CV-D-079",
+      "severity": "P2",
+      "status": "fixed_local_pending_native_retest",
+      "summary": "The v1.0.3 OIDC workflow successfully published and independently verified the exact package, then reported failure because the post-publication receipt step wrote into an output/npm directory that did not exist in that job.",
+      "source": "GitHub Actions run 29849792487 job 88700031087 and independent npm registry verification on 2026-07-21",
+      "root_cause": "The subsequent-publication workflow omitted the recursive receipt-directory creation already present in the initial-publication workflow. The publication job downloaded its candidate under output/main-assurance, so no earlier step established output/npm.",
+      "fix": "Create output/npm recursively immediately before writing the direct OIDC publication receipt, without changing the immutable v1.0.3 tag or already-published registry artifact.",
+      "regression_test": "The public-repository contract now requires the recursive directory creation to precede the OIDC receipt write. Focused repository and comprehensive-validation fixtures must pass before the patch is pushed; native proof is deferred to the next idempotent subsequent-publication execution because v1.0.3 is immutable."
     }
   ],
   "challenge_reviews": [

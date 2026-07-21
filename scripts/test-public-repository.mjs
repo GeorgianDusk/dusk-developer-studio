@@ -549,6 +549,11 @@ assert.match(npmOidcWorkflow, /npm install --ignore-scripts --no-audit --no-fund
 assert.doesNotMatch(npmOidcWorkflow, /--package-lock-only/);
 assert.match(npmOidcWorkflow, /npm audit signatures --registry=https:\/\/registry\.npmjs\.org/);
 assert.match(npmOidcWorkflow, /verify-npm-provenance\.mjs[\s\S]*--publication=subsequent/);
+assert.match(
+  npmOidcWorkflow,
+  /fs\.mkdirSync\("output\/npm", \{ recursive: true \}\);[\s\S]*fs\.writeFileSync\(`output\/npm\/studio-npm-oidc-publication-receipt-/,
+  "The OIDC publication job must create its receipt directory before the fail-closed receipt write."
+);
 assert.match(npmOidcWorkflow, /publisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*publisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);
 assert.match(npmOidcWorkflow, /record\.replace\(\/\\s\+<\[\^>\]\+>\$\/u, ""\)\.trim\(\)[\s\S]*npmPublisher !== policy\.publication\.expected_oidc_publisher/);
 assert.match(npmOidcWorkflow, /registryPublisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*registryPublisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);

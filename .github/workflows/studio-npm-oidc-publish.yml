@@ -263,6 +263,7 @@ jobs:
             provenance_verification: "npm-audit-signatures-and-slsa-source-bound",
             ...provenance
           };
+          fs.mkdirSync("output/npm", { recursive: true });
           fs.writeFileSync(`output/npm/studio-npm-oidc-publication-receipt-${process.env.GITHUB_RUN_ID}.json`, `${JSON.stringify(receipt, null, 2)}\n`);
           NODE
       - name: Upload the direct OIDC publication receipt
