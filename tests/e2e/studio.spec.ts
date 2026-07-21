@@ -41,6 +41,139 @@ test("guided builder flow stays clear", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Check a read-only Dusk node query." })).toBeVisible();
 });
 
+test("internal navigation preserves browser back and forward history", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Reference", exact: true }).click();
+  await expect(page).toHaveURL(/#reference$/u);
+  await expect(page.getByRole("heading", { name: "Source-backed context for the task in front of you." })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Open the official docs source/ })).toHaveAttribute(
+    "href",
+    "https://github.com/dusk-network/docs"
+  );
+
+  await page.goBack();
+  await expect(page).not.toHaveURL(/#reference$/u);
+  await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
+
+  await page.goForward();
+  await expect(page).toHaveURL(/#reference$/u);
+  await expect(page.getByRole("heading", { name: "Source-backed context for the task in front of you." })).toBeVisible();
+});
+
+test("browser history restores the document title and prior scroll position", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.setViewportSize({ width: 1440, height: 700 });
+  await page.goto("/");
+
+  const overviewHeading = page.getByRole("heading", { name: "Pick the execution model your app actually needs." });
+  await expect(overviewHeading).toBeVisible();
+  const overviewTitle = await page.title();
+
+  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
+  await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
+  await expect(page).not.toHaveTitle(overviewTitle);
+  await page.goBack();
+  await expect(overviewHeading).toBeVisible();
+  await expect(page).toHaveTitle(overviewTitle);
+
+  await page.evaluate(() => window.scrollTo(0, 1_100));
+  const priorScrollY = await page.evaluate(() => window.scrollY);
+  expect(priorScrollY).toBeGreaterThan(500);
+  await page.getByRole("button", { name: /Start DuskDS/i }).evaluate((button: HTMLButtonElement) => button.click());
+  await expect(page.getByRole("heading", { name: "Record the native toolchain checks you ran." })).toBeVisible();
+  await page.goBack();
+  await expect(overviewHeading).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(priorScrollY);
+});
+
+test("browser history restores the builder path associated with each entry", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
+  const evmHeading = page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." });
+  await expect(evmHeading).toBeVisible();
+  await page.getByRole("button", { name: "Paths" }).click();
+  await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
+
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
+  await expect(page.getByRole("heading", { name: "Record the native toolchain checks you ran." })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
+  await page.goBack();
+  await expect(evmHeading).toBeVisible();
+});
+
+test("revealed tool-help links have descriptive accessible names", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
+
+  const gitRow = page.locator("article.manual-tool-row").filter({ has: page.getByText("Git", { exact: true }) });
+  await expect(gitRow.getByRole("link", { name: /Git installation and help/ })).toBeHidden();
+  await gitRow.getByText("Commands and expected result").click();
+  const helpLink = gitRow.getByRole("link", { name: /Git installation and help/ });
+  await expect(helpLink).toBeVisible();
+  await expect(helpLink).toHaveAttribute("href", "https://git-scm.com/downloads");
+  await helpLink.focus();
+  await expect(helpLink).toBeFocused();
+});
+
+test("Troubleshooting no-result recovery returns focus to search", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
+  await page.getByRole("button", { name: "Troubleshoot" }).click();
+  const search = page.getByPlaceholder(/Search Forge, Rust, WASM/i);
+  await search.fill("zzzz-no-such-fix");
+  await expect(page.getByText("0 recovery entries found.")).toBeVisible();
+  await expect(page.getByRole("link", { name: /Open project support/ })).toHaveAttribute(
+    "href",
+    "https://github.com/GeorgianDusk/dusk-developer-studio/issues"
+  );
+
+  await page.getByRole("button", { name: "Clear search" }).click();
+  await expect(search).toBeFocused();
+  await expect(search).toHaveValue("");
+  await expect(page.getByText(/recovery entries found\./)).toBeVisible();
+});
+
+test("invalid Build evidence identifies, describes, and focuses the recovery field", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
+
+  const setupChecks = page.getByRole("button", { name: /^Mark .* as checked$/u });
+  await expect(setupChecks).toHaveCount(6);
+  for (let index = 0; index < 6; index += 1) await setupChecks.first().click();
+  await page.getByRole("button", { name: "Save manual setup confirmation" }).click();
+
+  const guide = page.getByLabel("DuskDS guide sequence");
+  await guide.getByRole("button", { name: /2 Access/i }).click();
+  await page.getByRole("button", { name: /Manual now/ }).click();
+  await page.getByRole("button", { name: "Mark Deno as checked" }).click();
+  await page.getByLabel("Block height").fill("1");
+  await page.getByLabel("Block hash").fill("a".repeat(64));
+  await page.getByRole("button", { name: "Save manual node observation" }).click();
+
+  await guide.getByRole("button", { name: /3 Build/i }).click();
+  await page.getByRole("button", { name: "Linux shell" }).click();
+  await page.getByRole("button", { name: "Cargo.toml is present" }).click();
+  await page.getByRole("button", { name: /rust-toolchain\.toml pins/ }).click();
+  await page.getByLabel("Source identity", { exact: true }).fill("b".repeat(40));
+  await page.getByRole("button", { name: "Save manual structure confirmation" }).click();
+  await page.getByRole("button", { name: "Save manual artifact evidence" }).click();
+
+  const contractFilename = page.getByLabel("Filename").first();
+  await expect(contractFilename).toHaveAttribute("aria-invalid", "true");
+  await expect(contractFilename).toHaveAttribute("aria-describedby", "duskds-build-artifact-error");
+  await expect(contractFilename).toBeFocused();
+  await expect(page.locator("#duskds-build-artifact-error")).toContainText("WASM basename");
+});
+
 test("keyboard order, focus treatment, and Local Studio targets follow the accessibility contract", async ({ page, browserName }) => {
   await page.addInitScript(() => localStorage.clear());
   await page.setViewportSize({ width: 1200, height: 900 });
@@ -53,7 +186,7 @@ test("keyboard order, focus treatment, and Local Studio targets follow the acces
   const brand = page.getByRole("button", { name: "Dusk Developer Studio home" });
   const topNavigation = page.getByRole("navigation", { name: "Studio navigation" });
   const journeyContext = page.getByRole("button", { name: "Return to DuskDS at Setup" });
-  let brandBox = await brand.boundingBox();
+  const brandBox = await brand.boundingBox();
   let navigationBox = await topNavigation.boundingBox();
   let contextBox = await journeyContext.boundingBox();
 
@@ -64,13 +197,11 @@ test("keyboard order, focus treatment, and Local Studio targets follow the acces
   expect(navigationBox!.y).toBeLessThan(contextBox!.y);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  brandBox = await brand.boundingBox();
+  await expect(brand).toBeHidden();
   navigationBox = await topNavigation.boundingBox();
   contextBox = await journeyContext.boundingBox();
-  expect(brandBox).not.toBeNull();
   expect(navigationBox).not.toBeNull();
   expect(contextBox).not.toBeNull();
-  expect(brandBox!.y).toBeLessThan(navigationBox!.y);
   expect(navigationBox!.y).toBeLessThan(contextBox!.y);
 
   await expect(routeHeading).toBeFocused();

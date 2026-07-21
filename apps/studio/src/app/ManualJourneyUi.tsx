@@ -2,6 +2,7 @@ import { CheckCircle2, Circle, Laptop, ShieldCheck, Wrench } from "lucide-react"
 import type { ReactNode } from "react";
 import {
   manualToolsFor,
+  requiredManualCheckBundle,
   type ManualPlatform,
   type ManualToolRequirement,
   type ManualToolScope
@@ -83,6 +84,7 @@ export function ManualToolChecklist({
   const tools = manualToolsFor(scope).filter((tool) => tool.id !== "wsl" || platform === "windows");
   const required = tools.filter((tool) => tool.requirement === "required");
   const supporting = tools.filter((tool) => tool.requirement !== "required");
+  const requiredCheckBundle = requiredManualCheckBundle(scope, platform);
   return (
     <div className="manual-checklist">
       <div className="checklist-heading">
@@ -92,6 +94,15 @@ export function ManualToolChecklist({
         </div>
         <strong>{required.filter((tool) => confirmed.has(tool.id)).length}/{required.length} required checked</strong>
       </div>
+      {required.length > 1 ? (
+        <div className="checklist-batch-command">
+          <div>
+            <strong>Run all required checks</strong>
+            <p>Copy one fail-closed {platform === "windows" ? "PowerShell" : "shell"} bundle, then use the rows below to compare results or repair one tool.</p>
+          </div>
+          <CopyButton value={requiredCheckBundle} label={`Copy all required ${scope === "setup" ? "Setup" : scope} check commands`} />
+        </div>
+      ) : null}
       <div className="manual-tool-list">
         {required.map((tool) => (
           <ManualToolRow key={tool.id} tool={tool} platform={platform} checked={confirmed.has(tool.id)} onToggle={onToggle} />
@@ -153,7 +164,7 @@ function ManualToolRow({
             </div>
           ) : null}
           <p className="expected-result"><strong>Expected:</strong> {tool.expectedResult}</p>
-          <ExternalLink href={tool.helpUrl}>Installation and help</ExternalLink>
+          <ExternalLink href={tool.helpUrl}>{tool.name} installation and help</ExternalLink>
         </details>
       </div>
     </article>

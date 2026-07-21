@@ -10,6 +10,7 @@ export const DUSKDS_FORGE_PACKAGE_VERSION = toolchainPolicy.dusk_forge.package_v
 export const DUSKDS_TEMPLATE_ID = toolchainPolicy.dusk_forge.reviewed_template.id;
 export const DUSKDS_TEMPLATE_LOCK_SHA256 = toolchainPolicy.dusk_forge.reviewed_template.template_lock_sha256;
 export const DUSK_STUDIO_NPM_PACKAGE_VERSION = npmPackage.version;
+export const DUSK_STUDIO_NODE_ENGINE = npmPackage.engines.node;
 export const W3SPER_VERSION = toolchainPolicy.w3sper.version;
 export const DUSKDS_TESTNET_NODE = "https://testnet.nodes.dusk.network";
 
@@ -261,6 +262,29 @@ export const DUSKDS_MANUAL_TOOLS: ManualToolRequirement[] = [
 
 export function manualToolsFor(scope: ManualToolScope): ManualToolRequirement[] {
   return DUSKDS_MANUAL_TOOLS.filter((tool) => tool.scopes.includes(scope));
+}
+
+export function requiredManualCheckBundle(scope: ManualToolScope, platform: ManualPlatform): string {
+  const tools = manualToolsFor(scope).filter((tool) => tool.requirement === "required");
+  if (platform === "windows") {
+    return tools.map((tool) => {
+      const label = tool.name.replaceAll("'", "''");
+      return [
+        `Write-Host '=== ${label} ==='`,
+        tool.checkCommand.windows,
+        `if ($LASTEXITCODE -ne 0) { throw '${label} check failed.' }`
+      ].join("; ");
+    }).join(";\n");
+  }
+
+  const commands = tools.flatMap((tool) => {
+    const label = tool.name.replaceAll("'", "'\"'\"'");
+    return [
+      `printf '\\n=== %s ===\\n' '${label}'`,
+      tool.checkCommand[platform]
+    ];
+  });
+  return ["(", "set -e", ...commands, ")"].join("\n");
 }
 
 const W3SPER_POSIX_WORKSPACE = "duskds-w3sper-check";

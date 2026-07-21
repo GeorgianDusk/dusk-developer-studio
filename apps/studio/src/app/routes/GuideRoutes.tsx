@@ -20,6 +20,7 @@ import {
   DUSKDS_FORGE_COMMIT,
   DUSKDS_RUST_TOOLCHAIN,
   DUSKDS_TESTNET_NODE,
+  DUSK_STUDIO_NODE_ENGINE,
   DUSK_STUDIO_NPM_PACKAGE_VERSION,
   W3SPER_INSTALL_COMMAND,
   W3SPER_CREATE_FILE_COMMAND,
@@ -35,7 +36,11 @@ import {
   validateBlockObservation,
   validateBuildArtifacts,
   validateDriverObservation,
-  validateRevision
+  validateRevision,
+  type BlockObservationField,
+  type BuildArtifactField,
+  type DriverObservationKind,
+  type DriverObservationField
 } from "../manualEvidenceValidation";
 import {
   DuskDsNodeReadError,
@@ -65,7 +70,7 @@ import {
 import { defaultNetwork, initialManualPlatform } from "../studioConfig";
 import { useJourney, useStudioRuntime } from "../studioState";
 import type { CompanionStatus, RouteId } from "../types";
-import type { BuilderPath } from "../journeyProgress";
+import { isJourneyComplete, type BuilderPath } from "../journeyProgress";
 
 function stateForError(error: unknown): AsyncState {
   if (error instanceof SafeRequestError) {
@@ -81,6 +86,10 @@ function stateForError(error: unknown): AsyncState {
 
 function platformMetadata(platform: ManualPlatform): ManualPlatform {
   return platform;
+}
+
+function hasTruthfulDisposition(status: Parameters<typeof isJourneyComplete>[0]): boolean {
+  return isJourneyComplete(status) || status === "skipped" || status === "skipped-with-reason";
 }
 
 type ResponseFileKey = "metadata" | "schema" | "encode" | "decode";
@@ -220,9 +229,15 @@ function EvmPreviewPage() {
         <p>Review the planned execution model, Solidity toolchain, wallet and gas flow, explorer model, and activation boundary. Published network metadata is displayed for preparation only; the Studio does not treat it as live until DuskEVM Testnet is launched and revalidated.</p>
         <div className="button-row">
           <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/">Official deployment guide</ExternalLink>
+          <ExternalLink href="https://github.com/dusk-network/docs">Official docs source</ExternalLink>
           <ExternalLink href="https://dusk.network/news/duskevm-deep-dive">DuskEVM deep dive</ExternalLink>
+        </div>
+        <div className="tool-command">
+          <span>Pre-launch RPC reference</span>
+          <pre>{defaultNetwork.rpcUrls[0]}</pre>
           <CopyButton value={defaultNetwork.rpcUrls[0]} label="Copy pre-launch RPC URL" />
         </div>
+        <p className="quiet-note">Shown for inspection and configuration planning only. The Studio does not connect to this endpoint or treat it as live before activation checks pass.</p>
       </div>
       <div className="command-context">
         <StatusPill tone="warn">Not Studio-activated</StatusPill>
@@ -253,7 +268,7 @@ function EvmPreviewPage() {
             aria-describedby="evm-format-help evm-format-result"
           />
         </label>
-        <p className="quiet-note" id="evm-format-help">A hexadecimal block number such as 0x1234 is classified as a block reference, not validated against a network.</p>
+        <p className="quiet-note" id="evm-format-help">Exact 40-digit addresses and 64-digit transaction hashes take priority. Any other canonical unsigned JSON-RPC quantity, such as 0x1234, is treated as a block reference; a long value may still be a mistyped address or hash, so check its length.</p>
         <div className="button-row" id="evm-format-result" role="status" aria-live="polite">
           <StatusPill tone={classification ? "good" : invalidIdentifier ? "danger" : "neutral"}>
             {classification?.type ?? (invalidIdentifier ? "Unrecognized shape" : "Waiting for an example")}
@@ -284,6 +299,7 @@ function DuskDsSetup({
   const [preflight, setPreflight] = useState<PreflightResult | null>(null);
   const [message, setMessage] = useState("Automatic preflight has not run.");
   const [state, setState] = useState<AsyncState>("idle");
+  const manualHeadingRef = useRef<HTMLHeadingElement>(null);
   const requiredTools = manualToolsFor("setup").filter((tool) => tool.requirement === "required");
   const allRequiredConfirmed = requiredTools.every((tool) => confirmed.has(tool.id));
   const setupProgress = journey.progress.paths.duskds.setup;
@@ -312,6 +328,11 @@ function DuskDsSetup({
       else next.add(toolId);
       return next;
     });
+  }
+
+  function continueManually() {
+    changeCompletionMethod("manual");
+    window.requestAnimationFrame(() => manualHeadingRef.current?.focus());
   }
 
   function changePlatform(next: ManualPlatform) {
@@ -404,7 +425,7 @@ function DuskDsSetup({
       {method === "manual" ? (
         <>
           <div className="focus-card wide">
-            <h2>Run the required checks yourself</h2>
+            <h2 ref={manualHeadingRef} tabIndex={-1}>Run the required checks yourself</h2>
             <PlatformPicker value={platform} onChange={changePlatform} />
             <ManualToolChecklist scope="setup" platform={platform} confirmed={confirmed} onToggle={toggleTool} />
             {platform === "windows" ? (
@@ -458,7 +479,7 @@ function DuskDsSetup({
           <h2>Start Local Studio for automatic checks</h2>
           <p>The hosted guide cannot inspect your machine. Start the npm package for allowlisted automatic checks, or complete every required check in the manual lane.</p>
           <div className="button-row">
-            <button className="primary-button" type="button" onClick={() => changeCompletionMethod("manual")}>Continue manually</button>
+            <button className="primary-button" type="button" onClick={continueManually}>Continue manually</button>
             <button className="secondary-button" type="button" onClick={() => setRoute("companion")}>Get the npm command</button>
           </div>
         </div>
@@ -513,6 +534,9 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const [blockHeight, setBlockHeight] = useState(savedAccessEvidence?.method === "manual" ? savedAccessEvidence.metadata?.blockHeight?.toString() ?? "" : "");
   const [blockHash, setBlockHash] = useState(savedAccessEvidence?.method === "manual" ? savedAccessEvidence.metadata?.blockHash ?? "" : "");
   const [manualError, setManualError] = useState("");
+  const [invalidManualField, setInvalidManualField] = useState<"height" | "hash" | null>(null);
+  const manualHeightRef = useRef<HTMLInputElement>(null);
+  const manualHashRef = useRef<HTMLInputElement>(null);
   const [automaticState, setAutomaticState] = useState<AsyncState>(restoredAccessObservation ? "success" : "idle");
   const [automaticMessage, setAutomaticMessage] = useState(
     restoredAccessObservation
@@ -522,6 +546,8 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const [observation, setObservation] = useState<DuskDsBlockObservation | null>(restoredAccessObservation);
   const requiredAccessTools = manualToolsFor("access").filter((tool) => tool.requirement === "required");
   const toolsReady = requiredAccessTools.every((tool) => confirmed.has(tool.id));
+  const setupStatus = journey.progress.paths.duskds.setup.status;
+  const setupComplete = hasTruthfulDisposition(setupStatus);
   const manualAccessRecorded = journey.progress.paths.duskds.access.evidenceEntries
     .some((entry) => entry.code === "duskds-node-read-attestation" && entry.method === "manual");
 
@@ -544,6 +570,7 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
     setBlockHeight("");
     setBlockHash("");
     setManualError("");
+    setInvalidManualField(null);
     setPlatform(next);
   }
 
@@ -552,6 +579,8 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
       journey.removeEvidence("duskds", "access", ["duskds-node-read-attestation"]);
     }
     setBlockHeight(next);
+    setManualError("");
+    setInvalidManualField(null);
   }
 
   function changeManualBlockHash(next: string) {
@@ -559,6 +588,8 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
       journey.removeEvidence("duskds", "access", ["duskds-node-read-attestation"]);
     }
     setBlockHash(next);
+    setManualError("");
+    setInvalidManualField(null);
   }
 
   async function runHostedRead() {
@@ -585,7 +616,7 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
     } catch (error) {
       setAutomaticState(stateForError(error));
       setAutomaticMessage(error instanceof Error ? error.message : "The public node read failed.");
-      journey.block("duskds", "access", "rpc-unavailable");
+      journey.block("duskds", "access", "duskds-public-node-unavailable");
     }
   }
 
@@ -593,9 +624,15 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
     const result = validateBlockObservation(blockHeight, blockHash);
     if (!result.value) {
       setManualError(result.error ?? "Enter the observed height and hash.");
+      const invalidField = result.error?.includes("block height") ? "height" : "hash";
+      setInvalidManualField(invalidField);
+      window.requestAnimationFrame(() => {
+        (invalidField === "height" ? manualHeightRef : manualHashRef).current?.focus();
+      });
       return;
     }
     setManualError("");
+    setInvalidManualField(null);
     journey.record("duskds", "access", ["duskds-node-read-attestation"], {
       method: "manual",
       metadata: {
@@ -615,6 +652,7 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
       <div className="focus-card wide">
         <h2>Choose the read-only check</h2>
         <p>The hosted safe check reads one public block header directly. The manual lane teaches the W3sper application flow and stores only the values you enter.</p>
+        {!setupComplete ? <AsyncNotice state="partial" title="Complete or skip Setup first" message="You can review this page now, but Access checks and evidence stay disabled until the earlier Setup step has a truthful disposition." /> : null}
         <CompletionMethodPicker
           value={method}
           onChange={setMethod}
@@ -628,7 +666,7 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
         <div className="focus-card wide">
           <h2>Read the public Testnet tip</h2>
           <p>This sends one bounded, read-only GraphQL request to {DUSKDS_TESTNET_NODE}. It uses no wallet, key, account, transaction, or companion.</p>
-          <button className="primary-button" type="button" disabled={automaticState === "loading"} onClick={runHostedRead}>
+          <button className="primary-button" type="button" disabled={!setupComplete || automaticState === "loading"} onClick={runHostedRead}>
             {automaticState === "loading" ? "Reading latest block" : observation ? "Run safe check again" : "Run hosted safe check"}
           </button>
           {automaticState === "idle"
@@ -636,7 +674,7 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
             : <AsyncNotice
                 state={automaticState}
                 message={automaticMessage}
-                onRetry={automaticState === "error" || automaticState === "timeout" || automaticState === "unavailable" ? runHostedRead : undefined}
+                onRetry={setupComplete && (automaticState === "error" || automaticState === "timeout" || automaticState === "unavailable") ? runHostedRead : undefined}
               />}
           {observation ? <BlockReceipt observation={observation} label="Automatic browser observation" /> : null}
         </div>
@@ -676,16 +714,35 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
             <div className="evidence-form">
               <label>
                 Block height
-                <input inputMode="numeric" value={blockHeight} onChange={(event) => changeManualBlockHeight(event.target.value)} placeholder="3820996" />
+                <input
+                  ref={manualHeightRef}
+                  inputMode="numeric"
+                  value={blockHeight}
+                  aria-invalid={invalidManualField === "height" || undefined}
+                  aria-describedby={invalidManualField === "height" ? "duskds-access-manual-error" : undefined}
+                  onChange={(event) => changeManualBlockHeight(event.target.value)}
+                  placeholder="3820996"
+                />
               </label>
               <label>
                 Block hash
-                <input value={blockHash} onChange={(event) => changeManualBlockHash(event.target.value)} placeholder="64 hexadecimal characters" />
+                <input
+                  ref={manualHashRef}
+                  value={blockHash}
+                  aria-invalid={invalidManualField === "hash" || undefined}
+                  aria-describedby={invalidManualField === "hash" ? "duskds-access-manual-error" : undefined}
+                  onChange={(event) => changeManualBlockHash(event.target.value)}
+                  placeholder="64 hexadecimal characters"
+                />
               </label>
             </div>
-            {manualError ? <p className="validation-message" role="alert">{manualError}</p> : null}
-            <button className="primary-button" type="button" disabled={!toolsReady} onClick={recordManualRead}>Save manual node observation</button>
-            {!toolsReady ? <p className="quiet-note">Confirm the required Access tool before saving.</p> : null}
+            {manualError ? <p className="validation-message" id="duskds-access-manual-error" role="alert">{manualError}</p> : null}
+            <button className="primary-button" type="button" disabled={!setupComplete || !toolsReady} onClick={recordManualRead}>Save manual node observation</button>
+            {!setupComplete
+              ? <p className="quiet-note">Complete or skip Setup before saving Access evidence.</p>
+              : !toolsReady
+                ? <p className="quiet-note">Confirm the required Access tool before saving.</p>
+                : null}
           </div>
         </>
       )}
@@ -805,6 +862,29 @@ function activeScaffoldRequestMatches(requestId: number): boolean {
     && activeScaffoldContext.requestId === requestId;
 }
 
+function starterNodeRuntimeGuard(platform: ManualPlatform): string[] {
+  const failure = `Node.js ${DUSK_STUDIO_NODE_ENGINE} is required before starter creation.`;
+  if (platform === "windows") {
+    return [
+      '$studioNodeVersion = node -p "process.versions.node"',
+      `if ($LASTEXITCODE -ne 0) { throw ${quotePowerShellArg(failure)} }`,
+      "$studioNodeParts = @($studioNodeVersion.Split('.') | ForEach-Object { [int]$_ })",
+      `if ($studioNodeParts.Count -lt 2 -or $studioNodeParts[0] -ne 24 -or $studioNodeParts[1] -lt 18) { throw ${quotePowerShellArg(failure)} }`,
+      "npm --version",
+      `if ($LASTEXITCODE -ne 0) { throw ${quotePowerShellArg("npm is required before starter creation.")} }`
+    ];
+  }
+  const script = [
+    'const [major, minor] = process.versions.node.split(".").map(Number);',
+    `if (major !== 24 || minor < 18) { console.error(${JSON.stringify(failure)}); process.exit(1); }`,
+    "console.log(process.version);"
+  ].join(" ");
+  return [
+    `node -e ${quotePosixArg(script)}`,
+    "npm --version"
+  ];
+}
+
 function buildManualCommands({
   projectMode,
   projectName,
@@ -854,6 +934,7 @@ function buildManualCommands({
     const enter = enterProject(projectPath);
     const prepare = platform === "windows"
       ? [
+          ...starterNodeRuntimeGuard(platform),
           `$parentPath = ${quotePowerShellArg(root)}`,
           "New-Item -ItemType Directory -Path $parentPath -Force -ErrorAction Stop | Out-Null",
           "Set-Location -LiteralPath $parentPath -ErrorAction Stop",
@@ -862,6 +943,7 @@ function buildManualCommands({
           checkedPowerShell(`rustup override set ${DUSKDS_RUST_TOOLCHAIN}`, "Rust override failed.")
         ].join("\n")
       : posixBlock(
+          ...starterNodeRuntimeGuard(platform),
           `mkdir -p -- ${quotePosixArg(root)}`,
           `cd ${quotePosixArg(root)}`,
           create,
@@ -937,8 +1019,19 @@ function buildManualCommands({
       : posixBlock(...forgeGuard, enter, forge("check"), forge("build all")),
     test,
     revision: platform === "windows"
-      ? [enter, checkedPowerShell("git rev-parse HEAD", "Git revision read failed.")].join("\n")
-      : posixBlock(enter, "git rev-parse HEAD")
+      ? [
+          enter,
+          "$changes = @(git status --porcelain=v1 --untracked-files=all)",
+          "if ($LASTEXITCODE -ne 0) { throw 'Git working-tree check failed.' }",
+          "if ($changes.Count -ne 0) { throw 'Existing repository has tracked or untracked changes. Commit, stash, or remove them before recording evidence.' }",
+          checkedPowerShell("git rev-parse --verify HEAD", "Git revision read failed.")
+        ].join("\n")
+      : posixBlock(
+          enter,
+          'changes="$(git status --porcelain=v1 --untracked-files=all)"',
+          '[ -z "$changes" ] || { echo "Existing repository has tracked or untracked changes. Commit, stash, or remove them before recording evidence." >&2; exit 1; }',
+          "git rev-parse --verify HEAD"
+        )
   };
 }
 
@@ -973,10 +1066,19 @@ function DuskDsBuild({
   const [projectName, setProjectName] = useState(storedScaffold?.projectName ?? "duskds-forge-starter");
   const [parentDir, setParentDir] = useState(interruptedScaffold?.parentDir ?? "");
   const [existingRoot, setExistingRoot] = useState("");
+  const [existingRootTouched, setExistingRootTouched] = useState(false);
   const [structureRevision, setStructureRevision] = useState("");
   const [cargoConfirmed, setCargoConfirmed] = useState(false);
   const [toolchainConfirmed, setToolchainConfirmed] = useState(false);
+  const [cleanTreeConfirmed, setCleanTreeConfirmed] = useState(false);
+  const [postBuildSourceConfirmed, setPostBuildSourceConfirmed] = useState(false);
   const [structureError, setStructureError] = useState("");
+  const [structureErrorTarget, setStructureErrorTarget] = useState<"revision" | "checks" | "clean" | null>(null);
+  const structureRevisionRef = useRef<HTMLInputElement>(null);
+  const cargoConfirmationRef = useRef<HTMLButtonElement>(null);
+  const toolchainConfirmationRef = useRef<HTMLButtonElement>(null);
+  const cleanTreeConfirmationRef = useRef<HTMLButtonElement>(null);
+  const postBuildSourceConfirmationRef = useRef<HTMLButtonElement>(null);
   const [files, setFiles] = useState<string[]>(restoredScaffold?.files ?? []);
   const [createdProjectPath, setCreatedProjectPath] = useState(restoredScaffold?.projectPath ?? "");
   const [scaffoldMessage, setScaffoldMessage] = useState(
@@ -1002,8 +1104,11 @@ function DuskDsBuild({
     dataDriverSize: ""
   });
   const [artifactError, setArtifactError] = useState("");
+  const [artifactInvalidField, setArtifactInvalidField] = useState<BuildArtifactField | null>(null);
+  const artifactFieldRefs = useRef<Partial<Record<BuildArtifactField, HTMLInputElement | null>>>({});
   const [testsPassed, setTestsPassed] = useState(false);
   const [vmEnvironmentConfirmed, setVmEnvironmentConfirmed] = useState(false);
+  const manualBuildHeadingRef = useRef<HTMLHeadingElement>(null);
   const projectInputError = projectMode === "new" ? projectNameError(projectName) : "";
   const commandPathError = projectMode === "existing"
     ? pathFieldError(existingRoot, { label: "Existing project root", platform, requireAbsolute: true })
@@ -1014,6 +1119,11 @@ function DuskDsBuild({
         rejectFilesystemRoot: method === "manual"
       });
   const commandInputError = projectInputError || commandPathError;
+  const commandInputErrorVisible = Boolean(commandInputError)
+    && (projectMode !== "existing" || existingRootTouched);
+  const commandContextPrompt = projectMode === "existing"
+    ? "Enter a valid absolute existing project root above to generate these commands."
+    : "Correct the project name or parent-folder value above to generate these commands.";
   const commands = useMemo(
     () => commandInputError ? null : buildManualCommands({
       projectMode,
@@ -1027,6 +1137,7 @@ function DuskDsBuild({
   );
   const artifactCommands = useMemo(() => {
     if (!commands) return null;
+    const expectedRevision = validateRevision(structureRevision).value;
     if (platform === "windows") {
       const enter = `Set-Location -LiteralPath ${quotePowerShellArg(commands.projectPath)} -ErrorAction Stop`;
       return {
@@ -1039,7 +1150,18 @@ function DuskDsBuild({
           enter,
           "Get-FileHash -Algorithm SHA256 '.\\target\\contract\\wasm32-unknown-unknown\\release\\*.wasm' -ErrorAction Stop",
           "Get-FileHash -Algorithm SHA256 '.\\target\\data-driver\\wasm32-unknown-unknown\\release\\*.wasm' -ErrorAction Stop"
-        ].join("\n")
+        ].join("\n"),
+        source: projectMode === "existing" && expectedRevision ? [
+          enter,
+          `$expectedRevision = '${expectedRevision}'`,
+          "$changes = @(git status --porcelain=v1 --untracked-files=all)",
+          "if ($LASTEXITCODE -ne 0) { throw 'Final Git working-tree check failed.' }",
+          "if ($changes.Count -ne 0) { throw 'Source changed after the initial check. Commit, stash, or remove tracked and untracked changes, then rebuild, retest, and rehash.' }",
+          "$currentRevision = (git rev-parse --verify HEAD).Trim().ToLowerInvariant()",
+          "if ($LASTEXITCODE -ne 0) { throw 'Final Git revision read failed.' }",
+          "if ($currentRevision -ne $expectedRevision) { throw 'HEAD changed after the initial check. Rebuild, retest, and rehash from the current commit.' }",
+          "Write-Output \"FINAL_GIT_SOURCE_VERIFIED=$currentRevision\""
+        ].join("\n") : ""
       };
     }
     const enter = `cd ${quotePosixArg(commands.projectPath)}`;
@@ -1068,12 +1190,25 @@ function DuskDsBuild({
         `for file in target/data-driver/wasm32-unknown-unknown/release/*.wasm; do if [ -f "$file" ]; then ${hashTool} "$file"; driverFound=1; fi; done`,
         '[ "$driverFound" -eq 1 ] || { echo "No data-driver WASM artifact found." >&2; exit 1; }',
         ")"
-      ].join("\n")
+      ].join("\n"),
+      source: projectMode === "existing" && expectedRevision ? [
+        "(",
+        "set -e",
+        enter,
+        `expectedRevision=${quotePosixArg(expectedRevision)}`,
+        'changes="$(git status --porcelain=v1 --untracked-files=all)"',
+        '[ -z "$changes" ] || { echo "Source changed after the initial check. Commit, stash, or remove tracked and untracked changes, then rebuild, retest, and rehash." >&2; exit 1; }',
+        'currentRevision="$(git rev-parse --verify HEAD | tr "[:upper:]" "[:lower:]")"',
+        '[ "$currentRevision" = "$expectedRevision" ] || { echo "HEAD changed after the initial check. Rebuild, retest, and rehash from the current commit." >&2; exit 1; }',
+        'printf "FINAL_GIT_SOURCE_VERIFIED=%s\\n" "$currentRevision"',
+        ")"
+      ].join("\n") : ""
     };
-  }, [commands, platform]);
+  }, [commands, platform, projectMode, structureRevision]);
   const wasmOptTool = manualToolsFor("build").find((tool) => tool.id === "wasm-opt");
   const wslTool = manualToolsFor("build").find((tool) => tool.id === "wsl");
   const buildProgress = journey.progress.paths.duskds.build;
+  const accessComplete = hasTruthfulDisposition(journey.progress.paths.duskds.access.status);
   const structureReady = buildProgress.evidence.includes("duskds-starter-structure");
   const savedArtifactRevision = buildProgress.evidenceEntries
     .find((entry) => entry.code === "duskds-build-artifact-attestation")
@@ -1103,8 +1238,11 @@ function DuskDsBuild({
   function clearDependentBuildInputs() {
     setCargoConfirmed(false);
     setToolchainConfirmed(false);
+    setCleanTreeConfirmed(false);
+    setPostBuildSourceConfirmed(false);
     setStructureRevision("");
     setStructureError("");
+    setStructureErrorTarget(null);
     setArtifactInput({
       revision: "",
       contractName: "",
@@ -1115,6 +1253,7 @@ function DuskDsBuild({
       dataDriverSize: ""
     });
     setArtifactError("");
+    setArtifactInvalidField(null);
     setTestsPassed(false);
     setVmEnvironmentConfirmed(false);
     setFiles([]);
@@ -1133,6 +1272,7 @@ function DuskDsBuild({
     if (next === projectMode) return;
     invalidateRecordedBuildContext();
     clearDependentBuildInputs();
+    setExistingRootTouched(next === "existing" && Boolean(existingRoot.trim()));
     window.sessionStorage.setItem(DUSKDS_BUILD_PROJECT_MODE_KEY, next);
     setProjectMode(next);
   }
@@ -1144,6 +1284,11 @@ function DuskDsBuild({
     setMethod(next);
   }
 
+  function continueBuildManually() {
+    changeCompletionMethod("manual");
+    window.requestAnimationFrame(() => manualBuildHeadingRef.current?.focus());
+  }
+
   function setBuildPlatform(next: ManualPlatform) {
     if (next === platform) return;
     invalidateRecordedBuildContext();
@@ -1152,16 +1297,31 @@ function DuskDsBuild({
   }
 
   function recordManualStructure() {
+    if (!accessComplete) return;
     const revision = validateRevision(structureRevision);
     if (!revision.value) {
       setStructureError(revision.error ?? "Enter the source identity.");
+      setStructureErrorTarget("revision");
+      window.requestAnimationFrame(() => structureRevisionRef.current?.focus());
       return;
     }
     if (!cargoConfirmed || !toolchainConfirmed) {
       setStructureError("Confirm both Cargo.toml and rust-toolchain.toml before saving.");
+      setStructureErrorTarget("checks");
+      window.requestAnimationFrame(() => {
+        (!cargoConfirmed ? cargoConfirmationRef.current : toolchainConfirmationRef.current)?.focus();
+      });
       return;
     }
+    if (projectMode === "existing" && !cleanTreeConfirmed) {
+      setStructureError("Confirm that the existing repository had no tracked or untracked changes when its commit ID was read.");
+      setStructureErrorTarget("clean");
+      window.requestAnimationFrame(() => cleanTreeConfirmationRef.current?.focus());
+      return;
+    }
+    setPostBuildSourceConfirmed(false);
     setStructureError("");
+    setStructureErrorTarget(null);
     if (buildProgress.evidence.length > 0) journey.invalidate("duskds", "build");
     journey.record("duskds", "build", ["duskds-starter-structure"], {
       method: "manual",
@@ -1171,13 +1331,18 @@ function DuskDsBuild({
         version: DUSKDS_RUST_TOOLCHAIN,
         revision: revision.value,
         platform: platformMetadata(platform),
-        checkCount: 2
+        checkCount: projectMode === "existing" ? 3 : 2,
+        ...(projectMode === "existing" ? {
+          cleanTree: true,
+          sourceScope: "git-commit-plus-unignored-working-tree"
+        } : {})
       }
     });
     setArtifactInput((current) => ({ ...current, revision: current.revision || revision.value || "" }));
   }
 
   async function scaffoldForge() {
+    if (!accessComplete) return;
     if (commandInputError) {
       setScaffoldState("error");
       setScaffoldMessage(commandInputError);
@@ -1277,22 +1442,40 @@ function DuskDsBuild({
   }
 
   function recordArtifacts() {
+    if (!accessComplete) return;
     const result = validateBuildArtifacts(artifactInput);
     if (!result.value) {
       setArtifactError(result.error ?? "Enter the bounded artifact details.");
+      setArtifactInvalidField(result.field ?? null);
+      window.requestAnimationFrame(() => {
+        if (result.field) artifactFieldRefs.current[result.field]?.focus();
+      });
       return;
     }
     const manualStructure = buildProgress.evidenceEntries.find((entry) => entry.code === "duskds-starter-structure" && entry.method === "manual");
     if (manualStructure?.metadata?.revision && result.value.revision !== manualStructure.metadata.revision) {
       setArtifactError("Use the same source identity saved in the manual structure confirmation.");
+      setArtifactInvalidField("revision");
+      window.requestAnimationFrame(() => artifactFieldRefs.current.revision?.focus());
+      return;
+    }
+    if (projectMode === "existing" && !postBuildSourceConfirmed) {
+      setArtifactError("Run and confirm the final Git source check after building, testing, and hashing the artifacts.");
+      setArtifactInvalidField(null);
+      window.requestAnimationFrame(() => postBuildSourceConfirmationRef.current?.focus());
       return;
     }
     setArtifactError("");
+    setArtifactInvalidField(null);
     journey.record("duskds", "build", ["duskds-build-artifact-attestation"], {
       method: "manual",
       metadata: {
         ...result.value,
-        platform: platformMetadata(platform)
+        platform: platformMetadata(platform),
+        ...(projectMode === "existing" ? {
+          postBuildSourceCheck: true,
+          sourceScope: "git-commit-plus-unignored-working-tree"
+        } : {})
       }
     });
   }
@@ -1301,6 +1484,10 @@ function DuskDsBuild({
     const changedFields = (Object.keys(next) as Array<keyof typeof artifactInput>)
       .filter((field) => next[field] !== artifactInput[field]);
     if (changedFields.length > 0) {
+      if (artifactInvalidField && changedFields.includes(artifactInvalidField)) {
+        setArtifactError("");
+        setArtifactInvalidField(null);
+      }
       const revisionChanged = changedFields.includes("revision");
       const removals = [
         ...(buildProgress.evidence.includes("duskds-build-artifact-attestation")
@@ -1312,11 +1499,13 @@ function DuskDsBuild({
       ];
       if (removals.length > 0) journey.removeEvidence("duskds", "build", removals);
       if (revisionChanged) setTestsPassed(false);
+      if (revisionChanged) setPostBuildSourceConfirmed(false);
     }
     setArtifactInput(next);
   }
 
   function recordTests() {
+    if (!accessComplete) return;
     const revision = validateRevision(artifactInput.revision || structureRevision);
     if (
       platform === "macos"
@@ -1349,6 +1538,7 @@ function DuskDsBuild({
     >
       <div className="focus-card wide">
         <h2>Choose your project and completion method</h2>
+        {!accessComplete ? <AsyncNotice state="partial" title="Complete or skip Access first" message="You can review the Build commands now, but project creation and Build evidence stay disabled until Access has a truthful disposition." /> : null}
         <div className="method-picker compact" role="group" aria-label="Choose project type">
           <button disabled={scaffoldContextLocked} className={projectMode === "new" ? "method-option active" : "method-option"} type="button" aria-pressed={projectMode === "new"} onClick={() => changeProjectMode("new")}>
             <span><strong>New Forge starter</strong><small>Create the reviewed Counter template.</small></span>
@@ -1381,7 +1571,14 @@ function DuskDsBuild({
               }} placeholder={method === "automatic" && automaticAvailable ? "examples" : platform === "windows" ? "C:\\tmp\\dusk-studio-projects" : ".generated"} /></label>
             </>
           ) : (
-            <label>Existing project root<input disabled={scaffoldContextLocked} value={existingRoot} onChange={(event) => {
+            <label>Existing project root<input
+              disabled={scaffoldContextLocked}
+              value={existingRoot}
+              aria-invalid={commandInputErrorVisible && Boolean(commandPathError)}
+              aria-describedby={commandInputErrorVisible ? "existing-project-root-error" : undefined}
+              onBlur={() => setExistingRootTouched(true)}
+              onChange={(event) => {
+              setExistingRootTouched(true);
               if (event.target.value !== existingRoot) {
                 invalidateRecordedBuildContext();
                 clearDependentBuildInputs();
@@ -1390,7 +1587,7 @@ function DuskDsBuild({
             }} placeholder={platform === "windows" ? "C:\\absolute\\path\\to\\project" : "/absolute/path/to/project"} /></label>
           )}
         </div>
-        {commandInputError ? <p className="validation-message" role="alert">{commandInputError}</p> : null}
+        {commandInputErrorVisible ? <p id={projectMode === "existing" ? "existing-project-root-error" : undefined} className="validation-message" role="alert">{commandInputError}</p> : null}
         <p className="quiet-note">Paths stay only in this tab's active memory and are never written to browser storage, journey evidence, or diagnostics.</p>
       </div>
       {method === "automatic" ? (
@@ -1401,7 +1598,7 @@ function DuskDsBuild({
             <p>Local Actions checks prerequisites and creates new reviewed starters only. It does not attach to, import, crawl, or write to an existing repository.</p>
             <p>Use the manual existing-repository checks below for your current project. You can also open Local Studio setup to review its modes and security boundary.</p>
             <div className="button-row">
-              <button className="primary-button" type="button" onClick={() => changeCompletionMethod("manual")}>Continue with manual existing-repo checks</button>
+              <button className="primary-button" type="button" onClick={continueBuildManually}>Continue with manual existing-repo checks</button>
               <button className="secondary-button" type="button" onClick={() => setRoute("companion")}>Open Local Studio setup</button>
             </div>
           </div>
@@ -1409,12 +1606,12 @@ function DuskDsBuild({
           <div className="focus-card wide">
             <h2>Create and inspect the starter locally</h2>
             <p>The paired companion creates only inside its managed DuskDS root from the reviewed template and Cargo.lock shipped in this exact npm package. Starter creation does not run Dusk Forge or download a moving upstream template.</p>
-            <CompanionActionButton companionStatus={companionStatus} setRoute={setRoute} onAction={scaffoldForge} disabled={scaffoldState === "loading" || scaffoldState === "success" || scaffoldRecoverable || Boolean(commandInputError)}>
+            <CompanionActionButton companionStatus={companionStatus} setRoute={setRoute} onAction={scaffoldForge} disabled={!accessComplete || scaffoldState === "loading" || scaffoldState === "success" || scaffoldRecoverable || Boolean(commandInputError)}>
               Create and verify DuskDS starter
             </CompanionActionButton>
             {scaffoldState === "idle"
               ? <p className="quiet-note">{scaffoldMessage}</p>
-              : <AsyncNotice state={scaffoldState} message={scaffoldMessage} onRetry={scaffoldRecoverable || scaffoldState === "unavailable" ? scaffoldForge : undefined} />}
+              : <AsyncNotice state={scaffoldState} message={scaffoldMessage} onRetry={accessComplete && (scaffoldRecoverable || scaffoldState === "unavailable") ? scaffoldForge : undefined} />}
             {files.length && createdProjectPath ? (
               <>
                 <FileEvidence files={files} projectPath={createdProjectPath} />
@@ -1434,23 +1631,40 @@ function DuskDsBuild({
             <p>The hosted guide cannot create files. Local Studio can create the new starter inside its approved project root; the complete manual commands remain available as a fallback.</p>
             <div className="button-row">
               <button className="primary-button" type="button" onClick={() => setRoute("companion")}>Open Local Studio setup</button>
-              <button className="secondary-button" type="button" onClick={() => changeCompletionMethod("manual")}>Continue manually</button>
+              <button className="secondary-button" type="button" onClick={continueBuildManually}>Continue manually</button>
             </div>
           </div>
         )
       ) : (
         <>
           <div className="focus-card wide">
-            <h2>{projectMode === "new" ? "Create the reviewed starter" : "Check the existing project"}</h2>
+            <h2 ref={manualBuildHeadingRef} tabIndex={-1}>{projectMode === "new" ? "Create the reviewed starter" : "Check the existing project"}</h2>
+            {projectMode === "new" ? (
+              <div className="manual-record-notice">
+                <StatusPill tone="warn">Required before Prepare project</StatusPill>
+                <h3>Check the Node runtime used by npm</h3>
+                <p>Setup covers the native Rust toolchain. The public template creator is a separate npm command and requires Node.js <strong>{DUSK_STUDIO_NODE_ENGINE}</strong>. The Prepare project command repeats this guard before creating a folder or downloading the package.</p>
+                <div className="tool-command">
+                  <span>Check Node and npm</span>
+                  <pre>{starterNodeRuntimeGuard(platform).join(platform === "windows" ? "\r\n" : "\n")}</pre>
+                  <CopyButton
+                    value={starterNodeRuntimeGuard(platform).join(platform === "windows" ? "\r\n" : "\n")}
+                    label="Copy Node and npm prerequisite check"
+                  />
+                </div>
+              </div>
+            ) : null}
             {commands ? (
-              <CommandPair firstTitle="Prepare project" first={commands.prepare} secondTitle={projectMode === "new" ? "Record source snapshot" : "Record source revision"} second={commands.revision} />
-            ) : <p className="validation-message" role="alert">{commandInputError}</p>}
+              <CommandPair firstTitle="Prepare project" first={commands.prepare} secondTitle={projectMode === "new" ? "Record source snapshot" : "Initial clean-tree check + full commit"} second={commands.revision} />
+            ) : <p className="quiet-note">{commandContextPrompt}</p>}
             <ManualRecordNotice>
-              Confirm the two required files and save the exact Git tree or commit ID printed by the command. A new starter uses a tree ID so first-time Git users do not need to invent an author identity. The project path is deliberately not stored.
+              Confirm the two required files and save the full Git tree or commit ID printed by the command. A new starter uses a tree ID so first-time Git users do not need to invent an author identity. For an existing repository, this is the initial Git-tracked source identity; you must revalidate the same commit and clean unignored working tree after building, testing, and hashing. Ignored local files are outside this evidence and must not be build inputs. The project path is deliberately not stored.
             </ManualRecordNotice>
-            <div className="evidence-confirmations">
-              <button type="button" aria-pressed={cargoConfirmed} onClick={() => {
+            <div className="evidence-confirmations" role="group" aria-label="Required project structure confirmations" aria-describedby={structureErrorTarget === "checks" || structureErrorTarget === "clean" ? "duskds-build-structure-error" : undefined}>
+              <button ref={cargoConfirmationRef} type="button" aria-pressed={cargoConfirmed} onClick={() => {
                 invalidateRecordedBuildContext();
+                setStructureError("");
+                setStructureErrorTarget(null);
                 setCargoConfirmed((value) => !value);
                 setArtifactInput((current) => ({ ...current, revision: "" }));
                 setTestsPassed(false);
@@ -1458,8 +1672,10 @@ function DuskDsBuild({
                 {cargoConfirmed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
                 Cargo.toml is present
               </button>
-              <button type="button" aria-pressed={toolchainConfirmed} onClick={() => {
+              <button ref={toolchainConfirmationRef} type="button" aria-pressed={toolchainConfirmed} onClick={() => {
                 invalidateRecordedBuildContext();
+                setStructureError("");
+                setStructureErrorTarget(null);
                 setToolchainConfirmed((value) => !value);
                 setArtifactInput((current) => ({ ...current, revision: "" }));
                 setTestsPassed(false);
@@ -1467,17 +1683,35 @@ function DuskDsBuild({
                 {toolchainConfirmed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
                 rust-toolchain.toml pins {DUSKDS_RUST_TOOLCHAIN}
               </button>
+              {projectMode === "existing" ? (
+                <button ref={cleanTreeConfirmationRef} type="button" aria-pressed={cleanTreeConfirmed} onClick={() => {
+                  invalidateRecordedBuildContext();
+                  setStructureError("");
+                  setStructureErrorTarget(null);
+                  setCleanTreeConfirmed((value) => !value);
+                  setPostBuildSourceConfirmed(false);
+                  setArtifactInput((current) => ({ ...current, revision: "" }));
+                  setTestsPassed(false);
+                }}>
+                  {cleanTreeConfirmed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
+                  Initial git status reported no tracked or untracked changes
+                </button>
+              ) : null}
             </div>
-            <label>Source identity<input value={structureRevision} onChange={(event) => {
+            <label>Source identity<input ref={structureRevisionRef} value={structureRevision} aria-invalid={structureErrorTarget === "revision" || undefined} aria-describedby={structureErrorTarget === "revision" ? "duskds-build-structure-error" : undefined} onChange={(event) => {
               if (event.target.value !== structureRevision) {
                 invalidateRecordedBuildContext();
                 setStructureRevision(event.target.value);
+                setStructureError("");
+                setStructureErrorTarget(null);
                 setArtifactInput((current) => ({ ...current, revision: "" }));
                 setTestsPassed(false);
+                setPostBuildSourceConfirmed(false);
               }
-            }} placeholder={projectMode === "new" ? "git write-tree" : "git rev-parse HEAD"} /></label>
-            {structureError ? <p className="validation-message" role="alert">{structureError}</p> : null}
-            <button className="primary-button" type="button" onClick={recordManualStructure}>Save manual structure confirmation</button>
+            }} placeholder="40 or 64 hexadecimal characters" /></label>
+            {structureError ? <p className="validation-message" id="duskds-build-structure-error" role="alert">{structureError}</p> : null}
+            <button className="primary-button" type="button" disabled={!accessComplete} onClick={recordManualStructure}>Save manual structure confirmation</button>
+            {!accessComplete ? <p className="quiet-note">Complete or skip Access before saving Build evidence.</p> : null}
           </div>
         </>
       )}
@@ -1512,7 +1746,7 @@ function DuskDsBuild({
             </>
           ) : commands ? (
             <CommandPair firstTitle="Build contract + data-driver WASM" first={commands.build} secondTitle="Run the VM test" second={commands.test} />
-          ) : <p className="validation-message" role="alert">{commandInputError}</p>}
+          ) : <p className="quiet-note">{commandContextPrompt}</p>}
           {platform === "windows" && wslTool ? (
             <div className="focus-card wide">
               <StatusPill tone="warn">required before VM evidence</StatusPill>
@@ -1555,10 +1789,41 @@ function DuskDsBuild({
             <p>Run these read-only inspection commands, then enter only basenames, hashes, byte sizes, and the same source identity recorded above. Absolute paths and terminal output are rejected.</p>
             {artifactCommands ? (
               <CommandPair firstTitle="Locate WASM files and byte sizes" first={artifactCommands.locate} secondTitle="Calculate WASM SHA-256 values" second={artifactCommands.hash} />
-            ) : <p className="validation-message" role="alert">{commandInputError}</p>}
-            <ArtifactEvidenceForm value={artifactInput} onChange={changeArtifactInput} />
-            {artifactError ? <p className="validation-message" role="alert">{artifactError}</p> : null}
-            <button className="primary-button" type="button" disabled={!structureReady} onClick={recordArtifacts}>Save manual artifact evidence</button>
+            ) : <p className="quiet-note">{commandContextPrompt}</p>}
+            {projectMode === "existing" ? (
+              <div className="manual-record-notice">
+                <StatusPill tone="warn">Required after build, VM test, and hashing</StatusPill>
+                <h3>Revalidate the exact Git source before saving</h3>
+                <p>Run this as the final terminal check. It fails if HEAD changed or Git reports tracked or untracked non-ignored changes. The claim is deliberately limited to the saved commit plus its clean unignored working tree; ignored local files are not covered and must not influence the build.</p>
+                {artifactCommands?.source ? (
+                  <>
+                    <pre>{artifactCommands.source}</pre>
+                    <CopyButton value={artifactCommands.source} label="Copy final Git source check" />
+                  </>
+                ) : <p className="quiet-note">Save a valid initial source identity to generate the final check.</p>}
+                <button ref={postBuildSourceConfirmationRef} className="evidence-toggle" type="button" disabled={!artifactCommands?.source} aria-pressed={postBuildSourceConfirmed} onClick={() => {
+                  if (buildProgress.evidence.includes("duskds-build-artifact-attestation") || buildProgress.evidence.includes("duskds-vm-test-attestation")) {
+                    journey.removeEvidence("duskds", "build", ["duskds-build-artifact-attestation", "duskds-vm-test-attestation"]);
+                  }
+                  setPostBuildSourceConfirmed((value) => !value);
+                  setTestsPassed(false);
+                  setArtifactError("");
+                  setArtifactInvalidField(null);
+                }}>
+                  {postBuildSourceConfirmed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
+                  I ran the final Git source check after build, VM test, and artifact hashing
+                </button>
+              </div>
+            ) : null}
+            <ArtifactEvidenceForm
+              value={artifactInput}
+              onChange={changeArtifactInput}
+              invalidField={artifactInvalidField}
+              errorId={artifactError ? "duskds-build-artifact-error" : undefined}
+              inputRef={(field, input) => { artifactFieldRefs.current[field] = input; }}
+            />
+            {artifactError ? <p className="validation-message" id="duskds-build-artifact-error" role="alert">{artifactError}</p> : null}
+            <button className="primary-button" type="button" disabled={!accessComplete || !structureReady} onClick={recordArtifacts}>Save manual artifact evidence</button>
             {!structureReady ? <p className="quiet-note">Save the starter or existing-project structure first.</p> : null}
           </div>
           {platform !== "macos" ? <div className="focus-card wide">
@@ -1578,7 +1843,7 @@ function DuskDsBuild({
               {testsPassed ? <CheckCircle2 size={17} aria-hidden="true" /> : <Circle size={17} aria-hidden="true" />}
               I observed the VM test pass in this environment
             </button>
-            <button className="primary-button" type="button" disabled={!structureReady || !testsPassed || !savedArtifactRevision || savedArtifactRevision !== validateRevision(artifactInput.revision || structureRevision).value || (platform === "windows" && !vmEnvironmentConfirmed)} onClick={recordTests}>
+            <button className="primary-button" type="button" disabled={!accessComplete || !structureReady || !testsPassed || !savedArtifactRevision || savedArtifactRevision !== validateRevision(artifactInput.revision || structureRevision).value || (platform === "windows" && !vmEnvironmentConfirmed)} onClick={recordTests}>
               Save manual VM-test evidence
             </button>
             {!savedArtifactRevision ? <p className="quiet-note">Save the artifact evidence before recording the VM-test pass.</p> : null}
@@ -1597,7 +1862,10 @@ function DuskDsBuild({
 
 function ArtifactEvidenceForm({
   value,
-  onChange
+  onChange,
+  invalidField,
+  errorId,
+  inputRef
 }: {
   value: {
     revision: string;
@@ -1617,22 +1885,29 @@ function ArtifactEvidenceForm({
     dataDriverSha256: string;
     dataDriverSize: string;
   }) => void;
+  invalidField: BuildArtifactField | null;
+  errorId?: string;
+  inputRef: (field: BuildArtifactField, input: HTMLInputElement | null) => void;
 }) {
   const field = (name: keyof typeof value, next: string) => onChange({ ...value, [name]: next });
+  const invalidProps = (name: BuildArtifactField) => ({
+    "aria-invalid": invalidField === name || undefined,
+    "aria-describedby": invalidField === name ? errorId : undefined
+  });
   return (
     <div className="artifact-form">
-      <label>Artifact source identity<input value={value.revision} onChange={(event) => field("revision", event.target.value)} placeholder="7–64 hexadecimal characters" /></label>
+      <label>Artifact source identity<input ref={(input) => inputRef("revision", input)} value={value.revision} {...invalidProps("revision")} onChange={(event) => field("revision", event.target.value)} placeholder="40 or 64 hexadecimal characters" /></label>
       <fieldset>
         <legend>Contract WASM</legend>
-        <label>Filename<input value={value.contractName} onChange={(event) => field("contractName", event.target.value)} placeholder="counter_contract.wasm" /></label>
-        <label>SHA-256<input value={value.contractSha256} onChange={(event) => field("contractSha256", event.target.value)} placeholder="64 hexadecimal characters" /></label>
-        <label>Size in bytes<input inputMode="numeric" value={value.contractSize} onChange={(event) => field("contractSize", event.target.value)} /></label>
+        <label>Filename<input ref={(input) => inputRef("contractName", input)} value={value.contractName} {...invalidProps("contractName")} onChange={(event) => field("contractName", event.target.value)} placeholder="counter_contract.wasm" /></label>
+        <label>SHA-256<input ref={(input) => inputRef("contractSha256", input)} value={value.contractSha256} {...invalidProps("contractSha256")} onChange={(event) => field("contractSha256", event.target.value)} placeholder="64 hexadecimal characters" /></label>
+        <label>Size in bytes<input ref={(input) => inputRef("contractSize", input)} inputMode="numeric" value={value.contractSize} {...invalidProps("contractSize")} onChange={(event) => field("contractSize", event.target.value)} /></label>
       </fieldset>
       <fieldset>
         <legend>Data-driver WASM</legend>
-        <label>Filename<input value={value.dataDriverName} onChange={(event) => field("dataDriverName", event.target.value)} placeholder="counter_data_driver.wasm" /></label>
-        <label>SHA-256<input value={value.dataDriverSha256} onChange={(event) => field("dataDriverSha256", event.target.value)} placeholder="64 hexadecimal characters" /></label>
-        <label>Size in bytes<input inputMode="numeric" value={value.dataDriverSize} onChange={(event) => field("dataDriverSize", event.target.value)} /></label>
+        <label>Filename<input ref={(input) => inputRef("dataDriverName", input)} value={value.dataDriverName} {...invalidProps("dataDriverName")} onChange={(event) => field("dataDriverName", event.target.value)} placeholder="counter_data_driver.wasm" /></label>
+        <label>SHA-256<input ref={(input) => inputRef("dataDriverSha256", input)} value={value.dataDriverSha256} {...invalidProps("dataDriverSha256")} onChange={(event) => field("dataDriverSha256", event.target.value)} placeholder="64 hexadecimal characters" /></label>
+        <label>Size in bytes<input ref={(input) => inputRef("dataDriverSize", input)} inputMode="numeric" value={value.dataDriverSize} {...invalidProps("dataDriverSize")} onChange={(event) => field("dataDriverSize", event.target.value)} /></label>
       </fieldset>
     </div>
   );
@@ -1652,6 +1927,7 @@ function FileEvidence({ files, projectPath }: { files: string[]; projectPath: st
 function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const journey = useJourney();
   const inspectProgress = journey.progress.paths.duskds.inspect;
+  const buildComplete = hasTruthfulDisposition(journey.progress.paths.duskds.build.status);
   const savedInspectEvidence = new Map(inspectProgress.evidenceEntries.map((entry) => [entry.code, entry]));
   const savedBlock = savedInspectEvidence.get("duskds-inspect-latest-block");
   const savedRevision = savedInspectEvidence.get("duskds-inspect-artifact-revision")?.metadata?.revision ?? "";
@@ -1674,6 +1950,9 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const [blockHeight, setBlockHeight] = useState(savedBlock?.metadata?.blockHeight?.toString() ?? "");
   const [blockHash, setBlockHash] = useState(savedBlock?.metadata?.blockHash ?? "");
   const [blockError, setBlockError] = useState("");
+  const [blockInvalidField, setBlockInvalidField] = useState<BlockObservationField | null>(null);
+  const blockHeightRef = useRef<HTMLInputElement>(null);
+  const blockHashRef = useRef<HTMLInputElement>(null);
   const [blockState, setBlockState] = useState<AsyncState>(restoredBlockObservation ? "success" : "idle");
   const [blockMessage, setBlockMessage] = useState(
     restoredBlockObservation
@@ -1683,6 +1962,7 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const [observation, setObservation] = useState<DuskDsBlockObservation | null>(restoredBlockObservation);
   const [revision, setRevision] = useState(savedRevision);
   const [revisionError, setRevisionError] = useState("");
+  const revisionRef = useRef<HTMLInputElement>(null);
   const [driverChecks, setDriverChecks] = useState({
     availability: Boolean(savedAvailability),
     schema: Boolean(savedSchema),
@@ -1703,6 +1983,17 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
     encode: "",
     decode: ""
   });
+  type DriverErrorTarget = DriverObservationField | "confirmation" | "availability";
+  const [driverErrorTargets, setDriverErrorTargets] = useState<Record<DriverObservationKind, DriverErrorTarget | null>>({
+    availability: null,
+    schema: null,
+    encode: null,
+    decode: null
+  });
+  const driverContractIdRef = useRef<HTMLInputElement>(null);
+  const driverFunctionNameRef = useRef<HTMLInputElement>(null);
+  const driverConfirmationRefs = useRef<Partial<Record<DriverObservationKind, HTMLButtonElement | null>>>({});
+  const driverDigestRefs = useRef<Partial<Record<DriverObservationKind, HTMLInputElement | null>>>({});
   const manualInspectEvidence = (code: string) => inspectProgress.evidenceEntries
     .some((entry) => entry.code === code && entry.method === "manual");
   const normalizedDriverContractId = driverInput.contractId.trim().replace(/^0x/i, "").toLowerCase();
@@ -1761,6 +2052,7 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   } as const;
 
   async function runLatestBlockRead() {
+    if (!buildComplete) return;
     setBlockState("loading");
     setBlockMessage("Reading one latest-block header from the public DuskDS Testnet node.");
     setObservation(null);
@@ -1784,17 +2076,24 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
     } catch (error) {
       setBlockState(stateForError(error));
       setBlockMessage(error instanceof Error ? error.message : "Latest-block inspection failed.");
-      journey.block("duskds", "inspect", "rpc-unavailable");
+      journey.block("duskds", "inspect", "duskds-public-node-unavailable");
     }
   }
 
   function recordManualBlock() {
+    if (!buildComplete) return;
     const result = validateBlockObservation(blockHeight, blockHash);
     if (!result.value) {
       setBlockError(result.error ?? "Enter the observed block result.");
+      setBlockInvalidField(result.field ?? null);
+      window.requestAnimationFrame(() => {
+        if (result.field === "height") blockHeightRef.current?.focus();
+        if (result.field === "hash") blockHashRef.current?.focus();
+      });
       return;
     }
     setBlockError("");
+    setBlockInvalidField(null);
     journey.record("duskds", "inspect", ["duskds-inspect-latest-block"], {
       method: "manual",
       metadata: result.value
@@ -1805,12 +2104,20 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
     if (next !== blockHeight && manualInspectEvidence("duskds-inspect-latest-block")) {
       journey.removeEvidence("duskds", "inspect", ["duskds-inspect-latest-block"]);
     }
+    if (blockInvalidField === "height") {
+      setBlockError("");
+      setBlockInvalidField(null);
+    }
     setBlockHeight(next);
   }
 
   function changeInspectBlockHash(next: string) {
     if (next !== blockHash && manualInspectEvidence("duskds-inspect-latest-block")) {
       journey.removeEvidence("duskds", "inspect", ["duskds-inspect-latest-block"]);
+    }
+    if (blockInvalidField === "hash") {
+      setBlockError("");
+      setBlockInvalidField(null);
     }
     setBlockHash(next);
   }
@@ -1830,7 +2137,9 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         decodeSha256: ""
       }));
       setDriverErrors({ availability: "", schema: "", encode: "", decode: "" });
+      setDriverErrorTargets({ availability: null, schema: null, encode: null, decode: null });
     }
+    setRevisionError("");
     setRevision(next);
   }
 
@@ -1858,6 +2167,11 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
       for (const kind of kinds) next[kind] = "";
       return next;
     });
+    setDriverErrorTargets((current) => {
+      const next = { ...current };
+      for (const kind of kinds) next[kind] = null;
+      return next;
+    });
   }
 
   function changeDriverIdentity(field: "contractId" | "functionName", next: string) {
@@ -1874,6 +2188,7 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
     }
     setDriverChecks((current) => ({ ...current, [kind]: true }));
     setDriverErrors((current) => ({ ...current, [kind]: "" }));
+    setDriverErrorTargets((current) => ({ ...current, [kind]: null }));
   }
 
   function changeDriverDigest(kind: keyof typeof driverChecks, next: string) {
@@ -1885,28 +2200,42 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         clearDriverKinds(kind === "availability" ? driverKinds : [kind]);
       } else {
         setDriverErrors((current) => ({ ...current, [kind]: "" }));
+        setDriverErrorTargets((current) => ({ ...current, [kind]: null }));
       }
     }
     setDriverInput((current) => ({ ...current, [key]: next }));
   }
 
-  function setDriverError(kind: keyof typeof driverChecks, message: string) {
+  function setDriverError(kind: DriverObservationKind, message: string, target: DriverErrorTarget | null) {
     setDriverErrors((current) => ({ ...current, [kind]: message }));
+    setDriverErrorTargets((current) => ({ ...current, [kind]: target }));
+    if (!target) return;
+    window.requestAnimationFrame(() => {
+      if (target === "contractId") driverContractIdRef.current?.focus();
+      else if (target === "functionName") driverFunctionNameRef.current?.focus();
+      else if (target === "responseSha256") driverDigestRefs.current[kind]?.focus();
+      else if (target === "confirmation") driverConfirmationRefs.current[kind]?.focus();
+      else driverConfirmationRefs.current.availability?.focus();
+    });
   }
 
   function recordRevision() {
+    if (!buildComplete) return;
     const result = validateRevision(revision);
     if (!result.value) {
       setRevisionError(result.error ?? "Enter the source identity.");
+      window.requestAnimationFrame(() => revisionRef.current?.focus());
       return;
     }
     const buildRevision = getDuskDsBuildSourceRevision(journey.progress);
     if (!buildRevision) {
       setRevisionError("Return to Build and record matching artifact and VM-test source identities first.");
+      window.requestAnimationFrame(() => revisionRef.current?.focus());
       return;
     }
     if (result.value !== buildRevision) {
       setRevisionError("Use the same source identity recorded for both Build artifacts and the VM test.");
+      window.requestAnimationFrame(() => revisionRef.current?.focus());
       return;
     }
     setRevisionError("");
@@ -1925,20 +2254,23 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   }
 
   function recordDriverCheck(kind: keyof typeof driverChecks) {
+    if (!buildComplete) return;
     const checkedRevision = validateRevision(revision);
     if (!checkedRevision.value) {
-      setDriverError(kind, "Record the source identity first so every driver observation is tied to the same build.");
+      setRevisionError(checkedRevision.error ?? "Record the source identity first so every driver observation is tied to the same build.");
+      window.requestAnimationFrame(() => revisionRef.current?.focus());
       return;
     }
     const recordedRevision = journey.progress.paths.duskds.inspect.evidenceEntries
       .find((entry) => entry.code === "duskds-inspect-artifact-revision")
       ?.metadata?.revision;
     if (!recordedRevision || recordedRevision !== checkedRevision.value) {
-      setDriverError(kind, "Save this exact source identity before recording driver observations.");
+      setRevisionError("Save this exact source identity before recording driver observations.");
+      window.requestAnimationFrame(() => revisionRef.current?.focus());
       return;
     }
     if (!driverChecks[kind]) {
-      setDriverError(kind, `Confirm the ${kind} result you observed before saving it.`);
+      setDriverError(kind, `Confirm the ${kind} result you observed before saving it.`, "confirmation");
       return;
     }
     const normalizedContractId = driverInput.contractId.trim().replace(/^0x/i, "").toLowerCase();
@@ -1949,7 +2281,7 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         availability?.metadata?.contractId !== normalizedContractId
         || availability.metadata.revision !== checkedRevision.value
       ) {
-        setDriverError(kind, "First confirm that this contract's metadata reports driver_available: true.");
+        setDriverError(kind, "First confirm that this contract's metadata reports driver_available: true.", "availability");
         return;
       }
     }
@@ -1966,10 +2298,10 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
       responseSha256: digest
     });
     if (!observation.value) {
-      setDriverError(kind, observation.error ?? `Enter the bounded ${kind} observation.`);
+      setDriverError(kind, observation.error ?? `Enter the bounded ${kind} observation.`, observation.field ?? null);
       return;
     }
-    setDriverError(kind, "");
+    setDriverError(kind, "", null);
     const code = driverEvidenceCode(kind);
     journey.record("duskds", "inspect", [code], {
       method: "manual",
@@ -1989,16 +2321,40 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
     setRoute("troubleshooting");
   }
 
+  function focusInspectSection(sectionId: string) {
+    const target = document.getElementById(sectionId);
+    target?.scrollIntoView?.({ block: "start" });
+    target?.focus();
+  }
+
+  function driverErrorIdsForTarget(target: DriverObservationField): string | undefined {
+    return driverKinds
+      .filter((kind) => driverErrorTargets[kind] === target)
+      .map((kind) => `duskds-${kind}-observation-error`)
+      .join(" ") || undefined;
+  }
+
   function driverCheckRow(kind: keyof typeof driverChecks) {
-    const disabled = kind !== "availability" && !driverRoutesAvailable;
+    const disabled = !buildComplete || (kind !== "availability" && !driverRoutesAvailable);
     const digest = driverInput[driverDigestKey[kind]];
     const errorId = `duskds-${kind}-observation-error`;
+    const confirmationErrorIds = driverKinds
+      .filter((candidate) => kind === "availability"
+        ? driverErrorTargets[candidate] === "availability"
+          || (candidate === "availability" && driverErrorTargets[candidate] === "confirmation")
+        : candidate === kind && driverErrorTargets[candidate] === "confirmation")
+      .map((candidate) => `duskds-${candidate}-observation-error`)
+      .join(" ") || undefined;
+    const digestInvalid = driverErrorTargets[kind] === "responseSha256";
     return (
       <div className="inspection-check" key={kind}>
         <button
           className="evidence-toggle"
+          ref={(button) => { driverConfirmationRefs.current[kind] = button; }}
           type="button"
           aria-pressed={driverChecks[kind]}
+          aria-invalid={Boolean(confirmationErrorIds) || undefined}
+          aria-describedby={confirmationErrorIds}
           disabled={disabled}
           onClick={() => toggleDriverCheck(kind)}
         >
@@ -2014,10 +2370,11 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         <label>
           {kind === "availability" ? "Metadata" : kind === "schema" ? "Schema" : kind === "encode" ? "Encode" : "Decode"} response SHA-256
           <input
+            ref={(input) => { driverDigestRefs.current[kind] = input; }}
             value={digest}
             disabled={disabled}
-            aria-invalid={Boolean(driverErrors[kind]) || undefined}
-            aria-describedby={driverErrors[kind] ? errorId : undefined}
+            aria-invalid={digestInvalid || undefined}
+            aria-describedby={digestInvalid ? errorId : undefined}
             onChange={(event) => changeDriverDigest(kind, event.target.value)}
             placeholder="64 hexadecimal characters"
           />
@@ -2037,7 +2394,14 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
       setRoute={setRoute}
       helper={<ExternalLink href="https://docs.dusk.network/developer/integrations/http-api/">Official Dusk HTTP API</ExternalLink>}
     >
-      <div className="focus-card wide">
+      <nav className="filter-bar" aria-label="Inspect sections">
+        <button type="button" onClick={() => focusInspectSection("duskds-latest-block")}>1. Latest block</button>
+        <button type="button" onClick={() => focusInspectSection("duskds-source-identity")}>2. Source identity</button>
+        <button type="button" onClick={() => focusInspectSection("duskds-deploy-readiness")}>3. Deployment readiness</button>
+        <button type="button" onClick={() => focusInspectSection("duskds-post-deploy-inspection")}>4. Data driver</button>
+      </nav>
+      {!buildComplete ? <AsyncNotice state="partial" title="Complete or skip Build first" message="You can review every Inspect section now, but latest-block, source and data-driver evidence stay disabled until Build has a truthful disposition." /> : null}
+      <div className="focus-card wide" id="duskds-latest-block" tabIndex={-1}>
         <h2>1. Observe a latest block</h2>
         <p>Choose a direct hosted read or enter the bounded height and hash you observed yourself. This is independent from the artifact and data-driver checks.</p>
         <CompletionMethodPicker
@@ -2050,29 +2414,29 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         />
         {blockMethod === "automatic" ? (
           <>
-            <button className="primary-button" type="button" disabled={blockState === "loading"} onClick={runLatestBlockRead}>Read latest block</button>
+            <button className="primary-button" type="button" disabled={!buildComplete || blockState === "loading"} onClick={runLatestBlockRead}>Read latest block</button>
             {blockState === "idle"
               ? <p className="quiet-note">{blockMessage}</p>
-              : <AsyncNotice state={blockState} message={blockMessage} onRetry={blockState === "error" || blockState === "timeout" || blockState === "unavailable" ? runLatestBlockRead : undefined} />}
+              : <AsyncNotice state={blockState} message={blockMessage} onRetry={buildComplete && (blockState === "error" || blockState === "timeout" || blockState === "unavailable") ? runLatestBlockRead : undefined} />}
             {observation ? <BlockReceipt observation={observation} label="Automatic browser observation" /> : null}
           </>
         ) : (
           <>
             <div className="evidence-form">
-              <label>Block height<input inputMode="numeric" value={blockHeight} onChange={(event) => changeInspectBlockHeight(event.target.value)} /></label>
-              <label>Block hash<input value={blockHash} onChange={(event) => changeInspectBlockHash(event.target.value)} placeholder="64 hexadecimal characters" /></label>
+              <label>Block height<input ref={blockHeightRef} inputMode="numeric" value={blockHeight} aria-invalid={blockInvalidField === "height" || undefined} aria-describedby={blockInvalidField === "height" ? "duskds-inspect-block-error" : undefined} onChange={(event) => changeInspectBlockHeight(event.target.value)} /></label>
+              <label>Block hash<input ref={blockHashRef} value={blockHash} aria-invalid={blockInvalidField === "hash" || undefined} aria-describedby={blockInvalidField === "hash" ? "duskds-inspect-block-error" : undefined} onChange={(event) => changeInspectBlockHash(event.target.value)} placeholder="64 hexadecimal characters" /></label>
             </div>
-            {blockError ? <p className="validation-message" role="alert">{blockError}</p> : null}
-            <button className="primary-button" type="button" onClick={recordManualBlock}>Save manual block observation</button>
+            {blockError ? <p className="validation-message" id="duskds-inspect-block-error" role="alert">{blockError}</p> : null}
+            <button className="primary-button" type="button" disabled={!buildComplete} onClick={recordManualBlock}>Save manual block observation</button>
           </>
         )}
       </div>
       <div className="focus-card wide" id="duskds-source-identity" tabIndex={-1}>
         <h2>2. Bind inspection to the built source</h2>
-        <p>Use the same Git tree or commit ID recorded during Build. New Studio starters use <code>git write-tree</code>; existing repositories use <code>git rev-parse HEAD</code>. This prevents post-deploy observations from being attributed to a different build.</p>
-        <label>Artifact source identity<input value={revision} onChange={(event) => changeInspectRevision(event.target.value)} placeholder="7–64 hexadecimal characters" /></label>
-        {revisionError ? <p className="validation-message" role="alert">{revisionError}</p> : null}
-        <button className="primary-button" type="button" onClick={recordRevision}>Save source match</button>
+        <p>Use the same full Git tree or commit ID recorded during Build. New Studio starters use <code>git write-tree</code>; existing repositories first require a clean tracked-and-untracked status, then use <code>git rev-parse --verify HEAD</code>. This binds post-deploy observations to the exact source state that was checked.</p>
+        <label>Artifact source identity<input ref={revisionRef} value={revision} aria-invalid={Boolean(revisionError) || undefined} aria-describedby={revisionError ? "duskds-inspect-revision-error" : undefined} onChange={(event) => changeInspectRevision(event.target.value)} placeholder="40 or 64 hexadecimal characters" /></label>
+        {revisionError ? <p className="validation-message" id="duskds-inspect-revision-error" role="alert">{revisionError}</p> : null}
+        <button className="primary-button" type="button" disabled={!buildComplete} onClick={recordRevision}>Save source match</button>
       </div>
       <DuskDsDeployReadiness setRoute={setRoute} />
       <div className="focus-card wide" id="duskds-post-deploy-inspection" tabIndex={-1}>
@@ -2094,11 +2458,25 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         <div className="evidence-form">
           <label>
             Deployed contract ID
-            <input value={driverInput.contractId} onChange={(event) => changeDriverIdentity("contractId", event.target.value)} placeholder="64 hexadecimal characters" />
+            <input
+              ref={driverContractIdRef}
+              value={driverInput.contractId}
+              aria-invalid={Boolean(driverErrorIdsForTarget("contractId")) || undefined}
+              aria-describedby={driverErrorIdsForTarget("contractId")}
+              onChange={(event) => changeDriverIdentity("contractId", event.target.value)}
+              placeholder="64 hexadecimal characters"
+            />
           </label>
           <label>
             Function name for encode / decode
-            <input value={driverInput.functionName} onChange={(event) => changeDriverIdentity("functionName", event.target.value)} placeholder="increment_by" />
+            <input
+              ref={driverFunctionNameRef}
+              value={driverInput.functionName}
+              aria-invalid={Boolean(driverErrorIdsForTarget("functionName")) || undefined}
+              aria-describedby={driverErrorIdsForTarget("functionName")}
+              onChange={(event) => changeDriverIdentity("functionName", event.target.value)}
+              placeholder="increment_by"
+            />
           </label>
         </div>
         <p className="quiet-note">Never paste a secret, seed phrase, signing request, private endpoint, credential, raw response, or payload into these fields. Studio stores only the checked result, source identity, contract ID, function name, endpoint origin, and response digest.</p>

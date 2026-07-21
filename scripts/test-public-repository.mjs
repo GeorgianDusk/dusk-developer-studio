@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { validatePreflightConsumerContract } from "./npm-package-preflight-smoke.mjs";
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -27,6 +28,7 @@ for (const file of [
   "docs/security/duskds-cargo-advisory-review.md",
   "docs/operations/public-monitoring.md",
   "scripts/check-cargo-advisory-review.mjs",
+  "scripts/npm-package-preflight-smoke.mjs",
   "scripts/phase5-candidate-context.mjs",
   "scripts/verify-npm-provenance.mjs",
   "config/cargo-advisory-review.json",
@@ -186,13 +188,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.1",
-  tag: "v1.0.1",
+  version: "1.0.2",
+  tag: "v1.0.2",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.1.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.2.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -213,6 +215,11 @@ for (const file of duskDsTemplateFiles) {
 }
 assert.deepEqual(policy.assurance.required_runners, ["ubuntu-24.04", "windows-2025", "macos-15"]);
 assert.ok(policy.assurance.required_checks.includes("local-actions-capability-contract-smoke"));
+assert.ok(
+  policy.assurance.required_checks.includes(
+    "three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract"
+  )
+);
 assert.ok(
   policy.assurance.required_checks.includes(
     "three-platform-exact-tarball-direct-cli-scaffold-and-overwrite-refusal-smoke"
@@ -319,12 +326,44 @@ assert.ok(
 const elevatedArchiveStep = requiredWindowsWorkflow.slice(elevatedArchiveStepStart, elevatedArchiveStepEnd);
 assert.match(elevatedArchiveStep, /Dusk Developer Studio refuses elevated or root execution\./);
 assert.match(elevatedArchiveStep, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*pnpm pack:npm/);
-assert.match(elevatedArchiveStep, /output\/npm\/dusk-developer-studio-1\.0\.1\.tgz/);
+assert.match(elevatedArchiveStep, /output\/npm\/dusk-developer-studio-1\.0\.2\.tgz/);
 assert.match(elevatedArchiveStep, /node_modules\/dusk-developer-studio\/bin\/dusk-developer-studio\.mjs/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'--lifecycle-self-test', '--no-open'(?:\)|\})/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'local-actions', '--lifecycle-self-test', '--no-open'(?:\)|\})/);
 
 const npmAssuranceWorkflow = read(".github/workflows/studio-npm-package-assurance.yml");
+const npmPreflightSmoke = read("scripts/npm-package-preflight-smoke.mjs");
+const preflightConsumerSource = path.join(root, "apps/studio/src/app/responseSchemas.ts");
+const compatibleIncompletePreflight = await validatePreflightConsumerContract({
+  ok: false,
+  checkedAt: "2026-07-21T00:00:00.000Z",
+  path: "duskds",
+  tools: [
+    { name: "Node.js", command: "node", ok: true, required: true, version: "v24.18.0" },
+    { name: "Optional missing tool", command: "optional-tool", ok: false, required: false, failureKind: "missing" }
+  ]
+}, preflightConsumerSource);
+assert.equal(compatibleIncompletePreflight.tool_count, 2);
+assert.equal(compatibleIncompletePreflight.versioned_tool_count, 1);
+assert.equal(compatibleIncompletePreflight.aggregate_prerequisites_satisfied, false);
+await assert.rejects(
+  () => validatePreflightConsumerContract({
+    ok: false,
+    checkedAt: "2026-07-21T00:00:00.000Z",
+    path: "duskds",
+    tools: []
+  }, preflightConsumerSource),
+  /one to 64 bounded tool rows/
+);
+await assert.rejects(
+  () => validatePreflightConsumerContract({
+    ok: true,
+    checkedAt: "2026-07-21T00:00:00.000Z",
+    path: "duskds",
+    tools: [{ name: "Node.js", command: "node", ok: true, required: true, version: "v".repeat(129) }]
+  }, preflightConsumerSource),
+  /exact checked-out Studio consumer guard rejected/
+);
 const localRuntime = read("packages/local-runtime/src/main.ts");
 assert.match(localRuntime, /path: "\/scaffold-duskds-forge"[\s\S]*template !== "duskds-counter-forge"/);
 assert.match(localRuntime, /schema_version: 2[\s\S]*local_actions_scaffold_smoke/);
@@ -333,19 +372,51 @@ assert.match(localRuntime, /shutdown_smoke: "passed"/);
 assert.match(npmAssuranceWorkflow, /runner: \[ubuntu-24\.04, windows-2025, macos-15\]/);
 assert.match(npmAssuranceWorkflow, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*node scripts\/npm-package-pack\.mjs/);
 assert.doesNotMatch(npmAssuranceWorkflow, /^\s+paths:/m);
-assert.match(npmAssuranceWorkflow, /CANDIDATE_ARTIFACT: dusk-developer-studio-1\.0\.1\.tgz[\s\S]*name: Build the exact npm candidate once[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*archive: false/);
+assert.match(npmAssuranceWorkflow, /CANDIDATE_ARTIFACT: dusk-developer-studio-1\.0\.2\.tgz[\s\S]*name: Build the exact npm candidate once[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*archive: false/);
 assert.match(npmAssuranceWorkflow, /needs: build-package[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*path: output\/npm/);
 assert.match(npmAssuranceWorkflow, /^ {4}name: Aggregate npm package assurance$/m);
 assert.match(npmAssuranceWorkflow, /native|exe\|dll\|dylib\|so\|node/i);
 assert.match(npmAssuranceWorkflow, /npm install --ignore-scripts/);
+assert.match(
+  npmPreflightSmoke,
+  /PREFLIGHT_CHECK_ID =\s*[\s\S]*three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract/
+);
+assert.match(npmPreflightSmoke, /value\.tools\.length > 0 && value\.tools\.length <= MAX_TOOL_ROWS/);
+assert.match(npmPreflightSmoke, /isNonemptyBoundedString\(tool\.version, MAX_VERSION_LENGTH\)/);
+assert.match(npmPreflightSmoke, /versionedToolCount > 0/);
+assert.match(npmPreflightSmoke, /aggregate_prerequisites_satisfied: value\.ok/);
+assert.doesNotMatch(npmPreflightSmoke, /assert\.equal\(value\.ok, true/);
+assert.match(npmPreflightSmoke, /stripTypeScriptTypes/);
+assert.match(npmPreflightSmoke, /loadAuthoritativeConsumerGuard\(consumerSource\)/);
+assert.match(npmPreflightSmoke, /consumer\.guard\(value\)[\s\S]*exact checked-out Studio consumer guard rejected/);
+assert.match(npmPreflightSmoke, /consumer_contract_source_sha256/);
+assert.match(npmPreflightSmoke, /RUNTIME_ENVIRONMENT_ALLOWLIST[\s\S]*inheritedRuntimeEnvironment\(process\.env\)/);
+assert.doesNotMatch(npmPreflightSmoke, /\.\.\.process\.env/);
+assert.match(npmPreflightSmoke, /\/__dusk\/bootstrap[\s\S]*\/preflight\?path=duskds/);
+assert.match(npmPreflightSmoke, /spawn\(process\.execPath, \[primaryEntry, "local-actions", "--no-open"\]/);
+assert.match(npmPreflightSmoke, /waitForPortsClosed\(\)/);
+assert.match(npmPreflightSmoke, /studio_loopback_services_stopped: true/);
 assert.match(npmAssuranceWorkflow, /--lifecycle-self-test --no-open/);
 assert.match(npmAssuranceWorkflow, /local-actions --lifecycle-self-test --no-open/);
+assert.match(
+  npmAssuranceWorkflow,
+  /npm-package-preflight-smoke\.mjs[\s\S]*--primary="\$PRIMARY"[\s\S]*--consumer=apps\/studio\/src\/app\/responseSchemas\.ts[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed/
+);
+assert.match(
+  npmAssuranceWorkflow,
+  /Copy-Item[^\n]*npm-package-preflight-smoke\.mjs[\s\S]*responseSchemas\.ts[\s\S]*-EntryPoint \$preflightScript[\s\S]*--primary=\$publicPrimary[\s\S]*--consumer=\$preflightConsumer[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed/
+);
 assert.match(npmAssuranceWorkflow, /fs\.mkdtempSync[\s\S]*unpackedBytes \+= stats\.size[\s\S]*maximum_unpacked_bytes/);
 assert.match(npmAssuranceWorkflow, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential[\s\S]*create-duskds', 'platform-direct-counter'[\s\S]*'--lifecycle-self-test', '--no-open'[\s\S]*'local-actions', '--lifecycle-self-test', '--no-open'/);
-assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
-assert.match(npmAssuranceWorkflow, /EXPECTED_BROWSER_SMOKE !== "passed"[\s\S]*browser_boot_and_pairing_smoke: "passed"/);
-assert.match(npmAssuranceWorkflow, /schema_version: 2[\s\S]*direct_cli_scaffold_smoke: "passed"[\s\S]*local_actions_scaffold_smoke: "passed"[\s\S]*scaffold_preservation_smoke: "passed"[\s\S]*shutdown_smoke: "passed"/);
-assert.match(npmAssuranceWorkflow, /record\.schema_version !== 2[\s\S]*record\.direct_cli_scaffold_smoke !== "passed"[\s\S]*record\.local_actions_scaffold_smoke !== "passed"[\s\S]*record\.scaffold_preservation_smoke !== "passed"[\s\S]*record\.shutdown_smoke !== "passed"/);
+assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
+assert.match(npmAssuranceWorkflow, /EXPECTED_BROWSER_SMOKE !== "passed"[\s\S]*EXPECTED_LOCAL_ACTIONS_PREFLIGHT_SMOKE !== "passed"[\s\S]*browser_boot_and_pairing_smoke: "passed"/);
+assert.match(npmAssuranceWorkflow, /schema_version: 2[\s\S]*local_actions_preflight_verified: true[\s\S]*local_actions_preflight_check_id: process\.env\.PREFLIGHT_CHECK_ID[\s\S]*direct_cli_scaffold_smoke: "passed"[\s\S]*local_actions_scaffold_smoke: "passed"[\s\S]*scaffold_preservation_smoke: "passed"[\s\S]*shutdown_smoke: "passed"/);
+assert.match(npmAssuranceWorkflow, /record\.schema_version !== 2[\s\S]*record\.local_actions_preflight_verified !== true[\s\S]*record\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID[\s\S]*record\.direct_cli_scaffold_smoke !== "passed"[\s\S]*record\.local_actions_scaffold_smoke !== "passed"[\s\S]*record\.scaffold_preservation_smoke !== "passed"[\s\S]*record\.shutdown_smoke !== "passed"/);
+assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_loopback_services_stopped !== true/);
+assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_consumer_contract_source_sha256 !== consumerContractSha256/);
+assert.match(npmAssuranceWorkflow, /local_actions_preflight_verified: true[\s\S]*local_actions_preflight_consumer_contract_source_sha256: consumerContractSha256[\s\S]*platform_smoke: records/);
+assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_verified !== true/);
+assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_scaffold_verified !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.scaffold_preserved_after_shutdown !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.studio_shutdown_verified !== true/);
@@ -531,7 +602,8 @@ assert.match(publicReleaseSpec, /route\.abort\("blockedbyclient"\)/);
 assert.match(publicReleaseSpec, /requestUrl\.origin !== publicOrigin/);
 assert.match(publicReleaseSpec, /rpc\.testnet\.evm\.dusk\.network/);
 assert.match(publicReleaseSpec, /redirectedFrom\(\)/);
-assert.match(publicReleaseSpec, /expect\(page\.url\(\), pathname\)\.toBe\(expected\.href\)/);
+assert.match(publicReleaseSpec, /await expect\(page, pathname\)\.toHaveURL\(expected\.href\)/);
+assert.match(publicReleaseSpec, /evmCanonicalRoutes = \["access", "build", "inspect"\][\s\S]*toHaveURL\(`\$\{publicOrigin\}\/#setup`\)/);
 const publicMonitoring = read("docs/operations/public-monitoring.md");
 assert.match(publicMonitoring, /Both controls use GitHub Actions and GitHub Issues/);
 assert.match(publicMonitoring, /GitHub outage can affect monitoring and alert delivery at the same time/);

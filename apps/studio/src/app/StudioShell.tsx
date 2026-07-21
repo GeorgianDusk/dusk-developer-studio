@@ -99,6 +99,8 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
   const { runtime: studioRuntime } = useStudioRuntime();
   const isLocalStudio = studioRuntime.companionAvailable;
   const pendingStep = pendingRoute ? steps.evm.find((step) => step.id === pendingRoute) : undefined;
+  const duskDsHasActivity = Object.values(progress.paths.duskds)
+    .some((step) => step.evidence.length > 0 || Boolean(step.blocker) || step.status === "skipped" || step.status === "skipped-with-reason");
   const previewSteps = [
     ["1", "Setup", "Follow the reviewed prerequisites manually."],
     ["2", "Access", "Run a read-only query and record what you observed."],
@@ -124,7 +126,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
         </div>
         <WorkstationScene />
       </div>
-      <div className="path-cards" aria-label="Choose a builder path">
+      <div className="path-cards" role="group" aria-label="Choose a builder path">
         {(["evm", "duskds"] as BuilderPath[]).map((path) => {
           const counts = getJourneyCompletionCounts(progress, path);
           const hasActivity = Object.values(progress.paths[path]).some((step) => step.evidence.length > 0 || Boolean(step.blocker) || step.status === "skipped" || step.status === "skipped-with-reason");
@@ -160,6 +162,13 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
           );
         })}
       </div>
+      {duskDsHasActivity ? (
+        <div className="current-blocker saved-progress-notice">
+          <StatusPill tone="good">DuskDS progress saved</StatusPill>
+          <span>Continue from the DuskDS card, or review and reset the browser-local journey before starting clean.</span>
+          <button className="secondary-button" type="button" onClick={() => setRoute("settings")}>Review or reset saved progress</button>
+        </div>
+      ) : null}
       <div className="path-comparison-wrap">
         <table className="path-comparison">
           <caption>Quick comparison of the two Dusk builder paths</caption>

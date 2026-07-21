@@ -37,9 +37,10 @@ env:
   CI: "true"
   NODE_VERSION: 24.18.0
   PNPM_VERSION: 11.7.0
-  TARBALL: output/npm/dusk-developer-studio-1.0.1.tgz
+  TARBALL: output/npm/dusk-developer-studio-1.0.2.tgz
   PRIMARY_ENTRY: node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs
-  CANDIDATE_ARTIFACT: dusk-developer-studio-1.0.1.tgz
+  CANDIDATE_ARTIFACT: dusk-developer-studio-1.0.2.tgz
+  PREFLIGHT_CHECK_ID: three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract
 
 jobs:
   build-package:
@@ -55,6 +56,7 @@ jobs:
       package_name: ${{ steps.candidate.outputs.package_name }}
       package_version: ${{ steps.candidate.outputs.package_version }}
       browser_smoke: ${{ steps.browser.outputs.status }}
+      exact_tarball_local_actions_preflight_smoke: ${{ steps.browser.outputs.local_actions_preflight_smoke }}
       exact_tarball_local_actions_scaffold_smoke: ${{ steps.browser.outputs.local_actions_scaffold_smoke }}
       exact_tarball_scaffold_preservation_smoke: ${{ steps.browser.outputs.scaffold_preservation_smoke }}
       exact_tarball_shutdown_smoke: ${{ steps.browser.outputs.shutdown_smoke }}
@@ -186,16 +188,24 @@ jobs:
             --tarball="$TARBALL" \
             --receipt=output/npm/npm-browser-ubuntu.json
           node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
           import fs from "node:fs";
           const receipt = JSON.parse(fs.readFileSync("output/npm/npm-browser-ubuntu.json", "utf8"));
+          const consumerContractSha256 = createHash("sha256")
+            .update(fs.readFileSync("apps/studio/src/app/responseSchemas.ts"))
+            .digest("hex");
           if (receipt.status !== "passed"
+              || receipt.local_actions_preflight_verified !== true
+              || receipt.local_actions_preflight_check_id !== process.env.PREFLIGHT_CHECK_ID
+              || receipt.local_actions_preflight_consumer_contract_source_sha256 !== consumerContractSha256
               || receipt.local_actions_scaffold_verified !== true
               || receipt.scaffold_preserved_after_shutdown !== true
               || receipt.studio_shutdown_verified !== true) {
-            throw new Error("Exact-tarball Local Actions scaffold, preservation, or shutdown proof is incomplete.");
+            throw new Error("Exact-tarball Local Actions preflight, scaffold, preservation, or shutdown proof is incomplete.");
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, [
             "status=passed",
+            "local_actions_preflight_smoke=passed",
             "local_actions_scaffold_smoke=passed",
             "scaffold_preservation_smoke=passed",
             "shutdown_smoke=passed",
@@ -278,6 +288,38 @@ jobs:
           NODE_BIN="$(command -v node)"
           test -f "$PRIMARY"
           test -x "$NODE_BIN"
+          PREFLIGHT_RECEIPT="$RUNNER_TEMP/npm-preflight-contract.json"
+          PREFLIGHT_HOME="$RUNNER_TEMP/npm-preflight-home"
+          "$NODE_BIN" scripts/npm-package-preflight-smoke.mjs \
+            --primary="$PRIMARY" \
+            --consumer=apps/studio/src/app/responseSchemas.ts \
+            --home="$PREFLIGHT_HOME" \
+            --receipt="$PREFLIGHT_RECEIPT"
+          export PREFLIGHT_RECEIPT
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const receipt = JSON.parse(fs.readFileSync(process.env.PREFLIGHT_RECEIPT, "utf8"));
+          if (receipt.schema_version !== 1
+              || receipt.status !== "passed"
+              || receipt.check_id !== process.env.PREFLIGHT_CHECK_ID
+              || receipt.local_actions_preflight_verified !== true
+              || receipt.producer_consumer_schema_compatible !== true
+              || receipt.nonempty_tool_rows_verified !== true
+              || receipt.version_strings_within_ui_contract !== true
+              || receipt.prerequisite_outcome_not_required !== true
+              || receipt.studio_loopback_services_stopped !== true
+              || !/^[0-9a-f]{64}$/u.test(receipt.consumer_contract_source_sha256)
+              || !Number.isSafeInteger(receipt.tool_count)
+              || receipt.tool_count < 1
+              || !Number.isSafeInteger(receipt.versioned_tool_count)
+              || receipt.versioned_tool_count < 1) {
+            throw new Error("Exact-tarball Local Actions preflight contract receipt is incomplete.");
+          }
+          fs.appendFileSync(
+            process.env.GITHUB_ENV,
+            `NPM_LOCAL_ACTIONS_PREFLIGHT_CONSUMER_SHA256=${receipt.consumer_contract_source_sha256}\n`
+          );
+          NODE
           DIRECT_PARENT="$RUNNER_TEMP/npm-direct-cli"
           mkdir -p "$DIRECT_PARENT"
           (
@@ -357,6 +399,7 @@ jobs:
           printf '%s\n' \
             'NPM_SAFE_SMOKE=passed' \
             'NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed' \
+            'NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed' \
             'NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed' \
             'NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed' \
             'NPM_SCAFFOLD_PRESERVATION_SMOKE=passed' \
@@ -394,6 +437,10 @@ jobs:
             Copy-Item -LiteralPath (Get-Command node.exe).Source -Destination $publicNode
             $publicPrimary = Join-Path $publicRoot $env:PRIMARY_ENTRY
             if (-not (Test-Path -LiteralPath $publicPrimary -PathType Leaf)) { throw 'Installed primary entrypoint is missing.' }
+            $preflightScript = Join-Path $publicRoot 'npm-package-preflight-smoke.mjs'
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'scripts\npm-package-preflight-smoke.mjs') -Destination $preflightScript
+            $preflightConsumer = Join-Path $publicRoot 'responseSchemas.ts'
+            Copy-Item -LiteralPath (Join-Path $env:GITHUB_WORKSPACE 'apps\studio\src\app\responseSchemas.ts') -Destination $preflightConsumer
             New-LocalUser -Name $userName -Password $password -AccountNeverExpires -PasswordNeverExpires | Out-Null
             $userCreated = $true
             $userSid = (Get-LocalUser -Name $userName).SID.Value
@@ -416,13 +463,14 @@ jobs:
               param(
                 [string[]] $Arguments,
                 [string] $Label,
+                [string] $EntryPoint = $publicPrimary,
                 [string] $WorkingDirectory = $publicRoot,
                 [switch] $ExpectFailure
               )
               $stdout = Join-Path $env:RUNNER_TEMP "$Label.stdout.txt"
               $stderr = Join-Path $env:RUNNER_TEMP "$Label.stderr.txt"
               $process = Start-Process -FilePath $publicNode `
-                -ArgumentList (@($publicPrimary) + $Arguments) `
+                -ArgumentList (@($EntryPoint) + $Arguments) `
                 -WorkingDirectory $WorkingDirectory `
                 -Credential $credential `
                 -Environment $childEnvironment `
@@ -467,6 +515,29 @@ jobs:
               -ExpectFailure
             if ($directRetry.Output -notmatch 'existing target|already exists') {
               throw 'Direct CLI retry did not report overwrite refusal.'
+            }
+            $preflightHome = Join-Path $dataRoot 'PreflightHome'
+            $preflightReceipt = Join-Path $dataRoot 'npm-preflight-contract.json'
+            $preflightResult = Invoke-StandardUserSmoke `
+              -EntryPoint $preflightScript `
+              -Arguments @("--primary=$publicPrimary", "--consumer=$preflightConsumer", "--home=$preflightHome", "--receipt=$preflightReceipt") `
+              -Label 'local-actions-preflight-contract-smoke'
+            $preflight = Get-Content -Raw -LiteralPath $preflightReceipt | ConvertFrom-Json
+            if (
+              $preflight.schema_version -ne 1 -or
+              $preflight.status -ne 'passed' -or
+              $preflight.check_id -ne $env:PREFLIGHT_CHECK_ID -or
+              $preflight.local_actions_preflight_verified -ne $true -or
+              $preflight.producer_consumer_schema_compatible -ne $true -or
+              $preflight.nonempty_tool_rows_verified -ne $true -or
+              $preflight.version_strings_within_ui_contract -ne $true -or
+              $preflight.prerequisite_outcome_not_required -ne $true -or
+              $preflight.studio_loopback_services_stopped -ne $true -or
+              $preflight.consumer_contract_source_sha256 -notmatch '^[0-9a-f]{64}$' -or
+              $preflight.tool_count -lt 1 -or
+              $preflight.versioned_tool_count -lt 1
+            ) {
+              throw 'Exact-tarball Local Actions preflight contract receipt is incomplete.'
             }
             $safeResult = Invoke-StandardUserSmoke -Arguments @('--lifecycle-self-test', '--no-open') -Label 'safe-smoke'
             $localActionsResult = Invoke-StandardUserSmoke -Arguments @('local-actions', '--lifecycle-self-test', '--no-open') -Label 'local-actions-capability-contract-smoke'
@@ -513,6 +584,8 @@ jobs:
             @(
               'NPM_SAFE_SMOKE=passed'
               'NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed'
+              'NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed'
+              "NPM_LOCAL_ACTIONS_PREFLIGHT_CONSUMER_SHA256=$($preflight.consumer_contract_source_sha256)"
               'NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed'
               'NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed'
               'NPM_SCAFFOLD_PRESERVATION_SMOKE=passed'
@@ -539,6 +612,8 @@ jobs:
           const runner = process.env.RUNNER_LABEL;
           if (process.env.NPM_SAFE_SMOKE !== "passed"
               || process.env.NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE !== "passed"
+              || process.env.NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED !== "passed"
+              || !/^[0-9a-f]{64}$/u.test(process.env.NPM_LOCAL_ACTIONS_PREFLIGHT_CONSUMER_SHA256 ?? "")
               || process.env.NPM_DIRECT_CLI_SCAFFOLD_SMOKE !== "passed"
               || process.env.NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE !== "passed"
               || process.env.NPM_SCAFFOLD_PRESERVATION_SMOKE !== "passed"
@@ -553,6 +628,11 @@ jobs:
             node_version: process.env.NODE_VERSION,
             safe_smoke: "passed",
             local_actions_capability_contract_smoke: "passed",
+            local_actions_preflight_verified: true,
+            local_actions_preflight_check_id: process.env.PREFLIGHT_CHECK_ID,
+            local_actions_preflight_loopback_services_stopped: true,
+            local_actions_preflight_consumer_contract_source_sha256:
+              process.env.NPM_LOCAL_ACTIONS_PREFLIGHT_CONSUMER_SHA256,
             direct_cli_scaffold_smoke: "passed",
             local_actions_scaffold_smoke: "passed",
             scaffold_preservation_smoke: "passed",
@@ -872,6 +952,7 @@ jobs:
       EXPECTED_CANDIDATE_COMMIT: ${{ needs.build-package.outputs.candidate_commit }}
       EXPECTED_CANDIDATE_ARTIFACT: ${{ needs.build-package.outputs.candidate_artifact_name }}
       EXPECTED_BROWSER_SMOKE: ${{ needs.build-package.outputs.browser_smoke }}
+      EXPECTED_LOCAL_ACTIONS_PREFLIGHT_SMOKE: ${{ needs.build-package.outputs.exact_tarball_local_actions_preflight_smoke }}
       EXPECTED_LOCAL_ACTIONS_SCAFFOLD_SMOKE: ${{ needs.build-package.outputs.exact_tarball_local_actions_scaffold_smoke }}
       EXPECTED_SCAFFOLD_PRESERVATION_SMOKE: ${{ needs.build-package.outputs.exact_tarball_scaffold_preservation_smoke }}
       EXPECTED_SHUTDOWN_SMOKE: ${{ needs.build-package.outputs.exact_tarball_shutdown_smoke }}
@@ -896,13 +977,18 @@ jobs:
         id: aggregate
         run: |
           node --input-type=module <<'NODE'
+          import { createHash } from "node:crypto";
           import fs from "node:fs";
           const policy = JSON.parse(fs.readFileSync("config/companion-release-policy.json", "utf8"));
+          const consumerContractSha256 = createHash("sha256")
+            .update(fs.readFileSync("apps/studio/src/app/responseSchemas.ts"))
+            .digest("hex");
           if (process.env.EXPECTED_BROWSER_SMOKE !== "passed"
+              || process.env.EXPECTED_LOCAL_ACTIONS_PREFLIGHT_SMOKE !== "passed"
               || process.env.EXPECTED_LOCAL_ACTIONS_SCAFFOLD_SMOKE !== "passed"
               || process.env.EXPECTED_SCAFFOLD_PRESERVATION_SMOKE !== "passed"
               || process.env.EXPECTED_SHUTDOWN_SMOKE !== "passed") {
-            throw new Error("Exact-tarball browser boot, pairing, Local Actions scaffold, preservation, and shutdown smoke did not pass.");
+            throw new Error("Exact-tarball browser boot, pairing, Local Actions preflight, scaffold, preservation, and shutdown smoke did not pass.");
           }
           const records = Object.fromEntries(policy.assurance.required_runners.map((runner) => {
             const file = `output/npm/platform/npm-platform-${runner}.json`;
@@ -916,6 +1002,10 @@ jobs:
                 || record.node_version !== process.env.NODE_VERSION
                 || record.safe_smoke !== "passed"
                 || record.local_actions_capability_contract_smoke !== "passed"
+                || record.local_actions_preflight_verified !== true
+                || record.local_actions_preflight_check_id !== process.env.PREFLIGHT_CHECK_ID
+                || record.local_actions_preflight_loopback_services_stopped !== true
+                || record.local_actions_preflight_consumer_contract_source_sha256 !== consumerContractSha256
                 || record.direct_cli_scaffold_smoke !== "passed"
                 || record.local_actions_scaffold_smoke !== "passed"
                 || record.scaffold_preservation_smoke !== "passed"
@@ -939,6 +1029,10 @@ jobs:
             integrity: process.env.EXPECTED_NPM_INTEGRITY,
             package_inventory_sha256: process.env.EXPECTED_PACKAGE_INVENTORY_SHA256,
             browser_boot_and_pairing_smoke: "passed",
+            local_actions_preflight_verified: true,
+            local_actions_preflight_check_id: process.env.PREFLIGHT_CHECK_ID,
+            local_actions_preflight_loopback_services_stopped: true,
+            local_actions_preflight_consumer_contract_source_sha256: consumerContractSha256,
             exact_tarball_direct_cli_scaffold_smoke: "passed",
             exact_tarball_local_actions_scaffold_smoke: "passed",
             exact_tarball_scaffold_preservation_smoke: "passed",

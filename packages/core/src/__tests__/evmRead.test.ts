@@ -8,10 +8,17 @@ function response(result: unknown): Response {
 }
 
 describe("read-only EVM inspection", () => {
-  it("classifies address, transaction, decimal block, and rejects arbitrary input", () => {
+  it("classifies identifiers and only accepts canonical bounded block quantities", () => {
     expect(classifyEvmIdentifier(`0x${"a".repeat(40)}`)?.type).toBe("address");
     expect(classifyEvmIdentifier(`0x${"b".repeat(64)}`)?.type).toBe("transaction");
     expect(classifyEvmIdentifier("745")).toEqual({ type: "block", value: "0x2e9" });
+    expect(classifyEvmIdentifier("0x0")).toEqual({ type: "block", value: "0x0" });
+    expect(classifyEvmIdentifier("0x1234")).toEqual({ type: "block", value: "0x1234" });
+    expect(classifyEvmIdentifier(`0x${"c".repeat(41)}`)?.type).toBe("block");
+    expect(classifyEvmIdentifier("0x00")).toBeUndefined();
+    expect(classifyEvmIdentifier("0x01")).toBeUndefined();
+    expect(classifyEvmIdentifier(`0x${"f".repeat(65)}`)).toBeUndefined();
+    expect(classifyEvmIdentifier((1n << 256n).toString())).toBeUndefined();
     expect(classifyEvmIdentifier("dusk")).toBeUndefined();
   });
 

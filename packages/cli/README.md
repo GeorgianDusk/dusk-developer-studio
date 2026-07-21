@@ -22,7 +22,7 @@ does not silently install or update them.
 ## Run Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.1
+npx dusk-developer-studio@1.0.2
 ```
 
 Safe mode opens the local Studio with machine actions disabled. It can serve the
@@ -32,17 +32,22 @@ information.
 ## Run Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.1 local-actions
+npx dusk-developer-studio@1.0.2 local-actions
 ```
 
 Local Actions enables only the reviewed tool checks and starter creation
 operations exposed by Studio. It does not request wallet secrets, sign
 transactions, dispense funds, deploy to mainnet, or execute arbitrary commands.
 
+Each launch pairs one browser profile. To choose a specific browser or profile,
+add `--no-open` to either command, then open
+`http://127.0.0.1:5173/#companion` in that profile within five minutes before
+opening any other Local Studio page.
+
 ## Create a DuskDS starter from the terminal
 
 ```bash
-npx --yes dusk-developer-studio@1.0.1 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.2 create-duskds my-counter
 ```
 
 This renders the reviewed DuskDS counter template shipped in the package as one
@@ -55,20 +60,22 @@ the generated project's check, build, test, or verification commands.
 
 Keep the command running while you use the local browser tab. Press `Ctrl+C` in
 the same terminal to stop both loopback services. Projects remain in your user
-data folder.
+data folder. On Windows, if `npx` asks `Terminate batch job (Y/N)?`, type `Y`
+and press Enter.
 
 ## Troubleshooting
 
 - If port 5173 or 8788 is already in use, stop the conflicting local process and
   run Studio again. Studio does not silently select a different port.
 - If the browser does not open, leave the command running and open
-  `http://127.0.0.1:5173` yourself.
+  `http://127.0.0.1:5173/#companion` yourself within five minutes. If another
+  profile already paired, stop the command and rerun it with `--no-open`.
 - If a tool check fails, follow its specific install or version guidance and
   retry. Studio does not modify the toolchain for you.
 - Run the command as your normal user. Studio refuses administrator and root
   execution.
 - If PowerShell reports that script execution is disabled, run `npx.cmd
-  dusk-developer-studio@1.0.1` (or add `local-actions`) instead. You do not need to
+  dusk-developer-studio@1.0.2` (or add `local-actions`) instead. You do not need to
   weaken your PowerShell execution policy.
 
 For product problems, use the

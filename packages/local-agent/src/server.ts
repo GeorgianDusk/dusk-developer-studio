@@ -231,7 +231,7 @@ function safeVersion(value: string | undefined): string | undefined {
   return value
     .replace(/[A-Za-z]:[\\/][^\s"'<>]+/g, "[local-path]")
     .replace(/\/(?:Users|home|tmp|var|private|mnt)\/[^\s"'<>]+/g, "[local-path]")
-    .replace(/[\r\n\t]+/g, " ").slice(0, 160);
+    .replace(/[\r\n\t]+/g, " ").slice(0, 128);
 }
 
 function sanitizePreflight(result: PreflightResult): PreflightResult {

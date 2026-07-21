@@ -6,7 +6,7 @@ Dusk developers and curious builders choosing between DuskEVM and DuskDS. They m
 
 ## Product purpose
 
-Dusk Developer Studio helps a builder choose the right Dusk path and move through Setup, Access, Build, and Inspect with confidence.
+Dusk Developer Studio helps a builder choose the right Dusk path. DuskDS then moves through Setup, Access, Build, and Inspect with evidence; DuskEVM currently uses one pre-launch learning surface until Testnet activation is verified.
 
 The product has two complementary surfaces:
 
@@ -26,7 +26,7 @@ Calm, precise, and capable. The interface should feel like a polished developer 
 ## Product principles
 
 - **Lead with path clarity.** Make DuskEVM versus DuskDS the primary decision before showing detailed tooling.
-- **Teach by sequence.** Every path should make the next Setup, Access, Build, or Inspect task obvious.
+- **Teach by sequence without faking availability.** DuskDS makes the next Setup, Access, Build, or Inspect task obvious. The pre-launch DuskEVM surface explains the planned sequence without presenting four live stages or a completion score.
 - **Explain before asking.** Dusk-specific terms, evidence, and failure categories need plain-language context.
 - **Keep advanced detail available, not overwhelming.** Use collapsible explanations, grouped rows, and source labels.
 - **Make local capability deliberate.** The Hosted guide never implies machine access. Safe and Local Actions remain visibly distinct.

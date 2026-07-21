@@ -11,7 +11,7 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Switch to DuskEVM Testnet and confirm chain ID 745 / 0x2e9 before funding or deploying.",
+        "fix":  "Studio does not connect to a wallet before launch. For future planning, chain ID 745 / 0x2e9 is the expected Testnet identity; wait for a reviewed activation notice before adding or switching a wallet network.",
         "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the expected chain metadata. Do not add or switch a wallet network until the live workflow is activated."
     },
     {
@@ -25,7 +25,7 @@
                          "duskevm"
                      ],
         "severity":  "low",
-        "fix":  "Install or unlock an EIP-1193 compatible wallet such as MetaMask or Rabby, then refresh the Studio.",
+        "fix":  "No wallet action is required in Studio before launch. When wallet support is activated, use a reviewed EIP-1193 wallet and verify the exact network request before connecting.",
         "safeNextStep":  "Return to the DuskEVM pre-launch overview. Wallet connection and EVM starter actions are not active in Studio yet."
     },
     {
@@ -53,7 +53,7 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Fund the EVM wallet with testnet DUSK. Studio routes to the official DuskEVM bridge guide and does not dispense faucet tokens.",
+        "fix":  "Funding is not active in Studio before launch. After activation, use only the reviewed official Testnet funding route and verify its current status before moving tokens.",
         "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Access stage. Funding is not active in Studio until an official route is reviewed and activated."
     },
     {
@@ -69,8 +69,25 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Retry the RPC health check. If the browser says Failed to fetch, it can be RPC availability, firewall/proxy, DNS, TLS, or CORS behavior rather than a wallet issue.",
+        "fix":  "There is no DuskEVM RPC health check to retry in Studio before launch. If you independently test a published endpoint later, Failed to fetch can indicate RPC availability, firewall/proxy, DNS, TLS, or CORS behavior.",
         "safeNextStep":  "Return to the DuskEVM pre-launch overview. Studio does not run an EVM network check yet; use current official sources before treating any endpoint as live."
+    },
+    {
+        "id":  "duskds-public-node-unavailable",
+        "title":  "DuskDS public node check is unavailable or slow",
+        "symptoms":  [
+                         "duskds",
+                         "public node",
+                         "latest block",
+                         "timeout",
+                         "429",
+                         "500",
+                         "failed to fetch",
+                         "network unavailable"
+                     ],
+        "severity":  "medium",
+        "fix":  "The live DuskDS read-only request did not complete. Check your network, proxy, DNS, and the public Testnet node status. If the browser reports a security-policy error, use the separate CSP recovery entry. Do not disable TLS or browser security.",
+        "safeNextStep":  "Return to DuskDS Access or Inspect and retry the same read-only check. If the public node is still unavailable, use the manual W3sper lane and keep the step blocked until a valid latest-block result is observed."
     },
     {
         "id":  "blockscout-unavailable",
@@ -97,7 +114,7 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Install Foundry so forge and cast are available before running build, test, or deploy commands.",
+        "fix":  "Foundry is not required for the current pre-launch reference. It becomes relevant only after the reviewed local Build workflow is activated.",
         "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Build stage. Studio does not run EVM builds or deploy commands yet."
     },
     {
@@ -125,7 +142,7 @@
                          "duskevm"
                      ],
         "severity":  "low",
-        "fix":  "Confirm compiler version, optimizer settings, constructor args, and exact contract path match the deployed bytecode.",
+        "fix":  "Studio does not submit DuskEVM verification before launch. For future recovery, the compiler version, optimizer settings, constructor arguments, and exact contract path must match deployed bytecode.",
         "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Inspect stage. Studio does not submit contract verification."
     },
     {
@@ -375,11 +392,15 @@
                          "Mmap",
                          "piecrust",
                          "unix only",
-                         "windows test failed"
+                         "windows test failed",
+                         "wsl",
+                         "ubuntu 24.04",
+                         "wsl_e_distro_not_found",
+                         "no distribution with the supplied name"
                      ],
         "severity":  "medium",
-        "fix":  "Contract and data-driver builds can pass on Windows, but the VM-backed test stack currently depends on Unix-only memory mapping. Run dusk-forge test in Linux, WSL Ubuntu, or Docker.",
-        "safeNextStep":  "Use dusk-forge build all on Windows for artifacts, then run DuskDS preflight and check the WSL Ubuntu DuskDS test runner row before treating VM tests as ready."
+        "fix":  "Contract and data-driver builds can pass on Windows, but the reviewed VM test needs Linux. Run wsl -l -v first. If Ubuntu-24.04 is missing, use wsl --install -d Ubuntu-24.04 and complete any Windows-requested reboot and first launch before installing the reviewed DuskDS tools.",
+        "safeNextStep":  "Return to Setup, open Conditional and optional tools, run the WSL with Ubuntu 24.04 install commands, then repeat that exact check. You may keep Windows build artifacts, but do not record VM-test evidence until the Linux check and test pass."
     },
     {
         "id":  "foundry-signature-cache-access-denied",

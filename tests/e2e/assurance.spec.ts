@@ -55,9 +55,11 @@ test("keyboard and reduced-motion modes preserve the primary flow", async ({ pag
   await page.keyboard.press("Enter");
   await expect(page.locator("main#studio-main")).toBeFocused();
   const homeButton = page.getByRole("button", { name: "Dusk Developer Studio home", exact: true });
+  const compactPathsButton = page.getByRole("button", { name: "Paths", exact: true });
+  const visibleHomeControl = await homeButton.isVisible() ? homeButton : compactPathsButton;
   const duskDsPath = page.getByRole("button", { name: /Start DuskDS/i });
-  await homeButton.focus();
-  await expect(homeButton).toBeFocused();
+  await visibleHomeControl.focus();
+  await expect(visibleHomeControl).toBeFocused();
   await duskDsPath.focus();
   await expect(duskDsPath).toBeFocused();
   await expect(duskDsPath).not.toHaveAttribute("aria-pressed");
@@ -75,7 +77,7 @@ test("keyboard and reduced-motion modes preserve the primary flow", async ({ pag
   await expect(accessHeading).toBeFocused();
 });
 
-test("narrow and zoom-equivalent layouts reflow without page overflow", async ({ page }, testInfo) => {
+test("documented responsive boundaries reflow without page overflow", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium-desktop", "One deterministic reflow pass covers the shared responsive layout.");
   await page.goto("/");
   await page.getByRole("button", { name: /Start DuskDS/i }).click();
@@ -85,15 +87,40 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
     { width: 320, height: 800, route: "inspect" },
     { width: 390, height: 844, route: "setup" },
     { width: 390, height: 844, route: "inspect" },
-    { width: 640, height: 900, route: "setup" }
+    { width: 760, height: 1000, route: "setup" },
+    { width: 760, height: 1000, route: "inspect" },
+    { width: 761, height: 1000, route: "setup" },
+    { width: 761, height: 1000, route: "inspect" },
+    { width: 1120, height: 900, route: "setup" },
+    { width: 1120, height: 900, route: "inspect" },
+    { width: 1121, height: 900, route: "setup" },
+    { width: 1121, height: 900, route: "inspect" },
+    { width: 1280, height: 900, route: "overview" },
+    { width: 1280, height: 900, route: "inspect" },
+    { width: 1440, height: 1000, route: "overview" },
+    { width: 1440, height: 1000, route: "inspect" }
   ] as const) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.goto(`/#${viewport.route}`);
     const layout = await page.evaluate(() => ({
       innerWidth: window.innerWidth,
       scrollWidth: document.documentElement.scrollWidth,
-      clippedTextCount: Array.from(document.querySelectorAll("main p, main h1, main h2, main h3, main strong, main em"))
-        .filter((element) => element.scrollWidth > element.clientWidth + 1).length,
+      clippedTextElements: Array.from(document.querySelectorAll<HTMLElement>("main p, main h1, main h2, main h3, main strong, main em"))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return rect.width > 0
+            && rect.height > 0
+            && style.display !== "none"
+            && style.visibility !== "hidden"
+            && element.scrollWidth > element.clientWidth + 1;
+        })
+        .map((element) => ({
+          selector: `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${element.className && typeof element.className === "string" ? `.${element.className.trim().replace(/\s+/g, ".")}` : ""}`,
+          text: element.textContent?.trim().slice(0, 120),
+          scrollWidth: element.scrollWidth,
+          clientWidth: element.clientWidth
+        })),
       overflowingElements: Array.from(document.querySelectorAll<HTMLElement>("body *"))
         .map((element) => {
           const rect = element.getBoundingClientRect();
@@ -115,7 +142,10 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
         }).length
     }));
     expect(layout.scrollWidth, JSON.stringify(layout.overflowingElements, null, 2)).toBeLessThanOrEqual(layout.innerWidth);
-    expect(layout.clippedTextCount).toBe(0);
+    expect(
+      layout.clippedTextElements,
+      `${viewport.width}x${viewport.height} #${viewport.route}\n${JSON.stringify(layout.clippedTextElements, null, 2)}`
+    ).toEqual([]);
     expect(layout.smallTargetCount).toBe(0);
     if (viewport.route === "inspect" && viewport.width <= 390) {
       const contractBox = await page.getByLabel("Deployed contract ID").boundingBox();
@@ -128,9 +158,38 @@ test("narrow and zoom-equivalent layouts reflow without page overflow", async ({
   }
 });
 
+test("mobile long-page navigation and Reference disclosure controls stay reachable", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium-desktop", "One deterministic mobile interaction pass covers the shared responsive layout.");
+  await page.setViewportSize({ width: 320, height: 844 });
+  await page.goto("/");
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
+  await page.getByRole("navigation", { name: "Studio navigation" }).getByRole("button", { name: "Reference" }).click();
+  await page.getByRole("button", { name: "All references" }).click();
+
+  const expandDocs = page.getByRole("button", { name: /Show all \d+ docs/i });
+  await expandDocs.scrollIntoViewIfNeeded();
+  const before = await expandDocs.boundingBox();
+  await expandDocs.click();
+  const collapseDocs = page.getByRole("button", { name: "Show fewer docs" });
+  await expect(collapseDocs).toBeInViewport();
+  const after = await collapseDocs.boundingBox();
+  expect(before).not.toBeNull();
+  expect(after).not.toBeNull();
+  expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(2);
+
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect(page.getByRole("navigation", { name: "Studio navigation" })).toBeInViewport();
+  await expect(page.getByRole("button", { name: /Return to DuskDS at/i })).toBeInViewport();
+
+  await page.getByRole("button", { name: "Troubleshoot" }).click();
+  await page.getByRole("textbox", { name: "Search" }).fill("Rust 1.94.0");
+  await expect(page.getByText("Recheck:", { exact: true }).first()).toBeVisible();
+});
+
 test("offline hosted DuskDS node failure stays controlled and retryable", async ({ page, context }) => {
   await page.goto("/");
   await page.getByRole("button", { name: /Start DuskDS/i }).click();
+  await page.getByRole("button", { name: "Skip for now" }).click();
   await page.goto("/#access");
   await context.setOffline(true);
   await page.getByRole("button", { name: "Run hosted safe check" }).click();

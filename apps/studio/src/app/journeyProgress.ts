@@ -39,6 +39,7 @@ export type EvidenceCode =
 
 export type BlockerCode =
   | "rpc-unavailable"
+  | "duskds-public-node-unavailable"
   | "wrong-chain"
   | "no-wallet"
   | "no-account"
@@ -81,6 +82,9 @@ export interface EvidenceMetadata {
   revision?: string;
   platform?: EvidencePlatform;
   checkCount?: number;
+  cleanTree?: boolean;
+  sourceScope?: "git-commit-plus-unignored-working-tree";
+  postBuildSourceCheck?: boolean;
   blockHeight?: number;
   blockHash?: string;
   /** Sanitized URL origin only; credentials, query strings, fragments, and paths are discarded. */
@@ -201,7 +205,7 @@ const evidenceTestEnvironments = new Set<EvidenceTestEnvironment>(["windows", "m
 const evidenceCodes = new Set<EvidenceCode>(Object.values(requirements).flatMap((path) => Object.values(path).flat()));
 evidenceCodes.add("duskds-read-inspection-attestation");
 const blockerCodes = new Set<BlockerCode>([
-  "rpc-unavailable", "wrong-chain", "no-wallet", "no-account", "insufficient-gas", "companion-unavailable",
+  "rpc-unavailable", "duskds-public-node-unavailable", "wrong-chain", "no-wallet", "no-account", "insufficient-gas", "companion-unavailable",
   "toolchain-incomplete", "unsupported-platform", "invalid-identifier", "result-not-found", "local-build-unverified", "user-deferred"
 ]);
 const automaticLegacyEvidence = new Set<EvidenceCode>([
@@ -244,7 +248,7 @@ function normalizeVersion(value: unknown): string | undefined {
 }
 
 function normalizeRevision(value: unknown): string | undefined {
-  if (typeof value !== "string" || !/^[a-f0-9]{7,64}$/i.test(value)) return undefined;
+  if (typeof value !== "string" || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(value)) return undefined;
   return value.toLowerCase();
 }
 
@@ -305,6 +309,13 @@ function normalizeMetadata(candidate: unknown): EvidenceMetadata | undefined {
   const checkCount = typeof raw.checkCount === "number" && Number.isSafeInteger(raw.checkCount) && raw.checkCount >= 0 && raw.checkCount <= 100
     ? raw.checkCount
     : undefined;
+  const cleanTree = typeof raw.cleanTree === "boolean" ? raw.cleanTree : undefined;
+  const sourceScope = raw.sourceScope === "git-commit-plus-unignored-working-tree"
+    ? raw.sourceScope
+    : undefined;
+  const postBuildSourceCheck = typeof raw.postBuildSourceCheck === "boolean"
+    ? raw.postBuildSourceCheck
+    : undefined;
   const blockHeight = typeof raw.blockHeight === "number" && Number.isSafeInteger(raw.blockHeight) && raw.blockHeight >= 0
     ? raw.blockHeight
     : undefined;
@@ -330,6 +341,9 @@ function normalizeMetadata(candidate: unknown): EvidenceMetadata | undefined {
     ...(revision ? { revision } : {}),
     ...(platform ? { platform } : {}),
     ...(checkCount !== undefined ? { checkCount } : {}),
+    ...(cleanTree !== undefined ? { cleanTree } : {}),
+    ...(sourceScope ? { sourceScope } : {}),
+    ...(postBuildSourceCheck !== undefined ? { postBuildSourceCheck } : {}),
     ...(blockHeight !== undefined ? { blockHeight } : {}),
     ...(blockHash ? { blockHash } : {}),
     ...(endpoint ? { endpoint } : {}),
@@ -474,7 +488,12 @@ function normalizeReadiness(path: BuilderPath, progress: PathProgress): PathProg
       .map((code) => step.evidenceEntries.find((entry) => entry.code === code))
       .filter((entry): entry is EvidenceEntry => Boolean(entry));
     const complete = requiredEntries.length === required.length;
-    if (complete) {
+    const previous = index === 0 ? undefined : next[STEP_ROUTES[index - 1]];
+    const previousComplete = !previous
+      || isJourneyComplete(previous.status)
+      || previous.status === "skipped"
+      || previous.status === "skipped-with-reason";
+    if (complete && previousComplete) {
       step.status = requiredEntries.every((entry) => entry.method === "automatic")
         ? "passed-automatically"
         : "confirmed-manually";
@@ -483,10 +502,7 @@ function normalizeReadiness(path: BuilderPath, progress: PathProgress): PathProg
     }
     if (isJourneyComplete(step.status)) step.status = "ready";
     if (step.status === "blocked" || step.status === "skipped" || step.status === "skipped-with-reason") continue;
-    const previous = index === 0 ? undefined : next[STEP_ROUTES[index - 1]];
-    step.status = !previous || isJourneyComplete(previous.status) || previous.status === "skipped" || previous.status === "skipped-with-reason"
-      ? "ready"
-      : "not-started";
+    step.status = previousComplete ? "ready" : "not-started";
   }
   return next;
 }

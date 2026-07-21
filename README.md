@@ -24,7 +24,7 @@ The package is self-contained, installs no additional runtime dependencies, and 
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.1
+npx dusk-developer-studio@1.0.2
 ```
 
 Safe mode starts the local Studio, pairs the browser, and provides the guided experience without running developer tools or creating projects.
@@ -32,20 +32,22 @@ Safe mode starts the local Studio, pairs the browser, and provides the guided ex
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.1 local-actions
+npx dusk-developer-studio@1.0.2 local-actions
 ```
 
 Local Actions adds allowlisted prerequisite checks and constrained starter creation. It uses developer tools already installed on your machine; it does not install or update them.
 
+The browser opens automatically and each launch pairs one browser profile. To choose a specific browser or profile, add `--no-open` to either command, then open `http://127.0.0.1:5173/#companion` in that profile within five minutes before opening any other Local Studio page.
+
 To create a DuskDS counter starter directly from the same reviewed package template:
 
 ```bash
-npx --yes dusk-developer-studio@1.0.1 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.2 create-duskds my-counter
 ```
 
 The command writes one new child of your current working directory, refuses an existing target, and preserves the packaged Rust `1.94.0` toolchain, dependency lock, and template provenance. Dusk Forge remains a separate prerequisite for the subsequent check, build, test, and verification commands. Local Actions uses the separate managed DuskDS project root described below.
 
-Both commands open `http://127.0.0.1:5173`. Keep the terminal open while using the Studio and press `Ctrl+C` to stop it.
+Both commands open `http://127.0.0.1:5173`. Keep the terminal open while using the Studio and press `Ctrl+C` to stop it. On Windows, if `npx` asks `Terminate batch job (Y/N)?`, type `Y` and press Enter; both loopback services then close.
 
 ## Hosted guide or local Studio?
 
@@ -60,7 +62,7 @@ The Hosted guide never attempts to connect to localhost. Local actions are avail
 ## What the Studio provides
 
 - A clear first-screen choice between DuskEVM and DuskDS.
-- One focused Setup -> Access -> Build -> Inspect journey for the selected path.
+- A complete Setup -> Access -> Build -> Inspect evidence journey for DuskDS, plus one clearly bounded DuskEVM pre-launch learning surface until Testnet activation.
 - Source-labelled capabilities, network details, resources, and troubleshooting.
 - Beginner-friendly explanations alongside exact commands and evidence.
 - A DuskDS workflow covering public-node access, W3sper, Dusk Forge, starter creation, build checks, manual Testnet deployment readiness, and post-deploy inspection.
@@ -69,6 +71,8 @@ The Hosted guide never attempts to connect to localhost. Local actions are avail
 ### DuskEVM availability
 
 DuskEVM Testnet is not live yet. The DuskEVM path is therefore an educational pre-launch guide: it does not claim live RPC, wallet, balance, deployment, or inspection evidence. The guide will activate those checks only after the real Testnet endpoints and behavior can be verified.
+
+The [DuskEVM Testnet activation checklist](docs/quality/duskevm-testnet-activation-checklist.md) defines the network, wallet, build, security, accessibility, monitoring, exact-candidate, and rollback evidence required before that boundary changes.
 
 ### DuskDS deployment boundary
 

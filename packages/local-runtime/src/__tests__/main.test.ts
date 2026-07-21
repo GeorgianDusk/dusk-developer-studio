@@ -5,6 +5,9 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  describeLocalRuntimeListenFailure,
+  localBrowserPairingInstruction,
+  localRuntimeStopInstruction,
   parseWindowsNetstatListeningEndpoints,
   resolveDuskDsProjectRoot,
   resolveLocalBrowserLaunch,
@@ -34,6 +37,41 @@ describe("local npm runtime CLI mode", () => {
     expect(() => resolveLocalRuntimeCliMode(["--unknown"])).toThrow(/Unsupported argument/);
     expect(() => resolveLocalRuntimeCliMode(["--no-open", "--no-open"])).toThrow(/must not be repeated/);
     expect(() => resolveLocalRuntimeCliMode(["--enable-local-actions"])).toThrow(/Unsupported argument/);
+  });
+
+  it("explains the Windows npx shutdown confirmation without burdening other platforms", () => {
+    expect(localRuntimeStopInstruction("win32")).toContain('Terminate batch job (Y/N)?');
+    expect(localRuntimeStopInstruction("win32")).toContain("type Y and press Enter");
+    expect(localRuntimeStopInstruction("linux")).toBe(
+      "Press Ctrl+C to stop. Projects remain under the managed DuskDS project root."
+    );
+    expect(localRuntimeStopInstruction("darwin")).not.toContain("Terminate batch job");
+  });
+
+  it("explains how to pair the intended browser profile", () => {
+    expect(localBrowserPairingInstruction(true)).toContain("this launch pairs one browser profile");
+    expect(localBrowserPairingInstruction(true)).toContain("rerun with --no-open");
+    expect(localBrowserPairingInstruction(false)).toContain("one browser profile you want to pair");
+    expect(localBrowserPairingInstruction(false)).toContain("within five minutes");
+    expect(localBrowserPairingInstruction(false)).toContain("http://127.0.0.1:5173/#companion");
+  });
+
+  it("turns fixed-port conflicts into actionable, cleanup-aware recovery", () => {
+    const occupied = Object.assign(new Error("listen EADDRINUSE: address already in use 127.0.0.1:5173"), {
+      code: "EADDRINUSE"
+    });
+    const described = describeLocalRuntimeListenFailure(occupied, 5173);
+    expect(described.message).toContain("127.0.0.1:5173 is already in use");
+    expect(described.message).toContain("confirm the port is free");
+    expect(described.message).toContain("rerun the same command");
+    expect(described.message).toContain("partially started Studio service was stopped");
+    expect(described.message).not.toContain("EADDRINUSE");
+    expect(describeLocalRuntimeListenFailure(occupied, 8788).message).toContain(
+      "127.0.0.1:8788 is already in use"
+    );
+
+    const unrelated = new Error("certificate verification failed");
+    expect(describeLocalRuntimeListenFailure(unrelated, 8788)).toBe(unrelated);
   });
 
   it("uses one managed DuskDS root and supports only explicit safe absolute overrides", () => {

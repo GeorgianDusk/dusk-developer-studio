@@ -10,12 +10,15 @@ describe("manual evidence validation", () => {
       blockHash: `0x${"a".repeat(64)}`,
       endpoint: "https://testnet.nodes.dusk.network"
     });
-    expect(validateBlockObservation("-1", "secret").error).toMatch(/block height/i);
+    expect(validateBlockObservation("-1", "secret")).toMatchObject({ field: "height", error: expect.stringMatching(/block height/i) });
+    expect(validateBlockObservation("1", "secret")).toMatchObject({ field: "hash", error: expect.stringMatching(/block hash/i) });
   });
 
-  it("accepts only bounded Git revisions", () => {
-    expect(validateRevision("ABCDEF1").value).toBe("abcdef1");
-    expect(validateRevision("C:\\Users\\person\\project").error).toMatch(/Git tree or commit ID/i);
+  it("accepts only full Git object identities", () => {
+    expect(validateRevision("A".repeat(40)).value).toBe("a".repeat(40));
+    expect(validateRevision("B".repeat(64)).value).toBe("b".repeat(64));
+    expect(validateRevision("ABCDEF1")).toMatchObject({ field: "revision", error: expect.stringMatching(/full 40- or 64-character/i) });
+    expect(validateRevision("C:\\Users\\person\\project")).toMatchObject({ field: "revision", error: expect.stringMatching(/Git tree or commit ID/i) });
   });
 
   it("binds driver observations to a contract, function, endpoint, and response digest", () => {
@@ -46,12 +49,12 @@ describe("manual evidence validation", () => {
       contractId: "../secret",
       functionName: "",
       responseSha256: "b".repeat(64)
-    }).error).toMatch(/contract ID/i);
+    })).toMatchObject({ field: "contractId", error: expect.stringMatching(/contract ID/i) });
     expect(validateDriverObservation("decode", {
       contractId: "a".repeat(64),
       functionName: "bad-name",
       responseSha256: "b".repeat(64)
-    }).error).toMatch(/function name/i);
+    })).toMatchObject({ field: "functionName", error: expect.stringMatching(/function name/i) });
   });
 
   it("captures only safe artifact basenames, hashes, and sizes", () => {
@@ -77,6 +80,6 @@ describe("manual evidence validation", () => {
       dataDriverName: "counter_driver.wasm",
       dataDriverSha256: "c".repeat(64),
       dataDriverSize: "8200"
-    }).error).toMatch(/without folders/i);
+    })).toMatchObject({ field: "contractName", error: expect.stringMatching(/without folders/i) });
   });
 });

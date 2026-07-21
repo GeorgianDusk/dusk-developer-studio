@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STUDIO_PRODUCT, STUDIO_RELEASE, type StudioRelease } from "../release";
 import { App } from "../app/App";
-import { JOURNEY_PROGRESS_STORAGE_KEY } from "../app/journeyProgress";
+import { createInitialJourneyProgress, JOURNEY_PROGRESS_STORAGE_KEY, recordJourneyEvidence } from "../app/journeyProgress";
 import { getStudioRuntime } from "../app/runtime";
 
 const npmCommit = "a".repeat(40);
@@ -25,6 +25,30 @@ function scaffoldReceipt(projectPath: string, recovered = false, runtimeOs: "win
     templateRevision: reviewedTemplateRevision,
     templateLockSha256: reviewedTemplateLock
   };
+}
+
+function progressThroughDuskDsAccess() {
+  let progress = recordJourneyEvidence(
+    createInitialJourneyProgress(),
+    "duskds",
+    "setup",
+    ["duskds-required-preflight"],
+    { method: "manual" }
+  );
+  progress = recordJourneyEvidence(
+    progress,
+    "duskds",
+    "access",
+    ["duskds-node-read-attestation"],
+    {
+      method: "manual",
+      metadata: {
+        blockHeight: 1,
+        blockHash: "f".repeat(64)
+      }
+    }
+  );
+  return progress;
 }
 
 describe("App", () => {
@@ -50,6 +74,7 @@ describe("App", () => {
     expect(screen.getByText("Reference only")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Open pre-launch overview/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Start DuskDS/i })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Choose a builder path" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reference" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Troubleshoot" })).toBeInTheDocument();
   });
@@ -73,7 +98,9 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
     expect(screen.getByText("No live evidence is recorded")).toBeInTheDocument();
+    expect(screen.getByText("https://rpc.testnet.evm.dusk.network")).toBeVisible();
     expect(screen.getByRole("button", { name: "Copy pre-launch RPC URL" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Official docs source/ })).toHaveAttribute("href", "https://github.com/dusk-network/docs");
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByText(/v0\.1\.0-test/)).toBeInTheDocument();
   });
@@ -113,10 +140,21 @@ describe("App", () => {
   it("shows maturity, source status, and freshness in references", () => {
     window.location.hash = "#reference";
     render(<App />);
-    expect(screen.getAllByText(/reviewed July 19, 2026/).length).toBeGreaterThan(2);
+    expect(screen.getAllByText(/reviewed July 20, 2026/).length).toBeGreaterThan(2);
     expect(screen.getAllByText("Pre-launch Testnet reference").length).toBeGreaterThan(0);
     expect(screen.getByText("pre-launch metadata")).toBeInTheDocument();
     expect(screen.getAllByText("reference only")).toHaveLength(2);
+  });
+
+  it("shows the complete selected-path capability set before a search", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#reference";
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Show all 17 capabilities" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 17 capabilities" }));
+    expect(screen.getByText("Citadel 2 private identity and access")).toBeInTheDocument();
+    expect(screen.getByText("Deterministic and verifiable builds")).toBeInTheDocument();
   });
 
   it("keeps active DuskDS recovery separate from pre-launch EVM planning", () => {
@@ -126,8 +164,81 @@ describe("App", () => {
 
     expect(screen.getByRole("heading", { name: "Fix the blocker in front of you." })).toBeInTheDocument();
     expect(screen.getAllByText("Cause and fix").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Recheck").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Recheck:").length).toBeGreaterThan(0);
     expect(screen.queryByRole("heading", { name: "Wallet is on the wrong chain" })).not.toBeInTheDocument();
+  });
+
+  it("keeps common recovery focused while making every reviewed issue reachable", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#troubleshooting";
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "DuskDS common issues" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("heading", { name: "Hedger is mentioned but not ready for Studio automation" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
+
+    expect(screen.getByRole("button", { name: "All reviewed issues" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("45 reviewed entries found.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Hedger is mentioned but not ready for Studio automation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Wallet is on the wrong chain" })).toBeInTheDocument();
+  });
+
+  it("selects DuskDS before opening a recovery action from a pathless session", () => {
+    window.location.hash = "#troubleshooting";
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "deep path" } });
+    fireEvent.click(screen.getByRole("button", { name: "Open Build" }));
+
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
+    expect(window.location.hash).toBe("#build");
+    expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
+  });
+
+  it("switches an opposite selected path before opening a DuskDS recovery action", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#troubleshooting";
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "deep path" } });
+    fireEvent.click(screen.getByRole("button", { name: "Open Build" }));
+
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
+    expect(window.location.hash).toBe("#build");
+    expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
+  });
+
+  it("labels every EVM-only reviewed issue as pre-launch planning", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#troubleshooting";
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "Blockscout unavailable" } });
+    const row = screen.getByRole("heading", { name: "Blockscout unavailable" }).closest("article");
+    expect(row).toHaveTextContent("Planning");
+    expect(row).toHaveTextContent("Review before launch:");
+    expect(row).not.toHaveTextContent("Recheck:");
+  });
+
+  it("keeps a live DuskDS node outage in active recovery in both scopes", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#troubleshooting";
+    render(<App />);
+
+    fireEvent.change(screen.getByLabelText("Search"), { target: { value: "DuskDS public node check" } });
+    let row = screen.getByRole("heading", { name: "DuskDS public node check is unavailable or slow" }).closest("article");
+    expect(row).toHaveTextContent("Medium impact");
+    expect(row).toHaveTextContent("Recheck:");
+    expect(row).not.toHaveTextContent("Planning");
+
+    fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
+    row = screen.getByRole("heading", { name: "DuskDS public node check is unavailable or slow" }).closest("article");
+    expect(row).toHaveTextContent("Medium impact");
+    expect(row).toHaveTextContent("Recheck:");
+    expect(row).not.toHaveTextContent("Review before launch:");
   });
 
   it("requires an inline confirmation before resetting browser-local progress", async () => {
@@ -137,6 +248,9 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Build & browser data" }));
     fireEvent.click(screen.getByRole("button", { name: "Reset browser progress" }));
+    expect(screen.getByText("Reset saved DuskDS journey progress in this browser?")).toBeInTheDocument();
+    expect(screen.getByText(/Session-only page choices end when you close this tab/)).toBeInTheDocument();
+    expect(screen.queryByText(/Reset all Studio progress/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset browser progress" })).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
@@ -149,6 +263,53 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
     expect(screen.getByRole("button", { name: "All references" })).toHaveClass("active");
     expect(screen.queryByRole("button", { name: "DuskDS only" })).not.toBeInTheDocument();
+  });
+
+  it("does not resurrect a reset path through Back, Forward, or reload", async () => {
+    const view = render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskDS/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Reference" }));
+    fireEvent.click(screen.getByRole("button", { name: "Build & browser data" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset browser progress" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset browser progress" }));
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
+
+    await act(async () => {
+      window.history.back();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(window.location.hash).toBe("#reference"));
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
+    expect(screen.getByRole("button", { name: "All references" })).toHaveClass("active");
+
+    await act(async () => {
+      window.history.forward();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    await waitFor(() => expect(window.location.hash).toBe("#settings"));
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
+
+    view.unmount();
+    render(<App />);
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
+    expect(screen.getByRole("heading", { name: "See the build you are using and control its saved progress." })).toBeInTheDocument();
+  });
+
+  it("makes saved-progress review and clean-start recovery discoverable on the chooser", () => {
+    const progress = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "setup",
+      ["duskds-required-preflight"],
+      { method: "automatic" }
+    );
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+    render(<App />);
+
+    expect(screen.getByText("DuskDS progress saved")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review or reset saved progress" }));
+    expect(window.location.hash).toBe("#settings");
+    expect(screen.getByRole("heading", { name: "See the build you are using and control its saved progress." })).toBeInTheDocument();
   });
 
   it("announces successful copy feedback without changing the button name", async () => {
@@ -320,7 +481,11 @@ describe("App", () => {
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
     fireEvent.click(await screen.findByRole("button", { name: /Local Studio/i }));
-    expect(await screen.findByText(/Close this page and run the npm command again/)).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Local Studio is not paired." })).toBeInTheDocument();
+    expect(screen.getByText(/already paired in another browser profile or its five-minute pairing window expired/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pair the browser profile you intend to use" })).toBeInTheDocument();
+    expect(screen.getByText(`npx dusk-developer-studio@${npmRelease.version} --no-open`)).toBeInTheDocument();
+    expect(screen.getByText(`npx dusk-developer-studio@${npmRelease.version} local-actions --no-open`)).toBeInTheDocument();
   });
 
   it("refuses automatic Setup evidence for an incompatible Windows wasm-opt shim", async () => {
@@ -393,6 +558,7 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
     window.location.hash = "#build";
 
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
@@ -468,6 +634,7 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
     window.location.hash = "#build";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
@@ -510,6 +677,15 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
     fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
     const root = screen.getByLabelText("Existing project root");
+    expect(screen.queryByText("Enter an absolute existing project root.")).not.toBeInTheDocument();
+    expect(root).toHaveAttribute("aria-invalid", "false");
+    fireEvent.blur(root);
+    expect(screen.getByText("Enter an absolute existing project root.")).toHaveAttribute(
+      "id",
+      "existing-project-root-error"
+    );
+    expect(root).toHaveAttribute("aria-invalid", "true");
+    expect(root).toHaveAttribute("aria-describedby", "existing-project-root-error");
     for (const invalid of ["\\root-relative", "/root-relative", "C:\\", "C:\\bad\0path"]) {
       fireEvent.change(root, { target: { value: invalid } });
       expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
@@ -554,6 +730,7 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
     window.location.hash = "#build";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
@@ -589,6 +766,7 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
     window.location.hash = "#build";
     const view = render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
@@ -628,6 +806,7 @@ describe("App", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
     window.location.hash = "#build";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());

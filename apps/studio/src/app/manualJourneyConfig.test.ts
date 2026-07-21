@@ -9,7 +9,8 @@ import {
   W3SPER_RUN_COMMAND,
   W3SPER_VERSION,
   W3SPER_WORKSPACE_COMMAND,
-  manualToolsFor
+  manualToolsFor,
+  requiredManualCheckBundle
 } from "./manualJourneyConfig";
 
 describe("manual journey configuration", () => {
@@ -31,6 +32,21 @@ describe("manual journey configuration", () => {
     ]);
     expect(setup.some((tool) => tool.id === "wasm-opt")).toBe(false);
     expect(setup.find((tool) => tool.id === "wsl")?.requirement).toBe("conditional");
+  });
+
+  it("builds one fail-closed platform bundle for every required Setup check", () => {
+    const windows = requiredManualCheckBundle("setup", "windows");
+    expect(windows).toContain("Write-Host '=== Git ==='");
+    expect(windows).toContain("rustup run 1.94.0 rustc --version");
+    expect(windows).toContain("Reviewed Dusk Forge commit is not installed");
+    expect(windows).toContain("Dusk Forge CLI check failed.");
+    expect(windows).not.toContain("wsl -d Ubuntu-24.04");
+
+    const linux = requiredManualCheckBundle("setup", "linux");
+    expect(linux).toMatch(/^\(\nset -e\n/);
+    expect(linux).toContain("printf '\\n=== %s ===\\n' 'Git'");
+    expect(linux).toContain('grep -Eq "dusk-forge-cli');
+    expect(linux.trimEnd().endsWith(")")).toBe(true);
   });
 
   it("rejects Windows wasm-opt shims in the manual check", () => {

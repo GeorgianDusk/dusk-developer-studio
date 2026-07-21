@@ -24,6 +24,77 @@ import { localAgentUrl, studioRuntime } from "./studioConfig";
 import type { CompanionStatus, RouteId } from "./types";
 
 const routeIds: RouteId[] = ["overview", "setup", "access", "build", "inspect", "reference", "troubleshooting", "companion", "settings"];
+const ROUTE_SCROLL_STATE_KEY = "duskStudioScrollY";
+const ROUTE_BUILDER_PATH_STATE_KEY = "duskStudioBuilderPath";
+const ROUTE_BUILDER_PATH_GENERATION_STATE_KEY = "duskStudioBuilderPathGeneration";
+const ROUTE_BUILDER_PATH_GENERATION_STORAGE_KEY = "dusk-studio-builder-path-generation";
+let volatileBuilderPathGeneration = 0;
+
+function currentBuilderPathGeneration(): number {
+  try {
+    const value = Number(window.sessionStorage.getItem(ROUTE_BUILDER_PATH_GENERATION_STORAGE_KEY));
+    if (Number.isSafeInteger(value) && value >= 0) {
+      volatileBuilderPathGeneration = value;
+      return value;
+    }
+  } catch {
+    // The in-memory generation still protects this tab when session storage is disabled.
+  }
+  return volatileBuilderPathGeneration;
+}
+
+export function invalidatePriorBuilderPathHistory(): void {
+  const next = currentBuilderPathGeneration() + 1;
+  volatileBuilderPathGeneration = next;
+  try {
+    window.sessionStorage.setItem(ROUTE_BUILDER_PATH_GENERATION_STORAGE_KEY, String(next));
+  } catch {
+    // The in-memory generation remains authoritative for this mounted tab.
+  }
+}
+
+function historyStateWithScroll(scrollY: number): Record<string, unknown> {
+  const state = window.history.state;
+  const base = state !== null && typeof state === "object" && !Array.isArray(state)
+    ? state as Record<string, unknown>
+    : {};
+  return { ...base, [ROUTE_SCROLL_STATE_KEY]: Math.max(0, scrollY) };
+}
+
+function replaceRouteScroll(scrollY: number): void {
+  window.history.replaceState(historyStateWithScroll(scrollY), "", window.location.href);
+}
+
+function historyStateWithBuilderPath(path: BuilderPath | null): Record<string, unknown> {
+  const state = window.history.state;
+  const base = state !== null && typeof state === "object" && !Array.isArray(state)
+    ? state as Record<string, unknown>
+    : {};
+  return {
+    ...base,
+    [ROUTE_BUILDER_PATH_STATE_KEY]: path,
+    [ROUTE_BUILDER_PATH_GENERATION_STATE_KEY]: currentBuilderPathGeneration()
+  };
+}
+
+function replaceRouteBuilderPath(path: BuilderPath | null): void {
+  window.history.replaceState(historyStateWithBuilderPath(path), "", window.location.href);
+}
+
+function getRouteBuilderPath(): BuilderPath | null | undefined {
+  const value = window.history.state?.[ROUTE_BUILDER_PATH_STATE_KEY];
+  const stateGeneration = window.history.state?.[ROUTE_BUILDER_PATH_GENERATION_STATE_KEY];
+  const currentGeneration = currentBuilderPathGeneration();
+  const generationMatches = stateGeneration === currentGeneration
+    || (stateGeneration === undefined && currentGeneration === 0);
+  if (generationMatches && (value === "evm" || value === "duskds" || value === null)) return value;
+  return undefined;
+}
+
+export function getRouteScrollY(): number {
+  const value = window.history.state?.[ROUTE_SCROLL_STATE_KEY];
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
 
 interface StudioRuntimeContextValue {
   runtime: StudioRuntime;
@@ -54,29 +125,92 @@ function getInitialRoute(): RouteId {
   return routeIds.includes(route as RouteId) ? route as RouteId : "overview";
 }
 
-export function useRoute(): [RouteId, (route: RouteId) => void] {
+export function useRoute(): [RouteId, (route: RouteId, options?: { replace?: boolean }) => void] {
   const [route, setRouteState] = useState<RouteId>(getInitialRoute);
   useEffect(() => {
-    const onHash = () => setRouteState(getInitialRoute());
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+    if (window.history.state?.[ROUTE_SCROLL_STATE_KEY] === undefined) replaceRouteScroll(window.scrollY);
+    const onHash = () => {
+      const next = getInitialRoute();
+      const raw = window.location.hash.replace(/^#\/?/, "");
+      if (raw && raw !== next) window.history.replaceState(window.history.state, "", `#${next}`);
+      if (window.history.state?.[ROUTE_SCROLL_STATE_KEY] === undefined) replaceRouteScroll(0);
+      setRouteState(next);
+    };
+    let scrollFrame = 0;
+    const onScroll = () => {
+      if (scrollFrame) return;
+      scrollFrame = window.requestAnimationFrame(() => {
+        scrollFrame = 0;
+        replaceRouteScroll(window.scrollY);
+      });
+    };
+    onHash();
     window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
+    window.addEventListener("popstate", onHash);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
+      replaceRouteScroll(window.scrollY);
+      window.history.scrollRestoration = previousScrollRestoration;
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener("popstate", onHash);
+      window.removeEventListener("scroll", onScroll);
+    };
   }, []);
-  return [route, (next) => {
-    window.location.hash = next;
+  const setRoute = useCallback((next: RouteId, options?: { replace?: boolean }) => {
+    const current = getInitialRoute();
+    if (current !== next) {
+      replaceRouteScroll(window.scrollY);
+      const state = historyStateWithScroll(0);
+      if (options?.replace) window.history.replaceState(state, "", `#${next}`);
+      else window.history.pushState(state, "", `#${next}`);
+    }
     setRouteState(next);
-  }];
+  }, []);
+  return [route, setRoute];
 }
 
 export function useBuilderPath(): [BuilderPath | null, (path: BuilderPath | null) => void] {
   const [path, setPath] = useState<BuilderPath | null>(() => {
+    const historyPath = getRouteBuilderPath();
+    if (historyPath !== undefined) return historyPath;
     const storedPath = window.localStorage.getItem("dusk-studio-builder-path");
     return storedPath === "evm" || storedPath === "duskds" ? storedPath : null;
   });
-  return [path, (next) => {
+  const pathRef = useRef(path);
+  useEffect(() => {
+    pathRef.current = path;
+  }, [path]);
+  useEffect(() => {
+    if (getRouteBuilderPath() === undefined) replaceRouteBuilderPath(pathRef.current);
+    const onHistory = () => {
+      let next = getRouteBuilderPath();
+      if (next === undefined) {
+        next = pathRef.current;
+        replaceRouteBuilderPath(next);
+      }
+      if (next) window.localStorage.setItem("dusk-studio-builder-path", next);
+      else window.localStorage.removeItem("dusk-studio-builder-path");
+      pathRef.current = next;
+      setPath(next);
+    };
+    window.addEventListener("hashchange", onHistory);
+    window.addEventListener("popstate", onHistory);
+    return () => {
+      window.removeEventListener("hashchange", onHistory);
+      window.removeEventListener("popstate", onHistory);
+    };
+  }, []);
+  const setBuilderPath = useCallback((next: BuilderPath | null) => {
     if (next) window.localStorage.setItem("dusk-studio-builder-path", next);
     else window.localStorage.removeItem("dusk-studio-builder-path");
+    replaceRouteBuilderPath(next);
+    pathRef.current = next;
     setPath(next);
-  }];
+  }, []);
+  return [path, setBuilderPath];
 }
 
 export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
@@ -152,7 +286,7 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
           } catch {
             setStatus({
               state: "unavailable",
-              message: "This Local Studio launch has expired. Close this page and run the npm command again to start a new local session."
+              message: "This Local Studio launch is already paired in another browser profile or its five-minute pairing window expired. Close local Studio pages, stop the npm command with Ctrl+C, and rerun it. To choose a specific profile, add --no-open and open http://127.0.0.1:5173/#companion in that profile before any other local page."
             });
             return;
           }

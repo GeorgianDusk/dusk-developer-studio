@@ -10,14 +10,12 @@ const allowedRpcOrigin = new URL("https://rpc.testnet.evm.dusk.network").origin;
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
   ["setup", "Explore the planned DuskEVM developer workflow."],
-  ["access", "Explore the planned DuskEVM developer workflow."],
-  ["build", "Explore the planned DuskEVM developer workflow."],
-  ["inspect", "Explore the planned DuskEVM developer workflow."],
   ["reference", "Source-backed context for the task in front of you."],
   ["troubleshooting", "Review DuskEVM launch-planning issues."],
   ["companion", "Run the full Studio locally with npm."],
   ["settings", "See the build you are using and control its saved progress."]
 ] as const;
+const evmCanonicalRoutes = ["access", "build", "inspect"] as const;
 
 async function getExact(request: APIRequestContext, pathname: string): Promise<APIResponse> {
   const expected = new URL(pathname, `${publicOrigin}/`);
@@ -52,7 +50,7 @@ async function gotoExact(page: Page, pathname: string): Promise<void> {
     expect(response.url(), pathname).toBe(expectedRequest.href);
     expect(new URL(response.url()).origin, pathname).toBe(publicOrigin);
   }
-  expect(page.url(), pathname).toBe(expected.href);
+  await expect(page, pathname).toHaveURL(expected.href);
 }
 
 test("public candidate exposes the exact release across key routes", async ({ page, request, context }) => {
@@ -68,10 +66,17 @@ test("public candidate exposes the exact release across key routes", async ({ pa
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
   await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
+  await expect(page).toHaveURL(`${publicOrigin}/#setup`);
   for (const [route, heading] of routes) {
     await gotoExact(page, `/#${route}`);
     await expect(page).toHaveTitle(`${heading} | Dusk Developer Studio`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+  }
+  for (const route of evmCanonicalRoutes) {
+    await page.goto(`${publicOrigin}/#${route}`);
+    await expect(page, `/#${route} canonical route`).toHaveURL(`${publicOrigin}/#setup`);
+    await expect(page).toHaveTitle("Explore the planned DuskEVM developer workflow. | Dusk Developer Studio");
+    await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
   }
 
   const manifestResponse = await getExact(request, "/release-manifest.json");
