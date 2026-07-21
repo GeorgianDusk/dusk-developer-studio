@@ -29,6 +29,10 @@ for (const file of [
   "docs/operations/public-monitoring.md",
   "scripts/check-cargo-advisory-review.mjs",
   "scripts/npm-package-preflight-smoke.mjs",
+  "scripts/prepublication-candidate-binding.mjs",
+  "scripts/test-prepublication-candidate-binding.mjs",
+  "scripts/resolve-main-assurance-artifact.mjs",
+  "scripts/test-resolve-main-assurance-artifact.mjs",
   "scripts/phase5-candidate-context.mjs",
   "scripts/verify-npm-provenance.mjs",
   "config/cargo-advisory-review.json",
@@ -451,6 +455,8 @@ assert.match(comprehensiveValidator, /downloadGitHubActionsReceipt/);
 assert.match(comprehensiveValidator, /expectedRef: "refs\/heads\/main"/);
 assert.match(comprehensiveValidator, /independently reverified against the exact successful GitHub run and downloaded artifact bytes/);
 assert.match(comprehensiveValidator, /merge-base", "--is-ancestor"/);
+assert.match(comprehensiveValidator, /evidence_ledger_commit === finalCandidate\.source_commit/);
+assert.match(comprehensiveValidator, /evidence_is_strict_descendant !== true/);
 assert.match(comprehensiveValidator, /final_evidence_ledger_paths/);
 assert.match(comprehensiveValidator, /fs\.lstat\(absolutePath\)[\s\S]*stat\.isSymbolicLink\(\)[\s\S]*MAX_DURABLE_RECEIPT_BYTES/);
 assert.match(comprehensiveValidator, /invalid or oversized compressed payload/);
@@ -463,6 +469,7 @@ for (const workflow of [requiredWindowsWorkflow, npmAssuranceWorkflow]) {
   assert.match(workflow, /\$elevatedStatus = \$LASTEXITCODE[\s\S]*?Dusk Developer Studio refuses elevated or root execution\.[\s\S]*?finally \{[\s\S]*?(?:Remove-Item -LiteralPath \$dataRoot -Recurse -Force|foreach \(\$cleanupRoot in @\(\$publicRoot, \$dataRoot\)\)[\s\S]*?Remove-Item -LiteralPath \$cleanupRoot -Recurse -Force)[\s\S]*?\$global:LASTEXITCODE = 0/);
   assert.match(workflow, /(?:Test-Path -LiteralPath \$dataRoot[\s\S]*Remove-Item -LiteralPath \$dataRoot -Recurse -Force|foreach \(\$cleanupRoot in @\(\$publicRoot, \$dataRoot\)\)[\s\S]*Test-Path -LiteralPath \$cleanupRoot[\s\S]*Remove-Item -LiteralPath \$cleanupRoot -Recurse -Force)/);
 }
+assert.match(npmAssuranceWorkflow, /Get-LocalUser -Name \$userName -ErrorAction SilentlyContinue[\s\S]*temporary local account behind/);
 
 const npmPublishWorkflow = read(".github/workflows/studio-npm-publish.yml");
 assert.match(npmPublishWorkflow, /^ {4}tags:\n {6}- v1\.0\.0$/m);
@@ -489,7 +496,7 @@ assert.match(npmPublishWorkflow, /name: studio-npm-publication-receipt-\$\{\{ gi
 assert.doesNotMatch(npmPublishWorkflow, /\bbeta\b|\bfinal\b|release candidate|internal-rc|prototype/i);
 const npmOidcWorkflow = read(".github/workflows/studio-npm-oidc-publish.yml");
 assert.match(npmOidcWorkflow, /github\.ref_name != 'v1\.0\.0'/);
-assert.match(npmOidcWorkflow, /id-token: write/);
+assert.match(npmOidcWorkflow, /actions: read[\s\S]*id-token: write/);
 assert.match(npmOidcWorkflow, /environment: npm-trusted-publication/);
 assert.match(npmOidcWorkflow, /registry-url: https:\/\/registry\.npmjs\.org/);
 assert.match(npmOidcWorkflow, /test -z "\$\{NODE_AUTH_TOKEN:-\}"[\s\S]*npm publish "\$TARBALL" --access public --provenance/);
@@ -500,6 +507,10 @@ assert.match(npmOidcWorkflow, /verify-npm-provenance\.mjs[\s\S]*--publication=su
 assert.match(npmOidcWorkflow, /publisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*publisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);
 assert.match(npmOidcWorkflow, /record\.replace\(\/\\s\+<\[\^>\]\+>\$\/u, ""\)\.trim\(\)[\s\S]*npmPublisher !== policy\.publication\.expected_oidc_publisher/);
 assert.match(npmOidcWorkflow, /registryPublisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*registryPublisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);
+assert.match(npmOidcWorkflow, /GITHUB_API_TOKEN: \$\{\{ github\.token \}\}[\s\S]*resolve-main-assurance-artifact\.mjs[\s\S]*--repository=\$GITHUB_REPOSITORY[\s\S]*--commit=\$GITHUB_SHA[\s\S]*--workflow=\.github\/workflows\/studio-npm-package-assurance\.yml/);
+assert.match(npmOidcWorkflow, /Download the reviewed main-push candidate[\s\S]*run-id: \$\{\{ steps\.main-assurance\.outputs\.run_id \}\}[\s\S]*github-token: \$\{\{ github\.token \}\}/);
+assert.match(npmOidcWorkflow, /Download the tag-run candidate exercised by all platform lanes[\s\S]*prepublication-candidate-binding\.mjs[\s\S]*--main=output\/main-assurance\/[\s\S]*--tag=output\/tag-assurance\//);
+assert.match(npmOidcWorkflow, /main_assurance_artifact_digest_sha256:[\s\S]*prepublication_cross_run_byte_match:/);
 assert.doesNotMatch(npmOidcWorkflow, /npmUser !== policy\.publication\.expected_npm_maintainer/);
 assert.doesNotMatch(npmOidcWorkflow, /secrets\.|NPM_INITIAL_PUBLISH_TOKEN/);
 for (const receiptBinding of [
@@ -512,6 +523,16 @@ for (const receiptBinding of [
 ]) {
   assert.match(npmOidcWorkflow, receiptBinding);
 }
+const prepublicationBinding = read("scripts/prepublication-candidate-binding.mjs");
+assert.match(prepublicationBinding, /timingSafeEqual/);
+assert.match(prepublicationBinding, /Tag assurance rebuilt different bytes from the reviewed main-push candidate/);
+assert.match(prepublicationBinding, /inspectNpmTarballBytes\(main\.bytes\)[\s\S]*inspectNpmTarballBytes\(tag\.bytes\)/);
+assert.match(packageJson.scripts.test, /test-prepublication-candidate-binding\.mjs/);
+const mainAssuranceResolver = read("scripts/resolve-main-assurance-artifact.mjs");
+assert.match(mainAssuranceResolver, /run\.head_sha === requirement\.commit[\s\S]*run\.head_branch === "main"[\s\S]*run\.event === "push"[\s\S]*run\.run_attempt === 1/);
+assert.match(mainAssuranceResolver, /artifact\.workflow_run\?\.head_sha === requirement\.commit[\s\S]*sha256:\[a-f0-9\]\{64\}/);
+assert.match(mainAssuranceResolver, /actions\/workflows\/\$\{encodeURIComponent\(requirement\.workflowPath\)\}\/runs\?branch=main&event=push&status=success/);
+assert.match(packageJson.scripts.test, /test-resolve-main-assurance-artifact\.mjs/);
 const npmProvenanceVerifier = read("scripts/verify-npm-provenance.mjs");
 assert.match(npmProvenanceVerifier, /published\.dist\.attestations\.url[\s\S]*\/-\/npm\/v1\/attestations\//);
 assert.match(npmProvenanceVerifier, /expectedSubject = `pkg:npm\/\$\{policy\.package\.name\}@\$\{policy\.package\.version\}`/);

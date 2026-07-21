@@ -657,6 +657,9 @@ jobs:
           if ($userSid -and @(Get-CimInstance Win32_UserProfile -Filter "SID = '$userSid'").Count -ne 0) {
             throw 'Windows npm assurance cleanup left the temporary user profile behind.'
           }
+          if ($userCreated -and (Get-LocalUser -Name $userName -ErrorAction SilentlyContinue)) {
+            throw 'Windows npm assurance cleanup left the temporary local account behind.'
+          }
           @(
             'NPM_INSTALL_SMOKE=passed'
             'NPM_CLEANUP_SMOKE=passed'

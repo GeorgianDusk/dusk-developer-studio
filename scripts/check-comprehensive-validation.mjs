@@ -1331,6 +1331,9 @@ function validateComprehensiveCampaignInternal(
         errors.push(`Final validation requires authoritative local candidate inspection${authoritativeState?.error ? `: ${authoritativeState.error}` : "."}`);
       } else if (
         authoritativeState.clean_worktree !== true
+        || !COMMIT_SHA.test(authoritativeState.evidence_ledger_commit ?? "")
+        || authoritativeState.evidence_ledger_commit === finalCandidate.source_commit
+        || authoritativeState.evidence_is_strict_descendant !== true
         || authoritativeState.tag_commit !== finalCandidate.source_commit
         || authoritativeState.source_is_ancestor_of_evidence !== true
         || authoritativeState.release_source_unchanged !== true
@@ -2042,6 +2045,7 @@ async function inspectAuthoritativeLocalCandidate(evidence, policy) {
       evidence_ledger_commit: evidenceCommit,
       tag_commit: sourceCommit,
       source_is_ancestor_of_evidence: true,
+      evidence_is_strict_descendant: evidenceCommit !== sourceCommit,
       release_source_unchanged: unexpectedChangedPaths.length === 0,
       changed_paths: changedPaths,
       unexpected_changed_paths: unexpectedChangedPaths,

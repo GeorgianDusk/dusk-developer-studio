@@ -543,6 +543,7 @@ function buildReceiptBoundFinal() {
       evidence_ledger_commit: "2".repeat(40),
       tag_commit: candidate.source_commit,
       source_is_ancestor_of_evidence: true,
+      evidence_is_strict_descendant: true,
       release_source_unchanged: true,
       changed_paths: [...policy.final_evidence_ledger_paths],
       unexpected_changed_paths: [],
@@ -1157,6 +1158,36 @@ assert.match(
     }
   }).join("\n"),
   /package\.json, package manifest and exact inventory/u
+);
+
+const equalEvidenceCommit = {
+  ...validFinal.authoritativeState,
+  evidence_ledger_commit: validFinal.fixture.final_candidate.source_commit,
+  evidence_is_strict_descendant: false,
+  changed_paths: []
+};
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: equalEvidenceCommit
+  }).join("\n"),
+  /clean descendant evidence ledger changes only approved evidence\/report paths/u
+);
+
+const missingEvidenceCommit = { ...validFinal.authoritativeState };
+delete missingEvidenceCommit.evidence_ledger_commit;
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: missingEvidenceCommit
+  }).join("\n"),
+  /clean descendant evidence ledger changes only approved evidence\/report paths/u
 );
 
 const reverseChronology = clone(validFinal.fixture);

@@ -3922,10 +3922,10 @@
       "severity": "P1",
       "status": "fixed_local_pending_pilot_retest",
       "summary": "The final gate required evidence-ledger HEAD to equal the immutable package commit, creating an impossible post-CI evidence completion cycle.",
-      "source": "CV-E-CHALLENGE-DDC263B-20260721",
-      "root_cause": "Source/package identity and the later evidence-ledger identity were conflated in one clean-HEAD equality even though CI, registry, production and final-challenge receipts are necessarily observed after packaging.",
-      "fix": "Keep the package bound to its immutable tag and manifest commit, require a clean descendant evidence-ledger commit, and fail unless every change since the source tag is confined to the three explicit evidence/receipt/report paths.",
-      "regression_test": "Focused fixtures accept a clean descendant evidence ledger and reject release-source changes or unsafe ledger paths; public contracts require the ancestor and path-diff checks."
+      "source": "CV-E-CHALLENGE-C3060E3-20260721",
+      "root_cause": "Source/package identity and the later evidence-ledger identity were conflated in one clean-HEAD equality. The first repair separated them but checked only ancestor-or-equal, so the package commit itself still passed as its own purported descendant.",
+      "fix": "Keep the package bound to its immutable tag and manifest commit, require a different clean descendant evidence-ledger commit, and fail unless every change since the source tag is confined to the three explicit evidence/receipt/report paths.",
+      "regression_test": "Focused fixtures accept a strict clean descendant, explicitly reject evidence-ledger equality with the package commit, and reject release-source changes or unsafe ledger paths; public contracts require strict-descendant, ancestor and path-diff checks."
     },
     {
       "defect_id": "CV-D-065",
@@ -3976,6 +3976,26 @@
       "root_cause": "The production CLI correctly disabled fixture provenance, but unit-test convenience was still exposed as a public module API and made the broader security claim inaccurate.",
       "fix": "Remove the fixture-accepting export and make focused final fixtures use production-shaped receipts through the normal production validator while retaining explicit fixture-rejection coverage.",
       "regression_test": "The public repository contract forbids the exported fixture helper, and the focused suite proves validator-test-fixture provenance is still rejected by the production API."
+    },
+    {
+      "defect_id": "CV-D-070",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The subsequent-version tag workflow could publish a freshly rebuilt tag-run package before proving it was byte-identical to the reviewed main-push candidate.",
+      "source": "CV-E-CHALLENGE-C3060E3-20260721",
+      "root_cause": "The tag workflow bound npm publication to its own reusable assurance outputs, but the main-push final receipt and reviewed local package came from separate builds; any cross-run difference would be detected only after immutable registry publication.",
+      "fix": "Before npm publication, query GitHub for the unique successful first-attempt main-push assurance run at the exact tag commit, validate its run and artifact metadata, download both main and tag candidates, require raw SHA-256, SHA-512 integrity, semantic inventory and every byte to match, and publish the main-reviewed bytes.",
+      "regression_test": "A focused adversarial test rejects different tag-build bytes and wrong main-artifact digests; the public workflow contract requires Actions-read scope, exact run/ref/event/attempt lookup, remote artifact download, cross-run binding and durable publication-receipt fields. Native GitHub API/action execution remains required."
+    },
+    {
+      "defect_id": "CV-D-071",
+      "severity": "P3",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "Windows npm assurance removed its temporary local user fail-closed but did not explicitly assert that the account was absent afterward.",
+      "source": "CV-E-CHALLENGE-C3060E3-20260721",
+      "root_cause": "Post-cleanup verification covered bounded roots and the user profile but relied only on Remove-LocalUser returning success for account deletion.",
+      "fix": "After cleanup, query Get-LocalUser for the exact bounded test account and fail before writing the platform receipt if it still exists.",
+      "regression_test": "The public repository contract now requires the explicit local-account absence postcondition; Windows native CI remains required."
     }
   ],
   "challenge_reviews": [
@@ -4050,6 +4070,16 @@
       "identity": "Independent read-only review of clean commit ddc263b27e981d57b06ecc461ade5a0f49b30cf8, local tag v1.0.2 and exact 8afb1564 package before any native CI push",
       "summary": "NO-GO: the pilot collector rejected the canonical package inventory; final evidence had an impossible clean-HEAD causality cycle; GitHub artifact provenance was not independently queried and downloaded; challenge equality, non-main final receipts and policy-generated cleanup remained unsound; and a test-fixture helper was still exported. CV-D-063 through CV-D-069 preserve the findings.",
       "cleanup": "Read-only source, workflow, validator, policy and exact-tarball inspection only; no GitHub, npm, production, package installation, browser profile or developer-machine state was changed."
+    },
+    {
+      "evidence_id": "CV-E-CHALLENGE-C3060E3-20260721",
+      "evidence_class": "challenge-review",
+      "scope": "security-release-evidence-integrity",
+      "observed_at": "2026-07-21T06:45:29Z",
+      "result": "findings",
+      "identity": "Independent read-only review of clean commit c3060e3f289e74d0b542a76b7dd7510b84564e92, local tag v1.0.2 and exact 7451563a package before native CI",
+      "summary": "NO-GO: tag publication was not pre-bound to the reviewed main/local bytes; the evidence ledger required ancestor-or-equal instead of a strict descendant; and Windows cleanup did not explicitly assert temporary-account absence. CV-D-064 was reopened and CV-D-070 through CV-D-071 preserve the new findings.",
+      "cleanup": "Read-only source, workflow, validator, policy, focused suites and exact-tarball inspection only; no GitHub, npm, production, package installation, browser profile or developer-machine state was changed."
     }
   ],
   "completion": {
