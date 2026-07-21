@@ -433,17 +433,30 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     const authenticatedHealthEvents = responseEvents.filter(({ url, status }) =>
       url === expectedProbeUrl && status === 200
     );
+    const unauthenticatedHealthEvents = responseEvents.filter(({ url, status }) =>
+      url === expectedProbeUrl && status === 401
+    );
+    assert.equal(
+      unauthenticatedHealthEvents.length,
+      1,
+      "Local pairing must observe exactly one unauthenticated health response."
+    );
     assert.equal(
       authenticatedHealthEvents.length,
       1,
       "Local pairing must observe exactly one successful authenticated health response."
     );
+    const [unauthenticatedHealthEvent] = unauthenticatedHealthEvents;
     const [authenticatedHealthEvent] = authenticatedHealthEvents;
     // Await exact terminal request events with a hard bound. Chromium can emit a
     // late requestfailed event after the application has already consumed a
     // valid response; the identity-bound classifier below decides whether it is
     // the one safe late-abort case.
     await Promise.all([
+      requestTerminalTracker.wait(
+        unauthenticatedHealthEvent.request,
+        "The expected unauthenticated health request"
+      ),
       requestTerminalTracker.wait(bootstrapRequest, "The successful bootstrap request"),
       requestTerminalTracker.wait(
         authenticatedHealthEvent.request,
