@@ -84,6 +84,26 @@ function closeServer(server) {
   return new Promise((resolve) => server.close(resolve));
 }
 
+async function readPreflightResponseJson(context, response, expectedUrl) {
+  try {
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Network[.]getResponseBody.*No data found for resource with given identifier/u.test(message)) {
+      throw error;
+    }
+    const stableResponse = await context.request.get(expectedUrl, {
+      timeout: PREFLIGHT_TIMEOUT_MS
+    });
+    assert.equal(
+      stableResponse.status(),
+      200,
+      "The exact-package preflight replay must succeed after Chrome evicts the observed response body."
+    );
+    return stableResponse.json();
+  }
+}
+
 async function exerciseFixedPortConflict(primaryEntry, homeRoot, occupiedPort) {
   assert.ok(occupiedPort === 5173 || occupiedPort === 8788);
   await Promise.all([assertPortClosed(5173), assertPortClosed(8788)]);
@@ -340,8 +360,9 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       await page.getByRole("button", { name: /Start DuskDS/i }).click();
       const preflightButton = page.getByRole("button", { name: "Run automatic preflight" });
       await preflightButton.waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
+      const expectedPreflightUrl = "http://127.0.0.1:8788/preflight?path=duskds";
       const preflightResponsePromise = page.waitForResponse(
-        (response) => response.url() === "http://127.0.0.1:8788/preflight?path=duskds"
+        (response) => response.url() === expectedPreflightUrl
           && response.request().method() === "GET",
         { timeout: PREFLIGHT_TIMEOUT_MS }
       );
@@ -349,7 +370,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       const preflightResponse = await preflightResponsePromise;
       assert.equal(preflightResponse.status(), 200);
       preflightContract = await validatePreflightConsumerContract(
-        await preflightResponse.json(),
+        await readPreflightResponseJson(context, preflightResponse, expectedPreflightUrl),
         PREFLIGHT_CONSUMER_SOURCE
       );
       const preflightResults = page.locator('[aria-label="Automatic preflight results"]');

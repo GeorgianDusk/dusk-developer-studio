@@ -337,6 +337,7 @@ assert.match(elevatedArchiveStep, /@(?:\(|\{)'local-actions', '--lifecycle-self-
 
 const npmAssuranceWorkflow = read(".github/workflows/studio-npm-package-assurance.yml");
 const npmPreflightSmoke = read("scripts/npm-package-preflight-smoke.mjs");
+const npmBrowserSmoke = read("scripts/npm-package-browser-smoke.mjs");
 const preflightConsumerSource = path.join(root, "apps/studio/src/app/responseSchemas.ts");
 const compatibleIncompletePreflight = await validatePreflightConsumerContract({
   ok: false,
@@ -400,6 +401,21 @@ assert.match(npmPreflightSmoke, /\/__dusk\/bootstrap[\s\S]*\/preflight\?path=dus
 assert.match(npmPreflightSmoke, /spawn\(process\.execPath, \[primaryEntry, "local-actions", "--no-open"\]/);
 assert.match(npmPreflightSmoke, /waitForPortsClosed\(\)/);
 assert.match(npmPreflightSmoke, /studio_loopback_services_stopped: true/);
+assert.match(
+  npmBrowserSmoke,
+  /Network\[\.\]getResponseBody\.\*No data found for resource with given identifier[\s\S]*context\.request\.get\(expectedUrl/,
+  "The package browser smoke must recover only the known Chrome response-body eviction race."
+);
+assert.match(
+  npmBrowserSmoke,
+  /stableResponse\.status\(\)[\s\S]*200[\s\S]*return stableResponse\.json\(\)/,
+  "The response-body fallback must re-read the same authenticated endpoint and require HTTP 200."
+);
+assert.doesNotMatch(
+  npmBrowserSmoke,
+  /validatePreflightConsumerContract\(\s*await preflightResponse\.json\(\)/,
+  "The authoritative browser smoke must not depend exclusively on an evictable CDP response body."
+);
 assert.match(npmAssuranceWorkflow, /--lifecycle-self-test --no-open/);
 assert.match(npmAssuranceWorkflow, /local-actions --lifecycle-self-test --no-open/);
 assert.match(
