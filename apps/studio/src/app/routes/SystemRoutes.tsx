@@ -18,12 +18,13 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
         <PageIntro
           kicker="Local Studio"
           title="Run the full Studio locally with npm."
-          copy="The hosted guide cannot inspect your machine or create files. The npm package opens the same Studio on your computer and pairs it with a loopback-only companion for tool checks and starter creation."
+          copy="The hosted guide cannot inspect your machine or create files. The npm package opens the same Studio on your computer and pairs it with a loopback-only companion for DuskDS tool checks and DuskDS starter creation."
         />
+        <AsyncNotice state="partial" title="DuskEVM remains reference-only" message="Running the npm package does not activate DuskEVM wallet, funding, signing, deployment, or starter actions. Local machine checks and starter creation are DuskDS-only." />
         <div className="focus-card wide">
           <StatusPill tone="good">Available through npm</StatusPill>
           <h2>Choose how much local access this session needs</h2>
-          <p>Use Node.js 24.18 or newer in the Node 24 release line. Both commands download and execute the exact version shown. Safe mode starts only the Studio and pairing services; it does not run developer tools or create projects. Local Actions additionally enables the reviewed tool checks and starter scaffolds.</p>
+          <p>Use Node.js 24.18 or newer in the Node 24 release line. Both commands download and execute the exact version shown. Safe mode starts only the Studio and pairing services; it does not run developer tools or create projects. Local Actions additionally enables the reviewed DuskDS tool checks and DuskDS starter scaffolds.</p>
           <CommandPair
             firstTitle="Safe mode"
             first={safeCommand}
@@ -46,7 +47,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           <h2>What the npm package does</h2>
           <p>It serves the Studio only on <strong>127.0.0.1:5173</strong> and its companion only on <strong>127.0.0.1:8788</strong>. It installs no service, requests no administrator access, and never asks for wallet secrets.</p>
           <p>The first local page load uses one in-memory pairing value and a one-use bootstrap. The browser receives only an origin-bound, <strong>HttpOnly</strong>, <strong>SameSite=Strict</strong> session cookie. Other origins, hosts, unpaired requests, oversized requests, and expired sessions are rejected.</p>
-          <p>Local Actions can run only the allowlisted prerequisite checks and create approved starter projects. Wallet signing, funded transactions, deployment, arbitrary commands, and writes outside the managed project root remain unavailable.</p>
+          <p>Local Actions can run only the allowlisted DuskDS prerequisite checks and create approved DuskDS starter projects. DuskEVM actions, wallet signing, funded transactions, deployment, arbitrary commands, and writes outside the managed project root remain unavailable.</p>
           <details className="local-storage-disclosure">
             <summary>Where created projects are stored</summary>
             <ul>

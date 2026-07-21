@@ -1,5 +1,24 @@
 [
     {
+        "id":  "duskds-node-npm-runtime",
+        "title":  "Node or npm cannot prepare the DuskDS starter",
+        "symptoms":  [
+                         "duskds",
+                         "node",
+                         "node.js",
+                         "npm",
+                         "npm.ps1",
+                         "npm.cmd",
+                         "execution policy",
+                         "24.18.0",
+                         "unsupported version",
+                         "starter creation"
+                     ],
+        "severity":  "medium",
+        "fix":  "Install Node.js 24.18.0 or newer in the Node 24 LTS release line, open a new terminal, and verify node -p \"process.versions.node\". On Windows PowerShell, use npm.cmd --version and npx.cmd so a restricted script policy does not resolve the blocked npm.ps1 or npx.ps1 shim.",
+        "safeNextStep":  "Do not weaken PowerShell execution policy. Confirm the supported Node version and npm.cmd --version, then rerun the exact Prepare project command shown for Windows."
+    },
+    {
         "id":  "wrong-chain",
         "title":  "Wallet is on the wrong chain",
         "symptoms":  [

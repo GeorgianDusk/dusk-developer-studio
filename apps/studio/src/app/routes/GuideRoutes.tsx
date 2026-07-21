@@ -254,10 +254,11 @@ function EvmPreviewPage() {
         </div>
         <h2>What you can use today</h2>
         <p>Review the planned execution model, Solidity toolchain, wallet and gas flow, explorer model, and activation boundary. Published network metadata is displayed for preparation only; the Studio does not treat it as live until DuskEVM Testnet is launched and revalidated.</p>
+        <AsyncNotice state="partial" title="Linked guides are planning references" message="Some linked pages describe wallet, funding, signing, or deployment steps. Do not use those steps as proof that DuskEVM Testnet is live, and never pass a raw private key in a command. Wait for this Studio to show a revalidated live status and use a secure signer workflow." />
         <div className="button-row">
-          <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/">Official deployment guide</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/">Deployment guide for planning</ExternalLink>
           <ExternalLink href="https://github.com/dusk-network/docs">Official docs source</ExternalLink>
-          <ExternalLink href="https://dusk.network/news/duskevm-deep-dive">DuskEVM deep dive</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/learn/deep-dive/dusk-evm/">DuskEVM deep dive</ExternalLink>
         </div>
         <div className="tool-command">
           <span>Pre-launch RPC reference</span>
@@ -295,7 +296,7 @@ function EvmPreviewPage() {
             aria-describedby="evm-format-help evm-format-result"
           />
         </label>
-        <p className="quiet-note" id="evm-format-help">Exact 40-digit addresses and 64-digit transaction hashes take priority. Any other canonical unsigned JSON-RPC quantity, such as 0x1234, is treated as a block reference; a long value may still be a mistyped address or hash, so check its length.</p>
+        <p className="quiet-note" id="evm-format-help">Exact 40-digit addresses and 64-digit transaction hashes take priority. A canonical unsigned JSON-RPC quantity such as 0x1234, or an unsigned decimal block number such as 12345, is treated as a block reference and normalized to hexadecimal; a long value may still be a mistyped address or hash, so check its length.</p>
         <div className="button-row" id="evm-format-result" role="status" aria-live="polite">
           <StatusPill tone={classification ? "good" : invalidIdentifier ? "danger" : "neutral"}>
             {classification?.type ?? (invalidIdentifier ? "Unrecognized shape" : "Waiting for an example")}
@@ -906,7 +907,7 @@ function starterNodeRuntimeGuard(platform: ManualPlatform): string[] {
       `if ($LASTEXITCODE -ne 0) { throw ${quotePowerShellArg(failure)} }`,
       "$studioNodeParts = @($studioNodeVersion.Split('.') | ForEach-Object { [int]$_ })",
       `if ($studioNodeParts.Count -lt 2 -or $studioNodeParts[0] -ne 24 -or $studioNodeParts[1] -lt 18) { throw ${quotePowerShellArg(failure)} }`,
-      "npm --version",
+      "npm.cmd --version",
       `if ($LASTEXITCODE -ne 0) { throw ${quotePowerShellArg("npm is required before starter creation.")} }`
     ];
   }
@@ -2088,7 +2089,6 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   } as const;
 
   async function runLatestBlockRead() {
-    if (!buildComplete) return;
     setBlockState("loading");
     setBlockMessage("Reading one latest-block header from the public DuskDS Testnet node.");
     setObservation(null);
@@ -2117,7 +2117,6 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   }
 
   function recordManualBlock() {
-    if (!buildComplete) return;
     const result = validateBlockObservation(blockHeight, blockHash);
     if (!result.value) {
       setBlockError(result.error ?? "Enter the observed block result.");
@@ -2436,7 +2435,7 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         <button type="button" onClick={() => focusInspectSection("duskds-deploy-readiness")}>3. Deployment readiness</button>
         <button type="button" onClick={() => focusInspectSection("duskds-post-deploy-inspection")}>4. Data driver</button>
       </nav>
-      {!buildComplete ? <AsyncNotice state="partial" title="Complete or skip Build first" message="You can review every Inspect section now, but latest-block, source and data-driver evidence stay disabled until Build has a truthful disposition." /> : null}
+      {!buildComplete ? <AsyncNotice state="partial" title="Build evidence is still incomplete" message="The independent latest-block observation remains available. Source identity, deployment readiness, and data-driver evidence stay disabled until Build has a truthful disposition." /> : null}
       <div className="focus-card wide" id="duskds-latest-block" tabIndex={-1}>
         <h2>1. Observe a latest block</h2>
         <p>Choose a direct hosted read or enter the bounded height and hash you observed yourself. This is independent from the artifact and data-driver checks.</p>
@@ -2450,10 +2449,10 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         />
         {blockMethod === "automatic" ? (
           <>
-            <button className="primary-button" type="button" disabled={!buildComplete || blockState === "loading"} onClick={runLatestBlockRead}>Read latest block</button>
+            <button className="primary-button" type="button" disabled={blockState === "loading"} onClick={runLatestBlockRead}>Read latest block</button>
             {blockState === "idle"
               ? <p className="quiet-note">{blockMessage}</p>
-              : <AsyncNotice state={blockState} message={blockMessage} onRetry={buildComplete && (blockState === "error" || blockState === "timeout" || blockState === "unavailable") ? runLatestBlockRead : undefined} />}
+              : <AsyncNotice state={blockState} message={blockMessage} onRetry={blockState === "error" || blockState === "timeout" || blockState === "unavailable" ? runLatestBlockRead : undefined} />}
             {observation ? <BlockReceipt observation={observation} label="Automatic browser observation" /> : null}
           </>
         ) : (
@@ -2463,7 +2462,7 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
               <label>Block hash<input ref={blockHashRef} value={blockHash} aria-invalid={blockInvalidField === "hash" || undefined} aria-describedby={blockInvalidField === "hash" ? "duskds-inspect-block-error" : undefined} onChange={(event) => changeInspectBlockHash(event.target.value)} placeholder="64 hexadecimal characters" /></label>
             </div>
             {blockError ? <p className="validation-message" id="duskds-inspect-block-error" role="alert">{blockError}</p> : null}
-            <button className="primary-button" type="button" disabled={!buildComplete} onClick={recordManualBlock}>Save manual block observation</button>
+            <button className="primary-button" type="button" onClick={recordManualBlock}>Save manual block observation</button>
           </>
         )}
       </div>

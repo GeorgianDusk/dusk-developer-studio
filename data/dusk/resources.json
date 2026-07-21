@@ -19,7 +19,7 @@
         "id":  "duskevm-deep-dive",
         "title":  "DuskEVM Deep Dive",
         "category":  "Docs",
-        "summary":  "Network metadata, OP Stack notes, fees, runtime differences, and Blockscout verification routes.",
+        "summary":  "Planning reference only. The linked page may describe endpoints or runtime behavior that Studio has not revalidated as live; do not connect or transact until Studio's launch status changes.",
         "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
         "maturity":  "official",
         "tags":  [
@@ -37,7 +37,7 @@
         "id":  "duskevm-bridge",
         "title":  "Bridge DUSK from DuskDS to DuskEVM Testnet",
         "category":  "Funding",
-        "summary":  "Official route for funding an EVM wallet on DuskEVM Testnet. Studio treats faucet availability as unconfirmed until the live Testnet can be verified.",
+        "summary":  "Planning reference only. The linked page describes a wallet and funding flow, but Studio treats the bridge and Testnet as unavailable until both are independently revalidated live.",
         "url":  "https://docs.dusk.network/learn/guides/duskevm-bridge/",
         "maturity":  "official",
         "tags":  [
@@ -53,7 +53,7 @@
         "id":  "deploy-on-duskevm",
         "title":  "Deploy on DuskEVM",
         "category":  "Deploy",
-        "summary":  "Official deployment guide for Hardhat and Foundry with DuskEVM RPC and chain IDs.",
+        "summary":  "Planning reference only. Do not deploy until Studio revalidates Testnet as live, and never place a raw private key in a command; use a secure signer workflow.",
         "url":  "https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/",
         "maturity":  "official",
         "tags":  [

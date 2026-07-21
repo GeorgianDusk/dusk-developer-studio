@@ -301,7 +301,13 @@ export function TroubleshootingPage({
 
   function clearSearch() {
     setQuery("");
+    setFocusedTroubleId(null);
     window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
+
+  function chooseTroubleshootingScope(nextScope: "path" | "all") {
+    setScope(nextScope);
+    setFocusedTroubleId(null);
   }
 
   useEffect(() => {
@@ -348,10 +354,10 @@ export function TroubleshootingPage({
         </div>
       )}
       <div className="filter-bar" role="group" aria-label="Troubleshooting scope">
-        <button className={scope === "path" ? "active" : ""} type="button" aria-pressed={scope === "path"} onClick={() => setScope("path")}>
+        <button className={scope === "path" ? "active" : ""} type="button" aria-pressed={scope === "path"} onClick={() => chooseTroubleshootingScope("path")}>
           {builderPath ? `${pathText[builderPath].label} common issues` : "DuskDS common issues"}
         </button>
-        <button className={scope === "all" ? "active" : ""} type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>
+        <button className={scope === "all" ? "active" : ""} type="button" aria-pressed={scope === "all"} onClick={() => chooseTroubleshootingScope("all")}>
           All reviewed issues
         </button>
       </div>

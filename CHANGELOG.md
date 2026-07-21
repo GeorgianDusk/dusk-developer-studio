@@ -4,6 +4,18 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.5 - 2026-07-21
+
+### Fixed
+
+- Recognize the Local Studio's user-facing occupied-port recovery message in the native Linux pilot harness, while still requiring a failed, unsignalled launch before recovery can pass.
+- Replace the broken DuskEVM deep-dive link, label linked live-action guides as pre-launch planning, and warn against raw-private-key command arguments.
+- Make the Local Studio page explicit that machine checks and starter creation are DuskDS-only while DuskEVM remains reference-only.
+- Clear an invisible contextual troubleshooting filter when users request the complete reviewed index.
+- Explain that the local identifier helper accepts unsigned decimal block numbers and normalizes them to hexadecimal.
+- Use the PowerShell-safe npm.cmd shim in Windows prerequisite commands and add direct Node/npm recovery guidance without weakening script policy.
+- Keep the independent DuskDS latest-block observation available before Build while continuing to gate source, deployment-readiness, and data-driver evidence.
+
 ## 1.0.4 - 2026-07-21
 
 ### Fixed
