@@ -10,7 +10,7 @@ const requirement = {
   repository: "GeorgianDusk/dusk-developer-studio",
   commit: "a".repeat(40),
   workflowPath: ".github/workflows/studio-npm-package-assurance.yml",
-  artifactName: "dusk-developer-studio-1.0.3.tgz"
+  artifactName: "dusk-developer-studio-1.0.4.tgz"
 };
 const run = {
   id: 123456,

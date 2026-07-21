@@ -252,6 +252,15 @@ describe("App", () => {
     expect(screen.getByText(/Session-only page choices end when you close this tab/)).toBeInTheDocument();
     expect(screen.queryByText(/Reset all Studio progress/)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset browser progress" })).toHaveFocus();
+    const resetCancel = screen.getByRole("button", { name: "Cancel" });
+    resetCancel.focus();
+    expect(resetCancel).toHaveFocus();
+    fireEvent.keyDown(resetCancel, { key: "Escape" });
+    expect(screen.queryByText("Reset saved DuskDS journey progress in this browser?")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reset browser progress" })).toHaveFocus());
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset browser progress" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
     await waitFor(() => expect(screen.getByRole("button", { name: "Reset browser progress" })).toHaveFocus());
@@ -359,6 +368,7 @@ describe("App", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease })));
     vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#companion";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
@@ -366,6 +376,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByText("Paired. Local capabilities are enabled.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Local Studio is paired and ready." })).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("Local Studio is paired and ready. | Dusk Developer Studio"));
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,

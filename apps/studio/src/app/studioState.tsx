@@ -25,10 +25,78 @@ import type { CompanionStatus, RouteId } from "./types";
 
 const routeIds: RouteId[] = ["overview", "setup", "access", "build", "inspect", "reference", "troubleshooting", "companion", "settings"];
 const ROUTE_SCROLL_STATE_KEY = "duskStudioScrollY";
+const ROUTE_FOCUS_STATE_KEY = "duskStudioFocus";
 const ROUTE_BUILDER_PATH_STATE_KEY = "duskStudioBuilderPath";
 const ROUTE_BUILDER_PATH_GENERATION_STATE_KEY = "duskStudioBuilderPathGeneration";
 const ROUTE_BUILDER_PATH_GENERATION_STORAGE_KEY = "dusk-studio-builder-path-generation";
 let volatileBuilderPathGeneration = 0;
+
+interface RouteFocusSnapshot {
+  path: number[];
+}
+
+type RouteNavigationKind = "initial" | "push" | "replace" | "history" | "hash";
+
+export interface RouteNavigation {
+  kind: RouteNavigationKind;
+  sequence: number;
+}
+
+const routeFocusableSelector = [
+  "a[href]",
+  "button:not(:disabled)",
+  "input:not(:disabled)",
+  "select:not(:disabled)",
+  "textarea:not(:disabled)",
+  "summary",
+  "[tabindex]:not([tabindex='-1'])"
+].join(",");
+
+function focusCandidates(): HTMLElement[] {
+  const root = document.getElementById("studio-app-shell");
+  if (!root) return [];
+  return Array.from(root.querySelectorAll<HTMLElement>(routeFocusableSelector)).filter((element) => {
+    const style = window.getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+  });
+}
+
+function captureRouteFocus(): RouteFocusSnapshot | null {
+  const active = document.activeElement;
+  const root = document.getElementById("studio-app-shell");
+  if (!(active instanceof HTMLElement) || !(root instanceof HTMLElement) || !root.contains(active)) return null;
+  const path: number[] = [];
+  let current: HTMLElement | null = active;
+  while (current && current !== root) {
+    const parent: HTMLElement | null = current.parentElement;
+    if (!parent) return null;
+    const index = Array.from(parent.children).indexOf(current);
+    if (index < 0) return null;
+    path.unshift(index);
+    if (path.length > 32) return null;
+    current = parent;
+  }
+  return current === root && path.length > 0 ? { path } : null;
+}
+
+function routeFocusSnapshot(): RouteFocusSnapshot | null {
+  const value = window.history.state?.[ROUTE_FOCUS_STATE_KEY];
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Partial<RouteFocusSnapshot>;
+  if (!Array.isArray(candidate.path)
+    || candidate.path.length === 0
+    || candidate.path.length > 32
+    || candidate.path.some((index) => !Number.isSafeInteger(index) || index < 0 || index > 4096)
+  ) return null;
+  return candidate as RouteFocusSnapshot;
+}
+
+function resolveRouteFocus(snapshot: RouteFocusSnapshot): HTMLElement | null {
+  let current: Element | null = document.getElementById("studio-app-shell");
+  for (const index of snapshot.path) current = current?.children.item(index) ?? null;
+  return current instanceof HTMLElement ? current : null;
+}
 
 function currentBuilderPathGeneration(): number {
   try {
@@ -65,6 +133,13 @@ function replaceRouteScroll(scrollY: number): void {
   window.history.replaceState(historyStateWithScroll(scrollY), "", window.location.href);
 }
 
+function replaceRouteNavigationSnapshot(scrollY: number): void {
+  window.history.replaceState({
+    ...historyStateWithScroll(scrollY),
+    [ROUTE_FOCUS_STATE_KEY]: captureRouteFocus()
+  }, "", window.location.href);
+}
+
 function historyStateWithBuilderPath(path: BuilderPath | null): Record<string, unknown> {
   const state = window.history.state;
   const base = state !== null && typeof state === "object" && !Array.isArray(state)
@@ -96,6 +171,24 @@ export function getRouteScrollY(): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+export function restoreRouteFocus(): boolean {
+  const snapshot = routeFocusSnapshot();
+  const candidates = focusCandidates();
+  const resolved = snapshot ? resolveRouteFocus(snapshot) : null;
+  const visible = (candidate: HTMLElement): boolean => {
+    const rect = candidate.getBoundingClientRect();
+    return rect.top >= 0 && rect.bottom <= window.innerHeight;
+  };
+  const matched = resolved && candidates.includes(resolved) && visible(resolved) ? resolved : undefined;
+  const main = document.getElementById("studio-main");
+  const target = matched
+    ?? candidates.find((candidate) => Boolean(main?.contains(candidate)) && visible(candidate))
+    ?? candidates.find(visible);
+  if (!target) return false;
+  target.focus({ preventScroll: true });
+  return document.activeElement === target && visible(target);
+}
+
 interface StudioRuntimeContextValue {
   runtime: StudioRuntime;
   release: StudioRelease;
@@ -125,18 +218,35 @@ function getInitialRoute(): RouteId {
   return routeIds.includes(route as RouteId) ? route as RouteId : "overview";
 }
 
-export function useRoute(): [RouteId, (route: RouteId, options?: { replace?: boolean }) => void] {
+export function useRoute(): [RouteId, (route: RouteId, options?: { replace?: boolean }) => void, RouteNavigation] {
   const [route, setRouteState] = useState<RouteId>(getInitialRoute);
+  const [navigation, setNavigation] = useState<RouteNavigation>({ kind: "initial", sequence: 0 });
+  const advanceNavigation = useCallback((kind: RouteNavigationKind) => {
+    setNavigation((current) => ({ kind, sequence: current.sequence + 1 }));
+  }, []);
   useEffect(() => {
     const previousScrollRestoration = window.history.scrollRestoration;
     window.history.scrollRestoration = "manual";
     if (window.history.state?.[ROUTE_SCROLL_STATE_KEY] === undefined) replaceRouteScroll(window.scrollY);
-    const onHash = () => {
+    let popstateHref: string | null = null;
+    const syncRoute = (kind: RouteNavigationKind) => {
       const next = getInitialRoute();
       const raw = window.location.hash.replace(/^#\/?/, "");
       if (raw && raw !== next) window.history.replaceState(window.history.state, "", `#${next}`);
       if (window.history.state?.[ROUTE_SCROLL_STATE_KEY] === undefined) replaceRouteScroll(0);
       setRouteState(next);
+      if (kind !== "initial") advanceNavigation(kind);
+    };
+    const onPopState = () => {
+      popstateHref = window.location.href;
+      syncRoute("history");
+    };
+    const onHashChange = () => {
+      if (popstateHref === window.location.href) {
+        popstateHref = null;
+        return;
+      }
+      syncRoute("hash");
     };
     let scrollFrame = 0;
     const onScroll = () => {
@@ -146,30 +256,34 @@ export function useRoute(): [RouteId, (route: RouteId, options?: { replace?: boo
         replaceRouteScroll(window.scrollY);
       });
     };
-    onHash();
-    window.addEventListener("hashchange", onHash);
-    window.addEventListener("popstate", onHash);
+    const onFocus = () => replaceRouteNavigationSnapshot(window.scrollY);
+    syncRoute("initial");
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener("popstate", onPopState);
     window.addEventListener("scroll", onScroll, { passive: true });
+    document.addEventListener("focusin", onFocus);
     return () => {
       if (scrollFrame) window.cancelAnimationFrame(scrollFrame);
       replaceRouteScroll(window.scrollY);
       window.history.scrollRestoration = previousScrollRestoration;
-      window.removeEventListener("hashchange", onHash);
-      window.removeEventListener("popstate", onHash);
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener("popstate", onPopState);
       window.removeEventListener("scroll", onScroll);
+      document.removeEventListener("focusin", onFocus);
     };
-  }, []);
+  }, [advanceNavigation]);
   const setRoute = useCallback((next: RouteId, options?: { replace?: boolean }) => {
     const current = getInitialRoute();
     if (current !== next) {
-      replaceRouteScroll(window.scrollY);
-      const state = historyStateWithScroll(0);
+      replaceRouteNavigationSnapshot(window.scrollY);
+      const state = { ...historyStateWithScroll(0), [ROUTE_FOCUS_STATE_KEY]: null };
       if (options?.replace) window.history.replaceState(state, "", `#${next}`);
       else window.history.pushState(state, "", `#${next}`);
+      advanceNavigation(options?.replace ? "replace" : "push");
     }
     setRouteState(next);
-  }, []);
-  return [route, setRoute];
+  }, [advanceNavigation]);
+  return [route, setRoute, navigation];
 }
 
 export function useBuilderPath(): [BuilderPath | null, (path: BuilderPath | null) => void] {

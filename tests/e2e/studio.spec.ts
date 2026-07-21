@@ -79,13 +79,67 @@ test("browser history restores the document title and prior scroll position", as
   await expect(page).toHaveTitle(overviewTitle);
 
   await page.evaluate(() => window.scrollTo(0, 1_100));
-  const priorScrollY = await page.evaluate(() => window.scrollY);
-  expect(priorScrollY).toBeGreaterThan(500);
-  await page.getByRole("button", { name: /Start DuskDS/i }).evaluate((button: HTMLButtonElement) => button.click());
-  await expect(page.getByRole("heading", { name: "Record the native toolchain checks you ran." })).toBeVisible();
+  const overviewScrollY = await page.evaluate(() => window.scrollY);
+  expect(overviewScrollY).toBeGreaterThan(500);
+  await expect.poll(() => page.evaluate(() => window.history.state?.duskStudioScrollY)).toBe(overviewScrollY);
+  const referenceButton = page.getByRole("button", { name: "Reference", exact: true });
+  await referenceButton.click();
+  const referenceHeading = page.getByRole("heading", { name: "Source-backed context for the task in front of you." });
+  await expect(referenceHeading).toBeVisible();
+  await expect(referenceHeading).toBeFocused();
+
+  await page.evaluate(() => window.scrollTo(0, 1_100));
+  const referenceScrollY = await page.evaluate(() => window.scrollY);
+  expect(referenceScrollY).toBeGreaterThan(500);
+  await expect.poll(() => page.evaluate(() => window.history.state?.duskStudioScrollY)).toBe(referenceScrollY);
+  const expectedForwardFocusPath = await page.evaluate(() => {
+    const root = document.getElementById("studio-main");
+    if (!root) return null;
+    const selector = "a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex]:not([tabindex='-1'])";
+    const target = Array.from(root.querySelectorAll<HTMLElement>(selector)).find((candidate) => {
+      const style = window.getComputedStyle(candidate);
+      const rect = candidate.getBoundingClientRect();
+      return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0
+        && rect.top >= 0 && rect.bottom <= window.innerHeight;
+    });
+    if (!target) return null;
+    const path: number[] = [];
+    let current: Element | null = target;
+    while (current && current !== root) {
+      const parent: Element | null = current.parentElement;
+      if (!parent) return null;
+      path.unshift(Array.from(parent.children).indexOf(current));
+      current = parent;
+    }
+    return path;
+  });
+  expect(expectedForwardFocusPath).not.toBeNull();
+
   await page.goBack();
   await expect(overviewHeading).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(priorScrollY);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(overviewScrollY);
+  await expect(referenceButton).toBeFocused();
+  await expect(referenceButton).toBeInViewport();
+
+  await page.goForward();
+  await expect(referenceHeading).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(referenceScrollY);
+  const restoredForwardFocusPath = await page.evaluate(() => {
+    const root = document.getElementById("studio-main");
+    const element = document.activeElement;
+    if (!root || !(element instanceof HTMLElement) || !root.contains(element)) return null;
+    const path: number[] = [];
+    let current: Element | null = element;
+    while (current && current !== root) {
+      const parent: Element | null = current.parentElement;
+      if (!parent) return null;
+      path.unshift(Array.from(parent.children).indexOf(current));
+      current = parent;
+    }
+    return path;
+  });
+  expect(restoredForwardFocusPath).toEqual(expectedForwardFocusPath);
+  await expect(referenceHeading).not.toBeFocused();
 });
 
 test("browser history restores the builder path associated with each entry", async ({ page }) => {

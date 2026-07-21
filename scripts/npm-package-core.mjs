@@ -9,7 +9,7 @@ export const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.u
 export const npmOutputRoot = path.join(productRoot, "output", "npm");
 export const npmPackageRoot = path.join(npmOutputRoot, "package");
 export const npmPackageName = "dusk-developer-studio";
-export const npmPackageVersion = "1.0.3";
+export const npmPackageVersion = "1.0.4";
 export const requiredNodeRange = ">=24.18.0 <25";
 export const supportedTargets = Object.freeze(["windows-x64", "linux-x64", "darwin-arm64"]);
 

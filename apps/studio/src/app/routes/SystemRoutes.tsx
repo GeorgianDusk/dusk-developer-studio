@@ -232,7 +232,17 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
         <div className="button-row">
           <button className="secondary-button" type="button" onClick={exportDiagnostics}>Download safe diagnostics</button>
           {confirmingReset ? (
-            <div className="reset-confirmation" role="group" aria-labelledby="reset-confirmation-title">
+            <div
+              className="reset-confirmation"
+              role="group"
+              aria-labelledby="reset-confirmation-title"
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  cancelReset();
+                }
+              }}
+            >
               <strong id="reset-confirmation-title">Reset saved DuskDS journey progress in this browser?</strong>
               <span>This permanently clears the selected path, recorded checks, blockers, timestamps, and step status. Session-only page choices end when you close this tab.</span>
               <div className="button-row">

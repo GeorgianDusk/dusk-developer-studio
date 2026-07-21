@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../app/App";
+import { restoredManualAccessToolIds } from "../app/routes/GuideRoutes";
 import { createInitialJourneyProgress, JOURNEY_PROGRESS_STORAGE_KEY, recordJourneyEvidence } from "../app/journeyProgress";
 import { DUSK_STUDIO_NPM_PACKAGE_VERSION } from "../app/manualJourneyConfig";
 
@@ -117,6 +118,79 @@ describe("Phase 2 evidence journeys", () => {
     await waitFor(() => expect(screen.getByText("Confirmed manually", { selector: ".done-panel .status-pill" })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText(/DuskDS Access confirmed manually/)).toBeInTheDocument());
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).toContain("duskds-node-read-attestation");
+  });
+
+  it("restores only the exact required Access tool confirmation saved by the UI", async () => {
+    const progress = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "setup",
+      ["duskds-required-preflight"],
+      { method: "automatic" }
+    );
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#access";
+    const view = render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark Deno as checked" }));
+    fireEvent.change(screen.getByLabelText("Block height"), { target: { value: "3820996" } });
+    fireEvent.change(screen.getByLabelText("Block hash"), { target: { value: "a".repeat(64) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual node observation" }));
+    await waitFor(() => expect(screen.getByText("Confirmed manually", { selector: ".done-panel .status-pill" })).toBeInTheDocument());
+    const saved = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+    expect(saved.paths.duskds.access.evidenceEntries[0].metadata).toMatchObject({
+      source: "manual-confirmation",
+      platform: "windows",
+      tool: "deno",
+      checkCount: 1
+    });
+
+    view.unmount();
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Windows PowerShell" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Unmark Deno as checked" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Block height")).toHaveValue("3820996");
+    expect(screen.getByLabelText("Block hash")).toHaveValue("a".repeat(64));
+    expect(screen.getByRole("button", { name: "Save manual node observation" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unmark Deno as checked" }));
+    expect(screen.getByRole("button", { name: "Save manual node observation" })).toBeDisabled();
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+      expect(stored.paths.duskds.access.evidence).toEqual([]);
+    });
+  });
+
+  it("does not infer Access tool confirmation from incomplete or future-contract evidence", () => {
+    const incomplete = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "access",
+      ["duskds-node-read-attestation"],
+      { method: "manual" }
+    ).paths.duskds.access.evidenceEntries[0];
+    expect(restoredManualAccessToolIds(incomplete, ["deno"])).toEqual([]);
+
+    const legacyComplete = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "access",
+      ["duskds-node-read-attestation"],
+      {
+        method: "manual",
+        metadata: { platform: "windows", blockHeight: 3820996, blockHash: "b".repeat(64) }
+      }
+    ).paths.duskds.access.evidenceEntries[0];
+    expect(restoredManualAccessToolIds(legacyComplete, ["deno"])).toEqual(["deno"]);
+    expect(restoredManualAccessToolIds(legacyComplete, ["deno", "future-required-tool"])).toEqual([]);
+    expect(restoredManualAccessToolIds({
+      ...legacyComplete,
+      metadata: { ...legacyComplete.metadata, source: "companion", tool: "deno", checkCount: 1 }
+    }, ["deno"])).toEqual([]);
   });
 
   it("identifies and focuses the invalid manual Access field", async () => {

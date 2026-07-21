@@ -70,7 +70,7 @@ import {
 import { defaultNetwork, initialManualPlatform } from "../studioConfig";
 import { useJourney, useStudioRuntime } from "../studioState";
 import type { CompanionStatus, RouteId } from "../types";
-import { isJourneyComplete, type BuilderPath } from "../journeyProgress";
+import { isJourneyComplete, type BuilderPath, type EvidenceEntry } from "../journeyProgress";
 
 function stateForError(error: unknown): AsyncState {
   if (error instanceof SafeRequestError) {
@@ -86,6 +86,33 @@ function stateForError(error: unknown): AsyncState {
 
 function platformMetadata(platform: ManualPlatform): ManualPlatform {
   return platform;
+}
+
+function isManualPlatform(value: unknown): value is ManualPlatform {
+  return value === "windows" || value === "linux" || value === "macos";
+}
+
+export function restoredManualAccessToolIds(
+  evidence: EvidenceEntry | undefined,
+  requiredToolIds: readonly string[]
+): string[] {
+  if (evidence?.method !== "manual" || requiredToolIds.length !== 1 || requiredToolIds[0] !== "deno") return [];
+  const metadata = evidence.metadata;
+  if (!metadata
+    || !isManualPlatform(metadata.platform)
+    || typeof metadata.blockHeight !== "number"
+    || !Number.isSafeInteger(metadata.blockHeight)
+    || metadata.blockHeight < 0
+    || typeof metadata.blockHash !== "string"
+    || !/^[a-f0-9]{64}$/i.test(metadata.blockHash)
+  ) return [];
+  const exactCurrentRecord = metadata.source === "manual-confirmation"
+    && metadata.tool === "deno"
+    && metadata.checkCount === 1;
+  const boundedLegacyRecord = metadata.source === "manual-confirmation"
+    && metadata.tool === undefined
+    && metadata.checkCount === undefined;
+  return exactCurrentRecord || boundedLegacyRecord ? ["deno"] : [];
 }
 
 function hasTruthfulDisposition(status: Parameters<typeof isJourneyComplete>[0]): boolean {
@@ -518,6 +545,14 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const journey = useJourney();
   const savedAccessEvidence = journey.progress.paths.duskds.access.evidenceEntries
     .find((entry) => entry.code === "duskds-node-read-attestation");
+  const requiredAccessTools = manualToolsFor("access").filter((tool) => tool.requirement === "required");
+  const restoredAccessToolIds = restoredManualAccessToolIds(
+    savedAccessEvidence,
+    requiredAccessTools.map((tool) => tool.id)
+  );
+  const savedManualPlatform = savedAccessEvidence?.method === "manual" && isManualPlatform(savedAccessEvidence.metadata?.platform)
+    ? savedAccessEvidence.metadata.platform
+    : initialManualPlatform;
   const restoredAccessObservation = savedAccessEvidence?.method === "automatic"
     && typeof savedAccessEvidence.metadata?.blockHeight === "number"
     && typeof savedAccessEvidence.metadata.blockHash === "string"
@@ -529,8 +564,8 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
       }
     : null;
   const [method, setMethod] = useState<CompletionMethod>(savedAccessEvidence?.method ?? "automatic");
-  const [platform, setPlatform] = useState<ManualPlatform>(initialManualPlatform);
-  const [confirmed, setConfirmed] = useState<Set<string>>(() => new Set());
+  const [platform, setPlatform] = useState<ManualPlatform>(savedManualPlatform);
+  const [confirmed, setConfirmed] = useState<Set<string>>(() => new Set(restoredAccessToolIds));
   const [blockHeight, setBlockHeight] = useState(savedAccessEvidence?.method === "manual" ? savedAccessEvidence.metadata?.blockHeight?.toString() ?? "" : "");
   const [blockHash, setBlockHash] = useState(savedAccessEvidence?.method === "manual" ? savedAccessEvidence.metadata?.blockHash ?? "" : "");
   const [manualError, setManualError] = useState("");
@@ -544,7 +579,6 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
       : "No hosted node check has run in this page visit."
   );
   const [observation, setObservation] = useState<DuskDsBlockObservation | null>(restoredAccessObservation);
-  const requiredAccessTools = manualToolsFor("access").filter((tool) => tool.requirement === "required");
   const toolsReady = requiredAccessTools.every((tool) => confirmed.has(tool.id));
   const setupStatus = journey.progress.paths.duskds.setup.status;
   const setupComplete = hasTruthfulDisposition(setupStatus);
@@ -637,7 +671,9 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
       method: "manual",
       metadata: {
         ...result.value,
-        platform: platformMetadata(platform)
+        platform: platformMetadata(platform),
+        tool: "deno",
+        checkCount: requiredAccessTools.length
       }
     });
   }

@@ -60,6 +60,7 @@ export type EvidenceTool =
   | "rustup"
   | "rustc"
   | "cargo"
+  | "deno"
   | "dusk-forge"
   | "w3sper"
   | "wasm32-unknown-unknown"
@@ -193,6 +194,7 @@ const evidenceTools = new Set<EvidenceTool>([
   "rustup",
   "rustc",
   "cargo",
+  "deno",
   "dusk-forge",
   "w3sper",
   "wasm32-unknown-unknown",
