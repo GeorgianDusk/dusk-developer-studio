@@ -54,7 +54,7 @@ export function Shell({ route, setRoute, builderPath, companionStatus, children 
     document.getElementById("studio-main")?.focus();
   }
   return (
-    <div className={"app-shell route-" + route}>
+    <div className={"app-shell route-" + route} id="studio-app-shell">
       <a className="skip-link" href="#studio-main" onClick={skipToContent}>Skip to main content</a>
       <header className="studio-header">
         <button className="brand-button" type="button" onClick={() => setRoute("overview")} aria-label="Dusk Developer Studio home">

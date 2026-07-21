@@ -3,14 +3,14 @@ import { STUDIO_RELEASE, type StudioRelease } from "../release";
 import { STEP_ROUTES, type StepRoute } from "./journeyProgress";
 import type { StudioRuntime } from "./runtime";
 import { studioRuntime } from "./studioConfig";
-import { getRouteScrollY, JourneyProvider, RuntimeProvider, useBuilderPath, useCompanionStatus, useRoute } from "./studioState";
+import { getRouteScrollY, JourneyProvider, restoreRouteFocus, RuntimeProvider, useBuilderPath, useCompanionStatus, useRoute } from "./studioState";
 import { OverviewPage, Shell } from "./StudioShell";
 import { AccessPage, BuildPage, InspectPage, SetupPage } from "./routes/GuideRoutes";
 import { ReferencePage, TroubleshootingPage } from "./routes/ReferenceRoutes";
 import { LocalCompanionPage, SettingsPage } from "./routes/SystemRoutes";
 
 function StudioRoutes() {
-  const [route, setRoute] = useRoute();
+  const [route, setRoute, routeNavigation] = useRoute();
   const [builderPath, setBuilderPath] = useBuilderPath();
   const [companionStatus, refreshCompanion] = useCompanionStatus();
   const isGuideRoute = STEP_ROUTES.includes(route as StepRoute);
@@ -28,11 +28,18 @@ function StudioRoutes() {
     if (heading) {
       document.title = `${heading.textContent?.trim() || "Developer Studio"} | Dusk Developer Studio`;
       const view = `${visibleRoute}:${builderPath ?? "no-path"}:${pendingGuideRoute ?? "none"}`;
-      if (previousView.current !== null && previousView.current !== view) heading.focus({ preventScroll: true });
+      const changed = previousView.current !== null && previousView.current !== view;
       previousView.current = view;
+      window.scrollTo({ top: getRouteScrollY(), left: 0, behavior: "auto" });
+      if (changed) {
+        if (routeNavigation.kind === "history") {
+          if (!restoreRouteFocus()) heading.focus({ preventScroll: true });
+        } else {
+          heading.focus({ preventScroll: true });
+        }
+      }
     }
-    window.scrollTo({ top: getRouteScrollY(), left: 0, behavior: "auto" });
-  }, [builderPath, pendingGuideRoute, visibleRoute]);
+  }, [builderPath, companionStatus.state, pendingGuideRoute, routeNavigation.kind, routeNavigation.sequence, visibleRoute]);
   return <Shell route={visibleRoute} setRoute={setRoute} builderPath={shellBuilderPath} companionStatus={companionStatus}>
     {visibleRoute === "overview" && <OverviewPage pendingRoute={pendingGuideRoute} setBuilderPath={setBuilderPath} setRoute={setRoute} />}
     {!pendingGuideRoute && visibleRoute === "setup" && <SetupPage builderPath={activeBuilderPath} companionStatus={companionStatus} setRoute={setRoute} />}

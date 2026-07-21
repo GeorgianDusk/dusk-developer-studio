@@ -62,7 +62,7 @@ function tarFileEntry(name, bytes) {
 function buildTarballFixture({ corruptManifest = false, trailingNonzero = false } = {}) {
   const packageJsonBytes = Buffer.from(JSON.stringify({
     name: "dusk-developer-studio",
-    version: "1.0.3",
+    version: "1.0.4",
     repository: { url: "git+https://github.com/GeorgianDusk/dusk-developer-studio.git" },
     engines: { node: ">=24.18.0 <25" }
   }), "utf8");
@@ -75,7 +75,7 @@ function buildTarballFixture({ corruptManifest = false, trailingNonzero = false 
   const manifestBytes = Buffer.from(JSON.stringify({
     schema_version: 1,
     package: "dusk-developer-studio",
-    version: "1.0.3",
+    version: "1.0.4",
     commit: "1".repeat(40),
     channel: "npm",
     node: { required_range: ">=24.18.0 <25" },
@@ -1133,8 +1133,8 @@ assert.match(
 );
 
 const unintendedCandidate = clone(validFinal.fixture);
-unintendedCandidate.final_candidate.package_version = "1.0.4";
-unintendedCandidate.final_candidate.repository_tag = "v1.0.4";
+unintendedCandidate.final_candidate.package_version = "1.0.5";
+unintendedCandidate.final_candidate.repository_tag = "v1.0.5";
 assert.match(
   validateFinalFixture(unintendedCandidate, {
     final: true,
@@ -1322,7 +1322,7 @@ assert.match(
 
 const tarballInspection = inspectNpmTarballBytes(buildTarballFixture());
 assert.equal(tarballInspection.package_name, "dusk-developer-studio");
-assert.equal(tarballInspection.package_version, "1.0.3");
+assert.equal(tarballInspection.package_version, "1.0.4");
 assert.equal(tarballInspection.manifest_commit, "1".repeat(40));
 assert.equal(tarballInspection.inventory_file_count, 2);
 assert.equal(tarballInspection.inventory_verified, true);

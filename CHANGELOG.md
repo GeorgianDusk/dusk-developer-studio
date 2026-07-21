@@ -4,6 +4,17 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.4 - 2026-07-21
+
+### Fixed
+
+- Create the publication-receipt directory before writing the post-publication OIDC receipt, so a successful npm publication finishes with complete release evidence.
+- Restore keyboard focus to a visible control after Back or Forward restores a deep scroll position.
+- Let Escape cancel the browser-progress reset confirmation without changing saved data.
+- Restore the required Access tool confirmation alongside saved manual node evidence, keeping completed re-entry internally consistent.
+- Preserve the unchanged compressed-JavaScript and total-transfer limits while narrowly raising the raw JavaScript ceiling for the new focus and evidence safeguards.
+- Keep the browser tab title synchronized when a Local Studio session changes from connecting or unpaired to ready.
+
 ## 1.0.3 - 2026-07-21
 
 ### Changed

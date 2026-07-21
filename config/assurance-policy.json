@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "asset_budgets": {
-    "javascript_bytes": 460000,
+    "javascript_bytes": 465000,
     "javascript_gzip_bytes": 140000,
     "css_bytes": 60000,
     "html_bytes": 12000,
     "total_bytes": 600000
   },
-  "asset_budget_rationale": "The 460 KB raw ceiling accommodates the production source-integrity, recovery-state and accessibility logic added during comprehensive validation. The additional 140 KB gzip ceiling constrains the browser-transfer cost more directly and preserves less than 5 percent headroom over the verified candidate.",
+  "asset_budget_rationale": "The 465 KB raw ceiling accommodates the production source-integrity, history-focus, recovery-state and evidence-rehydration logic added during comprehensive validation. The unchanged 140 KB gzip ceiling constrains browser-transfer cost more directly and preserves less than 5 percent headroom over the verified candidate.",
   "lab_performance_budgets": {
     "largest_contentful_paint_ms": 2500,
     "cumulative_layout_shift": 0.1,
