@@ -176,6 +176,13 @@ export function validatePairingTransportEvidence({
     "Local pairing must observe unauthenticated health, successful bootstrap, then authenticated health in order."
   );
 
+  const probeAborts = validateTerminalState({
+    event: probeEvent,
+    finishedRequests,
+    label: "The expected unauthenticated health request",
+    requestFailures,
+    responseByRequest
+  });
   const bootstrapAborts = validateTerminalState({
     event: bootstrapEvent,
     finishedRequests,
@@ -190,7 +197,11 @@ export function validatePairingTransportEvidence({
     requestFailures,
     responseByRequest
   });
-  const toleratedFailures = new Set([...bootstrapAborts, ...authenticatedHealthAborts]);
+  const toleratedFailures = new Set([
+    ...probeAborts,
+    ...bootstrapAborts,
+    ...authenticatedHealthAborts
+  ]);
   assert.deepEqual(
     requestFailures
       .filter((failure) => !toleratedFailures.has(failure))
@@ -201,6 +212,7 @@ export function validatePairingTransportEvidence({
 
   return {
     lateAbortTelemetry: {
+      unauthenticated_health: probeAborts.length,
       authenticated_health: authenticatedHealthAborts.length,
       bootstrap: bootstrapAborts.length
     }

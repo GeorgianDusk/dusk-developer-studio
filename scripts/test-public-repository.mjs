@@ -28,6 +28,8 @@ for (const file of [
   "docs/security/duskds-cargo-advisory-review.md",
   "docs/operations/public-monitoring.md",
   "scripts/check-cargo-advisory-review.mjs",
+  "scripts/npm-package-browser-response.mjs",
+  "scripts/test-npm-package-browser-response.mjs",
   "scripts/npm-package-preflight-smoke.mjs",
   "scripts/prepublication-candidate-binding.mjs",
   "scripts/test-prepublication-candidate-binding.mjs",
@@ -401,15 +403,16 @@ assert.match(npmPreflightSmoke, /\/__dusk\/bootstrap[\s\S]*\/preflight\?path=dus
 assert.match(npmPreflightSmoke, /spawn\(process\.execPath, \[primaryEntry, "local-actions", "--no-open"\]/);
 assert.match(npmPreflightSmoke, /waitForPortsClosed\(\)/);
 assert.match(npmPreflightSmoke, /studio_loopback_services_stopped: true/);
+const npmBrowserResponse = read("scripts/npm-package-browser-response.mjs");
 assert.match(
-  npmBrowserSmoke,
+  npmBrowserResponse,
   /Network\[\.\]getResponseBody\.\*No data found for resource with given identifier[\s\S]*context\.request\.get\(expectedUrl/,
   "The package browser smoke must recover only the known Chrome response-body eviction race."
 );
 assert.match(
-  npmBrowserSmoke,
-  /stableResponse\.status\(\)[\s\S]*200[\s\S]*return stableResponse\.json\(\)/,
-  "The response-body fallback must re-read the same authenticated endpoint and require HTTP 200."
+  npmBrowserResponse,
+  /expectedUrl[\s\S]*EXPECTED_PREFLIGHT_URL[\s\S]*expectedOrigin[\s\S]*EXPECTED_STUDIO_ORIGIN[\s\S]*headers: \{ origin: expectedOrigin \}[\s\S]*stableResponse\.status\(\)[\s\S]*200[\s\S]*return stableResponse\.json\(\)/,
+  "The response-body fallback must bind the exact endpoint and origin, reuse the session, and require HTTP 200."
 );
 assert.doesNotMatch(
   npmBrowserSmoke,

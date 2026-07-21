@@ -12,6 +12,7 @@ import {
   createRequestTerminalTracker,
   validatePairingTransportEvidence
 } from "./npm-package-browser-telemetry.mjs";
+import { readPreflightResponseJson } from "./npm-package-browser-response.mjs";
 import {
   npmPackageName,
   npmPackageVersion,
@@ -82,26 +83,6 @@ function assertPortClosed(port) {
 
 function closeServer(server) {
   return new Promise((resolve) => server.close(resolve));
-}
-
-async function readPreflightResponseJson(context, response, expectedUrl) {
-  try {
-    return await response.json();
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/Network[.]getResponseBody.*No data found for resource with given identifier/u.test(message)) {
-      throw error;
-    }
-    const stableResponse = await context.request.get(expectedUrl, {
-      timeout: PREFLIGHT_TIMEOUT_MS
-    });
-    assert.equal(
-      stableResponse.status(),
-      200,
-      "The exact-package preflight replay must succeed after Chrome evicts the observed response body."
-    );
-    return stableResponse.json();
-  }
 }
 
 async function exerciseFixedPortConflict(primaryEntry, homeRoot, occupiedPort) {
@@ -370,7 +351,13 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       const preflightResponse = await preflightResponsePromise;
       assert.equal(preflightResponse.status(), 200);
       preflightContract = await validatePreflightConsumerContract(
-        await readPreflightResponseJson(context, preflightResponse, expectedPreflightUrl),
+        await readPreflightResponseJson({
+          context,
+          expectedOrigin: new URL(page.url()).origin,
+          expectedUrl: expectedPreflightUrl,
+          response: preflightResponse,
+          timeoutMs: PREFLIGHT_TIMEOUT_MS
+        }),
         PREFLIGHT_CONSUMER_SOURCE
       );
       const preflightResults = page.locator('[aria-label="Automatic preflight results"]');
@@ -433,17 +420,30 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     const authenticatedHealthEvents = responseEvents.filter(({ url, status }) =>
       url === expectedProbeUrl && status === 200
     );
+    const unauthenticatedHealthEvents = responseEvents.filter(({ url, status }) =>
+      url === expectedProbeUrl && status === 401
+    );
+    assert.equal(
+      unauthenticatedHealthEvents.length,
+      1,
+      "Local pairing must observe exactly one unauthenticated health response."
+    );
     assert.equal(
       authenticatedHealthEvents.length,
       1,
       "Local pairing must observe exactly one successful authenticated health response."
     );
+    const [unauthenticatedHealthEvent] = unauthenticatedHealthEvents;
     const [authenticatedHealthEvent] = authenticatedHealthEvents;
     // Await exact terminal request events with a hard bound. Chromium can emit a
     // late requestfailed event after the application has already consumed a
     // valid response; the identity-bound classifier below decides whether it is
     // the one safe late-abort case.
     await Promise.all([
+      requestTerminalTracker.wait(
+        unauthenticatedHealthEvent.request,
+        "The expected unauthenticated health request"
+      ),
       requestTerminalTracker.wait(bootstrapRequest, "The successful bootstrap request"),
       requestTerminalTracker.wait(
         authenticatedHealthEvent.request,

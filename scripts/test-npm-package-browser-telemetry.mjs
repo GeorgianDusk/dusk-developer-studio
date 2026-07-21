@@ -12,7 +12,7 @@ function request(method, url) {
   return { method: () => method, url: () => url };
 }
 
-function fixture({ bootstrapAbort = false, healthAbort = false } = {}) {
+function fixture({ bootstrapAbort = false, healthAbort = false, probeAbort = false } = {}) {
   const probeRequest = request("GET", expectedProbeUrl);
   const bootstrapRequest = request("POST", expectedBootstrapUrl);
   const healthRequest = request("GET", expectedProbeUrl);
@@ -48,8 +48,18 @@ function fixture({ bootstrapAbort = false, healthAbort = false } = {}) {
     [healthRequest, healthResponse]
   ]);
   const requestFailures = [];
-  const finishedRequests = new Map([[probeRequest, 4]]);
-  let sequence = 5;
+  const finishedRequests = new Map();
+  let sequence = 4;
+  if (probeAbort) {
+    requestFailures.push({
+      request: probeRequest,
+      sequence: sequence++,
+      text: "net::ERR_ABORTED",
+      url: expectedProbeUrl
+    });
+  } else {
+    finishedRequests.set(probeRequest, sequence++);
+  }
   if (bootstrapAbort) {
     requestFailures.push({
       request: bootstrapRequest,
@@ -89,14 +99,28 @@ function validate(input) {
 }
 
 for (const [options, telemetry] of [
-  [{}, { authenticated_health: 0, bootstrap: 0 }],
-  [{ healthAbort: true }, { authenticated_health: 1, bootstrap: 0 }],
-  [{ bootstrapAbort: true }, { authenticated_health: 0, bootstrap: 1 }],
-  [{ bootstrapAbort: true, healthAbort: true }, { authenticated_health: 1, bootstrap: 1 }]
+  [{}, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0 }],
+  [{ probeAbort: true }, { unauthenticated_health: 1, authenticated_health: 0, bootstrap: 0 }],
+  [{ healthAbort: true }, { unauthenticated_health: 0, authenticated_health: 1, bootstrap: 0 }],
+  [{ bootstrapAbort: true }, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 1 }],
+  [
+    { bootstrapAbort: true, healthAbort: true, probeAbort: true },
+    { unauthenticated_health: 1, authenticated_health: 1, bootstrap: 1 }
+  ]
 ]) {
   assert.deepEqual(validate(fixture(options)).lateAbortTelemetry, telemetry);
 }
 
+{
+  const input = fixture({ probeAbort: true });
+  input.requestFailures[0].sequence = 1;
+  assert.throws(() => validate(input), /must either finish|unexpected request failure/u);
+}
+{
+  const input = fixture({ probeAbort: true });
+  input.requestFailures[0].request = request("GET", expectedProbeUrl);
+  assert.throws(() => validate(input), /must either finish/u);
+}
 {
   const input = fixture({ healthAbort: true });
   input.requestFailures[0].sequence = 3;
