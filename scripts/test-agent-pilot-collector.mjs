@@ -76,7 +76,7 @@ function createTar(files) {
 
 async function createFixtureTarball(file, commit, overrides = {}) {
   const packageName = "dusk-developer-studio";
-  const packageVersion = "1.0.1";
+  const packageVersion = policy.npm_distribution.package_version;
   const ordinaryFiles = new Map([
     ["fixture.txt", Buffer.from("fixture candidate\n", "utf8")],
     [

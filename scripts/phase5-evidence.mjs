@@ -676,7 +676,7 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const now = options.now ?? new Date();
   const blockers = [];
   if (!policy || policy.schema_version !== 1) blockers.push("Phase 5 policy schema is unsupported.");
-  if (!evidence || evidence.schema_version !== 9) blockers.push("Phase 5 evidence schema is unsupported.");
+  if (!evidence || evidence.schema_version !== 10) blockers.push("Phase 5 evidence schema is unsupported.");
   if (blockers.length) return { decision: "no-go", blockers };
 
   const productionPaths = Array.isArray(policy.production_paths) ? policy.production_paths : [];
@@ -758,7 +758,8 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const distribution = evidence.npm_distribution ?? {};
   exactKeys(blockers, "npm distribution evidence", distribution, [
     "package_name", "package_version", "node_engine", "registry_url", "integrity",
-    "package_inventory_sha256", "platform_smoke", "assurance", "publication",
+    "package_sha256", "package_inventory_sha256", "package_file_count",
+    "platform_smoke", "assurance", "publication",
     "bootstrap_controls"
   ]);
   if (distribution.package_name !== distributionPolicy.package_name
@@ -766,7 +767,10 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || distribution.node_engine !== distributionPolicy.node_engine
       || distribution.registry_url !== distributionPolicy.registry_url
       || !SRI_SHA512_RE.test(distribution.integrity ?? "")
-      || !SHA256_RE.test(distribution.package_inventory_sha256 ?? "")) {
+      || !SHA256_RE.test(distribution.package_sha256 ?? "")
+      || !SHA256_RE.test(distribution.package_inventory_sha256 ?? "")
+      || !Number.isSafeInteger(distribution.package_file_count)
+      || distribution.package_file_count <= 0) {
     blockers.push("npm distribution does not identify the exact approved public package, runtime, integrity, and inventory.");
   }
   if (!NPM_USERNAME_RE.test(distributionPolicy.expected_npm_maintainer ?? "")
@@ -781,7 +785,18 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || distributionPolicy.publication_workflow !== OIDC_NPM_PUBLICATION_WORKFLOW
       || distributionPolicy.publication_environment !== OIDC_NPM_PUBLICATION_ENVIRONMENT
       || distributionPolicy.subsequent_workflow_path !== distributionPolicy.publication_workflow
-      || distributionPolicy.subsequent_registry_authentication !== "github-oidc") {
+      || distributionPolicy.subsequent_registry_authentication !== "github-oidc"
+      || JSON.stringify(distributionPolicy.required_package_platforms) !== JSON.stringify([
+        "windows-x64", "ubuntu-24.04-x64", "macos-15-arm64"
+      ])
+      || canonicalJson(distributionPolicy.native_ci_runner_map ?? {}) !== canonicalJson({
+        "windows-x64": "windows-2025",
+        "ubuntu-24.04-x64": "ubuntu-24.04",
+        "macos-15-arm64": "macos-15"
+      })
+      || JSON.stringify(distributionPolicy.required_package_checks) !== JSON.stringify([
+        "install", "safe", "local-actions", "create-duskds", "shutdown", "cleanup"
+      ])) {
     blockers.push("npm distribution policy lacks the confirmed maintainer, historical bootstrap identity, or active OIDC publication identity.");
   }
   const initialPublicationPolicy = distributionPolicy.initial_publication_evidence ?? {};
@@ -818,25 +833,36 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     const record = platformSmoke[platform];
     exactKeys(blockers, `npm platform smoke ${platform}`, record, [
       "schema_version", "status", "runner", "node_version",
-      "safe_smoke", "local_actions_capability_contract_smoke",
+      "install_smoke", "safe_smoke", "local_actions_capability_contract_smoke",
+      "local_actions_preflight_verified", "local_actions_preflight_check_id",
+      "local_actions_preflight_loopback_services_stopped",
+      "local_actions_preflight_consumer_contract_source_sha256",
       "direct_cli_scaffold_smoke", "local_actions_scaffold_smoke",
-      "scaffold_preservation_smoke", "shutdown_smoke",
+      "scaffold_preservation_smoke", "shutdown_smoke", "cleanup_smoke",
       "elevated_refusal", "candidate_commit", "integrity", "package_inventory_sha256", "observed_at"
+      , "package_file_count"
     ]);
     if (record?.schema_version !== 2
         || record.status !== "passed"
         || record.runner !== platform
         || record.node_version !== "24.18.0"
+        || record.install_smoke !== "passed"
         || record.safe_smoke !== "passed"
         || record.local_actions_capability_contract_smoke !== "passed"
+        || record.local_actions_preflight_verified !== true
+        || !PSEUDONYMOUS_ID_RE.test(record.local_actions_preflight_check_id ?? "")
+        || record.local_actions_preflight_loopback_services_stopped !== true
+        || !SHA256_RE.test(record.local_actions_preflight_consumer_contract_source_sha256 ?? "")
         || record.direct_cli_scaffold_smoke !== "passed"
         || record.local_actions_scaffold_smoke !== "passed"
         || record.scaffold_preservation_smoke !== "passed"
         || record.shutdown_smoke !== "passed"
+        || record.cleanup_smoke !== "passed"
         || record.elevated_refusal !== "passed"
         || record.candidate_commit !== candidate.commit
         || record.integrity !== distribution.integrity
-        || record.package_inventory_sha256 !== distribution.package_inventory_sha256) {
+        || record.package_inventory_sha256 !== distribution.package_inventory_sha256
+        || record.package_file_count !== distribution.package_file_count) {
       blockers.push(`npm platform smoke ${platform} does not prove the exact candidate package and required lifecycle checks.`);
     }
     if (timestampAfterBuild(blockers, `npm platform smoke ${platform}`, record?.observed_at, candidate.built_at, now)) {
@@ -846,55 +872,154 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
 
   const assurance = distribution.assurance ?? {};
   exactKeys(blockers, "npm assurance receipt", assurance, [
-    "candidate_commit",
-    "exact_tarball_direct_cli_scaffold_smoke",
-    "exact_tarball_local_actions_scaffold_smoke",
-    "exact_tarball_scaffold_preservation_smoke",
-    "exact_tarball_shutdown_smoke",
-    "receipt_sha256", "receipt_json", "workflow_path",
+    "candidate_commit", "receipt_sha256", "receipt_json", "workflow_path",
     "run_url", "artifact_name", "observed_at", "provenance"
   ]);
   if (assurance.candidate_commit !== candidate.commit) blockers.push("npm assurance is not bound to the exact candidate commit.");
-  if (assurance.exact_tarball_direct_cli_scaffold_smoke !== "passed"
-      || assurance.exact_tarball_local_actions_scaffold_smoke !== "passed"
-      || assurance.exact_tarball_scaffold_preservation_smoke !== "passed"
-      || assurance.exact_tarball_shutdown_smoke !== "passed") {
-    blockers.push("npm assurance does not declare the required three-platform exact-tarball direct CLI, Local Actions scaffold, preservation, and shutdown results.");
-  }
   checkActionsReference(blockers, "npm assurance", assurance, policy.monitoring_evidence?.canonical_repository, NPM_ASSURANCE_WORKFLOW);
   const assuranceRunId = actionsRunId(assurance.run_url, policy.monitoring_evidence?.canonical_repository);
   if (assurance.artifact_name !== `studio-npm-assurance-receipt-${assuranceRunId ?? "invalid"}.json`) blockers.push("npm assurance artifact name is not bound to its Actions run.");
   const assuranceReceipt = parseBoundReceipt(blockers, "npm assurance", assurance);
   exactKeys(blockers, "npm assurance receipt JSON", assuranceReceipt, [
-    "schema_version", "status", "package_name", "package_version", "node_engine",
-    "candidate_commit", "workflow_path", "observed_at", "integrity",
-    "package_inventory_sha256", "browser_boot_and_pairing_smoke",
-    "exact_tarball_direct_cli_scaffold_smoke",
-    "exact_tarball_local_actions_scaffold_smoke",
-    "exact_tarball_scaffold_preservation_smoke",
-    "exact_tarball_shutdown_smoke",
-    "platform_smoke"
+    "schema_version", "kind", "record_id", "evidence_class", "producer",
+    "capture_mode", "test_fixture", "validation_context", "record",
+    "evidence_payload_json", "evidence_payload", "evidence_payload_sha256",
+    "github_actions_provenance"
   ]);
-  if (assuranceReceipt.schema_version !== 2
-      || assuranceReceipt.status !== "passed"
-      || assuranceReceipt.package_name !== distribution.package_name
-      || assuranceReceipt.package_version !== distribution.package_version
-      || assuranceReceipt.node_engine !== distribution.node_engine
-      || assuranceReceipt.candidate_commit !== candidate.commit
-      || assuranceReceipt.workflow_path !== NPM_ASSURANCE_WORKFLOW
-      || assuranceReceipt.observed_at !== assurance.observed_at
-      || assuranceReceipt.integrity !== distribution.integrity
-      || assuranceReceipt.package_inventory_sha256 !== distribution.package_inventory_sha256
-      || assuranceReceipt.browser_boot_and_pairing_smoke !== "passed"
-      || assuranceReceipt.exact_tarball_direct_cli_scaffold_smoke
-        !== assurance.exact_tarball_direct_cli_scaffold_smoke
-      || assuranceReceipt.exact_tarball_local_actions_scaffold_smoke
-        !== assurance.exact_tarball_local_actions_scaffold_smoke
-      || assuranceReceipt.exact_tarball_scaffold_preservation_smoke
-        !== assurance.exact_tarball_scaffold_preservation_smoke
-      || assuranceReceipt.exact_tarball_shutdown_smoke !== assurance.exact_tarball_shutdown_smoke
-      || JSON.stringify(assuranceReceipt.platform_smoke) !== JSON.stringify(platformSmoke)) {
-    blockers.push("npm assurance receipt does not prove the exact package inventory, browser boot and pairing, direct CLI, Local Actions scaffold, preservation, shutdown, and three-platform lifecycle smoke.");
+  const assuranceContext = assuranceReceipt.validation_context ?? {};
+  exactKeys(blockers, "npm assurance validation context", assuranceContext, [
+    "policy_sha256", "source_commit", "package_name", "package_version",
+    "package_sha256", "npm_integrity", "repository_tag"
+  ]);
+  const assuranceRecord = assuranceReceipt.record ?? {};
+  exactKeys(blockers, "npm assurance record", assuranceRecord, [
+    "evidence_id", "source_commit", "package_name", "package_version",
+    "package_path", "package_sha256", "package_inventory_sha256",
+    "package_file_count", "npm_integrity", "observed_at", "platforms_verified",
+    "checks_verified", "platform_results", "check_results"
+  ]);
+  const assurancePayload = assuranceReceipt.evidence_payload ?? {};
+  exactKeys(blockers, "npm assurance evidence payload", assurancePayload, [
+    "schema_version", "record", "native_ci_evidence"
+  ]);
+  const nativeCiEvidence = assurancePayload.native_ci_evidence ?? {};
+  exactKeys(blockers, "npm assurance native CI evidence", nativeCiEvidence, [
+    "browser_boot_and_pairing_smoke", "local_actions_preflight_verified",
+    "consumer_contract_source_sha256", "platform_smoke"
+  ]);
+  const assuranceActions = assuranceReceipt.github_actions_provenance ?? {};
+  exactKeys(blockers, "npm assurance embedded Actions provenance", assuranceActions, [
+    "schema_version", "mode", "repository", "workflow_path", "run_id",
+    "run_attempt", "run_event", "run_ref", "run_commit", "run_url",
+    "job_name", "artifact_id", "artifact_name", "artifact_url",
+    "artifact_digest_sha256"
+  ]);
+  const requiredRunners = distributionPolicy.required_platforms ?? [];
+  const requiredPlatforms = distributionPolicy.required_package_platforms ?? [];
+  const requiredChecks = distributionPolicy.required_package_checks ?? [];
+  const nativeCiRunnerMap = distributionPolicy.native_ci_runner_map ?? {};
+  const expectedArtifactName = `${distribution.package_name}-${distribution.package_version}.tgz`;
+  const platformReceiptDigests = Object.fromEntries(requiredRunners.map((runner) => [
+    runner,
+    createHash("sha256").update(JSON.stringify(platformSmoke[runner] ?? null), "utf8").digest("hex")
+  ]));
+  const platformResultsValid = Array.isArray(assuranceRecord.platform_results)
+    && assuranceRecord.platform_results.length === requiredPlatforms.length
+    && assuranceRecord.platform_results.every((result, index) => {
+      exactKeys(blockers, `npm assurance platform result ${index}`, result, [
+        "platform", "status", "evidence_refs"
+      ]);
+      const platform = requiredPlatforms[index];
+      const runner = nativeCiRunnerMap[platform];
+      return result?.platform === platform
+        && result.status === "passed"
+        && JSON.stringify(result.evidence_refs) === JSON.stringify([
+          `${assuranceRecord.evidence_id}:platform:${runner}:${platformReceiptDigests[runner]}`
+        ]);
+    });
+  const checkResultsValid = Array.isArray(assuranceRecord.check_results)
+    && assuranceRecord.check_results.length === requiredChecks.length
+    && assuranceRecord.check_results.every((result, index) => {
+      exactKeys(blockers, `npm assurance check result ${index}`, result, [
+        "check", "status", "evidence_refs"
+      ]);
+      const check = requiredChecks[index];
+      const expectedRefs = requiredRunners.map((runner) =>
+        `${assuranceRecord.evidence_id}:check:${check}:${runner}:${platformReceiptDigests[runner]}`
+      );
+      return result?.check === check
+        && result.status === "passed"
+        && JSON.stringify(result.evidence_refs) === JSON.stringify(expectedRefs);
+    });
+  let evidencePayloadJsonValid = false;
+  try {
+    evidencePayloadJsonValid = JSON.stringify(JSON.parse(assuranceReceipt.evidence_payload_json))
+      === JSON.stringify(assurancePayload)
+      && assuranceReceipt.evidence_payload_json === JSON.stringify(assurancePayload);
+  } catch {
+    evidencePayloadJsonValid = false;
+  }
+  const computedEvidencePayloadSha256 = typeof assuranceReceipt.evidence_payload_json === "string"
+    ? createHash("sha256").update(assuranceReceipt.evidence_payload_json, "utf8").digest("hex")
+    : "";
+  if (assuranceReceipt.schema_version !== 1
+      || assuranceReceipt.kind !== "final-package-assurance"
+      || assuranceReceipt.record_id !== assuranceRecord.evidence_id
+      || assuranceReceipt.evidence_class !== "package-lifecycle-smoke"
+      || assuranceReceipt.producer !== "ci-package-assurance"
+      || assuranceReceipt.capture_mode !== "machine-observed"
+      || assuranceReceipt.test_fixture !== false
+      || !SHA256_RE.test(assuranceContext.policy_sha256 ?? "")
+      || assuranceContext.source_commit !== candidate.commit
+      || assuranceContext.package_name !== distribution.package_name
+      || assuranceContext.package_version !== distribution.package_version
+      || assuranceContext.package_sha256 !== distribution.package_sha256
+      || assuranceContext.npm_integrity !== distribution.integrity
+      || assuranceContext.repository_tag !== distributionPolicy.tag
+      || assuranceRecord.evidence_id !== `CV-E-FINAL-PACKAGE-${assuranceRunId ?? "invalid"}`
+      || assuranceRecord.source_commit !== candidate.commit
+      || assuranceRecord.package_name !== distribution.package_name
+      || assuranceRecord.package_version !== distribution.package_version
+      || assuranceRecord.package_path !== `output/npm/${expectedArtifactName}`
+      || assuranceRecord.package_sha256 !== distribution.package_sha256
+      || assuranceRecord.package_inventory_sha256 !== distribution.package_inventory_sha256
+      || assuranceRecord.package_file_count !== distribution.package_file_count
+      || assuranceRecord.npm_integrity !== distribution.integrity
+      || assuranceRecord.observed_at !== assurance.observed_at
+      || JSON.stringify(assuranceRecord.platforms_verified) !== JSON.stringify(requiredPlatforms)
+      || JSON.stringify(assuranceRecord.checks_verified) !== JSON.stringify(requiredChecks)
+      || !platformResultsValid
+      || !checkResultsValid
+      || assurancePayload.schema_version !== 1
+      || canonicalJson(assurancePayload.record ?? {}) !== canonicalJson(assuranceRecord)
+      || !evidencePayloadJsonValid
+      || assuranceReceipt.evidence_payload_sha256 !== computedEvidencePayloadSha256
+      || nativeCiEvidence.browser_boot_and_pairing_smoke !== "passed"
+      || nativeCiEvidence.local_actions_preflight_verified !== true
+      || !SHA256_RE.test(nativeCiEvidence.consumer_contract_source_sha256 ?? "")
+      || canonicalJson(nativeCiEvidence.platform_smoke ?? {}) !== canonicalJson(platformSmoke)
+      || requiredRunners.some((runner) =>
+        platformSmoke[runner]?.local_actions_preflight_consumer_contract_source_sha256
+          !== nativeCiEvidence.consumer_contract_source_sha256
+      )
+      || assuranceActions.schema_version !== 1
+      || assuranceActions.mode !== "github-actions-upload-artifact-v7"
+      || assuranceActions.repository !== policy.monitoring_evidence?.canonical_repository
+      || assuranceActions.workflow_path !== NPM_ASSURANCE_WORKFLOW
+      || String(assuranceActions.run_id) !== assuranceRunId
+      || assuranceActions.run_attempt !== 1
+      || assuranceActions.run_event !== "push"
+      || assuranceActions.run_ref !== "refs/heads/main"
+      || assuranceActions.run_commit !== candidate.commit
+      || assuranceActions.run_url !== assurance.run_url
+      || assuranceActions.job_name !== "aggregate-assurance"
+      || !Number.isSafeInteger(Number(assuranceActions.artifact_id))
+      || Number(assuranceActions.artifact_id) <= 0
+      || assuranceActions.artifact_name !== `studio-npm-assurance-evidence-${assuranceRunId ?? "invalid"}.json`
+      || assuranceActions.artifact_url
+        !== `${assurance.run_url}/artifacts/${assuranceActions.artifact_id}`
+      || assuranceActions.artifact_digest_sha256 !== computedEvidencePayloadSha256) {
+    blockers.push("npm assurance receipt does not prove the current first-attempt main-push package, native platform lifecycle, automatic preflight, immutable payload, and downloaded artifact contract.");
   }
   if (timestampAfterBuild(blockers, "npm assurance", assurance.observed_at, candidate.built_at, now)) {
     gatingTimestamps.push(Date.parse(assurance.observed_at));
@@ -905,7 +1030,7 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     assurance,
     candidate,
     policy.monitoring_evidence?.canonical_repository,
-    ["workflow_dispatch"],
+    ["push"],
     `studio-npm-assurance-receipt-${assuranceRunId ?? "invalid"}.json`,
     now,
     gatingTimestamps
@@ -926,6 +1051,10 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     "registry_url", "tag", "candidate_commit", "workflow_path", "observed_at",
     "integrity", "package_inventory_sha256", "npm_maintainer", "registry_authentication",
     "npm_publisher", "trusted_publisher_id",
+    "main_assurance_run_id", "main_assurance_run_url", "main_assurance_run_attempt",
+    "main_assurance_artifact_id", "main_assurance_artifact_name",
+    "main_assurance_artifact_digest_sha256", "main_assurance_tarball_sha256",
+    "tag_assurance_tarball_sha256", "prepublication_cross_run_byte_match",
     "provenance_verification", "provenance_predicate_type", "provenance_subject",
     "provenance_subject_sha512", "provenance_repository", "provenance_workflow",
     "provenance_ref", "provenance_resolved_commit"
@@ -952,6 +1081,16 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || publicationReceipt.npm_maintainer !== distributionPolicy.expected_npm_maintainer
       || publicationReceipt.npm_publisher !== distributionPolicy.expected_oidc_publisher
       || publicationReceipt.trusted_publisher_id !== distributionPolicy.expected_oidc_trusted_publisher_id
+      || String(publicationReceipt.main_assurance_run_id) !== assuranceRunId
+      || publicationReceipt.main_assurance_run_url !== assurance.run_url
+      || publicationReceipt.main_assurance_run_attempt !== 1
+      || !Number.isSafeInteger(publicationReceipt.main_assurance_artifact_id)
+      || publicationReceipt.main_assurance_artifact_id <= 0
+      || publicationReceipt.main_assurance_artifact_name !== expectedArtifactName
+      || publicationReceipt.main_assurance_artifact_digest_sha256 !== distribution.package_sha256
+      || publicationReceipt.main_assurance_tarball_sha256 !== distribution.package_sha256
+      || publicationReceipt.tag_assurance_tarball_sha256 !== distribution.package_sha256
+      || publicationReceipt.prepublication_cross_run_byte_match !== true
       || publicationReceipt.registry_authentication !== expectedRegistryAuthentication
       || publicationReceipt.provenance_verification !== "npm-audit-signatures-and-slsa-source-bound"
       || publicationReceipt.provenance_predicate_type !== "https://slsa.dev/provenance/v1"

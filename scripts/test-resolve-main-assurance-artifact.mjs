@@ -74,7 +74,7 @@ assert.deepEqual(resolved, {
   artifact_name: artifact.name,
   artifact_digest_sha256: "b".repeat(64)
 });
-assert.match(urls[0], /branch=main&event=push&status=success/u);
+assert.match(urls[0], new RegExp(`branch=main&event=push&status=success&head_sha=${requirement.commit}&per_page=100`));
 assert.match(urls[1], new RegExp(`/actions/runs/${run.id}/artifacts\\?name=`));
 
 assert.throws(

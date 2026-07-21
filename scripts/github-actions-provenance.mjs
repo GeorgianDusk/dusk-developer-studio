@@ -11,6 +11,7 @@ const API_BASE = "https://api.github.com";
 const API_VERSION = "2026-03-10";
 const MAX_API_BYTES = 1_000_000;
 const MAX_RECEIPT_BYTES = 512_000;
+const MAX_PACKAGE_ARTIFACT_BYTES = 32 * 1024 * 1024;
 const MAX_NPM_ATTESTATION_BYTES = 2_000_000;
 const MAX_CLOCK_SKEW_MS = 10 * 60 * 1_000;
 const SHA256_RE = /^[a-f0-9]{64}$/;
@@ -582,7 +583,14 @@ function validateRun(requirement, run, runId, now) {
   return { repositoryId, startedAt, updatedAt };
 }
 
-function validateArtifact(requirement, result, runId, runWindow, now) {
+function validateArtifact(
+  requirement,
+  result,
+  runId,
+  runWindow,
+  now,
+  maximumBytes = MAX_RECEIPT_BYTES
+) {
   const artifacts = Array.isArray(result?.artifacts) ? result.artifacts : [];
   if (result?.total_count !== 1 || artifacts.length !== 1) {
     throw new Error(`${requirement.label} does not have exactly one run-scoped receipt artifact.`);
@@ -601,7 +609,7 @@ function validateArtifact(requirement, result, runId, runWindow, now) {
       || artifact.archive_download_url !== `${expectedArtifactApi}/zip`
       || (artifact.expired !== false && artifact.expired !== true)
       || !safeInteger(artifact.size_in_bytes)
-      || artifact.size_in_bytes > MAX_RECEIPT_BYTES
+      || artifact.size_in_bytes > maximumBytes
       || !SHA256_RE.test(digest)
       || artifact.workflow_run?.id !== runId
       || artifact.workflow_run?.repository_id !== runWindow.repositoryId
@@ -633,7 +641,7 @@ function validateRecordedArtifactMetadata(requirement, artifact, digest) {
   }
 }
 
-async function downloadDirectReceipt(fetchImpl, artifact, token, timeoutMs, label) {
+async function downloadDirectReceipt(fetchImpl, artifact, token, timeoutMs, label, maximumBytes = MAX_RECEIPT_BYTES) {
   let redirectResponse;
   try {
     redirectResponse = await fetchImpl(artifact.archive_download_url, {
@@ -671,7 +679,80 @@ async function downloadDirectReceipt(fetchImpl, artifact, token, timeoutMs, labe
     throw new Error(`${label} signed artifact download failed.`);
   }
   if (response.status !== 200) throw new Error(`${label} signed artifact download returned ${response.status}.`);
-  return readBoundedBytes(response, MAX_RECEIPT_BYTES, label);
+  return readBoundedBytes(response, maximumBytes, label);
+}
+
+export async function verifyGitHubActionsArtifactBytes(requirement, options = {}) {
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const token = options.token ?? "";
+  const now = options.now ?? new Date();
+  const timeoutMs = options.timeoutMs ?? 15_000;
+  if (!requirement
+      || !REPOSITORY_RE.test(requirement.repository ?? "")
+      || !requirement.label
+      || !requirement.workflowPath
+      || !requirement.event
+      || !/^[a-f0-9]{40}$/.test(requirement.candidateCommit ?? "")
+      || !requirement.artifactName
+      || !safeInteger(requirement.expectedArtifactId)
+      || !SHA256_RE.test(requirement.expectedDigestSha256 ?? "")
+      || requirement.record?.artifact_name !== requirement.artifactName
+      || parsedDate(requirement.record?.observed_at) === undefined) {
+    throw new Error(`${requirement?.label ?? "GitHub artifact"} verification requirement is invalid.`);
+  }
+  if (typeof fetchImpl !== "function") throw new Error(`${requirement.label} has no HTTP client.`);
+  if (typeof token !== "string" || !token.trim()) {
+    throw new Error(`${requirement.label} requires GH_TOKEN or GITHUB_TOKEN with Actions read access.`);
+  }
+  const runId = runIdFromUrl(requirement.record.run_url, requirement.repository);
+  if (runId === undefined) throw new Error(`${requirement.label} run URL is invalid.`);
+  const runUrl = `${API_BASE}/repos/${requirement.repository}/actions/runs/${runId}`;
+  const run = await fetchJson(fetchImpl, runUrl, token, timeoutMs, requirement.label);
+  const runWindow = validateRun(requirement, run, runId, now);
+  const artifactsUrl = `${runUrl}/artifacts?name=${encodeURIComponent(requirement.artifactName)}&per_page=100`;
+  const artifacts = await fetchJson(fetchImpl, artifactsUrl, token, timeoutMs, requirement.label);
+  const { artifact, digest } = validateArtifact(
+    requirement,
+    artifacts,
+    runId,
+    runWindow,
+    now,
+    MAX_PACKAGE_ARTIFACT_BYTES
+  );
+  if (artifact.id !== requirement.expectedArtifactId
+      || digest !== requirement.expectedDigestSha256) {
+    throw new Error(`${requirement.label} GitHub artifact identity or digest does not match the recorded immutable candidate.`);
+  }
+  const bytes = await downloadDirectReceipt(
+    fetchImpl,
+    artifact,
+    token,
+    timeoutMs,
+    requirement.label,
+    MAX_PACKAGE_ARTIFACT_BYTES
+  );
+  const downloadedDigest = sha256(bytes);
+  if (artifact.size_in_bytes !== bytes.length || downloadedDigest !== digest) {
+    throw new Error(`${requirement.label} downloaded bytes do not match GitHub and the recorded SHA-256.`);
+  }
+  return {
+    label: requirement.label,
+    repository: requirement.repository,
+    workflow_path: requirement.workflowPath,
+    run_id: runId,
+    run_url: requirement.record.run_url,
+    run_attempt: 1,
+    run_event: requirement.event,
+    run_commit: requirement.candidateCommit,
+    run_conclusion: "success",
+    run_completed_at: new Date(runWindow.updatedAt).toISOString(),
+    artifact_id: artifact.id,
+    artifact_name: artifact.name,
+    artifact_digest_sha256: digest,
+    artifact_bytes: bytes.length,
+    verified_at: now.toISOString(),
+    verification_source: "github-actions-artifact"
+  };
 }
 
 function validateReceiptDownloadRequirement(requirement) {
@@ -965,7 +1046,8 @@ export function phase5GitHubRequirements(policy, evidence) {
       label: "npm package assurance",
       repository,
       workflowPath: ".github/workflows/studio-npm-package-assurance.yml",
-      event: "workflow_dispatch",
+      event: "push",
+      expectedRef: "refs/heads/main",
       candidateCommit,
       artifactName: npmAssurance.artifact_name,
       record: npmAssurance
@@ -1003,6 +1085,84 @@ export async function verifyPhase5GitHubProvenance(policy, evidence, options = {
       ? await verifyInitialNpmPublication(requirement, policy, options)
       : await verifyGitHubActionsReceipt(requirement, options));
   }
+  const repository = policy?.monitoring_evidence?.canonical_repository;
+  const candidateCommit = evidence?.candidate?.commit;
+  const npmAssurance = evidence?.npm_distribution?.assurance ?? {};
+  const npmPublication = evidence?.npm_distribution?.publication ?? {};
+  const assuranceReceipt = parseJsonObject(
+    Buffer.from(npmAssurance.receipt_json ?? "", "utf8"),
+    "npm assurance embedded receipt"
+  );
+  const assurancePayloadProvenance = assuranceReceipt.github_actions_provenance ?? {};
+  const assurancePayload = await downloadGitHubActionsReceipt({
+    label: "npm package assurance evidence payload",
+    repository,
+    workflowPath: policy?.npm_distribution?.assurance_workflow,
+    event: "push",
+    expectedRef: "refs/heads/main",
+    candidateCommit,
+    artifactName: assurancePayloadProvenance.artifact_name,
+    record: {
+      artifact_name: assurancePayloadProvenance.artifact_name,
+      run_url: npmAssurance.run_url,
+      observed_at: assuranceReceipt.record?.observed_at,
+      receipt_json: assuranceReceipt.evidence_payload_json,
+      receipt_sha256: assuranceReceipt.evidence_payload_sha256,
+      provenance: {}
+    }
+  }, { ...options, requireRecordedProvenance: false });
+  if (String(assurancePayload.provenance.run_id) !== String(assurancePayloadProvenance.run_id)
+      || assurancePayload.provenance.run_url !== assurancePayloadProvenance.run_url
+      || assurancePayload.provenance.run_attempt !== assurancePayloadProvenance.run_attempt
+      || assurancePayload.provenance.run_event !== assurancePayloadProvenance.run_event
+      || assurancePayload.provenance.run_commit !== assurancePayloadProvenance.run_commit
+      || String(assurancePayload.provenance.artifact_id) !== String(assurancePayloadProvenance.artifact_id)
+      || assurancePayload.provenance.artifact_name !== assurancePayloadProvenance.artifact_name
+      || assurancePayload.provenance.artifact_digest_sha256
+        !== assurancePayloadProvenance.artifact_digest_sha256
+      || assurancePayloadProvenance.artifact_url
+        !== `${npmAssurance.run_url}/artifacts/${assurancePayloadProvenance.artifact_id}`) {
+    throw new Error("npm package assurance evidence payload does not match its embedded immutable artifact provenance.");
+  }
+  verified.push({
+    label: "npm package assurance evidence payload",
+    repository,
+    workflow_path: policy?.npm_distribution?.assurance_workflow,
+    run_id: assurancePayload.provenance.run_id,
+    run_url: assurancePayload.provenance.run_url,
+    run_attempt: 1,
+    run_event: "push",
+    run_commit: candidateCommit,
+    run_conclusion: "success",
+    run_completed_at: assurancePayload.run_completed_at,
+    artifact_id: assurancePayload.provenance.artifact_id,
+    artifact_name: assurancePayload.provenance.artifact_name,
+    artifact_digest_sha256: assurancePayload.provenance.artifact_digest_sha256,
+    receipt_sha256: assurancePayload.provenance.receipt_sha256,
+    verified_at: assurancePayload.provenance.downloaded_at,
+    verification_source: "github-actions-artifact",
+    receipt: assurancePayload.receipt
+  });
+  const publicationReceipt = parseJsonObject(
+    Buffer.from(npmPublication.receipt_json ?? "", "utf8"),
+    "npm publication embedded receipt"
+  );
+  verified.push(await verifyGitHubActionsArtifactBytes({
+    label: "npm reviewed main-push candidate",
+    repository,
+    workflowPath: policy?.npm_distribution?.assurance_workflow,
+    event: "push",
+    expectedRef: "refs/heads/main",
+    candidateCommit,
+    artifactName: publicationReceipt.main_assurance_artifact_name,
+    expectedArtifactId: publicationReceipt.main_assurance_artifact_id,
+    expectedDigestSha256: publicationReceipt.main_assurance_artifact_digest_sha256,
+    record: {
+      artifact_name: publicationReceipt.main_assurance_artifact_name,
+      run_url: publicationReceipt.main_assurance_run_url,
+      observed_at: assuranceReceipt.record?.observed_at
+    }
+  }, options));
   const publicRun = verified.find((record) => record.label === "Public assurance receipt");
   const heartbeatObservedAt = parsedDate(heartbeat.observed_at);
   const publicRunCompletedAt = parsedDate(publicRun?.run_completed_at);

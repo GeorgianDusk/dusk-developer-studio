@@ -127,7 +127,7 @@ export async function resolveMainAssuranceArtifact(requirement, options = {}) {
   if (!token.trim() || typeof fetchImpl !== "function") {
     throw new Error("Main assurance lookup requires an Actions-read token and HTTP client.");
   }
-  const runsUrl = `${API_BASE}/repos/${requirement.repository}/actions/workflows/${encodeURIComponent(requirement.workflowPath)}/runs?branch=main&event=push&status=success&per_page=100`;
+  const runsUrl = `${API_BASE}/repos/${requirement.repository}/actions/workflows/${encodeURIComponent(requirement.workflowPath)}/runs?branch=main&event=push&status=success&head_sha=${encodeURIComponent(requirement.commit)}&per_page=100`;
   const runs = await fetchJson(fetchImpl, runsUrl, token);
   const run = selectMainAssuranceRun(runs, requirement, now);
   const artifactsUrl = `${run.url}/artifacts?name=${encodeURIComponent(requirement.artifactName)}&per_page=100`;
@@ -164,7 +164,11 @@ async function runCli(args) {
     workflowPath: values.workflow,
     artifactName: values.artifact
   }, { token: process.env.GITHUB_API_TOKEN });
-  fs.appendFileSync(values["github-output"], `run_id=${resolved.run_id}\n`);
+  fs.appendFileSync(values["github-output"], [
+    `run_id=${resolved.run_id}`,
+    `artifact_id=${resolved.artifact_id}`,
+    ""
+  ].join("\n"));
   fs.appendFileSync(values["github-env"], [
     `MAIN_ASSURANCE_RUN_ID=${resolved.run_id}`,
     `MAIN_ASSURANCE_RUN_URL=${resolved.run_url}`,

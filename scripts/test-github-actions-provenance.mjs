@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import {
   phase5GitHubRequirements,
+  verifyGitHubActionsArtifactBytes,
   verifyGitHubActionsReceipt,
   verifyInitialNpmPublication
 } from "./github-actions-provenance.mjs";
@@ -178,6 +179,60 @@ assert.equal(verified.result.run_completed_at, "2026-07-15T03:05:00.000Z");
 assert.equal(verified.result.receipt_sha256, valid.requirement.record.receipt_sha256);
 assert.deepEqual(verified.result.receipt, JSON.parse(valid.requirement.record.receipt_json));
 assert.equal(verified.calls.length, 4);
+
+const exactArtifact = fixture();
+const exactArtifactRequirement = {
+  ...exactArtifact.requirement,
+  label: "Exact package artifact",
+  expectedArtifactId: exactArtifact.artifacts.artifacts[0].id,
+  expectedDigestSha256: digest(exactArtifact.bytes)
+};
+const exactArtifactFetch = mockFetch(exactArtifact);
+const exactArtifactResult = await verifyGitHubActionsArtifactBytes(
+  exactArtifactRequirement,
+  { token, fetchImpl: exactArtifactFetch.fetchImpl, now }
+);
+assert.equal(exactArtifactResult.artifact_id, exactArtifactRequirement.expectedArtifactId);
+assert.equal(exactArtifactResult.artifact_digest_sha256, exactArtifactRequirement.expectedDigestSha256);
+assert.equal(exactArtifactResult.artifact_bytes, exactArtifact.bytes.length);
+
+for (const [name, mutate, pattern] of [
+  ["wrong immutable artifact id", (requirement) => { requirement.expectedArtifactId += 1; }, /identity or digest/],
+  ["wrong immutable artifact digest", (requirement) => { requirement.expectedDigestSha256 = "0".repeat(64); }, /identity or digest/]
+]) {
+  const state = fixture();
+  const requirement = {
+    ...state.requirement,
+    label: "Exact package artifact",
+    expectedArtifactId: state.artifacts.artifacts[0].id,
+    expectedDigestSha256: digest(state.bytes)
+  };
+  mutate(requirement);
+  await assert.rejects(
+    verifyGitHubActionsArtifactBytes(requirement, {
+      token,
+      fetchImpl: mockFetch(state).fetchImpl,
+      now
+    }),
+    pattern,
+    name
+  );
+}
+const alteredExactArtifact = fixture();
+alteredExactArtifact.options.downloadBytes = Buffer.from("different bytes", "utf8");
+await assert.rejects(
+  verifyGitHubActionsArtifactBytes({
+    ...alteredExactArtifact.requirement,
+    label: "Exact package artifact",
+    expectedArtifactId: alteredExactArtifact.artifacts.artifacts[0].id,
+    expectedDigestSha256: digest(alteredExactArtifact.bytes)
+  }, {
+    token,
+    fetchImpl: mockFetch(alteredExactArtifact).fetchImpl,
+    now
+  }),
+  /downloaded bytes do not match/
+);
 
 const missingToken = fixture();
 let missingTokenCalls = 0;

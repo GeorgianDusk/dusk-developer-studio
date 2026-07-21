@@ -3996,6 +3996,36 @@
       "root_cause": "Post-cleanup verification covered bounded roots and the user profile but relied only on Remove-LocalUser returning success for account deletion.",
       "fix": "After cleanup, query Get-LocalUser for the exact bounded test account and fail before writing the platform receipt if it still exists.",
       "regression_test": "The public repository contract now requires the explicit local-account absence postcondition; Windows native CI remains required."
+    },
+    {
+      "defect_id": "CV-D-072",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The retained formal Phase 5 gate still targeted 1.0.1 and synthetic obsolete receipt shapes that the current 1.0.2 assurance and publication workflows can never emit.",
+      "source": "CV-E-CHALLENGE-2157012-20260721",
+      "root_cause": "The package workflows evolved to expanded native receipts, a nested first-attempt main-push assurance envelope and cross-run publication fields while the separately retained Phase 5 policy, template, evaluator and fixtures remained on their earlier flat contracts.",
+      "fix": "Bump Phase 5 evidence to schema 10 and 1.0.2, validate the literal expanded platform, nested assurance and cross-run publication shapes, require main-push provenance, and independently download both the inner assurance payload and the exact reviewed package artifact.",
+      "regression_test": "Workflow-shaped positive fixtures pass; adversarial fixtures reject schema 9, 1.0.1, the old flat assurance receipt, workflow-dispatch provenance, platform and payload divergence, wrong inner artifacts and every cross-run publication field."
+    },
+    {
+      "defect_id": "CV-D-073",
+      "severity": "P3",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "Publication resolved an immutable main-assurance artifact ID but downloaded the candidate by run-scoped name instead of consuming that exact ID.",
+      "source": "CV-E-CHALLENGE-2157012-20260721",
+      "root_cause": "The first cross-run binding repair recorded the selected artifact ID but passed only its unique name and run to download-artifact.",
+      "fix": "Emit artifact_id as a resolver output and pass it through download-artifact's immutable artifact-ids input while retaining the run, digest and byte checks.",
+      "regression_test": "Resolver and public workflow contracts require the artifact-ID output and exact ID download path."
+    },
+    {
+      "defect_id": "CV-D-074",
+      "severity": "P3",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The main-assurance resolver searched only the newest 100 successful runs, so a valid exact-commit run could become undiscoverable.",
+      "source": "CV-E-CHALLENGE-2157012-20260721",
+      "root_cause": "The resolver filtered the bounded first API page locally instead of using GitHub's exact head_sha query filter.",
+      "fix": "Add the exact encoded candidate commit as head_sha to the successful main-push workflow-run query and retain the unique first-attempt result check.",
+      "regression_test": "Focused resolver and public repository contracts require the exact head_sha query and still reject duplicate, rerun and wrong-commit results."
     }
   ],
   "challenge_reviews": [
@@ -4080,6 +4110,16 @@
       "identity": "Independent read-only review of clean commit c3060e3f289e74d0b542a76b7dd7510b84564e92, local tag v1.0.2 and exact 7451563a package before native CI",
       "summary": "NO-GO: tag publication was not pre-bound to the reviewed main/local bytes; the evidence ledger required ancestor-or-equal instead of a strict descendant; and Windows cleanup did not explicitly assert temporary-account absence. CV-D-064 was reopened and CV-D-070 through CV-D-071 preserve the new findings.",
       "cleanup": "Read-only source, workflow, validator, policy, focused suites and exact-tarball inspection only; no GitHub, npm, production, package installation, browser profile or developer-machine state was changed."
+    },
+    {
+      "evidence_id": "CV-E-CHALLENGE-2157012-20260721",
+      "evidence_class": "challenge-review",
+      "scope": "security-release-evidence-integrity",
+      "observed_at": "2026-07-21T07:43:56Z",
+      "result": "findings",
+      "identity": "Independent read-only review of clean commit 215701249170239a065f6573914eb74e116bd8ab, local tag v1.0.2 and exact 1e84d8af package before native CI",
+      "summary": "NO-GO: the retained Phase 5 release gate still expected 1.0.1, obsolete flat platform/assurance receipts and workflow-dispatch provenance, and rejected the current cross-run publication receipt. It also found bounded artifact-ID and head-sha lookup hardening gaps. CV-D-072 through CV-D-074 preserve the findings.",
+      "cleanup": "Read-only source, workflow, policy, fixture, exact-package and public GitHub API inspection only; no GitHub, npm, production, package installation, browser profile or developer-machine state was changed."
     }
   ],
   "completion": {
