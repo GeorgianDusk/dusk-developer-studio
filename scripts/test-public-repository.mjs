@@ -407,6 +407,11 @@ assert.match(
   /Copy-Item[^\n]*npm-package-preflight-smoke\.mjs[\s\S]*responseSchemas\.ts[\s\S]*-EntryPoint \$preflightScript[\s\S]*--primary=\$publicPrimary[\s\S]*--consumer=\$preflightConsumer[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed/
 );
 assert.match(npmAssuranceWorkflow, /fs\.mkdtempSync[\s\S]*unpackedBytes \+= stats\.size[\s\S]*maximum_unpacked_bytes/);
+assert.ok((npmAssuranceWorkflow.match(/inspectNpmTarballBytes/g) ?? []).length >= 3);
+assert.doesNotMatch(npmAssuranceWorkflow, /files\.join\("\\n"\)/);
+assert.match(npmAssuranceWorkflow, /package_file_count=\$\{inspected\.inventory_file_count\}/);
+assert.match(npmAssuranceWorkflow, /record\.package_file_count[\s\S]*EXPECTED_PACKAGE_FILE_COUNT/);
+assert.match(npmAssuranceWorkflow, /Recheck source cleanliness after restore, build, tests, package, and browser smoke[\s\S]*git diff --exit-code[\s\S]*git diff --cached --exit-code[\s\S]*git status --short --untracked-files=all/);
 assert.match(npmAssuranceWorkflow, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential[\s\S]*create-duskds', 'platform-direct-counter'[\s\S]*'--lifecycle-self-test', '--no-open'[\s\S]*'local-actions', '--lifecycle-self-test', '--no-open'/);
 assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
 assert.match(npmAssuranceWorkflow, /EXPECTED_BROWSER_SMOKE !== "passed"[\s\S]*EXPECTED_LOCAL_ACTIONS_PREFLIGHT_SMOKE !== "passed"[\s\S]*browser_boot_and_pairing_smoke: "passed"/);
@@ -414,22 +419,27 @@ assert.match(npmAssuranceWorkflow, /schema_version: 2[\s\S]*local_actions_prefli
 assert.match(npmAssuranceWorkflow, /record\.schema_version !== 2[\s\S]*record\.local_actions_preflight_verified !== true[\s\S]*record\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID[\s\S]*record\.direct_cli_scaffold_smoke !== "passed"[\s\S]*record\.local_actions_scaffold_smoke !== "passed"[\s\S]*record\.scaffold_preservation_smoke !== "passed"[\s\S]*record\.shutdown_smoke !== "passed"/);
 assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_loopback_services_stopped !== true/);
 assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_consumer_contract_source_sha256 !== consumerContractSha256/);
-assert.match(npmAssuranceWorkflow, /local_actions_preflight_verified: true[\s\S]*local_actions_preflight_consumer_contract_source_sha256: consumerContractSha256[\s\S]*platform_smoke: records/);
+assert.match(npmAssuranceWorkflow, /local_actions_preflight_verified: true[\s\S]*consumer_contract_source_sha256: consumerContractSha256[\s\S]*platform_smoke: records/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_verified !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_scaffold_verified !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.scaffold_preserved_after_shutdown !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.studio_shutdown_verified !== true/);
 for (const field of [
-  "exact_tarball_direct_cli_scaffold_smoke",
-  "exact_tarball_local_actions_scaffold_smoke",
-  "exact_tarball_scaffold_preservation_smoke",
-  "exact_tarball_shutdown_smoke"
+  "direct_cli_scaffold_smoke",
+  "local_actions_scaffold_smoke",
+  "scaffold_preservation_smoke",
+  "shutdown_smoke"
 ]) {
   assert.match(npmAssuranceWorkflow, new RegExp(`${field}: "passed"`));
 }
 assert.match(npmAssuranceWorkflow, /name: npm-platform-\$\{\{ matrix\.runner \}\}[\s\S]*path: output\/npm\/platform\/npm-platform-\$\{\{ matrix\.runner \}\}\.json/);
 assert.match(npmAssuranceWorkflow, /name: studio-npm-assurance-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*path: output\/npm\/studio-npm-assurance-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false/);
+assert.match(npmAssuranceWorkflow, /id: assurance-evidence-upload[\s\S]*name: studio-npm-assurance-evidence-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false[\s\S]*artifact-id[\s\S]*artifact-url[\s\S]*artifact-digest/);
+assert.match(npmAssuranceWorkflow, /kind: "final-package-assurance"[\s\S]*evidence_class: "package-lifecycle-smoke"[\s\S]*producer: "ci-package-assurance"[\s\S]*capture_mode: "machine-observed"[\s\S]*test_fixture: false/);
+assert.match(npmAssuranceWorkflow, /policy_sha256:[\s\S]*source_commit:[\s\S]*package_sha256:[\s\S]*repository_tag:/);
+assert.match(npmAssuranceWorkflow, /package_path: `output\/npm\/\$\{process\.env\.EXPECTED_CANDIDATE_ARTIFACT\}`/);
+assert.match(npmAssuranceWorkflow, /EVIDENCE_ARTIFACT_DIGEST !== payloadSha256[\s\S]*evidence_payload_sha256: payloadSha256[\s\S]*mode: "github-actions-upload-artifact-v7"[\s\S]*run_id:[\s\S]*run_attempt:[\s\S]*run_event:[\s\S]*run_ref:[\s\S]*run_commit:[\s\S]*artifact_id:[\s\S]*artifact_digest_sha256: payloadSha256/);
 assert.match(elevatedArchiveStep, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential/);
 for (const workflow of [requiredWindowsWorkflow, npmAssuranceWorkflow]) {
   assert.match(workflow, /NODE_BIN="\$\(command -v node\)"[\s\S]*sudo -n "\$NODE_BIN" "\$PRIMARY"/);

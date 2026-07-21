@@ -288,6 +288,9 @@ function parseTarEntries(packageBytes, options = {}) {
     offset = contentOffset + Math.ceil(size / TAR_BLOCK_BYTES) * TAR_BLOCK_BYTES;
   }
   if (zeroBlocks < 2) throw new Error("The npm tarball is missing its complete end marker.");
+  if (tar.subarray(offset).some((byte) => byte !== 0)) {
+    throw new Error("The npm tarball contains nonzero data after its end marker.");
+  }
   return files;
 }
 
@@ -393,6 +396,96 @@ function validateReceiptBinding(record, label, policy, receiptDigests, errors) {
   }
 }
 
+function validateFinalPackageAssuranceProvenance(
+  receipt,
+  expectedRecord,
+  policy,
+  finalCandidate,
+  label,
+  errors
+) {
+  const provenance = receipt?.github_actions_provenance;
+  const payloadJson = receipt?.evidence_payload_json;
+  const payload = receipt?.evidence_payload;
+  const runnerMap = policy?.native_ci_runner_map;
+  let parsedPayload;
+  try {
+    parsedPayload = typeof payloadJson === "string" ? JSON.parse(payloadJson) : undefined;
+  } catch {
+    parsedPayload = undefined;
+  }
+  const payloadSha256 = typeof payloadJson === "string"
+    ? createHash("sha256").update(payloadJson, "utf8").digest("hex")
+    : undefined;
+  const runId = provenance?.run_id;
+  const artifactId = provenance?.artifact_id;
+  const expectedArtifactName = `studio-npm-assurance-evidence-${runId}.json`;
+  const expectedRunUrl = `https://github.com/${policy?.canonical_identity?.repository}/actions/runs/${runId}`;
+  const expectedArtifactUrl = `${expectedRunUrl}/artifacts/${artifactId}`;
+  if (
+    !isObject(provenance)
+    || provenance.schema_version !== 1
+    || provenance.mode !== "github-actions-upload-artifact-v7"
+    || provenance.repository !== policy?.canonical_identity?.repository
+    || provenance.workflow_path !== policy?.intended_final_candidate?.assurance_workflow_path
+    || !/^[1-9][0-9]{0,19}$/u.test(runId ?? "")
+    || !Number.isSafeInteger(provenance.run_attempt)
+    || provenance.run_attempt < 1
+    || provenance.run_event !== "push"
+    || provenance.run_ref !== "refs/heads/main"
+    || provenance.run_commit !== finalCandidate?.source_commit
+    || provenance.run_url !== expectedRunUrl
+    || provenance.job_name !== "aggregate-assurance"
+    || !/^[1-9][0-9]{0,19}$/u.test(artifactId ?? "")
+    || provenance.artifact_name !== expectedArtifactName
+    || provenance.artifact_url !== expectedArtifactUrl
+    || !PACKAGE_SHA256.test(provenance.artifact_digest_sha256 ?? "")
+    || provenance.artifact_digest_sha256 !== payloadSha256
+    || receipt.evidence_payload_sha256 !== payloadSha256
+    || typeof payloadJson !== "string"
+    || payloadJson.endsWith("\n")
+    || payloadJson.endsWith("\r")
+    || !isObject(payload)
+    || !valuesMatch(parsedPayload, payload)
+    || !valuesMatch(payload.record, expectedRecord)
+  ) {
+    errors.push(`${label} must contain a directly consumable GitHub Actions artifact provenance envelope bound to the exact evidence payload bytes.`);
+    return;
+  }
+  const nativeEvidence = payload.native_ci_evidence;
+  const expectedRunners = isObject(runnerMap) ? Object.values(runnerMap) : [];
+  const observedRunners = isObject(nativeEvidence?.platform_smoke)
+    ? Object.keys(nativeEvidence.platform_smoke)
+    : [];
+  if (
+    payload.schema_version !== 1
+    || nativeEvidence?.browser_boot_and_pairing_smoke !== "passed"
+    || nativeEvidence?.local_actions_preflight_verified !== true
+    || !PACKAGE_SHA256.test(nativeEvidence?.consumer_contract_source_sha256 ?? "")
+    || !valuesMatch(observedRunners.sort(), [...expectedRunners].sort())
+  ) {
+    errors.push(`${label} GitHub Actions evidence payload does not contain the exact browser, preflight, and native runner assurance set.`);
+    return;
+  }
+  for (const [platform, runner] of Object.entries(runnerMap ?? {})) {
+    const record = nativeEvidence.platform_smoke?.[runner];
+    if (
+      !policy.required_package_platforms?.includes(platform)
+      || record?.status !== "passed"
+      || record?.runner !== runner
+      || record?.candidate_commit !== finalCandidate?.source_commit
+      || record?.integrity !== finalCandidate?.npm_integrity
+      || record?.package_inventory_sha256 !== finalCandidate?.package_inventory_sha256
+      || record?.package_file_count !== finalCandidate?.package_file_count
+      || record?.local_actions_preflight_verified !== true
+      || record?.local_actions_preflight_consumer_contract_source_sha256
+        !== nativeEvidence.consumer_contract_source_sha256
+    ) {
+      errors.push(`${label} GitHub Actions evidence payload contains an invalid ${platform} native runner receipt.`);
+    }
+  }
+}
+
 function validateReceiptContentBinding(
   record,
   label,
@@ -403,6 +496,7 @@ function validateReceiptContentBinding(
   errors,
   {
     policySha256,
+    policy,
     finalCandidate,
     allowTestFixtures = false
   } = {}
@@ -437,6 +531,16 @@ function validateReceiptContentBinding(
     || !valuesMatch(receipt.record, expectedRecord)
   ) {
     errors.push(`${label} receipt contents must bind the exact ${kind} record.`);
+  }
+  if (isObject(receipt) && kind === "final-package-assurance") {
+    validateFinalPackageAssuranceProvenance(
+      receipt,
+      expectedRecord,
+      policy,
+      finalCandidate,
+      label,
+      errors
+    );
   }
   if (
     isObject(receipt)
@@ -542,7 +646,7 @@ function validateComprehensiveCampaignInternal(
   }
   pushMissingObjectFields(
     policy.intended_final_candidate,
-    ["package_name", "package_version", "repository_tag"],
+    ["package_name", "package_version", "repository_tag", "assurance_workflow_path"],
     "policy.intended_final_candidate",
     errors
   );
@@ -551,9 +655,18 @@ function validateComprehensiveCampaignInternal(
     && (
       policy.intended_final_candidate.package_name !== policy.canonical_identity?.package_name
       || policy.intended_final_candidate.repository_tag !== `v${policy.intended_final_candidate.package_version}`
+      || policy.intended_final_candidate.assurance_workflow_path !== ".github/workflows/studio-npm-package-assurance.yml"
     )
   ) {
     errors.push("policy.intended_final_candidate must name the canonical package and matching version tag.");
+  }
+  if (
+    !isObject(policy.native_ci_runner_map)
+    || !valuesMatch(Object.keys(policy.native_ci_runner_map), policy.required_package_platforms)
+    || !isNonEmptyStringArray(Object.values(policy.native_ci_runner_map))
+    || duplicateValues(Object.values(policy.native_ci_runner_map)).length
+  ) {
+    errors.push("policy.native_ci_runner_map must map every required package platform to one unique runner.");
   }
   for (const key of [
     "pilot_execution",
@@ -787,7 +900,7 @@ function validateComprehensiveCampaignInternal(
           ],
           receiptContents,
           errors,
-          { policySha256, finalCandidate: evidence.final_candidate, allowTestFixtures }
+          { policy, policySha256, finalCandidate: evidence.final_candidate, allowTestFixtures }
         );
         validateFreshness(
           execution.ended_at,
@@ -893,7 +1006,7 @@ function validateComprehensiveCampaignInternal(
         ],
         receiptContents,
         errors,
-        { policySha256, finalCandidate: evidence.final_candidate, allowTestFixtures }
+        { policy, policySha256, finalCandidate: evidence.final_candidate, allowTestFixtures }
       );
       validateFreshness(
         retest.ended_at,
@@ -962,7 +1075,7 @@ function validateComprehensiveCampaignInternal(
         ],
         receiptContents,
         errors,
-        { policySha256, finalCandidate: evidence.final_candidate, allowTestFixtures }
+        { policy, policySha256, finalCandidate: evidence.final_candidate, allowTestFixtures }
       );
       validateFreshness(
         record.observed_at,
@@ -1261,7 +1374,7 @@ function validateComprehensiveCampaignInternal(
         ],
         receiptContents,
         errors,
-        { policySha256, finalCandidate, allowTestFixtures }
+        { policy, policySha256, finalCandidate, allowTestFixtures }
       );
     }
     pushMissingObjectFields(
@@ -1326,7 +1439,7 @@ function validateComprehensiveCampaignInternal(
         ],
         receiptContents,
         errors,
-        { policySha256, finalCandidate, allowTestFixtures }
+        { policy, policySha256, finalCandidate, allowTestFixtures }
       );
       validateFreshness(
         registryVerification.observed_at,
@@ -1412,7 +1525,7 @@ function validateComprehensiveCampaignInternal(
         ],
         receiptContents,
         errors,
-        { policySha256, finalCandidate, allowTestFixtures }
+        { policy, policySha256, finalCandidate, allowTestFixtures }
       );
       validateFreshness(
         productionVerification.observed_at,
@@ -1600,7 +1713,7 @@ function validateComprehensiveCampaignInternal(
         ],
         receiptContents,
         errors,
-        { policySha256, finalCandidate, allowTestFixtures }
+        { policy, policySha256, finalCandidate, allowTestFixtures }
       );
       validateFreshness(
         review.observed_at,
@@ -1617,9 +1730,15 @@ function validateComprehensiveCampaignInternal(
       }
     }
     const preChallengeTimes = [
-      ...countedPasses.map((record) => parseTimestamp(record.ended_at)),
-      ...retests.filter((record) => record?.status === "passed").map((record) => parseTimestamp(record.ended_at)),
-      ...passingAutomation.map((record) => parseTimestamp(record.observed_at)),
+      ...executions
+        .filter((record) => exactCandidateIdentityMatches(record?.identity, finalCandidate))
+        .map((record) => parseTimestamp(record.ended_at)),
+      ...retests
+        .filter((record) => exactCandidateIdentityMatches(record?.identity, finalCandidate))
+        .map((record) => parseTimestamp(record.ended_at)),
+      ...evidence.automation_evidence
+        .filter((record) => exactCandidateIdentityMatches(record?.identity, finalCandidate))
+        .map((record) => parseTimestamp(record.observed_at)),
       parseTimestamp(packageAssurance?.observed_at),
       parseTimestamp(registryVerification?.observed_at),
       parseTimestamp(productionVerification?.observed_at),

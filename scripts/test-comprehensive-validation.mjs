@@ -60,7 +60,7 @@ function tarFileEntry(name, bytes) {
   return Buffer.concat([header, bytes, padding]);
 }
 
-function buildTarballFixture({ corruptManifest = false } = {}) {
+function buildTarballFixture({ corruptManifest = false, trailingNonzero = false } = {}) {
   const packageJsonBytes = Buffer.from(JSON.stringify({
     name: "dusk-developer-studio",
     version: "1.0.2",
@@ -86,7 +86,8 @@ function buildTarballFixture({ corruptManifest = false } = {}) {
     tarFileEntry("package/README.md", readmeBytes),
     tarFileEntry("package/package-manifest.json", manifestBytes),
     tarFileEntry("package/package.json", packageJsonBytes),
-    Buffer.alloc(1024)
+    Buffer.alloc(1024),
+    trailingNonzero ? Buffer.alloc(512, 1) : Buffer.alloc(0)
   ]), { mtime: 0 });
 }
 
@@ -135,7 +136,7 @@ function buildReceiptBoundFinal() {
     npm_integrity: candidate.npm_integrity,
     repository_tag: candidate.repository_tag
   };
-  const boundReceipt = (kind, id, record, fields, trace_claims = []) => receipt(id, {
+  const boundReceipt = (kind, id, record, fields, trace_claims = [], extra = {}) => receipt(id, {
     schema_version: 1,
     kind,
     record_id: id,
@@ -145,7 +146,8 @@ function buildReceiptBoundFinal() {
     test_fixture: true,
     validation_context: validationContext,
     record: Object.fromEntries(fields.map((field) => [field, record[field]])),
-    ...(trace_claims.length ? { trace_claims } : {})
+    ...(trace_claims.length ? { trace_claims } : {}),
+    ...extra
   });
   const identity = (os) => ({
     source_commit: candidate.source_commit,
@@ -363,6 +365,35 @@ function buildReceiptBoundFinal() {
       evidence_refs: [`CV-E-FINAL-PACKAGE:C${index + 1} synthetic validator fixture`]
     }))
   };
+  const consumerContractSourceSha256 = "d".repeat(64);
+  const nativeCiPlatformSmoke = Object.fromEntries(
+    Object.entries(policy.native_ci_runner_map).map(([, runner]) => [runner, {
+      schema_version: 2,
+      status: "passed",
+      runner,
+      node_version: "24.18.0",
+      local_actions_preflight_verified: true,
+      local_actions_preflight_consumer_contract_source_sha256: consumerContractSourceSha256,
+      candidate_commit: candidate.source_commit,
+      integrity: candidate.npm_integrity,
+      package_inventory_sha256: candidate.package_inventory_sha256,
+      package_file_count: candidate.package_file_count
+    }])
+  );
+  const assuranceEvidencePayload = {
+    schema_version: 1,
+    record: packageAssuranceRecord,
+    native_ci_evidence: {
+      browser_boot_and_pairing_smoke: "passed",
+      local_actions_preflight_verified: true,
+      consumer_contract_source_sha256: consumerContractSourceSha256,
+      platform_smoke: nativeCiPlatformSmoke
+    }
+  };
+  const assuranceEvidencePayloadJson = JSON.stringify(assuranceEvidencePayload);
+  const assuranceEvidencePayloadSha256 = sha256(Buffer.from(assuranceEvidencePayloadJson, "utf8"));
+  const assuranceRunId = "123456789";
+  const assuranceArtifactId = "987654321";
   fixture.final_package_assurance = {
     ...packageAssuranceRecord,
     ...boundReceipt("final-package-assurance", packageAssuranceRecord.evidence_id, packageAssuranceRecord, [
@@ -380,7 +411,28 @@ function buildReceiptBoundFinal() {
       "checks_verified",
       "platform_results",
       "check_results"
-    ])
+    ], [], {
+      evidence_payload_json: assuranceEvidencePayloadJson,
+      evidence_payload: assuranceEvidencePayload,
+      evidence_payload_sha256: assuranceEvidencePayloadSha256,
+      github_actions_provenance: {
+        schema_version: 1,
+        mode: "github-actions-upload-artifact-v7",
+        repository: policy.canonical_identity.repository,
+        workflow_path: policy.intended_final_candidate.assurance_workflow_path,
+        run_id: assuranceRunId,
+        run_attempt: 1,
+        run_event: "push",
+        run_ref: "refs/heads/main",
+        run_commit: candidate.source_commit,
+        run_url: `https://github.com/${policy.canonical_identity.repository}/actions/runs/${assuranceRunId}`,
+        job_name: "aggregate-assurance",
+        artifact_id: assuranceArtifactId,
+        artifact_name: `studio-npm-assurance-evidence-${assuranceRunId}.json`,
+        artifact_url: `https://github.com/${policy.canonical_identity.repository}/actions/runs/${assuranceRunId}/artifacts/${assuranceArtifactId}`,
+        artifact_digest_sha256: assuranceEvidencePayloadSha256
+      }
+    })
   };
   const registryRecord = {
     evidence_id: "CV-E-FINAL-REGISTRY",
@@ -831,6 +883,68 @@ assert.match(
   /receipt contents must bind the exact final-package-assurance record/u
 );
 
+const missingGitHubProvenance = new Map(validFinal.receiptContents);
+const assuranceReceiptPath = validFinal.fixture.final_package_assurance.receipt_path;
+const receiptWithoutGitHubProvenance = clone(missingGitHubProvenance.get(assuranceReceiptPath));
+delete receiptWithoutGitHubProvenance.github_actions_provenance;
+missingGitHubProvenance.set(assuranceReceiptPath, receiptWithoutGitHubProvenance);
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: missingGitHubProvenance,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState
+  }).join("\n"),
+  /directly consumable GitHub Actions artifact provenance envelope/u
+);
+
+const localSelfAttestedAssurance = new Map(validFinal.receiptContents);
+const localSelfAttestedReceipt = clone(localSelfAttestedAssurance.get(assuranceReceiptPath));
+localSelfAttestedReceipt.github_actions_provenance.mode = "local-self-attested";
+localSelfAttestedAssurance.set(assuranceReceiptPath, localSelfAttestedReceipt);
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: localSelfAttestedAssurance,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState
+  }).join("\n"),
+  /directly consumable GitHub Actions artifact provenance envelope/u
+);
+
+const wrongGitHubArtifactBinding = new Map(validFinal.receiptContents);
+const wrongGitHubArtifactReceipt = clone(wrongGitHubArtifactBinding.get(assuranceReceiptPath));
+wrongGitHubArtifactReceipt.github_actions_provenance.run_commit = "2".repeat(40);
+wrongGitHubArtifactReceipt.github_actions_provenance.artifact_digest_sha256 = "invalid";
+wrongGitHubArtifactBinding.set(assuranceReceiptPath, wrongGitHubArtifactReceipt);
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: wrongGitHubArtifactBinding,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState
+  }).join("\n"),
+  /directly consumable GitHub Actions artifact provenance envelope/u
+);
+
+const divergentGitHubArtifactDigest = new Map(validFinal.receiptContents);
+const divergentGitHubArtifactReceipt = clone(divergentGitHubArtifactDigest.get(assuranceReceiptPath));
+divergentGitHubArtifactReceipt.github_actions_provenance.artifact_digest_sha256 = "e".repeat(64);
+divergentGitHubArtifactDigest.set(assuranceReceiptPath, divergentGitHubArtifactReceipt);
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: divergentGitHubArtifactDigest,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState
+  }).join("\n"),
+  /directly consumable GitHub Actions artifact provenance envelope/u
+);
+
 const plausibleForgery = clone(validFinal.fixture);
 plausibleForgery.pilot_executions.forEach((execution) => {
   execution.clean_state_checks.forEach((check) => { check.result = "not-applicable"; });
@@ -1028,6 +1142,28 @@ assert.match(
   /duskds_public_node_observed_at exceeds the 15-hour/u
 );
 
+const postChallengeFailure = clone(validFinal.fixture);
+const lateFailure = clone(postChallengeFailure.pilot_executions[0]);
+lateFailure.execution_id = "CV-X-LATE-EXACT-CANDIDATE-FAILURE";
+lateFailure.counted = false;
+lateFailure.status = "failed";
+lateFailure.started_at = "2026-07-21T03:31:00Z";
+lateFailure.ended_at = "2026-07-21T03:35:00Z";
+lateFailure.evidence_refs = [`${lateFailure.execution_id}:E1 post-challenge exact-candidate failure`];
+delete lateFailure.receipt_path;
+delete lateFailure.receipt_sha256;
+postChallengeFailure.pilot_executions.push(lateFailure);
+assert.match(
+  validateFinalFixture(postChallengeFailure, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState
+  }).join("\n"),
+  /must be rerun after all final-candidate pilot, retest, automation, package, registry, and production evidence/u
+);
+
 const tarballInspection = inspectNpmTarballBytes(buildTarballFixture());
 assert.equal(tarballInspection.package_name, "dusk-developer-studio");
 assert.equal(tarballInspection.package_version, "1.0.2");
@@ -1037,6 +1173,10 @@ assert.equal(tarballInspection.inventory_verified, true);
 assert.throws(
   () => inspectNpmTarballBytes(buildTarballFixture({ corruptManifest: true })),
   /exact file inventory does not match/u
+);
+assert.throws(
+  () => inspectNpmTarballBytes(buildTarballFixture({ trailingNonzero: true })),
+  /nonzero data after its end marker/u
 );
 
 process.stdout.write("Comprehensive validation policy and evidence fixtures passed.\n");

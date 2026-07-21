@@ -32,6 +32,11 @@
     "ubuntu-24.04-x64",
     "macos-15-arm64"
   ],
+  "native_ci_runner_map": {
+    "windows-x64": "windows-2025",
+    "ubuntu-24.04-x64": "ubuntu-24.04",
+    "macos-15-arm64": "macos-15"
+  },
   "required_package_checks": [
     "install",
     "safe",
@@ -53,7 +58,8 @@
     "CV-D-025", "CV-D-026", "CV-D-027", "CV-D-028", "CV-D-029", "CV-D-030", "CV-D-031", "CV-D-032",
     "CV-D-033", "CV-D-034", "CV-D-035", "CV-D-036", "CV-D-037", "CV-D-038", "CV-D-039", "CV-D-040",
     "CV-D-041", "CV-D-042", "CV-D-043", "CV-D-044", "CV-D-045", "CV-D-046", "CV-D-047", "CV-D-048",
-    "CV-D-049", "CV-D-050", "CV-D-051", "CV-D-052", "CV-D-053", "CV-D-054", "CV-D-055", "CV-D-056"
+    "CV-D-049", "CV-D-050", "CV-D-051", "CV-D-052", "CV-D-053", "CV-D-054", "CV-D-055", "CV-D-056",
+    "CV-D-057", "CV-D-058", "CV-D-059", "CV-D-060", "CV-D-061", "CV-D-062"
   ],
   "required_final_challenge_scopes": [
     "product-ui-developer-experience",
@@ -73,7 +79,8 @@
   "intended_final_candidate": {
     "package_name": "dusk-developer-studio",
     "package_version": "1.0.2",
-    "repository_tag": "v1.0.2"
+    "repository_tag": "v1.0.2",
+    "assurance_workflow_path": ".github/workflows/studio-npm-package-assurance.yml"
   },
   "historical_evidence": {
     "phase5_counted_pilots": 0,

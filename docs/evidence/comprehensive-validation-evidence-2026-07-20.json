@@ -3846,6 +3846,66 @@
       "root_cause": "The browser smoke emitted local_actions_preflight_verified, but workflow checks and the three-platform aggregate contract omitted that field while Windows and macOS ran only looser lifecycle checks.",
       "fix": "Define automatic-preflight compatibility as an exact installed-package response accepted by the actual checked-out Studio consumer guard with nonempty bounded tool/version coverage, run the safe loopback probe in every supported platform job, bind the consumer-source SHA-256 and closed-port proof, and preserve it in the aggregate receipt.",
       "regression_test": "Repository contracts, 13 npm test files with 142 tests, npm build and a local exact installed-tarball probe pass with 17 tool rows, 6 versioned rows, actual consumer-schema acceptance and both ports closed; native three-platform workflow execution remains required."
+    },
+    {
+      "defect_id": "CV-D-057",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The native package workflow and final validator computed incompatible inventory digests for the same exact npm tarball.",
+      "source": "CV-E-CHALLENGE-EXACT-CANDIDATE-20260721",
+      "root_cause": "CI hashed a path-only list containing all 30 archive files, while the validator hashed the 29 content-bound package-manifest records with path, byte count and SHA-256.",
+      "fix": "Use the validator's bounded semantic tarball inspector in the build, platform and pilot workflow lanes and propagate one content-bound inventory digest plus the 29-file manifest count throughout assurance.",
+      "regression_test": "The public-repository contract requires at least three workflow uses of inspectNpmTarballBytes and rejects the old path-only join; focused validation inspects the exact 1.0.2 tarball as 29 content-bound files with inventory b2144dc5490788af215c9011e65f5a733919ce04ac308e105ec6122a58ae3d77."
+    },
+    {
+      "defect_id": "CV-D-058",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The aggregate native-CI receipt lacked the provenance envelope required for direct final-validator ingestion and could be replaced by local self-attestation.",
+      "source": "CV-E-CHALLENGE-EXACT-CANDIDATE-20260721",
+      "root_cause": "The workflow emitted only aggregate fields and no exact evidence payload, GitHub run/ref/commit/workflow/job identity, immutable single-file artifact ID, URL or byte digest.",
+      "fix": "Upload a compact exact evidence payload with upload-artifact v7 archive=false, then emit a directly consumable receipt binding those exact bytes and digest to the immutable GitHub run, main ref, candidate commit, workflow, job, artifact ID and three native runner receipts.",
+      "regression_test": "Focused fixtures reject missing provenance, local-self-attested mode, wrong run commit, invalid artifact digest and any payload divergence; public workflow contracts require the single-file artifact and complete machine-observed envelope."
+    },
+    {
+      "defect_id": "CV-D-059",
+      "severity": "P2",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "A failed exact-candidate execution recorded after a clear final challenge did not force another challenge review.",
+      "source": "CV-E-CHALLENGE-EXACT-CANDIDATE-20260721",
+      "root_cause": "Challenge chronology considered only passing pilots, retests and automation, so a later failed exact-candidate observation could fall outside the ordering gate.",
+      "fix": "Require the clear final challenge to postdate every exact-candidate pilot, retest and automation record regardless of result, plus package, registry and production evidence.",
+      "regression_test": "An adversarial final fixture appends a failed exact-candidate pilot after the clear challenge and is rejected until the challenge is rerun."
+    },
+    {
+      "defect_id": "CV-D-060",
+      "severity": "P2",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The final tarball inspector accepted nonzero data appended after the two required TAR end blocks.",
+      "source": "CV-E-CHALLENGE-EXACT-CANDIDATE-20260721",
+      "root_cause": "Parsing stopped after the complete end marker without verifying that all remaining decompressed bytes were zero padding.",
+      "fix": "Scan every byte after the end marker and reject the archive if any trailing byte is nonzero.",
+      "regression_test": "The focused tar fixture appends a nonzero 512-byte block after two zero end blocks and requires inspectNpmTarballBytes to reject it."
+    },
+    {
+      "defect_id": "CV-D-061",
+      "severity": "P2",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "Package CI proved a clean checkout before restoration and build but did not recheck tracked or untracked source state after all package and browser operations.",
+      "source": "CV-E-CHALLENGE-EXACT-CANDIDATE-20260721",
+      "root_cause": "The workflow's exact-commit claim relied on its initial checkout state even though restore, build, tests, packaging and browser smoke ran afterward.",
+      "fix": "Recheck HEAD, tracked changes, staged changes and all untracked files after restoration, build, tests, packaging and browser smoke and before uploading assurance evidence.",
+      "regression_test": "The public-repository contract requires the post-operation HEAD, git diff, cached diff and full untracked-status checks in the build-package job; native CI execution remains required."
+    },
+    {
+      "defect_id": "CV-D-062",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The new GitHub package-assurance receipt recorded a bare tarball filename that the final validator would reject as a noncanonical candidate path.",
+      "source": "CV-E-ROOT-EXACT-CANDIDATE-REVIEW-20260721",
+      "root_cause": "The workflow reused its runner-local TARBALL basename for the durable evidence record while the final gate requires a safe repository-relative path under output/npm.",
+      "fix": "Emit the canonical output/npm/<exact candidate artifact> path in the evidence payload while retaining the separately bound candidate artifact name and package hashes.",
+      "regression_test": "The public-repository contract requires the exact output/npm/${EXPECTED_CANDIDATE_ARTIFACT} producer expression, while comprehensive final fixtures reject unsafe package paths."
     }
   ],
   "challenge_reviews": [
@@ -3900,6 +3960,16 @@
       "identity": "Independent read-only adversarial review of the dirty 1.0.2 remediation worktree atop 47c97822969ccf375808887cea6b78ad371a6e8b before exact-candidate freeze",
       "summary": "NO-GO: a synthetic campaign and challenge receipt could still satisfy final traceability; the final gate did not require 1.0.2 or inspect tarball semantics; freshness and chronology were unenforced; and automatic-preflight compatibility was neither aggregated nor proven across all supported platforms. CV-D-053 through CV-D-056 preserve the findings.",
       "cleanup": "Read-only source, workflow, policy and fixture inspection only; no package, browser profile, external service or product state was changed."
+    },
+    {
+      "evidence_id": "CV-E-CHALLENGE-EXACT-CANDIDATE-20260721",
+      "evidence_class": "challenge-review",
+      "scope": "security-release-evidence-integrity",
+      "observed_at": "2026-07-21T05:17:42Z",
+      "result": "findings",
+      "identity": "Independent read-only review of clean commit 7a2ce88ef7cfdad0c5b209e70019c50b8fffb441 and exact local 1.0.2 tarball before native CI",
+      "summary": "NO-GO: CI and the validator used incompatible inventory digests; aggregate assurance lacked directly consumable GitHub artifact provenance; later exact-candidate failures did not invalidate a prior clear challenge; nonzero TAR trailing data was accepted; and post-build worktree cleanliness was not rechecked. CV-D-057 through CV-D-061 preserve the findings. Root review then found and repaired the related canonical package-path ingestion defect CV-D-062.",
+      "cleanup": "Read-only source, workflow, validator, policy and exact-tarball inspection; no external repository, package, production or developer-machine state was changed."
     }
   ],
   "completion": {
