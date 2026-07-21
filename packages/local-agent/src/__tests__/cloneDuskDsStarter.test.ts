@@ -79,7 +79,7 @@ describe("DuskDS reviewed-template scaffold", () => {
     await expect(scaffoldDuskDsForge(
       { cwd: workspaceRoot, projectName: "native-demo", parentDir: "tmp/qa" },
       { projectRoot, templateRoot }
-    )).rejects.toThrow("not created by a completed action");
+    )).rejects.toThrow("will not overwrite or merge it");
   });
 
   it("recovers an exact content-verified target without writing it again", async () => {
@@ -128,7 +128,7 @@ describe("DuskDS reviewed-template scaffold", () => {
     await expect(scaffoldDuskDsForge(
       { cwd: workspaceRoot, projectName: "native-demo" },
       { projectRoot, templateRoot, completedScaffoldReceipts: new Map() }
-    )).rejects.toThrow("not created by a completed action in this running Local Studio");
+    )).rejects.toThrow("Choose a new project name or a different empty parent directory");
   });
 
   it("bounds same-runtime completion receipts and evicts the oldest entry", async () => {

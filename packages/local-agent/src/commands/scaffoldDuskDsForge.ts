@@ -121,7 +121,8 @@ async function recoverExistingStarter(
   }
   if (!completionReceipt) {
     throw new ScaffoldRecoveryError(
-      "The existing target was not created by a completed action in this running Local Studio."
+      "The target already exists, so Dusk Developer Studio will not overwrite or merge it. "
+      + "Choose a new project name or a different empty parent directory."
     );
   }
   if (

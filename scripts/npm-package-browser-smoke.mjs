@@ -547,7 +547,13 @@ try {
       [primaryEntry, "create-duskds", "installed-cli-counter"],
       { cwd: cliProjectParent, capture: true }
     ),
-    /existing target|already exists/iu
+    (error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      assert.match(message, /will not overwrite or merge it/iu);
+      assert.match(message, /new project name or a different empty parent directory/iu);
+      assert.doesNotMatch(message, /running Local Studio/iu);
+      return true;
+    }
   );
   const fixedPortConflicts = [];
   for (const occupiedPort of [5173, 8788]) {

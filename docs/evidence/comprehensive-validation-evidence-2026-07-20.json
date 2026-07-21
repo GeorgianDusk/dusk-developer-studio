@@ -2865,6 +2865,286 @@
         "Starter creation and later DuskDS stages were not attempted after the repeatable automatic-preflight failure.",
         "The public 1.0.1 failure does not prove the local repair; an exact-candidate integrated retest remains required."
       ]
+    },
+    {
+      "execution_id": "CV-X-RES-04-001",
+      "scenario_id": "CV-RES-04",
+      "evidence_class": "black-box-pilot",
+      "counted": false,
+      "status": "blocked",
+      "started_at": "2026-07-21T08:46:34Z",
+      "ended_at": "2026-07-21T08:56:58Z",
+      "identity": {
+        "source_commit": "47c97822969ccf375808887cea6b78ad371a6e8b",
+        "package_version": "1.0.1",
+        "npm_integrity": "sha512-330geWb6ikRMNWZx/hFmfC15YYtJ6IjarJ0VOGZ7ve6Yfr0qoF1zZl5YARnCvz94fCdgnqOYCl5tpMqatj0Nhw==",
+        "production_url": "https://studio.134-122-59-217.nip.io",
+        "os": "windows-11-x64-10.0.26200",
+        "node": "24.18.0",
+        "browser": "chrome-150.0.7871.129"
+      },
+      "identity_binding": "The source-blind pilot verified the public 1.0.1 package integrity, selected a checksum-verified official portable Node 24.18.0 runtime and observed production v1.0.1 at commit prefix 47c97822 before interruption tests.",
+      "clean_state_checks": [
+        {
+          "requirement": "isolated npm cache and temporary install location",
+          "result": "passed",
+          "observation": "Package, cache, portable runtime and test state were confined to one disposable pilot root."
+        },
+        {
+          "requirement": "fresh browser profile or cleared storage",
+          "result": "failed",
+          "observation": "The pairable 127.0.0.1 browser origin contained pre-existing progress, while the clean localhost origin could not pair; the pilot refused to weaken isolation."
+        },
+        {
+          "requirement": "normal non-elevated user identity",
+          "result": "failed",
+          "observation": "The pilot did not preserve an independent elevation-status observation."
+        },
+        {
+          "requirement": "isolated project root containing no user project",
+          "result": "passed",
+          "observation": "Starter and sentinel work used a disposable empty project parent only."
+        },
+        {
+          "requirement": "recorded port and process baseline",
+          "result": "failed",
+          "observation": "A sandbox listener query was later shown capable of missing host listeners, so the startup baseline is not authoritative."
+        },
+        {
+          "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+          "result": "passed",
+          "observation": "The wrapper confined runtime, cache, profile and project state without recording a full environment or secret material."
+        },
+        {
+          "requirement": "cleanup and closed-port observation",
+          "result": "passed",
+          "observation": "Final host checks found no pilot descendants or listeners on 5173/8788 and the disposable root was absent."
+        },
+        {
+          "requirement": "no reused local session or pairing value",
+          "result": "failed",
+          "observation": "The only pairable browser origin was not clean, so no automatic-preflight action was attempted."
+        }
+      ],
+      "task_observations": [
+        "Terminating the foreground package during startup removed the process and preserved the profile sentinel, but later listener-enumeration uncertainty prevents a precise startup-state claim.",
+        "A clean wrapper reached the frontend and companion listeners; automatic preflight was not clicked because browser isolation and pairing could not both be proven.",
+        "Direct create-duskds completed before a meaningful mid-transaction interrupt could be delivered; all ten created file hashes and a sibling sentinel were preserved on a same-name retry.",
+        "The same-name retry failed closed but misleadingly said the target lacked a completed action receipt from a running Local Studio even though the documented direct CLI had no Local Studio process.",
+        "The new wording issue is recorded as CV-D-075; interruption, preflight and transactional-interrupt coverage remain open."
+      ],
+      "surfaces_verified": [
+        "cli:create-duskds",
+        "local-runtime-startup",
+        "windows-x64",
+        "public-npm-package"
+      ],
+      "evidence_refs": [
+        "CV-X-RES-04-001:E1 public package, runtime, browser and production identity",
+        "CV-X-RES-04-001:E2 foreground startup termination and sentinel preservation",
+        "CV-X-RES-04-001:E3 paired-origin isolation refusal and post-stop cleanup",
+        "CV-X-RES-04-001:E4 direct starter completion, same-name retry and hash preservation",
+        "CV-X-RES-04-001:E5 zero-process, zero-listener and deleted-root cleanup proof"
+      ],
+      "cleanup": {
+        "ports_closed": true,
+        "processes_stopped": true,
+        "temporary_state_disposition": "Host-side final checks found no pilot Node or command processes, no 5173/8788 listeners and no disposable pilot root."
+      },
+      "limitations": [
+        "This was a source-blind Codex-operated simulation, not external-developer research.",
+        "Clean browser pairing was unavailable, so automatic preflight interruption was not exercised.",
+        "Starter creation completed before a meaningful interrupt could be delivered.",
+        "This public 1.0.1 discovery run cannot count as an exact-candidate retest."
+      ]
+    },
+    {
+      "execution_id": "CV-X-SEC-02-001",
+      "scenario_id": "CV-SEC-02",
+      "evidence_class": "black-box-pilot",
+      "counted": false,
+      "status": "blocked",
+      "started_at": "2026-07-21T08:42:19Z",
+      "ended_at": "2026-07-21T09:08:36Z",
+      "identity": {
+        "source_commit": "47c97822969ccf375808887cea6b78ad371a6e8b",
+        "package_version": "1.0.1",
+        "npm_integrity": "sha512-330geWb6ikRMNWZx/hFmfC15YYtJ6IjarJ0VOGZ7ve6Yfr0qoF1zZl5YARnCvz94fCdgnqOYCl5tpMqatj0Nhw==",
+        "production_url": "https://studio.134-122-59-217.nip.io",
+        "os": "windows-11-x64-10.0.26200.8875",
+        "node": "24.18.0",
+        "browser": "chrome-150.0.7871.129"
+      },
+      "identity_binding": "The source-blind pilot verified the public 1.0.1 package integrity, checksum-verified official portable Node 24.18.0 and production v1.0.1 at commit prefix 47c97822 before using disposable path fixtures.",
+      "clean_state_checks": [
+        {
+          "requirement": "isolated npm cache and temporary install location",
+          "result": "passed",
+          "observation": "Package, cache, runtime and fixtures were confined to one disposable pilot root."
+        },
+        {
+          "requirement": "fresh browser profile or cleared storage",
+          "result": "failed",
+          "observation": "The browser connector could not reach the product-opened loopback tab, so Local Actions path input was not attempted."
+        },
+        {
+          "requirement": "normal non-elevated user identity",
+          "result": "failed",
+          "observation": "The direct CLI run did not preserve an independent elevation-status observation."
+        },
+        {
+          "requirement": "isolated project root containing no user project",
+          "result": "passed",
+          "observation": "All roots, links, existing targets, escape targets and sentinels were disposable fixtures."
+        },
+        {
+          "requirement": "recorded port and process baseline",
+          "result": "passed",
+          "observation": "The Local Actions attempt recorded free fixed ports before launch and exact loopback ownership while running."
+        },
+        {
+          "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+          "result": "passed",
+          "observation": "The environment was bounded to the portable runtime and disposable roots; no full environment or secret entered evidence."
+        },
+        {
+          "requirement": "cleanup and closed-port observation",
+          "result": "passed",
+          "observation": "Root independently proved no other process referenced the pilot root, both fixed ports were closed and the exact root was removed."
+        },
+        {
+          "requirement": "no reused local session or pairing value",
+          "result": "not-applicable",
+          "observation": "No Local Actions request was submitted and no pairing value was recorded or reused."
+        }
+      ],
+      "task_observations": [
+        "A valid direct create-duskds run produced one reviewed starter child with the expected bounded inventory.",
+        "Traversal, drive-absolute, extended-root absolute, junction/reparse traversal, reserved-name, unsafe-character, over-bound component and existing-target overwrite attempts all failed closed.",
+        "Every rejected direct CLI attempt left the project root, escape target and sentinel unchanged, with no partial state or false success.",
+        "Local Actions reached both exact loopback listeners, but the available browser and bounded desktop-control fallback could not operate the product-opened tab; no Local Actions path request was submitted.",
+        "No direct CLI containment defect was found; Local Actions containment remains untested."
+      ],
+      "surfaces_verified": [
+        "cli:create-duskds",
+        "filesystem-containment-direct-cli",
+        "windows-x64",
+        "public-npm-package"
+      ],
+      "evidence_refs": [
+        "CV-X-SEC-02-001:E1 public package, runtime, browser and production identity",
+        "CV-X-SEC-02-001:E2 valid direct CLI starter inventory",
+        "CV-X-SEC-02-001:E3 representative unsafe-path refusal matrix",
+        "CV-X-SEC-02-001:E4 unchanged root, escape target and sentinel observations",
+        "CV-X-SEC-02-001:E5 Local Actions browser-control limitation",
+        "CV-X-SEC-02-001:E6 independent process, port and root cleanup proof"
+      ],
+      "cleanup": {
+        "ports_closed": true,
+        "processes_stopped": true,
+        "temporary_state_disposition": "Root verified zero other process references, zero 5173/8788 listeners and removal of the exact disposable pilot root."
+      },
+      "limitations": [
+        "This was a source-blind Codex-operated simulation, not external-developer research.",
+        "Local Actions path handling was not exercised because the available browser controls could not operate loopback.",
+        "The result covers representative disposable Windows path classes, not every filesystem implementation.",
+        "This public 1.0.1 discovery run cannot count as exact-candidate proof."
+      ]
+    },
+    {
+      "execution_id": "CV-X-SEC-05-001",
+      "scenario_id": "CV-SEC-05",
+      "evidence_class": "black-box-pilot",
+      "counted": false,
+      "status": "blocked",
+      "started_at": "2026-07-21T09:12:37Z",
+      "ended_at": "2026-07-21T09:16:32Z",
+      "identity": {
+        "source_commit": "47c97822969ccf375808887cea6b78ad371a6e8b",
+        "package_version": "1.0.1",
+        "npm_integrity": "sha512-330geWb6ikRMNWZx/hFmfC15YYtJ6IjarJ0VOGZ7ve6Yfr0qoF1zZl5YARnCvz94fCdgnqOYCl5tpMqatj0Nhw==",
+        "production_url": "https://studio.134-122-59-217.nip.io",
+        "os": "windows-11-x64-10.0.26200",
+        "node": "24.18.0",
+        "browser": "chrome-version-not-captured"
+      },
+      "identity_binding": "The source-blind pilot verified the public 1.0.1 package integrity, checksum-verified official portable Node 24.18.0 and production v1.0.1 at commit prefix 47c97822 before seeding disposable fake canaries.",
+      "clean_state_checks": [
+        {
+          "requirement": "isolated npm cache and temporary install location",
+          "result": "passed",
+          "observation": "Package, cache, portable runtime, fake canaries, profile and application state were confined to one disposable root."
+        },
+        {
+          "requirement": "fresh browser profile or cleared storage",
+          "result": "failed",
+          "observation": "The pairable 127.0.0.1 origin contained pre-existing progress, while the clean localhost origin could not pair."
+        },
+        {
+          "requirement": "normal non-elevated user identity",
+          "result": "failed",
+          "observation": "The run did not preserve an independent elevation-status observation."
+        },
+        {
+          "requirement": "isolated project root containing no user project",
+          "result": "passed",
+          "observation": "Only protected disposable canary fixtures were used; no user project or real secret was read."
+        },
+        {
+          "requirement": "recorded port and process baseline",
+          "result": "passed",
+          "observation": "The pilot recorded the exact Safe Mode process and both loopback listeners before inspection."
+        },
+        {
+          "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+          "result": "passed",
+          "observation": "Only fake canary classes and bounded runtime/profile paths were configured; canary values and the full environment were excluded from evidence."
+        },
+        {
+          "requirement": "cleanup and closed-port observation",
+          "result": "passed",
+          "observation": "Root verified and stopped only the two pilot-owned processes, proved zero fixed-port listeners and removed the exact disposable root."
+        },
+        {
+          "requirement": "no reused local session or pairing value",
+          "result": "failed",
+          "observation": "The clean browser origin could not pair, and no pairing/session material was inspected or recorded."
+        }
+      ],
+      "task_observations": [
+        "Safe Mode reached both loopback listeners and the UI showed Safe mode, Paired and matching Studio/automation 1.0.1 release identity.",
+        "Seven fake canary classes covering environment keys, wallet-shaped data, file content, stdout and stderr produced zero unexpected matches outside protected fixture files.",
+        "Sanitized product stdout contained only release, mode, loopback and shutdown/project guidance; stderr, visible UI and filtered browser console contained no canary or disposable-path match.",
+        "The visible URL and session status exposed no query, pairing or session material.",
+        "Local Actions and hostile tool execution were not reached, so child-process inheritance and diagnostic/error redaction remain open."
+      ],
+      "surfaces_verified": [
+        "cli:safe",
+        "ui:companion",
+        "secret-redaction-safe-mode",
+        "chromium-desktop",
+        "windows-x64",
+        "public-npm-package"
+      ],
+      "evidence_refs": [
+        "CV-X-SEC-05-001:E1 public package, runtime and production identity",
+        "CV-X-SEC-05-001:E2 Safe Mode process, listeners and paired release state",
+        "CV-X-SEC-05-001:E3 protected-fixture and unprotected-file canary scan",
+        "CV-X-SEC-05-001:E4 stdout, stderr, UI and browser-console redaction observations",
+        "CV-X-SEC-05-001:E5 child-process and clean-pairing limitations",
+        "CV-X-SEC-05-001:E6 verified process, port and disposable-root cleanup"
+      ],
+      "cleanup": {
+        "ports_closed": true,
+        "processes_stopped": true,
+        "temporary_state_disposition": "Root verified and stopped only the pilot-owned wrapper and Node process, found zero 5173/8788 listeners and removed the exact disposable root."
+      },
+      "limitations": [
+        "This was a source-blind Codex-operated simulation, not external-developer research.",
+        "Local Actions, hostile tool outputs, child-process inheritance, cookies and browser storage were not inspected.",
+        "The pairable origin was not clean, so this run cannot satisfy the campaign clean-profile requirement.",
+        "This public 1.0.1 discovery run cannot count as exact-candidate proof."
+      ]
     }
   ],
   "retests": [],
@@ -4026,6 +4306,16 @@
       "root_cause": "The resolver filtered the bounded first API page locally instead of using GitHub's exact head_sha query filter.",
       "fix": "Add the exact encoded candidate commit as head_sha to the successful main-push workflow-run query and retain the unique first-attempt result check.",
       "regression_test": "Focused resolver and public repository contracts require the exact head_sha query and still reject duplicate, rerun and wrong-commit results."
+    },
+    {
+      "defect_id": "CV-D-075",
+      "severity": "P3",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The documented direct create-duskds retry safely refused an existing target but described it as missing a receipt from a running Local Studio that did not exist.",
+      "source": "CV-X-RES-04-001",
+      "root_cause": "Direct CLI and Local Actions share the same fail-closed scaffold recovery function, but its missing-receipt error was written only for the Local Studio session model; every separate direct CLI invocation intentionally has no in-memory completion receipt.",
+      "fix": "Keep the refusal and preservation boundary while replacing the mode-specific statement with truthful actionable guidance to choose a new project name or a different empty parent directory.",
+      "regression_test": "The scaffold unit rejects an existing target with the actionable generic guidance, and the exact-package browser smoke repeats the direct CLI command, requires that guidance and rejects any reference to a running Local Studio."
     }
   ],
   "challenge_reviews": [

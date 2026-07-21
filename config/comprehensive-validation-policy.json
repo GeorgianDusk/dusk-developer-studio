@@ -67,7 +67,7 @@
     "CV-D-049", "CV-D-050", "CV-D-051", "CV-D-052", "CV-D-053", "CV-D-054", "CV-D-055", "CV-D-056",
     "CV-D-057", "CV-D-058", "CV-D-059", "CV-D-060", "CV-D-061", "CV-D-062", "CV-D-063", "CV-D-064",
     "CV-D-065", "CV-D-066", "CV-D-067", "CV-D-068", "CV-D-069", "CV-D-070", "CV-D-071", "CV-D-072",
-    "CV-D-073", "CV-D-074"
+    "CV-D-073", "CV-D-074", "CV-D-075"
   ],
   "required_final_challenge_scopes": [
     "product-ui-developer-experience",
