@@ -37,9 +37,7 @@ env:
   CI: "true"
   NODE_VERSION: 24.18.0
   PNPM_VERSION: 11.7.0
-  TARBALL: output/npm/dusk-developer-studio-1.0.2.tgz
   PRIMARY_ENTRY: node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs
-  CANDIDATE_ARTIFACT: dusk-developer-studio-1.0.2.tgz
   PREFLIGHT_CHECK_ID: three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract
 
 jobs:
@@ -87,7 +85,29 @@ jobs:
           pnpm build:npm
           pnpm test:npm
           node scripts/npm-package-pack.mjs
-          test -f "$TARBALL"
+      - name: Bind the exact generated candidate artifact
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const manifest = JSON.parse(fs.readFileSync("packages/cli/package.json", "utf8"));
+          const receipt = JSON.parse(fs.readFileSync("output/npm/pack-receipt.json", "utf8"));
+          const expectedArtifact = `${manifest.name}-${manifest.version}.tgz`;
+          const tarball = `output/npm/${expectedArtifact}`;
+          const stat = fs.lstatSync(tarball);
+          if (receipt.package !== manifest.name
+              || receipt.version !== manifest.version
+              || receipt.filename !== expectedArtifact
+              || !stat.isFile()
+              || stat.isSymbolicLink()
+              || stat.size <= 0) {
+            throw new Error("Generated npm candidate receipt does not bind the exact package artifact.");
+          }
+          fs.appendFileSync(process.env.GITHUB_ENV, [
+            `TARBALL=${tarball}`,
+            `CANDIDATE_ARTIFACT=${expectedArtifact}`,
+            ""
+          ].join("\n"));
+          NODE
       - name: Validate identity, allowlist, unpacked size, and candidate bindings
         id: candidate
         run: |
@@ -259,6 +279,8 @@ jobs:
       EXPECTED_PACKAGE_INVENTORY_SHA256: ${{ needs.build-package.outputs.package_inventory_sha256 }}
       EXPECTED_PACKAGE_FILE_COUNT: ${{ needs.build-package.outputs.package_file_count }}
       EXPECTED_CANDIDATE_COMMIT: ${{ needs.build-package.outputs.candidate_commit }}
+      CANDIDATE_ARTIFACT: ${{ needs.build-package.outputs.candidate_artifact_name }}
+      TARBALL: output/npm/${{ needs.build-package.outputs.candidate_artifact_name }}
     steps:
       - name: Check out the exact candidate policy
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -756,6 +778,7 @@ jobs:
       EXPECTED_PACKAGE_NAME: ${{ needs.build-package.outputs.package_name }}
       EXPECTED_PACKAGE_VERSION: ${{ needs.build-package.outputs.package_version }}
       EXPECTED_CANDIDATE_ARTIFACT: ${{ needs.build-package.outputs.candidate_artifact_name }}
+      TARBALL: output/npm/${{ needs.build-package.outputs.candidate_artifact_name }}
       CANDIDATE_ARTIFACT_FINGERPRINT_SHA256: ${{ inputs.candidate_artifact_fingerprint_sha256 }}
     steps:
       - name: Check out the exact pilot candidate

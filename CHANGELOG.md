@@ -4,6 +4,13 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.3 - 2026-07-21
+
+### Changed
+
+- Make exact-package browser assurance classify Chrome's late preflight abort telemetry only after exact Request/Response identity, origin, CORS, authoritative schema, rendered UI, ordering, and terminal-state checks pass.
+- Keep every unrelated browser transport failure fatal and record the preflight terminal outcome in the bounded assurance receipt.
+
 ## 1.0.2 - 2026-07-21
 
 ### Added

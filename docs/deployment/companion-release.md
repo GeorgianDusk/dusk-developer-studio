@@ -17,7 +17,7 @@ The `dusk-developer-studio` package is self-contained, installs no additional ru
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.2
+npx dusk-developer-studio@1.0.3
 ```
 
 Safe mode starts the Studio and pairing flow without running developer tools or creating projects.
@@ -25,7 +25,7 @@ Safe mode starts the Studio and pairing flow without running developer tools or 
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.2 local-actions
+npx dusk-developer-studio@1.0.3 local-actions
 ```
 
 Local Actions enables the reviewed prerequisite checks and starter-creation routes. It uses developer tools already installed on your machine and never installs or updates them.
@@ -58,11 +58,11 @@ Do not run copied package files, issue attachments, direct-message downloads, or
 To reproduce behavior from a specific package version:
 
 ```bash
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.2 -- dusk-developer-studio
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.2 -- dusk-developer-studio local-actions
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.3 -- dusk-developer-studio
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.3 -- dusk-developer-studio local-actions
 ```
 
-Replace `1.0.2` with another reviewed version when needed. Never combine files from different package versions.
+Replace `1.0.3` with another reviewed version when needed. Never combine files from different package versions.
 
 ## Project preservation
 
