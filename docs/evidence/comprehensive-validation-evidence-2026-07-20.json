@@ -115,6 +115,14 @@
       "identity": "failed immutable v1.0.2 tag assurance at b8b19256ab3b29ababe067bce305ef870b441af9 followed by an unpublishable dirty-worktree 1.0.3 remediation preview",
       "result": "findings_repaired_local",
       "summary": "GitHub tag run 29834025572 stopped before npm publication when Chrome 150 emitted one late net::ERR_ABORTED for the exact successful DuskDS preflight request; the gate had no identity-bound classifier for that request. The 1.0.3 local repair requires exact page Request and Response identity, complete Origin and credentialed CORS headers, no redirect, HTTP 200, authenticated-pairing order, authoritative schema validation, rendered UI proof and finish-or-one-late-abort exclusivity before tolerating only that exact failure object. Adversarial tests reject every weakened invariant and unrelated failure. Full verify:local passed 35 files and 346 tests; one initial and five consecutive exact-package Chrome runs passed pairing, preflight, scaffolding, preservation, fixed-port recovery and shutdown. Clean main, native CI and immutable 1.0.3 package proof remain required."
+    },
+    {
+      "evidence_id": "CV-E-PACKAGE-ARTIFACT-PATH-20260721",
+      "evidence_class": "automated-regression",
+      "observed_at": "2026-07-21T14:25:23Z",
+      "identity": "PR 44 merge-ref assurance run 29838276976 for reviewed head 555fdc2f1b7e2db18f030a5e498a4e439f31dc4e",
+      "result": "findings_repaired_local",
+      "summary": "The exact 1.0.3 candidate built successfully, but the npm assurance job stopped before candidate validation because its live workflow still named the obsolete 1.0.2 tarball. The same duplicated release filename existed in production assurance. The local repair derives the generated artifact from the pack receipt, binds its package name and version before use, propagates the build output to every downstream lane, and rejects semantic-version tarball literals in both live workflows. The focused public-repository contract passes; fresh GitHub execution remains required."
     }
   ],
   "pilot_executions": [
@@ -4334,6 +4342,16 @@
       "root_cause": "The identity-bound late-abort classifier covered pairing requests only; the long-running DuskDS preflight request remained in the final global failure set even when its exact HTTP 200 response, authoritative body contract and rendered UI had already succeeded.",
       "fix": "Add a preflight-specific classifier that accepts only the original page-owned GET and exact Response object after authenticated pairing, exact loopback endpoint and Origin, no redirect, credentialed CORS, HTTP 200, authoritative contract validation, rendered result proof and an exclusive normal-finish or one later same-object net::ERR_ABORTED terminal state. Preserve one final global assertion for every unclassified failure and move the corrected immutable release identity to 1.0.3.",
       "regression_test": "Focused tests accept normal finish and one exact late abort, while rejecting wrong identity, response binding, timing, method, URL, Origin, redirect, CORS, status, contract/UI proof, duplicates, finish-plus-abort and unrelated failures. Full verify:local passed 346 tests, and six consecutive real-Chrome exact-package runs passed; fresh GitHub native assurance remains required."
+    },
+    {
+      "defect_id": "CV-D-077",
+      "severity": "P1",
+      "status": "fixed_local_pending_native_retest",
+      "summary": "The npm and production assurance workflows duplicated the prior 1.0.2 tarball filename, so PR 44 built 1.0.3 but failed before testing or uploading it.",
+      "source": "CV-E-PACKAGE-ARTIFACT-PATH-20260721",
+      "root_cause": "Release identity lived in package policy and manifests, but the two live workflows also carried handwritten semantic-version filenames that the release bump contract did not prohibit.",
+      "fix": "Derive the exact artifact filename from the generated pack receipt, validate it against the current package manifest, publish it as the build job's candidate output, and bind every downstream lane to that output instead of a copied version literal.",
+      "regression_test": "The public-repository contract requires pack-receipt binding and downstream build-output propagation, and rejects any semantic-version tarball literal in either live assurance workflow. Focused validation passes; fresh GitHub native execution remains required."
     }
   ],
   "challenge_reviews": [

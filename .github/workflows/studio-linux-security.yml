@@ -66,7 +66,7 @@ jobs:
           pnpm build:npm
           pnpm test:npm
           pnpm pack:npm
-          TARBALL="output/npm/dusk-developer-studio-1.0.2.tgz"
+          TARBALL="output/npm/$(node --input-type=module -e 'import fs from "node:fs"; const receipt = JSON.parse(fs.readFileSync("output/npm/pack-receipt.json", "utf8")); process.stdout.write(receipt.filename);')"
           INSTALL_ROOT="$RUNNER_TEMP/npm-install"
           PRIMARY="$INSTALL_ROOT/node_modules/dusk-developer-studio/bin/dusk-developer-studio.mjs"
           test -f "$TARBALL"
@@ -165,7 +165,8 @@ jobs:
           pnpm build:npm
           pnpm test:npm
           pnpm pack:npm
-          $tarball = 'output/npm/dusk-developer-studio-1.0.2.tgz'
+          $packReceipt = Get-Content -Raw -LiteralPath 'output/npm/pack-receipt.json' | ConvertFrom-Json
+          $tarball = Join-Path 'output/npm' ([string] $packReceipt.filename)
           if (-not (Test-Path -LiteralPath $tarball -PathType Leaf)) { throw 'npm tarball is missing.' }
           $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
           if (-not $isAdmin) { throw 'Windows assurance runner must provide the separate elevated-refusal lane.' }
