@@ -74,6 +74,31 @@ export function resolveLocalRuntimeCliMode(args: string[]): LocalRuntimeCliMode 
   };
 }
 
+export function localRuntimeStopInstruction(platform = process.platform): string {
+  const windowsConfirmation = platform === "win32"
+    ? ' If Windows asks "Terminate batch job (Y/N)?", type Y and press Enter.'
+    : "";
+  return `Press Ctrl+C to stop.${windowsConfirmation} Projects remain under the managed DuskDS project root.`;
+}
+
+export function localBrowserPairingInstruction(openBrowser: boolean): string {
+  const url = `http://${HOST}:${STUDIO_PORT}/#companion`;
+  return openBrowser
+    ? `Use the browser tab opened at ${url}; this launch pairs one browser profile. To use a different profile, stop this run, rerun with --no-open, then open that URL in the intended profile within five minutes.`
+    : `Open ${url} in the one browser profile you want to pair within five minutes. Do not open another Local Studio page first.`;
+}
+
+export function describeLocalRuntimeListenFailure(error: unknown, port: number): Error {
+  if ((error as NodeJS.ErrnoException | undefined)?.code !== "EADDRINUSE") {
+    return error instanceof Error ? error : new Error("Local Studio could not start its loopback services.");
+  }
+  return new Error(
+    `Local Studio could not start because 127.0.0.1:${port} is already in use. `
+    + `Close the local application or terminal using port ${port}, confirm the port is free, then rerun the same command. `
+    + "Any partially started Studio service was stopped."
+  );
+}
+
 function defaultProjectRoot(): string {
   if (process.platform === "win32") {
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
@@ -240,12 +265,14 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
     pairingToken
   });
 
+  let startingPort = companionPort;
   try {
     await listen(companionServer, companionPort);
+    startingPort = studioPort;
     await listen(studioServer, studioPort);
   } catch (error) {
     await Promise.all([close(studioServer), close(companionServer)]);
-    throw error;
+    throw describeLocalRuntimeListenFailure(error, startingPort);
   }
 
   let shuttingDown = false;
@@ -730,6 +757,7 @@ export async function runLocalRuntimeCli(options: LocalRuntimeCliOptions): Promi
       : "safe mode; machine actions disabled"}`
   );
   console.log(`Open http://${HOST}:${STUDIO_PORT}/`);
+  console.log(localBrowserPairingInstruction(mode.openBrowser));
 
   if (mode.lifecycleSelfTest) {
     let execution: LifecycleSelfTestExecution;
@@ -774,7 +802,7 @@ export async function runLocalRuntimeCli(options: LocalRuntimeCliOptions): Promi
     return;
   }
 
-  console.log("Press Ctrl+C to stop. Projects remain under the managed DuskDS project root.");
+  console.log(localRuntimeStopInstruction());
   await new Promise<void>((resolve, reject) => {
     const onSignal = async () => {
       process.off("SIGINT", onSignal);

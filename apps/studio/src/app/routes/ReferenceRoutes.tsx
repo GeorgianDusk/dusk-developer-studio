@@ -12,7 +12,7 @@ import {
   type TroubleshootingItem
 } from "@dusk/core/browser-catalog";
 import { STEP_ROUTES, type BuilderPath } from "../journeyProgress";
-import { blockerLabels, capabilityIds, pathText, pickById, resourceIds, sourceDate, sourceIsStale, steps, troubleIds } from "../studioConfig";
+import { blockerLabels, pathText, pickById, prelaunchTroubleIds, resourceIds, sourceDate, sourceIsStale, steps, troubleIds } from "../studioConfig";
 import { useJourney } from "../studioState";
 import { AsyncNotice, CopyButton, ExternalLink, PageIntro, SearchBox, StatusPill } from "../StudioUi";
 
@@ -83,7 +83,9 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
     : scope === "all" || !builderPath ? RESOURCES : pickById(RESOURCES, resourceIds[builderPath]);
   const capabilities = normalizedQuery
     ? searchCapabilities(normalizedQuery).filter((item) => scope === "all" || !builderPath || item.path === builderPath || item.path === "both")
-    : scope === "all" || !builderPath ? CAPABILITIES : pickById(CAPABILITIES, capabilityIds[builderPath]);
+    : scope === "all" || !builderPath
+      ? CAPABILITIES
+      : CAPABILITIES.filter((item) => item.path === builderPath || item.path === "both");
   const networksInScope = scope === "all" || !builderPath || builderPath === "evm" ? DUSK_EVM_NETWORKS : [];
   const networks = normalizedQuery
     ? networksInScope.filter((network) => [
@@ -98,6 +100,18 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
   const visibleResources = showAllResources ? resources : resources.slice(0, DEFAULT_REFERENCE_LIMIT);
   const visibleCapabilities = showAllCapabilities ? capabilities : capabilities.slice(0, DEFAULT_REFERENCE_LIMIT);
   const hasResults = resources.length > 0 || capabilities.length > 0 || networks.length > 0;
+
+  useEffect(() => {
+    if (!normalizedQuery) return;
+    const timer = window.setTimeout(() => {
+      setResultAnnouncement(
+        `${resources.length} ${resources.length === 1 ? "document" : "documents"}, `
+        + `${capabilities.length} ${capabilities.length === 1 ? "capability" : "capabilities"}, `
+        + `and ${networks.length} ${networks.length === 1 ? "network record" : "network records"} found.`
+      );
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [capabilities.length, networks.length, normalizedQuery, resources.length]);
 
   function chooseScope(nextScope: "path" | "all") {
     setScope(nextScope);
@@ -131,6 +145,7 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
         title="Source-backed context for the task in front of you."
         copy="Search the sources reviewed for this Studio build, or narrow them to your selected path. External documentation opens in a new tab so your Studio session stays in place."
       />
+      <p className="quiet-note">Rendered Dusk docs unavailable? <ExternalLink href="https://github.com/dusk-network/docs">Open the official docs source</ExternalLink>.</p>
       {sourceIsStale ? <AsyncNotice state="stale" title="Source review expired" message="Some details may be out of date. Check the linked official source before relying on them." /> : null}
       <div className="filter-bar" role="group" aria-label="Reference scope">
         {builderPath ? <button className={scope === "path" ? "active" : ""} type="button" aria-pressed={scope === "path"} onClick={() => chooseScope("path")}>{pathText[builderPath].label} only</button> : null}
@@ -154,8 +169,18 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
               <h2>Open docs <small>({resources.length})</small></h2>
               {resources.length ? (
                 <>
-                  <div className="link-list">{visibleResources.map((resource) => <ResourceRow key={resource.id} resource={resource} />)}</div>
-                  {resources.length > DEFAULT_REFERENCE_LIMIT ? <button className="secondary-button" type="button" onClick={() => setShowAllResources((current) => !current)}>{showAllResources ? "Show fewer docs" : `Show all ${resources.length} docs`}</button> : null}
+                  {resources.length > DEFAULT_REFERENCE_LIMIT ? (
+                    <button
+                      className="secondary-button reference-disclosure-button"
+                      type="button"
+                      aria-expanded={showAllResources}
+                      aria-controls="reference-docs-results"
+                      onClick={() => setShowAllResources((current) => !current)}
+                    >
+                      {showAllResources ? "Show fewer docs" : `Show all ${resources.length} docs`}
+                    </button>
+                  ) : null}
+                  <div className="link-list" id="reference-docs-results">{visibleResources.map((resource) => <ResourceRow key={resource.id} resource={resource} />)}</div>
                 </>
               ) : <AsyncNotice state="empty" message="No documentation link matches this search and scope." />}
             </section>
@@ -163,8 +188,18 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
               <h2>Capabilities <small>({capabilities.length})</small></h2>
               {capabilities.length ? (
                 <>
-                  <div className="link-list">{visibleCapabilities.map((capability) => <CapabilityRow key={capability.id} capability={capability} />)}</div>
-                  {capabilities.length > DEFAULT_REFERENCE_LIMIT ? <button className="secondary-button" type="button" onClick={() => setShowAllCapabilities((current) => !current)}>{showAllCapabilities ? "Show fewer capabilities" : `Show all ${capabilities.length} capabilities`}</button> : null}
+                  {capabilities.length > DEFAULT_REFERENCE_LIMIT ? (
+                    <button
+                      className="secondary-button reference-disclosure-button"
+                      type="button"
+                      aria-expanded={showAllCapabilities}
+                      aria-controls="reference-capability-results"
+                      onClick={() => setShowAllCapabilities((current) => !current)}
+                    >
+                      {showAllCapabilities ? "Show fewer capabilities" : `Show all ${capabilities.length} capabilities`}
+                    </button>
+                  ) : null}
+                  <div className="link-list" id="reference-capability-results">{visibleCapabilities.map((capability) => <CapabilityRow key={capability.id} capability={capability} />)}</div>
                 </>
               ) : <AsyncNotice state="empty" message="No capability matches this search and scope." />}
             </section>
@@ -227,9 +262,19 @@ function NetworkReferenceRow({ network }: { network: (typeof DUSK_EVM_NETWORKS)[
   );
 }
 
-export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath | null }) {
+export function TroubleshootingPage({
+  builderPath,
+  setBuilderPath,
+  setRoute
+}: {
+  builderPath: BuilderPath | null;
+  setBuilderPath: (path: BuilderPath | null) => void;
+  setRoute: (route: "setup" | "build" | "troubleshooting") => void;
+}) {
   const { progress } = useJourney();
   const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<"path" | "all">("path");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [focusedTroubleId, setFocusedTroubleId] = useState<string | null>(() => {
     try {
       return window.sessionStorage.getItem(TROUBLESHOOTING_FOCUS_STORAGE_KEY);
@@ -248,11 +293,16 @@ export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath 
     : focusedTroubleId
       ? TROUBLESHOOTING.filter((item) => item.id === focusedTroubleId)
       : TROUBLESHOOTING;
-  const items = candidates.filter((item) => activeTroubleIds.has(item.id));
+  const items = scope === "all" ? candidates : candidates.filter((item) => activeTroubleIds.has(item.id));
   const prelaunch = builderPath === "evm";
   const blockedStep = blockedRoute && builderPath
     ? steps[builderPath].find((step) => step.id === blockedRoute)
     : undefined;
+
+  function clearSearch() {
+    setQuery("");
+    window.requestAnimationFrame(() => searchInputRef.current?.focus());
+  }
 
   useEffect(() => {
     if (!focusedTroubleId) return;
@@ -272,12 +322,14 @@ export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath 
     <section className="reference-page">
       <PageIntro
         kicker="Troubleshoot"
-        title={prelaunch ? "Review DuskEVM launch-planning issues." : "Fix the blocker in front of you."}
-        copy={prelaunch
+        title={scope === "all" ? "Search every reviewed recovery and planning issue." : prelaunch ? "Review DuskEVM launch-planning issues." : "Fix the blocker in front of you."}
+        copy={scope === "all"
+          ? "Start with your selected path for the most relevant recovery. Use this complete index when the symptom crosses tools or you need a less common reviewed issue."
+          : prelaunch
           ? "DuskEVM is still pre-launch. These entries explain issues to plan for later; they are not active wallet, funding, build, or deployment recovery steps."
           : "Find the symptom, understand the likely cause, apply the bounded fix, then repeat the check that produced the result."}
       />
-      {prelaunch ? <AsyncNotice state="partial" title="Pre-launch planning only" message="No DuskEVM troubleshooting item on this page represents a live Studio action." /> : null}
+      {prelaunch && scope === "path" ? <AsyncNotice state="partial" title="Pre-launch planning only" message="No DuskEVM troubleshooting item on this page represents a live Studio action." /> : null}
       {currentBlocker && blockedRoute ? (
         <div className="current-blocker">
           <StatusPill tone="danger">Current blocker</StatusPill>
@@ -295,19 +347,45 @@ export function TroubleshootingPage({ builderPath }: { builderPath: BuilderPath 
           <span>Showing active DuskDS recovery guidance. Choose a path for a more focused result.</span>
         </div>
       )}
+      <div className="filter-bar" role="group" aria-label="Troubleshooting scope">
+        <button className={scope === "path" ? "active" : ""} type="button" aria-pressed={scope === "path"} onClick={() => setScope("path")}>
+          {builderPath ? `${pathText[builderPath].label} common issues` : "DuskDS common issues"}
+        </button>
+        <button className={scope === "all" ? "active" : ""} type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>
+          All reviewed issues
+        </button>
+      </div>
       <SearchBox
+        inputRef={searchInputRef}
         value={query}
         onChange={(next) => {
           setQuery(next);
           if (next.trim()) setFocusedTroubleId(null);
         }}
-        placeholder={prelaunch ? "Search wallet, RPC, gas, Foundry..." : "Search Forge, Rust, WASM, data driver, VM tests..."}
+        placeholder={scope === "all"
+          ? "Search any reviewed symptom, tool, network, or failure..."
+          : prelaunch
+            ? "Search wallet, RPC, gas, Foundry..."
+            : "Search Forge, Rust, WASM, data driver, VM tests..."}
       />
-      <p className="quiet-note" role="status">{items.length} {prelaunch ? "planning" : "recovery"} {items.length === 1 ? "entry" : "entries"} found.</p>
-      {items.length ? <div className="trouble-list">{items.map((item) => <TroubleRow key={item.id} item={item} prelaunch={prelaunch} />)}</div> : (
+      <p className="quiet-note" role="status">{items.length} {scope === "all" ? "reviewed" : prelaunch ? "planning" : "recovery"} {items.length === 1 ? "entry" : "entries"} found.</p>
+      {items.length ? <div className="trouble-list">{items.map((item) => (
+        <TroubleRow
+          key={item.id}
+          item={item}
+          prelaunch={prelaunchTroubleIds.includes(item.id as typeof prelaunchTroubleIds[number])}
+          onOpenAction={(route) => {
+            if (builderPath !== "duskds") setBuilderPath("duskds");
+            setRoute(route);
+          }}
+        />
+      ))}</div> : (
         <div className="empty-reference-actions">
           <AsyncNotice state="empty" message="No entry matches this search. Try the failed tool or symptom wording, or open project support." />
-          {normalizedQuery ? <button className="secondary-button" type="button" onClick={() => setQuery("")}>Clear search</button> : null}
+          <div className="button-row">
+            {normalizedQuery ? <button className="secondary-button" type="button" onClick={clearSearch}>Clear search</button> : null}
+            <ExternalLink href="https://github.com/GeorgianDusk/dusk-developer-studio/issues">Open project support</ExternalLink>
+          </div>
         </div>
       )}
     </section>
@@ -320,10 +398,18 @@ const duskDsTroubleActions: Partial<Record<string, { route: "setup" | "build"; l
   "rust-wasm-target-missing": { route: "setup", label: "Open Setup", command: "rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown" },
   "dusk-forge-rust-stable-drift": { route: "setup", label: "Open Setup", command: "rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown" },
   "data-driver-build-missing": { route: "build", label: "Open Build" },
-  "dusk-forge-test-linux-required": { route: "build", label: "Open Build" }
+  "dusk-forge-test-linux-required": { route: "setup", label: "Open Setup", command: "wsl --install -d Ubuntu-24.04" }
 };
 
-function TroubleRow({ item, prelaunch }: { item: TroubleshootingItem; prelaunch: boolean }) {
+function TroubleRow({
+  item,
+  prelaunch,
+  onOpenAction
+}: {
+  item: TroubleshootingItem;
+  prelaunch: boolean;
+  onOpenAction: (route: "setup" | "build") => void;
+}) {
   const impact = item.severity === "high" ? "High impact" : item.severity === "medium" ? "Medium impact" : "Low impact";
   const action = prelaunch ? undefined : duskDsTroubleActions[item.id];
   return (
@@ -333,12 +419,14 @@ function TroubleRow({ item, prelaunch }: { item: TroubleshootingItem; prelaunch:
         <h2>{item.title}</h2>
         <strong>Cause and fix</strong>
         <p>{item.fix}</p>
-        <strong>{prelaunch ? "Review before launch" : "Recheck"}</strong>
-        <small>{item.safeNextStep}</small>
+        <div className="trouble-recheck">
+          <strong>{prelaunch ? "Review before launch:" : "Recheck:"}</strong>
+          <small>{item.safeNextStep}</small>
+        </div>
         {action ? (
           <div className="button-row">
             {action.command ? <CopyButton value={action.command} label={`Copy fix command for ${item.title}`} /> : null}
-            <a className="secondary-button" href={`#${action.route}`}>{action.label}</a>
+            <button className="secondary-button" type="button" onClick={() => onOpenAction(action.route)}>{action.label}</button>
           </div>
         ) : null}
       </div>

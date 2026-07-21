@@ -30,13 +30,20 @@ class EvmReadError extends Error {
   constructor(readonly kind: EvmReadFailureKind, message: string) { super(message); }
 }
 
+const MAX_EVM_QUANTITY = (1n << 256n) - 1n;
+
 export function classifyEvmIdentifier(input: string): EvmIdentifier | undefined {
   const value = input.trim();
   if (isAddress(value)) return { type: "address", value };
   if (isTxHash(value)) return { type: "transaction", value };
-  if (/^(0x[0-9a-f]+|\d+)$/i.test(value)) {
-    const block = value.startsWith("0x") ? value.toLowerCase() : `0x${BigInt(value).toString(16)}`;
-    return { type: "block", value: block };
+  if (/^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(value)) {
+    return { type: "block", value: value.toLowerCase() };
+  }
+  if (/^\d{1,78}$/.test(value)) {
+    const blockNumber = BigInt(value);
+    if (blockNumber <= MAX_EVM_QUANTITY) {
+      return { type: "block", value: `0x${blockNumber.toString(16)}` };
+    }
   }
   return undefined;
 }

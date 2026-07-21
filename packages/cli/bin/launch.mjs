@@ -1,5 +1,6 @@
-const CLI_VERSION = "1.0.1";
+const CLI_VERSION = "1.0.2";
 const REQUIRED_NODE = ">=24.18.0 <25";
+const NODE_RECOVERY = "Install Node.js 24.18.0 from https://nodejs.org/en/download/archive/v24.18.0, open a new terminal, confirm `node --version`, then rerun your Dusk Developer Studio command.";
 const INFORMATIONAL_FLAGS = new Map([
   ["--help", "help"],
   ["-h", "help"],
@@ -9,11 +10,11 @@ const INFORMATIONAL_FLAGS = new Map([
 
 function assertSupportedNode() {
   const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(process.versions.node);
-  if (!match) throw new Error(`Dusk Developer Studio requires Node.js ${REQUIRED_NODE}.`);
+  if (!match) throw new Error(`Dusk Developer Studio requires Node.js ${REQUIRED_NODE}.\n${NODE_RECOVERY}`);
   const major = Number(match[1]);
   const minor = Number(match[2]);
   if (major !== 24 || minor < 18) {
-    throw new Error(`Dusk Developer Studio requires Node.js ${REQUIRED_NODE}.`);
+    throw new Error(`Dusk Developer Studio requires Node.js ${REQUIRED_NODE}.\n${NODE_RECOVERY}`);
   }
 }
 
@@ -29,7 +30,7 @@ function helpText() {
     "create-duskds writes the packaged reviewed starter as one new child of the current directory.",
     "",
     "Options:",
-    "  --no-open        Start without opening a browser",
+    "  --no-open        Choose the browser profile yourself; open the printed URL within five minutes",
     "  -h, --help       Show command help",
     "  -v, --version    Show the installed version"
   ].join("\n");

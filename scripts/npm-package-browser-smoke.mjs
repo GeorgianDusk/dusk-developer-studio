@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { clearTimeout, setTimeout } from "node:timers";
@@ -19,10 +20,24 @@ import {
   verifyBuiltNpmPackage,
   writeJson
 } from "./npm-package-core.mjs";
+import {
+  PREFLIGHT_CHECK_ID,
+  validatePreflightConsumerContract
+} from "./npm-package-preflight-smoke.mjs";
 
 const MAX_PROCESS_OUTPUT_BYTES = 64 * 1024;
 const START_TIMEOUT_MS = 30_000;
 const BROWSER_TIMEOUT_MS = 20_000;
+const PREFLIGHT_TIMEOUT_MS = 130_000;
+const PREFLIGHT_CONSUMER_SOURCE = path.join(
+  import.meta.dirname,
+  "..",
+  "apps",
+  "studio",
+  "src",
+  "app",
+  "responseSchemas.ts"
+);
 const allowedArguments = new Set(["--tarball", "--receipt"]);
 const argumentsByName = new Map();
 for (const argument of process.argv.slice(2)) {
@@ -44,6 +59,95 @@ function boundedAppend(current, chunk) {
     throw new Error("Local Studio browser-smoke process output exceeded its bound.");
   }
   return next;
+}
+
+function assertPortClosed(port) {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: "127.0.0.1", port });
+    socket.setTimeout(5_000);
+    socket.once("connect", () => {
+      socket.destroy();
+      reject(new Error(`Exact-package smoke found unexpected listener on 127.0.0.1:${port}.`));
+    });
+    socket.once("timeout", () => {
+      socket.destroy();
+      reject(new Error(`Exact-package smoke could not prove 127.0.0.1:${port} is closed.`));
+    });
+    socket.once("error", (error) => {
+      if (error.code === "ECONNREFUSED") resolve();
+      else reject(error);
+    });
+  });
+}
+
+function closeServer(server) {
+  return new Promise((resolve) => server.close(resolve));
+}
+
+async function readPreflightResponseJson(context, response, expectedUrl) {
+  try {
+    return await response.json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/Network[.]getResponseBody.*No data found for resource with given identifier/u.test(message)) {
+      throw error;
+    }
+    const stableResponse = await context.request.get(expectedUrl, {
+      timeout: PREFLIGHT_TIMEOUT_MS
+    });
+    assert.equal(
+      stableResponse.status(),
+      200,
+      "The exact-package preflight replay must succeed after Chrome evicts the observed response body."
+    );
+    return stableResponse.json();
+  }
+}
+
+async function exerciseFixedPortConflict(primaryEntry, homeRoot, occupiedPort) {
+  assert.ok(occupiedPort === 5173 || occupiedPort === 8788);
+  await Promise.all([assertPortClosed(5173), assertPortClosed(8788)]);
+  await fs.mkdir(homeRoot, { recursive: true });
+  const holder = net.createServer();
+  await new Promise((resolve, reject) => {
+    holder.once("error", reject);
+    holder.listen(occupiedPort, "127.0.0.1", resolve);
+  });
+  try {
+    let failure;
+    try {
+      await runFile(process.execPath, [primaryEntry, "--no-open"], {
+        cwd: path.dirname(primaryEntry),
+        capture: true,
+        env: {
+          ...process.env,
+          HOME: homeRoot,
+          LOCALAPPDATA: path.join(homeRoot, "local-app-data"),
+          XDG_DATA_HOME: path.join(homeRoot, ".local", "share")
+        }
+      });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure instanceof Error, "The exact package must refuse an occupied frontend port.");
+    assert.match(failure.message, new RegExp(`127[.]0[.]0[.]1:${occupiedPort} is already in use`, "u"));
+    assert.match(failure.message, /confirm the port is free/u);
+    assert.match(failure.message, /rerun the same command/u);
+    assert.match(failure.message, /partially started Studio service was stopped/u);
+    assert.doesNotMatch(failure.message, /EADDRINUSE/u);
+    assert.equal(holder.listening, true, "The exact package must not stop the unrelated port owner.");
+    await assertPortClosed(occupiedPort === 5173 ? 8788 : 5173);
+  } finally {
+    if (holder.listening) await closeServer(holder);
+  }
+  await Promise.all([assertPortClosed(5173), assertPortClosed(8788)]);
+  return {
+    occupied_port: occupiedPort,
+    unrelated_listener_preserved: true,
+    actionable_guidance_verified: true,
+    partial_start_cleanup_verified: true,
+    closed_ports_after_release: true
+  };
 }
 
 async function startStudio(primaryEntry, capabilitiesEnabled, environment) {
@@ -251,7 +355,36 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       error.kind === "console"
       && error.text === "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       && error.url === expectedProbeUrl;
+    let preflightContract;
     if (capabilitiesEnabled) {
+      await page.getByRole("button", { name: /Start DuskDS/i }).click();
+      const preflightButton = page.getByRole("button", { name: "Run automatic preflight" });
+      await preflightButton.waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
+      const expectedPreflightUrl = "http://127.0.0.1:8788/preflight?path=duskds";
+      const preflightResponsePromise = page.waitForResponse(
+        (response) => response.url() === expectedPreflightUrl
+          && response.request().method() === "GET",
+        { timeout: PREFLIGHT_TIMEOUT_MS }
+      );
+      await preflightButton.click();
+      const preflightResponse = await preflightResponsePromise;
+      assert.equal(preflightResponse.status(), 200);
+      preflightContract = await validatePreflightConsumerContract(
+        await readPreflightResponseJson(context, preflightResponse, expectedPreflightUrl),
+        PREFLIGHT_CONSUMER_SOURCE
+      );
+      const preflightResults = page.locator('[aria-label="Automatic preflight results"]');
+      await preflightResults.waitFor({ state: "visible", timeout: PREFLIGHT_TIMEOUT_MS });
+      assert.equal(
+        await preflightResults.locator("article").count(),
+        preflightContract.tool_count,
+        "The exact-package Studio must consume and render every bounded producer tool row."
+      );
+      assert.equal(
+        await page.getByText("The local companion returned data this Studio cannot safely use.", { exact: true }).count(),
+        0,
+        "The exact-package producer response must satisfy the Studio preflight schema."
+      );
       const expectedScaffoldUrl = "http://127.0.0.1:8788/scaffold-duskds-forge";
       const scaffoldResponsePromise = page.waitForResponse(
         (response) =>
@@ -348,6 +481,14 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       paired_ui: expectedMode,
       assets,
       late_abort_telemetry: pairingTransport.lateAbortTelemetry,
+      ...(preflightContract ? {
+        preflight_verified: true,
+        preflight_check_id: PREFLIGHT_CHECK_ID,
+        preflight_tool_count: preflightContract.tool_count,
+        preflight_versioned_tool_count: preflightContract.versioned_tool_count,
+        preflight_consumer_contract_source_sha256:
+          preflightContract.consumer_contract_source_sha256
+      } : {}),
       ...(createdProjectPath ? { scaffold_verified: true } : {})
     };
   } finally {
@@ -427,8 +568,22 @@ try {
       [primaryEntry, "create-duskds", "installed-cli-counter"],
       { cwd: cliProjectParent, capture: true }
     ),
-    /existing target|already exists/iu
+    (error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      assert.match(message, /will not overwrite or merge it/iu);
+      assert.match(message, /new project name or a different empty parent directory/iu);
+      assert.doesNotMatch(message, /running Local Studio/iu);
+      return true;
+    }
   );
+  const fixedPortConflicts = [];
+  for (const occupiedPort of [5173, 8788]) {
+    fixedPortConflicts.push(await exerciseFixedPortConflict(
+      primaryEntry,
+      path.join(root, `port-${occupiedPort}-conflict-home`),
+      occupiedPort
+    ));
+  }
   browser = await chromium.launch({ channel: "chrome", headless: true });
   const browserVersion = browser.version();
   const modes = [];
@@ -456,12 +611,20 @@ try {
     local_actions_scaffold_verified: modes.some((mode) =>
       mode.mode === "local-actions" && mode.scaffold_verified === true
     ),
+    local_actions_preflight_verified: modes.some((mode) =>
+      mode.mode === "local-actions" && mode.preflight_verified === true
+    ),
+    local_actions_preflight_check_id: PREFLIGHT_CHECK_ID,
+    local_actions_preflight_consumer_contract_source_sha256: modes.find((mode) =>
+      mode.mode === "local-actions"
+    )?.preflight_consumer_contract_source_sha256,
     scaffold_preserved_after_shutdown: modes.some((mode) =>
       mode.mode === "local-actions" && mode.project_preserved_after_shutdown === true
     ),
     studio_shutdown_verified: modes.some((mode) =>
       mode.mode === "local-actions" && mode.studio_shutdown_verified === true
     ),
+    fixed_port_conflicts: fixedPortConflicts,
     modes
   };
   const receiptPath = argumentsByName.get("--receipt");

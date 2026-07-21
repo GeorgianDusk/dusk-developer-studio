@@ -4,6 +4,40 @@ import { App } from "../app/App";
 import { createInitialJourneyProgress, JOURNEY_PROGRESS_STORAGE_KEY, recordJourneyEvidence } from "../app/journeyProgress";
 import { DUSK_STUDIO_NPM_PACKAGE_VERSION } from "../app/manualJourneyConfig";
 
+function progressThroughDuskDsAccess() {
+  let progress = recordJourneyEvidence(
+    createInitialJourneyProgress(),
+    "duskds",
+    "setup",
+    ["duskds-required-preflight"],
+    { method: "manual" }
+  );
+  progress = recordJourneyEvidence(
+    progress,
+    "duskds",
+    "access",
+    ["duskds-node-read-attestation"],
+    {
+      method: "manual",
+      metadata: {
+        blockHeight: 1,
+        blockHash: "f".repeat(64)
+      }
+    }
+  );
+  return progress;
+}
+
+function progressThroughDuskDsBuild(revision: string) {
+  return recordJourneyEvidence(
+    progressThroughDuskDsAccess(),
+    "duskds",
+    "build",
+    ["duskds-starter-structure", "duskds-build-artifact-attestation", "duskds-vm-test-attestation"],
+    { method: "manual", metadata: { revision } }
+  );
+}
+
 describe("Phase 2 evidence journeys", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -29,6 +63,8 @@ describe("Phase 2 evidence journeys", () => {
 
     expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
     expect(screen.getByText("No live evidence is recorded")).toBeInTheDocument();
+    expect(screen.getByText("https://rpc.testnet.evm.dusk.network")).toBeVisible();
+    expect(screen.getByRole("link", { name: /Official docs source/ })).toHaveAttribute("href", "https://github.com/dusk-network/docs");
     expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
     expect(provider.request).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account");
@@ -56,9 +92,20 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.change(input, { target: { value: "not-an-identifier" } });
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toHaveAccessibleDescription(/Unrecognized shape/);
+    fireEvent.change(input, { target: { value: "0x01" } });
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(input).toHaveAccessibleDescription(/canonical unsigned JSON-RPC quantity/);
   });
 
   it("requires bounded manual values before recording a terminal observation", async () => {
+    const progress = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "setup",
+      ["duskds-required-preflight"],
+      { method: "automatic" }
+    );
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#access";
     render(<App />);
@@ -70,6 +117,222 @@ describe("Phase 2 evidence journeys", () => {
     await waitFor(() => expect(screen.getByText("Confirmed manually", { selector: ".done-panel .status-pill" })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText(/DuskDS Access confirmed manually/)).toBeInTheDocument());
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)).toContain("duskds-node-read-attestation");
+  });
+
+  it("identifies and focuses the invalid manual Access field", async () => {
+    const progress = recordJourneyEvidence(
+      createInitialJourneyProgress(),
+      "duskds",
+      "setup",
+      ["duskds-required-preflight"],
+      { method: "automatic" }
+    );
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#access";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark Deno as checked" }));
+    fireEvent.change(screen.getByLabelText("Block height"), { target: { value: "-1" } });
+    fireEvent.change(screen.getByLabelText("Block hash"), { target: { value: "xyz" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual node observation" }));
+
+    const height = screen.getByLabelText("Block height");
+    expect(height).toHaveAttribute("aria-invalid", "true");
+    expect(height).toHaveAccessibleDescription(/non-negative block height/);
+    await waitFor(() => expect(height).toHaveFocus());
+  });
+
+  it("identifies and focuses the first invalid Build artifact field", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
+    window.location.hash = "#build";
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cargo.toml is present" }));
+    fireEvent.click(screen.getByRole("button", { name: /rust-toolchain\.toml pins/ }));
+    fireEvent.change(screen.getByLabelText("Source identity"), { target: { value: "a".repeat(40) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual structure confirmation" }));
+    const saveArtifacts = screen.getByRole("button", { name: "Save manual artifact evidence" });
+    await waitFor(() => expect(saveArtifacts).toBeEnabled());
+    fireEvent.click(saveArtifacts);
+
+    const contractFilename = screen.getAllByLabelText("Filename")[0];
+    await waitFor(() => expect(contractFilename).toHaveAttribute("aria-invalid", "true"));
+    expect(contractFilename).toHaveAccessibleDescription(/Contract artifact must be a WASM basename/);
+    await waitFor(() => expect(contractFilename).toHaveFocus());
+  });
+
+  it("associates and focuses invalid Inspect block and source fields", async () => {
+    const buildRevision = "b".repeat(40);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsBuild(buildRevision)));
+    window.location.hash = "#inspect";
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save manual block observation" }));
+    const height = screen.getByLabelText("Block height");
+    expect(height).toHaveAttribute("aria-invalid", "true");
+    expect(height).toHaveAccessibleDescription(/non-negative block height/);
+    await waitFor(() => expect(height).toHaveFocus());
+
+    fireEvent.click(screen.getByRole("button", { name: "Save source match" }));
+    const revision = screen.getByLabelText("Artifact source identity");
+    expect(revision).toHaveAttribute("aria-invalid", "true");
+    expect(revision).toHaveAccessibleDescription(/full 40- or 64-character Git tree or commit ID/);
+    await waitFor(() => expect(revision).toHaveFocus());
+  });
+
+  it("requires a clean existing repository before binding its full commit identity", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
+    window.location.hash = "#build";
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    fireEvent.change(screen.getByLabelText("Existing project root"), { target: { value: "/home/dev/existing-duskds" } });
+    const sourceCommand = screen.getByRole("heading", { name: "Initial clean-tree check + full commit" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(sourceCommand).toContain("git status --porcelain=v1 --untracked-files=all");
+    expect(sourceCommand).toContain("git rev-parse --verify HEAD");
+    expect(sourceCommand).toContain("tracked or untracked changes");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cargo.toml is present" }));
+    fireEvent.click(screen.getByRole("button", { name: /rust-toolchain\.toml pins/ }));
+    fireEvent.change(screen.getByLabelText("Source identity"), { target: { value: "a".repeat(40) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual structure confirmation" }));
+
+    const cleanConfirmation = screen.getByRole("button", { name: /Initial git status reported no tracked or untracked changes/ });
+    expect(screen.getByRole("alert")).toHaveTextContent(/no tracked or untracked changes/);
+    await waitFor(() => expect(cleanConfirmation).toHaveFocus());
+
+    fireEvent.click(cleanConfirmation);
+    fireEvent.click(screen.getByRole("button", { name: "Save manual structure confirmation" }));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+      expect(stored.paths.duskds.build.evidenceEntries.find(
+        (entry) => entry.code === "duskds-starter-structure"
+      )?.metadata).toMatchObject({ revision: "a".repeat(40), cleanTree: true, checkCount: 3 });
+    });
+  });
+
+  it("requires a same-commit clean-tree recheck after existing-project build, test, and hashing", async () => {
+    const revision = "a".repeat(40);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
+    window.location.hash = "#build";
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    fireEvent.change(screen.getByLabelText("Existing project root"), { target: { value: "/home/dev/existing-duskds" } });
+    fireEvent.click(screen.getByRole("button", { name: "Cargo.toml is present" }));
+    fireEvent.click(screen.getByRole("button", { name: /rust-toolchain\.toml pins/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Initial git status reported no tracked or untracked changes/ }));
+    fireEvent.change(screen.getByLabelText("Source identity"), { target: { value: revision } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual structure confirmation" }));
+
+    const finalCommand = screen.getByRole("heading", { name: "Revalidate the exact Git source before saving" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(finalCommand).toContain(`expectedRevision='${revision}'`);
+    expect(finalCommand).toContain("git status --porcelain=v1 --untracked-files=all");
+    expect(finalCommand).toContain("git rev-parse --verify HEAD");
+    expect(finalCommand).toContain("HEAD changed after the initial check");
+    expect(screen.getByText(/ignored local files are not covered and must not influence the build/i)).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Artifact source identity"), { target: { value: revision } });
+    const names = screen.getAllByLabelText("Filename");
+    const hashes = screen.getAllByLabelText("SHA-256");
+    const sizes = screen.getAllByLabelText("Size in bytes");
+    fireEvent.change(names[0], { target: { value: "counter-contract.wasm" } });
+    fireEvent.change(hashes[0], { target: { value: "b".repeat(64) } });
+    fireEvent.change(sizes[0], { target: { value: "1234" } });
+    fireEvent.change(names[1], { target: { value: "counter-data-driver.wasm" } });
+    fireEvent.change(hashes[1], { target: { value: "c".repeat(64) } });
+    fireEvent.change(sizes[1], { target: { value: "2345" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save manual artifact evidence" }));
+    const finalConfirmation = screen.getByRole("button", { name: /I ran the final Git source check/ });
+    expect(screen.getByRole("alert")).toHaveTextContent(/final Git source check after building, testing, and hashing/);
+    await waitFor(() => expect(finalConfirmation).toHaveFocus());
+
+    fireEvent.click(finalConfirmation);
+    fireEvent.click(screen.getByRole("button", { name: "Save manual artifact evidence" }));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as ReturnType<typeof createInitialJourneyProgress>;
+      expect(stored.paths.duskds.build.evidenceEntries.find(
+        (entry) => entry.code === "duskds-build-artifact-attestation"
+      )?.metadata).toMatchObject({
+        revision,
+        postBuildSourceCheck: true,
+        sourceScope: "git-commit-plus-unignored-working-tree"
+      });
+    });
+  });
+
+  it("marks and focuses a Build revision that disagrees with its saved structure", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
+    window.location.hash = "#build";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cargo.toml is present" }));
+    fireEvent.click(screen.getByRole("button", { name: /rust-toolchain\.toml pins/ }));
+    fireEvent.change(screen.getByLabelText("Source identity"), { target: { value: "a".repeat(40) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual structure confirmation" }));
+
+    fireEvent.change(screen.getByLabelText("Artifact source identity"), { target: { value: "b".repeat(40) } });
+    const names = screen.getAllByLabelText("Filename");
+    const hashes = screen.getAllByLabelText("SHA-256");
+    const sizes = screen.getAllByLabelText("Size in bytes");
+    fireEvent.change(names[0], { target: { value: "counter-contract.wasm" } });
+    fireEvent.change(hashes[0], { target: { value: "c".repeat(64) } });
+    fireEvent.change(sizes[0], { target: { value: "1234" } });
+    fireEvent.change(names[1], { target: { value: "counter-driver.wasm" } });
+    fireEvent.change(hashes[1], { target: { value: "d".repeat(64) } });
+    fireEvent.change(sizes[1], { target: { value: "2345" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save manual artifact evidence" }));
+
+    const artifactRevision = screen.getByLabelText("Artifact source identity");
+    expect(artifactRevision).toHaveAttribute("aria-invalid", "true");
+    expect(artifactRevision).toHaveAccessibleDescription(/same source identity saved in the manual structure/);
+    await waitFor(() => expect(artifactRevision).toHaveFocus());
+  });
+
+  it("keeps Access checks disabled until Setup has a truthful disposition", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#access";
+    render(<App />);
+
+    expect(screen.getByText("Complete or skip Setup first")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run hosted safe check" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark Deno as checked" }));
+    expect(screen.getByRole("button", { name: "Save manual node observation" })).toBeDisabled();
+    expect(screen.getByText("Complete or skip Setup before saving Access evidence.")).toBeInTheDocument();
+  });
+
+  it("keeps Build and Inspect evidence actions disabled until their preceding steps have a truthful disposition", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#build";
+    const build = render(<App />);
+
+    expect(screen.getByText("Complete or skip Access first")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save manual structure confirmation" })).toBeDisabled();
+    expect(screen.getByText("Complete or skip Access before saving Build evidence.")).toBeInTheDocument();
+
+    build.unmount();
+    window.location.hash = "#inspect";
+    render(<App />);
+    expect(screen.getByText("Complete or skip Build first")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read latest block" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+    expect(screen.getByRole("button", { name: "Save manual block observation" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save source match" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save availability confirmation" })).toBeDisabled();
   });
 
   it("surfaces the conditional Ubuntu VM-test lane during Windows Setup", () => {
@@ -88,6 +351,29 @@ describe("Phase 2 evidence journeys", () => {
       && content.includes("wsl -d Ubuntu-24.04 -- true"))).toBeInTheDocument();
     expect(within(wslRow!).getByText((content, element) => element?.tagName === "PRE"
       && content.includes("dusk-forge-cli[[:space:]]+v?0\\.1\\.0.*d1e39a16ad5e2cd0675c7aafa6e2c459310bcb1a"))).toBeInTheDocument();
+  });
+
+  it("offers one copy action for all required Setup checks without hiding per-tool recovery", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#setup";
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Copy all required Setup check commands" })).toBeInTheDocument();
+    expect(screen.getAllByText("Commands and expected result")).toHaveLength(6);
+  });
+
+  it("gives every revealed tool-help link a descriptive accessible name", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.location.hash = "#setup";
+    render(<App />);
+
+    const gitRow = screen.getByText("Git", { selector: "strong" }).closest("article");
+    expect(gitRow).not.toBeNull();
+    fireEvent.click(within(gitRow!).getByText("Commands and expected result"));
+    expect(within(gitRow!).getByRole("link", { name: /Git installation and help/ })).toHaveAttribute(
+      "href",
+      "https://git-scm.com/downloads"
+    );
   });
 
   it("gives the manual W3sper lane explicit folder and file creation steps", () => {
@@ -109,7 +395,12 @@ describe("Phase 2 evidence journeys", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
 
+    expect(screen.getByText("Required before Prepare project")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Check the Node runtime used by npm" })).toBeInTheDocument();
     expect(screen.getByText((content, element) => element?.tagName === "PRE"
+      && content.includes(`dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`))).toBeInTheDocument();
+    expect(screen.getByText((content, element) => element?.tagName === "PRE"
+      && content.includes("Node.js >=24.18.0 <25 is required before starter creation.")
       && content.includes(`dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`))).toBeInTheDocument();
     expect(screen.getByText((content, element) => element?.tagName === "PRE"
       && content.includes("rustup run ''1.94.0'' \"$forgeExe\" test"))).toBeInTheDocument();
@@ -119,6 +410,11 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.change(screen.getByLabelText("Existing project root"), { target: { value: "C:\\work\\existing-duskds" } });
     expect(screen.getByText((content, element) => element?.tagName === "PRE"
       && content.includes("cd ''/mnt/c/work/existing-duskds''; rustup run ''1.94.0'' \"$forgeExe\" test"))).toBeInTheDocument();
+    const sourceRevision = screen.getByRole("heading", { name: "Initial clean-tree check + full commit" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(sourceRevision).toContain("git status --porcelain=v1 --untracked-files=all");
+    expect(sourceRevision).toContain("git rev-parse --verify HEAD");
+    expect(sourceRevision).toContain("tracked or untracked changes");
   });
 
   it("renders fail-closed self-contained project and artifact command blocks", () => {
@@ -128,6 +424,8 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
 
     const prepare = screen.getByRole("heading", { name: "Prepare project" }).parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(prepare).toContain("Node.js >=24.18.0 <25 is required before starter creation.");
+    expect(prepare.indexOf("process.versions.node")).toBeLessThan(prepare.indexOf("New-Item"));
     expect(prepare).toContain(`npx.cmd --yes dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`);
     expect(prepare).toContain("Reviewed DuskDS template creation failed; no existing target was overwritten.");
     expect(prepare).not.toContain("$forgeReceipt");
@@ -171,6 +469,7 @@ describe("Phase 2 evidence journeys", () => {
 
   it("records macOS evidence exactly but withholds native VM-test evidence controls", async () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
     window.location.hash = "#build";
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "macOS shell" }));
@@ -276,6 +575,14 @@ describe("Phase 2 evidence journeys", () => {
   it.each(["Linux shell", "macOS shell"])(
     "clears all Windows Access inputs and confirmations when switching to %s",
     async (targetPlatform) => {
+      const progress = recordJourneyEvidence(
+        createInitialJourneyProgress(),
+        "duskds",
+        "setup",
+        ["duskds-required-preflight"],
+        { method: "automatic" }
+      );
+      window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
       window.localStorage.setItem("dusk-studio-builder-path", "duskds");
       window.location.hash = "#access";
       render(<App />);
@@ -412,6 +719,7 @@ describe("Phase 2 evidence journeys", () => {
   it("removes only VM evidence when its toggle is cleared and allows a fresh resave", async () => {
     const revision = "a".repeat(40);
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsAccess()));
     window.location.hash = "#build";
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
@@ -579,15 +887,9 @@ describe("Phase 2 evidence journeys", () => {
     expect(screen.getByRole("button", { name: "Return to DuskDS at Inspect" })).toHaveTextContent("4/4 complete");
   });
 
-  it("rejects an Inspect source identity that does not match Build", () => {
+  it("rejects and focuses an Inspect source identity that does not match Build", async () => {
     const revision = "a".repeat(40);
-    let progress = recordJourneyEvidence(
-      createInitialJourneyProgress(),
-      "duskds",
-      "build",
-      ["duskds-starter-structure", "duskds-build-artifact-attestation", "duskds-vm-test-attestation"],
-      { metadata: { revision } }
-    );
+    let progress = progressThroughDuskDsBuild(revision);
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
     window.location.hash = "#inspect";
@@ -596,20 +898,70 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.change(screen.getByLabelText("Artifact source identity"), { target: { value: "b".repeat(40) } });
     fireEvent.click(screen.getByRole("button", { name: "Save source match" }));
 
+    const sourceIdentity = screen.getByLabelText("Artifact source identity");
     expect(screen.getByRole("alert")).toHaveTextContent("same source identity recorded for both Build artifacts and the VM test");
+    expect(sourceIdentity).toHaveAttribute("aria-invalid", "true");
+    expect(sourceIdentity).toHaveAccessibleDescription(/same source identity recorded for both Build artifacts and the VM test/);
+    await waitFor(() => expect(sourceIdentity).toHaveFocus());
     progress = JSON.parse(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "{}") as typeof progress;
     expect(progress.paths.duskds.inspect.evidence).not.toContain("duskds-inspect-artifact-revision");
   });
 
+  it("associates every data-driver validation failure with the field or confirmation that can fix it", async () => {
+    const revision = "a".repeat(40);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progressThroughDuskDsBuild(revision)));
+    window.location.hash = "#inspect";
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save availability confirmation" }));
+    const sourceIdentity = screen.getByLabelText("Artifact source identity");
+    expect(sourceIdentity).toHaveAttribute("aria-invalid", "true");
+    await waitFor(() => expect(sourceIdentity).toHaveFocus());
+
+    fireEvent.change(sourceIdentity, { target: { value: revision } });
+    fireEvent.click(screen.getByRole("button", { name: "Save source match" }));
+    const availabilityToggle = screen.getByRole("button", { name: "I observed driver_available: true in contract metadata" });
+    fireEvent.click(availabilityToggle);
+    fireEvent.change(screen.getByLabelText("Metadata response SHA-256"), { target: { value: "b".repeat(64) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save availability confirmation" }));
+
+    const contractId = screen.getByLabelText("Deployed contract ID");
+    expect(contractId).toHaveAttribute("aria-invalid", "true");
+    expect(contractId).toHaveAccessibleDescription(/deployed 32-byte contract ID/);
+    await waitFor(() => expect(contractId).toHaveFocus());
+
+    fireEvent.change(contractId, { target: { value: "c".repeat(64) } });
+    fireEvent.click(availabilityToggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save availability confirmation" }));
+    const availabilityDigest = screen.getByLabelText("Metadata response SHA-256");
+    expect(availabilityDigest).toHaveAttribute("aria-invalid", "true");
+    expect(availabilityDigest).toHaveAccessibleDescription(/SHA-256 of the exact response body/);
+    await waitFor(() => expect(availabilityDigest).toHaveFocus());
+
+    fireEvent.change(availabilityDigest, { target: { value: "d".repeat(64) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save availability confirmation" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save schema confirmation" })).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Save schema confirmation" }));
+    const schemaToggle = screen.getByRole("button", { name: "I observed a non-empty schema" });
+    expect(schemaToggle).toHaveAttribute("aria-invalid", "true");
+    expect(schemaToggle).toHaveAccessibleDescription(/Confirm the schema result/);
+    await waitFor(() => expect(schemaToggle).toHaveFocus());
+
+    const encodeToggle = screen.getByRole("button", { name: "I observed valid input encoding" });
+    fireEvent.click(encodeToggle);
+    fireEvent.change(screen.getByLabelText("Encode response SHA-256"), { target: { value: "e".repeat(64) } });
+    fireEvent.click(screen.getByRole("button", { name: "Save encode confirmation" }));
+    const functionName = screen.getByLabelText("Function name for encode / decode");
+    expect(functionName).toHaveAttribute("aria-invalid", "true");
+    expect(functionName).toHaveAccessibleDescription(/exact contract function name/);
+    await waitFor(() => expect(functionName).toHaveFocus());
+  });
+
   it("requires matching contract metadata before accepting driver observations", async () => {
     const revision = "a".repeat(40);
-    let progress = recordJourneyEvidence(
-      createInitialJourneyProgress(),
-      "duskds",
-      "build",
-      ["duskds-starter-structure", "duskds-build-artifact-attestation", "duskds-vm-test-attestation"],
-      { metadata: { revision } }
-    );
+    let progress = progressThroughDuskDsBuild(revision);
     progress = recordJourneyEvidence(
       progress,
       "duskds",

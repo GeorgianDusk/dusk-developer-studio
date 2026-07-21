@@ -36,7 +36,7 @@ afterEach(async () => {
 });
 
 describe("npm local static server", () => {
-  it("serves hardened files and completes a one-time same-origin bootstrap", async () => {
+  it("serves preliminary GET and HEAD requests without consuming the one-time same-origin bootstrap", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-")); roots.push(root);
     await fs.writeFile(path.join(root, "index.html"), "<title>Local</title>");
     let observedToken = "";
@@ -50,6 +50,9 @@ describe("npm local static server", () => {
     expect(page.headers["content-security-policy"]).toContain(`http://localhost:${companionPort}`);
     expect(page.headers["content-security-policy"]).toContain("https://testnet.nodes.dusk.network");
     expect(page.headers["cache-control"]).toBe("no-store");
+    const head = await request(port, { method: "HEAD" });
+    expect(head.status).toBe(200);
+    expect(head.body).toBe("");
     const denied = await request(port, { method: "POST", path: "/__dusk/bootstrap", origin: "https://attacker.example", contentType: "application/json" });
     expect(denied.status).toBe(403); expect(observedToken).toBe("");
     const origin = `http://127.0.0.1:${port}`;
@@ -89,6 +92,20 @@ describe("npm local static server", () => {
     const page = await request(port, { host });
     expect(page.status).toBe(200);
     expect(page.headers["content-security-policy"]).toContain(`http://localhost:${companionPort}`);
+    expect((await request(port, {
+      method: "POST",
+      path: "/__dusk/bootstrap",
+      host: `127.0.0.1:${port}`,
+      origin,
+      contentType: "application/json"
+    })).status).toBe(403);
+    expect((await request(port, {
+      method: "POST",
+      path: "/__dusk/bootstrap",
+      host,
+      origin: `http://127.0.0.1:${port}`,
+      contentType: "application/json"
+    })).status).toBe(403);
     const paired = await request(port, { method: "POST", path: "/__dusk/bootstrap", host, origin, contentType: "application/json" });
     expect(paired.status).toBe(200);
     expect(paired.headers["set-cookie"]?.[0]).toContain("HttpOnly");

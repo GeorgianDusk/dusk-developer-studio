@@ -51,6 +51,8 @@ describe("journey progress", () => {
 
   it("uses manual completion semantics when a step combines automatic and manual evidence", () => {
     let state = createInitialJourneyProgress();
+    state = recordJourneyEvidence(state, "duskds", "setup", ["duskds-required-preflight"], { method: "automatic" });
+    state = recordJourneyEvidence(state, "duskds", "access", ["duskds-node-read-attestation"], { method: "automatic" });
     state = recordJourneyEvidence(
       state,
       "duskds",
@@ -66,7 +68,30 @@ describe("journey progress", () => {
       { method: "manual", observedAt: "2026-07-14T10:05:00.000Z" }
     );
     expect(state.paths.duskds.build.status).toBe("confirmed-manually");
-    expect(getEvidenceProvenanceCounts(state, "duskds")).toEqual({ automatic: 1, manual: 2, total: 3 });
+    expect(getEvidenceProvenanceCounts(state, "duskds")).toEqual({ automatic: 3, manual: 2, total: 5 });
+  });
+
+  it("retains out-of-order evidence without completing or unlocking dependent steps", () => {
+    let state = createInitialJourneyProgress();
+    state = recordJourneyEvidence(
+      state,
+      "duskds",
+      "access",
+      ["duskds-node-read-attestation"],
+      { method: "automatic", observedAt: "2026-07-20T17:27:12.053Z" }
+    );
+
+    expect(state.paths.duskds.setup.status).toBe("ready");
+    expect(state.paths.duskds.access.status).toBe("not-started");
+    expect(state.paths.duskds.access.evidence).toEqual(["duskds-node-read-attestation"]);
+    expect(state.paths.duskds.build.status).toBe("not-started");
+    expect(getJourneyCompletionCounts(state, "duskds").completed).toBe(0);
+
+    state = recordJourneyEvidence(state, "duskds", "setup", ["duskds-required-preflight"]);
+
+    expect(state.paths.duskds.setup.status).toBe("confirmed-manually");
+    expect(state.paths.duskds.access.status).toBe("passed-automatically");
+    expect(state.paths.duskds.build.status).toBe("ready");
   });
 
   it("migrates legacy browser records without treating attestations as automatic checks", () => {
@@ -84,7 +109,7 @@ describe("journey progress", () => {
         }
       }
     }));
-    expect(parsed.paths.duskds.access.status).toBe("confirmed-manually");
+    expect(parsed.paths.duskds.access.status).toBe("not-started");
     expect(parsed.paths.duskds.access.evidence).toEqual(["duskds-node-read-attestation"]);
     expect(parsed.paths.duskds.access.evidenceEntries).toEqual([{
       code: "duskds-node-read-attestation",
@@ -115,7 +140,7 @@ describe("journey progress", () => {
                 source: "companion",
                 tool: "rustc",
                 version: "1.94.0",
-                revision: "ABCDEF1234567",
+                revision: "ABCDEF1234567".padEnd(40, "A"),
                 checkCount: 101,
                 blockHeight: 98765,
                 blockHash: `0x${"a".repeat(64)}`,
@@ -132,7 +157,7 @@ describe("journey progress", () => {
       source: "companion",
       tool: "rustc",
       version: "1.94.0",
-      revision: "abcdef1234567",
+      revision: "abcdef1234567".padEnd(40, "a"),
       blockHeight: 98765,
       blockHash: `0x${"a".repeat(64)}`,
       endpoint: "https://nodes.dusk.network"

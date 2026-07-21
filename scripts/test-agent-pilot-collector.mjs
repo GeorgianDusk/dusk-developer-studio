@@ -76,7 +76,7 @@ function createTar(files) {
 
 async function createFixtureTarball(file, commit, overrides = {}) {
   const packageName = "dusk-developer-studio";
-  const packageVersion = "1.0.1";
+  const packageVersion = policy.npm_distribution.package_version;
   const ordinaryFiles = new Map([
     ["fixture.txt", Buffer.from("fixture candidate\n", "utf8")],
     [
@@ -109,14 +109,13 @@ async function createFixtureTarball(file, commit, overrides = {}) {
   ].sort((left, right) => left[0].localeCompare(right[0], "en"));
   const bytes = gzipSync(createTar(allFiles), { mtime: 0 });
   await fs.writeFile(file, bytes);
-  const inventoryPaths = allFiles.map(([filePath]) => filePath).sort();
   return {
     package_name: packageName,
     package_version: packageVersion,
     package_commit: commit,
     tarball_sha256: sha256(bytes),
     npm_integrity: integrity(bytes),
-    package_inventory_sha256: sha256(Buffer.from(`${inventoryPaths.join("\n")}\n`, "utf8")),
+    package_inventory_sha256: canonicalSha256(manifestFiles),
     candidate_artifact_fingerprint_sha256: "f".repeat(64)
   };
 }
@@ -293,6 +292,11 @@ try {
   assert.equal(result.phase5_embedding_summary.provenance, null);
   assert.equal(result.receipt.candidate.package_commit, commit);
   assert.equal(result.receipt.candidate.tarball_sha256, candidate.tarball_sha256);
+  assert.equal(
+    result.receipt.candidate.package_inventory_sha256,
+    candidate.package_inventory_sha256
+  );
+  assert.equal(result.receipt.candidate.package_file_count, 2);
   assert.equal(result.receipt.collector.commit, commit);
   assert.equal(result.receipt.collector.path, "scripts/agent-pilot-collector.mjs");
   assert.deepEqual(result.receipt.plan, plan);

@@ -1,0 +1,544 @@
+{
+  "schema_version": 1,
+  "campaign_id": "developer-studio-comprehensive-2026-07-20",
+  "status": "active",
+  "minimum_counted_pilots": 32,
+  "receipt_root": "docs/evidence/comprehensive-validation-receipts",
+  "final_evidence_ledger_paths": [
+    "docs/evidence/comprehensive-validation-evidence-2026-07-20.json",
+    "docs/evidence/comprehensive-validation-receipts/",
+    "docs/quality/comprehensive-validation-report-2026-07-20.md"
+  ],
+  "maximum_future_skew_minutes": 5,
+  "final_evidence_freshness_hours": {
+    "pilot_execution": 168,
+    "defect_retest": 72,
+    "automated_regression": 24,
+    "package_assurance": 24,
+    "registry_verification": 6,
+    "production_verification": 6,
+    "duskds_public_node": 15,
+    "challenge_review": 24
+  },
+  "candidate_tarball_limits": {
+    "maximum_files": 512,
+    "maximum_archive_bytes": 33554432,
+    "maximum_uncompressed_bytes": 33554432
+  },
+  "required_completion_fields": [
+    "all_category_minimums_met",
+    "all_required_surfaces_disposed",
+    "all_confirmed_defects_verified",
+    "exact_package_platform_assurance_complete",
+    "production_verification_complete",
+    "fresh_final_challenge_clear"
+  ],
+  "required_package_platforms": [
+    "windows-x64",
+    "ubuntu-24.04-x64",
+    "macos-15-arm64"
+  ],
+  "native_ci_runner_map": {
+    "windows-x64": "windows-2025",
+    "ubuntu-24.04-x64": "ubuntu-24.04",
+    "macos-15-arm64": "macos-15"
+  },
+  "required_package_checks": [
+    "install",
+    "safe",
+    "local-actions",
+    "create-duskds",
+    "shutdown",
+    "cleanup"
+  ],
+  "required_automation_scopes": [
+    "exact-runtime-local-suite",
+    "browser-e2e-accessibility",
+    "security-contract",
+    "npm-package-contract"
+  ],
+  "required_defect_ids": [
+    "CV-D-001", "CV-D-002", "CV-D-003", "CV-D-004", "CV-D-005", "CV-D-006", "CV-D-007", "CV-D-008",
+    "CV-D-009", "CV-D-010", "CV-D-011", "CV-D-012", "CV-D-013", "CV-D-014", "CV-D-015", "CV-D-016",
+    "CV-D-017", "CV-D-018", "CV-D-019", "CV-D-020", "CV-D-021", "CV-D-022", "CV-D-023", "CV-D-024",
+    "CV-D-025", "CV-D-026", "CV-D-027", "CV-D-028", "CV-D-029", "CV-D-030", "CV-D-031", "CV-D-032",
+    "CV-D-033", "CV-D-034", "CV-D-035", "CV-D-036", "CV-D-037", "CV-D-038", "CV-D-039", "CV-D-040",
+    "CV-D-041", "CV-D-042", "CV-D-043", "CV-D-044", "CV-D-045", "CV-D-046", "CV-D-047", "CV-D-048",
+    "CV-D-049", "CV-D-050", "CV-D-051", "CV-D-052", "CV-D-053", "CV-D-054", "CV-D-055", "CV-D-056",
+    "CV-D-057", "CV-D-058", "CV-D-059", "CV-D-060", "CV-D-061", "CV-D-062", "CV-D-063", "CV-D-064",
+    "CV-D-065", "CV-D-066", "CV-D-067", "CV-D-068", "CV-D-069", "CV-D-070", "CV-D-071", "CV-D-072",
+    "CV-D-073", "CV-D-074", "CV-D-075"
+  ],
+  "required_final_challenge_scopes": [
+    "product-ui-developer-experience",
+    "security-release-evidence-integrity"
+  ],
+  "canonical_identity": {
+    "repository": "GeorgianDusk/dusk-developer-studio",
+    "branch": "main",
+    "baseline_commit": "47c97822969ccf375808887cea6b78ad371a6e8b",
+    "production_url": "https://studio.134-122-59-217.nip.io",
+    "compatibility_url": "https://studio.134-122-59-217.sslip.io",
+    "package_name": "dusk-developer-studio",
+    "baseline_package_version": "1.0.1",
+    "baseline_npm_integrity": "sha512-330geWb6ikRMNWZx/hFmfC15YYtJ6IjarJ0VOGZ7ve6Yfr0qoF1zZl5YARnCvz94fCdgnqOYCl5tpMqatj0Nhw==",
+    "node_engine": ">=24.18.0 <25"
+  },
+  "intended_final_candidate": {
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.2",
+    "repository_tag": "v1.0.2",
+    "assurance_workflow_path": ".github/workflows/studio-npm-package-assurance.yml"
+  },
+  "historical_evidence": {
+    "phase5_counted_pilots": 0,
+    "reason": "The eight Phase 5 simulations are prior regression evidence and are not executions in this campaign."
+  },
+  "evidence_classes": {
+    "black-box-pilot": {
+      "counts_toward_minimum": true,
+      "description": "A fresh Codex-operated clean-state product simulation using only public product information, a persona, and a task."
+    },
+    "automated-regression": {
+      "counts_toward_minimum": false,
+      "description": "Deterministic unit, integration, browser, accessibility, security, or build automation."
+    },
+    "package-lifecycle-smoke": {
+      "counts_toward_minimum": false,
+      "description": "Machine-collected package startup, capability, preservation, shutdown, or platform assurance."
+    },
+    "operator-receipt": {
+      "counts_toward_minimum": false,
+      "description": "Hash-bound machine or operator evidence that is not an independent black-box session."
+    },
+    "challenge-review": {
+      "counts_toward_minimum": false,
+      "description": "A fresh adversarial review of coverage, evidence, defects, or release claims."
+    },
+    "human-research": {
+      "counts_toward_minimum": false,
+      "description": "Reserved for separately recruited external participants; this campaign contains no human-research evidence."
+    }
+  },
+  "category_minimums": {
+    "core-end-to-end": 8,
+    "npm-release": 6,
+    "ui-accessibility-browser": 6,
+    "failure-recovery": 6,
+    "security-containment": 6
+  },
+  "clean_state_requirements": [
+    "isolated npm cache and temporary install location",
+    "fresh browser profile or cleared storage",
+    "normal non-elevated user identity",
+    "isolated project root containing no user project",
+    "recorded port and process baseline",
+    "bounded environment-variable baseline with secrets excluded from evidence",
+    "cleanup and closed-port observation",
+    "no reused local session or pairing value"
+  ],
+  "clean_state_profiles": {
+    "hosted-browser": [
+      "isolated npm cache and temporary install location",
+      "normal non-elevated user identity",
+      "isolated project root containing no user project",
+      "recorded port and process baseline",
+      "bounded environment-variable baseline with secrets excluded from evidence"
+    ],
+    "local-runtime": []
+  },
+  "required_execution_contexts": [
+    "windows-x64",
+    "ubuntu-24.04-wsl2-x64",
+    "ubuntu-24.04-x64",
+    "macos-15-arm64"
+  ],
+  "required_browser_claims": [
+    "chromium-desktop",
+    "firefox-desktop",
+    "webkit-desktop-emulation",
+    "mobile-chrome-emulation",
+    "mobile-safari-webkit-emulation"
+  ],
+  "required_viewports": [
+    "320",
+    "390",
+    "760",
+    "761",
+    "1120",
+    "1121",
+    "1280",
+    "1440"
+  ],
+  "required_product_surfaces": {
+    "ui_routes": [
+      "ui:overview",
+      "ui:setup",
+      "ui:access",
+      "ui:build",
+      "ui:inspect",
+      "ui:reference",
+      "ui:troubleshooting",
+      "ui:companion",
+      "ui:settings"
+    ],
+    "cli_modes": [
+      "cli:safe",
+      "cli:local-actions",
+      "cli:create-duskds",
+      "cli:lifecycle-self-test"
+    ],
+    "local_static_routes": [
+      "static:/__dusk/bootstrap",
+      "static:/healthz",
+      "static:fallback",
+      "static:unsafe-path-refusal"
+    ],
+    "companion_routes": [
+      "companion:/pair",
+      "companion:/health",
+      "companion:/healthz",
+      "companion:/preflight",
+      "companion:/scaffold-duskds-forge",
+      "companion:/scaffold-template-refusal"
+    ],
+    "security_matrix": [
+      "security:ST-01",
+      "security:ST-02",
+      "security:ST-03",
+      "security:ST-04",
+      "security:ST-05",
+      "security:ST-06",
+      "security:ST-07",
+      "security:ST-08",
+      "security:ST-09",
+      "security:ST-10",
+      "security:ST-11",
+      "security:ST-12",
+      "security:ST-13",
+      "security:ST-14",
+      "security:ST-15",
+      "security:ST-16",
+      "security:ST-17",
+      "security:ST-18",
+      "security:ST-19",
+      "security:ST-20",
+      "security:ST-21"
+    ]
+  },
+  "severity_crosswalk": {
+    "P0": "Critical",
+    "P1": "High",
+    "P2": "Medium",
+    "P3": "Low but reproducible or materially contrary to the product contract",
+    "enhancement": "Non-defect improvement that does not contradict an existing promise"
+  },
+  "security_stop_conditions": [
+    "credible secret exposure",
+    "non-loopback public listener",
+    "authentication or session bypass",
+    "arbitrary command execution",
+    "package integrity failure",
+    "filesystem containment escape"
+  ],
+  "revalidation_triggers": [
+    "source commit changes",
+    "package bytes, inventory, version, or provenance changes",
+    "static artifact or production release changes",
+    "validation policy or security contract changes",
+    "supported operating system, architecture, Node, or browser claim changes",
+    "source freshness expires",
+    "DuskDS public node evidence exceeds 15 hours",
+    "TLS, monitoring, or rollback evidence exceeds its policy window"
+  ],
+  "pilots": [
+    {
+      "id": "CV-CORE-01",
+      "category": "core-end-to-end",
+      "clean_state_profile": "hosted-browser",
+      "persona": "First-time Windows developer who has never built on Dusk",
+      "task": "Use the production website to choose DuskDS, complete the manual hosted journey as far as honestly possible, recover from one failed prerequisite, and explain the next real-world action.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["overview", "setup", "access", "build", "inspect", "reference", "troubleshooting"]
+    },
+    {
+      "id": "CV-CORE-02",
+      "category": "core-end-to-end",
+      "clean_state_profile": "local-runtime",
+      "persona": "Experienced Windows and WSL DuskDS developer",
+      "task": "Install the public package in Local Actions mode and complete the entire DuskDS Setup to Access to Build to deployment-readiness to Inspect journey through the UI, using an isolated project and real evidence.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["local-actions", "setup", "access", "build", "inspect", "ubuntu-24.04-wsl2-x64"]
+    },
+    {
+      "id": "CV-CORE-03",
+      "category": "core-end-to-end",
+      "clean_state_profile": "local-runtime",
+      "persona": "Security-conscious novice local user",
+      "task": "Start in Safe mode, determine its limits, intentionally attempt one unavailable machine action, transition to Local Actions, complete the intended action, and shut down cleanly.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["safe", "local-actions", "companion", "setup"]
+    },
+    {
+      "id": "CV-CORE-04",
+      "category": "core-end-to-end",
+      "clean_state_profile": "local-runtime",
+      "persona": "CLI-oriented Windows developer",
+      "task": "Discover and use the direct create-duskds command in an empty isolated directory, inspect the created project, confirm preservation after shutdown, and clean up.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["create-duskds", "project-preservation", "cleanup"]
+    },
+    {
+      "id": "CV-CORE-05",
+      "category": "core-end-to-end",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Experienced developer protecting an existing repository",
+      "task": "Use the existing-project journey without granting Studio write access, record valid manual evidence, navigate recovery help, and confirm the repository remains unchanged.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["build", "inspect", "troubleshooting", "existing-project-preservation"]
+    },
+    {
+      "id": "CV-CORE-06",
+      "category": "core-end-to-end",
+      "clean_state_profile": "local-runtime",
+      "persona": "Linux-native DuskDS developer",
+      "task": "From a clean Ubuntu environment, run the public package, create the reviewed starter, execute the supported build and VM-test lane, record evidence, shut down, and verify cleanup.",
+      "required_context": "ubuntu-24.04-x64",
+      "required_surfaces": ["local-actions", "create-duskds", "build", "inspect", "cleanup"]
+    },
+    {
+      "id": "CV-CORE-07",
+      "category": "core-end-to-end",
+      "clean_state_profile": "local-runtime",
+      "persona": "macOS arm64 developer evaluating DuskDS",
+      "task": "Run Safe and Local Actions from the public package, complete supported checks and starter creation, verify the native VM-test limitation is truthful, and shut down without residue.",
+      "required_context": "macos-15-arm64",
+      "required_surfaces": ["safe", "local-actions", "setup", "build", "cleanup"]
+    },
+    {
+      "id": "CV-CORE-08",
+      "category": "core-end-to-end",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Solidity developer evaluating DuskEVM before Testnet launch",
+      "task": "Use the production website to understand DuskEVM, inspect all available pre-launch material, classify identifiers, seek wallet and deployment actions, and determine exactly what is and is not live.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["overview", "setup", "access", "build", "inspect", "reference", "troubleshooting"]
+    },
+    {
+      "id": "CV-NPM-01",
+      "category": "npm-release",
+      "clean_state_profile": "local-runtime",
+      "persona": "First-time npm user on supported Windows",
+      "task": "With an empty npm cache, install and start the exact public package, identify the version and release source in the UI, then stop and remove all temporary state.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["npm-first-run", "safe", "settings", "cleanup"]
+    },
+    {
+      "id": "CV-NPM-02",
+      "category": "npm-release",
+      "clean_state_profile": "local-runtime",
+      "persona": "Supply-chain-conscious JavaScript developer",
+      "task": "Independently obtain the public package, verify its registry integrity, provenance, inventory, commit and displayed release identity, then launch only if those facts agree.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["npm-integrity", "npm-provenance", "release-parity"]
+    },
+    {
+      "id": "CV-NPM-03",
+      "category": "npm-release",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer repeating an installation after deleting local caches",
+      "task": "Run the package twice from separately isolated npm caches and browser profiles, compare behavior and identity, then confirm both sessions and ports are gone.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["npm-reinstall", "safe", "shutdown", "closed-ports"]
+    },
+    {
+      "id": "CV-NPM-04",
+      "category": "npm-release",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer with an older unsupported Node 24 installation",
+      "task": "Attempt first run below the supported Node boundary, assess the refusal and recovery guidance, install or select the supported version, and retry successfully.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["node-lower-boundary", "npm-first-run", "recovery"]
+    },
+    {
+      "id": "CV-NPM-05",
+      "category": "npm-release",
+      "clean_state_profile": "local-runtime",
+      "persona": "Release engineer checking Node compatibility boundaries",
+      "task": "Exercise the exact minimum supported Node release and an above-range Node release in isolation, verify success and refusal behavior respectively, and leave no services running.",
+      "required_context": "ubuntu-24.04-x64",
+      "required_surfaces": ["node-lower-boundary", "node-upper-boundary", "shutdown"]
+    },
+    {
+      "id": "CV-NPM-06",
+      "category": "npm-release",
+      "clean_state_profile": "local-runtime",
+      "persona": "Existing user moving from the previous public package version",
+      "task": "Run the previous public version in isolation, stop it, move to the current version without reusing sessions, verify project preservation and release identity, then reinstall the current version once more.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["npm-upgrade", "npm-reinstall", "project-preservation", "release-parity"]
+    },
+    {
+      "id": "CV-UI-01",
+      "category": "ui-accessibility-browser",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Keyboard-only developer using Chrome",
+      "task": "Navigate every production route and all primary controls without a pointer, including empty-result and destructive-confirmation recovery, while checking focus order and announcements.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["chromium-desktop", "all-ui-routes", "keyboard", "focus"]
+    },
+    {
+      "id": "CV-UI-02",
+      "category": "ui-accessibility-browser",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Firefox developer unfamiliar with the Studio",
+      "task": "Complete path selection, manual DuskDS Setup and Access, reference search, troubleshooting, external-doc return, and browser-data reset using Firefox.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["firefox-desktop", "overview", "setup", "access", "reference", "troubleshooting", "settings"]
+    },
+    {
+      "id": "CV-UI-03",
+      "category": "ui-accessibility-browser",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Safari-oriented developer using the WebKit compatibility run",
+      "task": "Exercise all routes, DuskEVM pre-launch behavior, copy controls, forms, disclosures and reset behavior in WebKit, explicitly labelling the result as engine emulation rather than real Safari.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["webkit-desktop-emulation", "all-ui-routes", "forms", "reset"]
+    },
+    {
+      "id": "CV-UI-04",
+      "category": "ui-accessibility-browser",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Developer using a narrow touch device",
+      "task": "Inspect and operate every route at 320, 390, 760 and 761 CSS-pixel widths, checking reflow, overflow, touch targets, sticky controls and long commands.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["mobile-chrome-emulation", "320", "390", "760", "761"]
+    },
+    {
+      "id": "CV-UI-05",
+      "category": "ui-accessibility-browser",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Low-vision developer using desktop zoom",
+      "task": "Operate the full shell and long DuskDS pages at 1120, 1121, 1280 and 1440 widths and at actual 200 percent browser zoom, checking clipping, order, focus visibility and readability.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["chromium-desktop", "1120", "1121", "1280", "1440", "200-percent-zoom"]
+    },
+    {
+      "id": "CV-UI-06",
+      "category": "ui-accessibility-browser",
+      "clean_state_profile": "hosted-browser",
+      "persona": "Developer using high contrast, reduced motion and assistive technology",
+      "task": "Traverse every route with forced colors and reduced motion, inspect the accessibility tree, run route-wide WCAG checks, and verify names, states, status announcements and target sizes.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["forced-colors-emulation", "reduced-motion-emulation", "accessibility-tree", "all-ui-routes"]
+    },
+    {
+      "id": "CV-RES-01",
+      "category": "failure-recovery",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer whose usual frontend port is already occupied",
+      "task": "Start the public package while 127.0.0.1 port 5173 is occupied, assess the refusal, release the port, recover successfully, and confirm independent cleanup.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["port-5173-conflict", "startup-recovery", "closed-ports"]
+    },
+    {
+      "id": "CV-RES-02",
+      "category": "failure-recovery",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer whose local companion port is already occupied",
+      "task": "Start the public package while 127.0.0.1 port 8788 is occupied, assess partial-start cleanup and guidance, release the port, recover, and confirm no orphan process.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["port-8788-conflict", "startup-recovery", "process-cleanup"]
+    },
+    {
+      "id": "CV-RES-03",
+      "category": "failure-recovery",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer on an unstable or offline network",
+      "task": "Use hosted and local DuskDS Access while the node request is unavailable, observe timeout and error states, restore networking, retry, and verify that no false evidence was recorded.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["access", "network-failure", "retry", "evidence-integrity"]
+    },
+    {
+      "id": "CV-RES-04",
+      "category": "failure-recovery",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer who interrupts long-running local work",
+      "task": "Interrupt startup, preflight and starter creation at meaningful points, then verify descendant cleanup, transactional filesystem behavior, project preservation, recovery and port closure.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["interruption", "process-cleanup", "transactional-scaffold", "project-preservation"]
+    },
+    {
+      "id": "CV-RES-05",
+      "category": "failure-recovery",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer with two tabs or launches and a stale local session",
+      "task": "Create concurrent local launches and browser sessions, expire or invalidate one session, attempt overlapping starter operations, recover safely, and confirm one truthful final state.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["concurrency", "stale-session", "pairing", "scaffold-recovery"]
+    },
+    {
+      "id": "CV-RES-06",
+      "category": "failure-recovery",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer with incomplete tools and unusual filesystem conditions",
+      "task": "Exercise missing and incompatible tools, a Unicode project name or parent where supported, and a read-only target, then follow the product recovery guidance without creating partial or misleading evidence.",
+      "required_context": "ubuntu-24.04-wsl2-x64",
+      "required_surfaces": ["missing-tools", "incompatible-tools", "unicode-path", "read-only-path", "recovery"]
+    },
+    {
+      "id": "CV-SEC-01",
+      "category": "security-containment",
+      "clean_state_profile": "local-runtime",
+      "persona": "Web security engineer testing local authentication",
+      "task": "Treat the running local Studio as a black box and attempt hostile Host, Origin, CORS, Private Network Access, bootstrap, pairing, cookie reuse and stale-session requests without obtaining unauthorized capability.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["bootstrap", "pair", "host-origin", "pna", "session"]
+    },
+    {
+      "id": "CV-SEC-02",
+      "category": "security-containment",
+      "clean_state_profile": "local-runtime",
+      "persona": "Filesystem security engineer",
+      "task": "Attempt traversal, absolute/root, link, junction or reparse, reserved-name, unsafe-character and boundary-length project locations against Local Actions and direct CLI using disposable fixtures only.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["path-containment", "link-refusal", "reparse-refusal", "resource-bounds"]
+    },
+    {
+      "id": "CV-SEC-03",
+      "category": "security-containment",
+      "clean_state_profile": "local-runtime",
+      "persona": "Developer protecting existing and read-only data",
+      "task": "Attempt creation over existing files, directories, read-only targets and concurrent targets, then verify no overwrite, merge, outside-root write, partial promotion or user-project mutation occurred.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["overwrite-refusal", "read-only-path", "concurrent-target", "project-preservation"]
+    },
+    {
+      "id": "CV-SEC-04",
+      "category": "security-containment",
+      "clean_state_profile": "local-runtime",
+      "persona": "Application security tester sending hostile inputs",
+      "task": "Probe malformed JSON, oversized bodies, slow or repeated requests, unsupported methods, hostile identifiers and concurrency limits, then confirm bounded failures and continued healthy operation.",
+      "required_context": "ubuntu-24.04-x64",
+      "required_surfaces": ["body-bounds", "rate-limits", "method-refusal", "input-validation", "health"]
+    },
+    {
+      "id": "CV-SEC-05",
+      "category": "security-containment",
+      "clean_state_profile": "local-runtime",
+      "persona": "Security engineer checking diagnostics and child environments",
+      "task": "Seed disposable secret-shaped environment values and hostile local outputs, run allowed checks and diagnostics, and verify secrets, paths, terminal output and file contents are not exposed or persisted.",
+      "required_context": "windows-x64",
+      "required_surfaces": ["secret-redaction", "child-environment", "diagnostics", "browser-storage"]
+    },
+    {
+      "id": "CV-SEC-06",
+      "category": "security-containment",
+      "clean_state_profile": "local-runtime",
+      "persona": "Endpoint security engineer testing process containment",
+      "task": "Cause an allowed tool fixture to create descendant or detached work, trigger timeout and interruption, and independently verify process-tree termination, closed ports, bounded output and filesystem cleanup.",
+      "required_context": "macos-15-arm64",
+      "required_surfaces": ["process-containment", "timeout", "detached-descendants", "closed-ports", "cleanup"]
+    }
+  ]
+}

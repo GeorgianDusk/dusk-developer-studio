@@ -4,6 +4,26 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.2 - 2026-07-21
+
+### Added
+
+- Add comprehensive clean-state campaign evidence, exact surface/outcome traceability, immutable candidate receipts, and a DuskEVM Testnet activation checklist.
+- Add automatic-preflight coverage to the exact-tarball browser smoke and explicit browser/history/accessibility recovery regressions.
+
+### Changed
+
+- Make the DuskDS Setup, Access, Build, deployment-readiness, and Inspect journey more explicit, field-specific, and recoverable across hosted and Local Actions modes.
+- Preserve route-specific builder path and scroll state, canonicalize unavailable DuskEVM steps to its single pre-launch surface, and make every reviewed troubleshooting entry reachable with correct path classification.
+- Require post-build same-commit clean-tree revalidation before existing-repository evidence can be recorded.
+- Improve fixed-port, wrong-profile pairing, unsupported-Node, mobile navigation, and official-documentation recovery guidance.
+
+### Security
+
+- Align automatic-preflight producer output with the Studio's bounded response schema.
+- Bind final campaign claims to unique typed receipt evidence and derive clean source, tag, tarball, registry, and production identity at the final gate.
+- Preserve one-use pairing, exact Host/Origin matching, constrained local actions, closed-port cleanup, and project-preservation guarantees in exact-package tests.
+
 ## 1.0.1 - 2026-07-20
 
 ### Added

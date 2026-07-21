@@ -47,8 +47,14 @@ function validHost(host: string | undefined, port: number): boolean {
   return host?.toLowerCase() === `${HOST}:${port}` || host?.toLowerCase() === `localhost:${port}`;
 }
 
-function validBootstrapOrigin(origin: string | undefined, port: number): boolean {
-  return origin === `http://${HOST}:${port}` || origin === `http://localhost:${port}`;
+function validBootstrapOrigin(origin: string | undefined, host: string | undefined, port: number): boolean {
+  const normalizedHost = host?.toLowerCase();
+  return Boolean(
+    origin
+    && normalizedHost
+    && validHost(normalizedHost, port)
+    && origin.toLowerCase() === `http://${normalizedHost}`
+  );
 }
 
 async function proxyPair(
@@ -160,7 +166,7 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
         if (request.method !== "POST") { sendJson(response, 405, { ok: false, code: "method_denied" }, options.companionPort, { allow: "POST" }); return; }
         const origin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
         const contentType = request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
-        if (!validBootstrapOrigin(origin, listeningPort) || contentType !== "application/json" || request.headers["sec-fetch-site"] === "cross-site") {
+        if (!validBootstrapOrigin(origin, request.headers.host, listeningPort) || contentType !== "application/json" || request.headers["sec-fetch-site"] === "cross-site") {
           sendJson(response, 403, { ok: false, code: "bootstrap_denied" }, options.companionPort); return;
         }
         if (now() > bootstrapExpiresAt) bootstrapState = "burned";

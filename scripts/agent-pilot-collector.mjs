@@ -362,6 +362,7 @@ function validateManifestFiles(records, manifest) {
   if (canonicalJson(actual) !== canonicalJson(manifest.files)) {
     throw new Error("The tarball bytes do not exact-match the embedded package manifest.");
   }
+  return actual;
 }
 
 export async function inspectPilotTarball(tarballPath, expectedCandidate) {
@@ -412,10 +413,8 @@ export async function inspectPilotTarball(tarballPath, expectedCandidate) {
   ) {
     throw new Error("The embedded npm package identity does not match the exact pilot candidate.");
   }
-  validateManifestFiles(records, manifest);
-  const packageInventorySha256 = sha256Bytes(
-    Buffer.from(`${records.map((record) => record.path).join("\n")}\n`, "utf8")
-  );
+  const packageInventory = validateManifestFiles(records, manifest);
+  const packageInventorySha256 = canonicalSha256(packageInventory);
   if (packageInventorySha256 !== expectedCandidate.package_inventory_sha256) {
     throw new Error("The npm tarball file inventory does not match the operator-bound candidate.");
   }
@@ -424,7 +423,7 @@ export async function inspectPilotTarball(tarballPath, expectedCandidate) {
     tarball_bytes: tarballBytes.byteLength,
     npm_integrity: npmIntegrity,
     package_inventory_sha256: packageInventorySha256,
-    package_file_count: records.length,
+    package_file_count: packageInventory.length,
     package_name: manifest.package,
     package_version: manifest.version,
     package_commit: manifest.commit,

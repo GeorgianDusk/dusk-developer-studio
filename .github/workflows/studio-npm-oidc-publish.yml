@@ -7,6 +7,7 @@ name: Publish subsequent Studio npm package
 
 permissions:
   contents: read
+  actions: read
   id-token: write
 
 concurrency:
@@ -80,28 +81,44 @@ jobs:
           node-version: 24.18.0
           registry-url: https://registry.npmjs.org
           package-manager-cache: "false"
-      - name: Download the exact candidate exercised by all platform lanes
+      - name: Locate the exact first-attempt main assurance artifact
+        id: main-assurance
+        env:
+          GITHUB_API_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/resolve-main-assurance-artifact.mjs \
+            "--repository=$GITHUB_REPOSITORY" \
+            "--commit=$GITHUB_SHA" \
+            "--workflow=.github/workflows/studio-npm-package-assurance.yml" \
+            "--artifact=$ASSURED_CANDIDATE_ARTIFACT" \
+            "--github-output=$GITHUB_OUTPUT" \
+            "--github-env=$GITHUB_ENV"
+      - name: Download the reviewed main-push candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.main-assurance.outputs.artifact_id }}
+          path: output/main-assurance
+          run-id: ${{ steps.main-assurance.outputs.run_id }}
+          github-token: ${{ github.token }}
+      - name: Download the tag-run candidate exercised by all platform lanes
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ env.ASSURED_CANDIDATE_ARTIFACT }}
-          path: output/npm
-      - name: Bind the direct tarball to assurance
+          path: output/tag-assurance
+      - name: Bind publication to byte-identical main and tag assurance
         run: |
-          node --input-type=module <<'NODE'
-          import { createHash } from "node:crypto";
-          import fs from "node:fs";
-          const candidates = fs.readdirSync("output/npm").filter((file) => file.endsWith(".tgz"));
-          if (candidates.length !== 1 || process.env.ASSURED_CANDIDATE_COMMIT !== process.env.GITHUB_SHA) {
-            throw new Error("OIDC publication did not receive one exact assured candidate.");
-          }
-          const tarball = `output/npm/${candidates[0]}`;
-          const integrity = `sha512-${createHash("sha512").update(fs.readFileSync(tarball)).digest("base64")}`;
-          if (integrity !== process.env.ASSURED_NPM_INTEGRITY
-              || !/^[a-f0-9]{64}$/u.test(process.env.ASSURED_PACKAGE_INVENTORY_SHA256 ?? "")) {
-            throw new Error("OIDC publication tarball or package inventory differs from cross-platform assurance.");
-          }
-          fs.appendFileSync(process.env.GITHUB_ENV, `TARBALL=${tarball}\nLOCAL_NPM_INTEGRITY=${integrity}\n`);
-          NODE
+          test "$ASSURED_CANDIDATE_COMMIT" = "$GITHUB_SHA"
+          PACKAGE_VERSION="${GITHUB_REF_NAME#v}"
+          node scripts/prepublication-candidate-binding.mjs \
+            "--main=output/main-assurance/$ASSURED_CANDIDATE_ARTIFACT" \
+            "--tag=output/tag-assurance/$ASSURED_CANDIDATE_ARTIFACT" \
+            "--main-artifact-digest-sha256=$MAIN_ASSURANCE_ARTIFACT_DIGEST_SHA256" \
+            "--expected-integrity=$ASSURED_NPM_INTEGRITY" \
+            "--expected-inventory-sha256=$ASSURED_PACKAGE_INVENTORY_SHA256" \
+            "--expected-commit=$GITHUB_SHA" \
+            "--expected-name=dusk-developer-studio" \
+            "--expected-version=$PACKAGE_VERSION" \
+            "--github-env=$GITHUB_ENV"
       - name: Determine whether exact package bytes already exist
         id: registry
         run: |
@@ -231,6 +248,15 @@ jobs:
             npm_maintainer: policy.publication.expected_npm_maintainer,
             npm_publisher: policy.publication.expected_oidc_publisher,
             trusted_publisher_id: policy.publication.expected_oidc_trusted_publisher_id,
+            main_assurance_run_id: Number(process.env.MAIN_ASSURANCE_RUN_ID),
+            main_assurance_run_url: process.env.MAIN_ASSURANCE_RUN_URL,
+            main_assurance_run_attempt: 1,
+            main_assurance_artifact_id: Number(process.env.MAIN_ASSURANCE_ARTIFACT_ID),
+            main_assurance_artifact_name: process.env.MAIN_ASSURANCE_ARTIFACT_NAME,
+            main_assurance_artifact_digest_sha256: process.env.MAIN_ASSURANCE_ARTIFACT_DIGEST_SHA256,
+            main_assurance_tarball_sha256: process.env.MAIN_ASSURANCE_TARBALL_SHA256,
+            tag_assurance_tarball_sha256: process.env.TAG_ASSURANCE_TARBALL_SHA256,
+            prepublication_cross_run_byte_match: process.env.PREPUBLICATION_CROSS_RUN_BYTE_MATCH === "true",
             registry_authentication: process.env.PUBLICATION_OUTCOME === "published"
               ? policy.publication.subsequent_registry_authentication
               : "not-used-idempotent-verification",

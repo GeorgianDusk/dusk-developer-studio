@@ -45,6 +45,10 @@ assert.ok(
 assert.match(await resolveNpmCli(), /npm[\\/]bin[\\/]npm-cli\.js$/iu);
 
 const binDirectory = path.join(cliRoot, "bin");
+const launchSource = await fs.readFile(path.join(binDirectory, "launch.mjs"), "utf8");
+assert.match(launchSource, /https:\/\/nodejs\.org\/en\/download\/archive\/v24\.18\.0/);
+assert.match(launchSource, /confirm `node --version`/);
+assert.match(launchSource, /rerun your Dusk Developer Studio command/);
 for (const file of [
   "launch.mjs",
   "dusk-developer-studio.mjs"

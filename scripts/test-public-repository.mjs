@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { validatePreflightConsumerContract } from "./npm-package-preflight-smoke.mjs";
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
@@ -27,6 +28,11 @@ for (const file of [
   "docs/security/duskds-cargo-advisory-review.md",
   "docs/operations/public-monitoring.md",
   "scripts/check-cargo-advisory-review.mjs",
+  "scripts/npm-package-preflight-smoke.mjs",
+  "scripts/prepublication-candidate-binding.mjs",
+  "scripts/test-prepublication-candidate-binding.mjs",
+  "scripts/resolve-main-assurance-artifact.mjs",
+  "scripts/test-resolve-main-assurance-artifact.mjs",
   "scripts/phase5-candidate-context.mjs",
   "scripts/verify-npm-provenance.mjs",
   "config/cargo-advisory-review.json",
@@ -186,13 +192,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.1",
-  tag: "v1.0.1",
+  version: "1.0.2",
+  tag: "v1.0.2",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.1.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.2.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -213,6 +219,11 @@ for (const file of duskDsTemplateFiles) {
 }
 assert.deepEqual(policy.assurance.required_runners, ["ubuntu-24.04", "windows-2025", "macos-15"]);
 assert.ok(policy.assurance.required_checks.includes("local-actions-capability-contract-smoke"));
+assert.ok(
+  policy.assurance.required_checks.includes(
+    "three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract"
+  )
+);
 assert.ok(
   policy.assurance.required_checks.includes(
     "three-platform-exact-tarball-direct-cli-scaffold-and-overwrite-refusal-smoke"
@@ -319,12 +330,45 @@ assert.ok(
 const elevatedArchiveStep = requiredWindowsWorkflow.slice(elevatedArchiveStepStart, elevatedArchiveStepEnd);
 assert.match(elevatedArchiveStep, /Dusk Developer Studio refuses elevated or root execution\./);
 assert.match(elevatedArchiveStep, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*pnpm pack:npm/);
-assert.match(elevatedArchiveStep, /output\/npm\/dusk-developer-studio-1\.0\.1\.tgz/);
+assert.match(elevatedArchiveStep, /output\/npm\/dusk-developer-studio-1\.0\.2\.tgz/);
 assert.match(elevatedArchiveStep, /node_modules\/dusk-developer-studio\/bin\/dusk-developer-studio\.mjs/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'--lifecycle-self-test', '--no-open'(?:\)|\})/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'local-actions', '--lifecycle-self-test', '--no-open'(?:\)|\})/);
 
 const npmAssuranceWorkflow = read(".github/workflows/studio-npm-package-assurance.yml");
+const npmPreflightSmoke = read("scripts/npm-package-preflight-smoke.mjs");
+const npmBrowserSmoke = read("scripts/npm-package-browser-smoke.mjs");
+const preflightConsumerSource = path.join(root, "apps/studio/src/app/responseSchemas.ts");
+const compatibleIncompletePreflight = await validatePreflightConsumerContract({
+  ok: false,
+  checkedAt: "2026-07-21T00:00:00.000Z",
+  path: "duskds",
+  tools: [
+    { name: "Node.js", command: "node", ok: true, required: true, version: "v24.18.0" },
+    { name: "Optional missing tool", command: "optional-tool", ok: false, required: false, failureKind: "missing" }
+  ]
+}, preflightConsumerSource);
+assert.equal(compatibleIncompletePreflight.tool_count, 2);
+assert.equal(compatibleIncompletePreflight.versioned_tool_count, 1);
+assert.equal(compatibleIncompletePreflight.aggregate_prerequisites_satisfied, false);
+await assert.rejects(
+  () => validatePreflightConsumerContract({
+    ok: false,
+    checkedAt: "2026-07-21T00:00:00.000Z",
+    path: "duskds",
+    tools: []
+  }, preflightConsumerSource),
+  /one to 64 bounded tool rows/
+);
+await assert.rejects(
+  () => validatePreflightConsumerContract({
+    ok: true,
+    checkedAt: "2026-07-21T00:00:00.000Z",
+    path: "duskds",
+    tools: [{ name: "Node.js", command: "node", ok: true, required: true, version: "v".repeat(129) }]
+  }, preflightConsumerSource),
+  /exact checked-out Studio consumer guard rejected/
+);
 const localRuntime = read("packages/local-runtime/src/main.ts");
 assert.match(localRuntime, /path: "\/scaffold-duskds-forge"[\s\S]*template !== "duskds-counter-forge"/);
 assert.match(localRuntime, /schema_version: 2[\s\S]*local_actions_scaffold_smoke/);
@@ -333,41 +377,115 @@ assert.match(localRuntime, /shutdown_smoke: "passed"/);
 assert.match(npmAssuranceWorkflow, /runner: \[ubuntu-24\.04, windows-2025, macos-15\]/);
 assert.match(npmAssuranceWorkflow, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*node scripts\/npm-package-pack\.mjs/);
 assert.doesNotMatch(npmAssuranceWorkflow, /^\s+paths:/m);
-assert.match(npmAssuranceWorkflow, /CANDIDATE_ARTIFACT: dusk-developer-studio-1\.0\.1\.tgz[\s\S]*name: Build the exact npm candidate once[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*archive: false/);
+assert.match(npmAssuranceWorkflow, /CANDIDATE_ARTIFACT: dusk-developer-studio-1\.0\.2\.tgz[\s\S]*name: Build the exact npm candidate once[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*archive: false/);
 assert.match(npmAssuranceWorkflow, /needs: build-package[\s\S]*name: \$\{\{ env\.CANDIDATE_ARTIFACT \}\}[\s\S]*path: output\/npm/);
 assert.match(npmAssuranceWorkflow, /^ {4}name: Aggregate npm package assurance$/m);
 assert.match(npmAssuranceWorkflow, /native|exe\|dll\|dylib\|so\|node/i);
 assert.match(npmAssuranceWorkflow, /npm install --ignore-scripts/);
+assert.match(
+  npmPreflightSmoke,
+  /PREFLIGHT_CHECK_ID =\s*[\s\S]*three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract/
+);
+assert.match(npmPreflightSmoke, /value\.tools\.length > 0 && value\.tools\.length <= MAX_TOOL_ROWS/);
+assert.match(npmPreflightSmoke, /isNonemptyBoundedString\(tool\.version, MAX_VERSION_LENGTH\)/);
+assert.match(npmPreflightSmoke, /versionedToolCount > 0/);
+assert.match(npmPreflightSmoke, /aggregate_prerequisites_satisfied: value\.ok/);
+assert.doesNotMatch(npmPreflightSmoke, /assert\.equal\(value\.ok, true/);
+assert.match(npmPreflightSmoke, /stripTypeScriptTypes/);
+assert.match(npmPreflightSmoke, /loadAuthoritativeConsumerGuard\(consumerSource\)/);
+assert.match(npmPreflightSmoke, /consumer\.guard\(value\)[\s\S]*exact checked-out Studio consumer guard rejected/);
+assert.match(npmPreflightSmoke, /consumer_contract_source_sha256/);
+assert.match(npmPreflightSmoke, /RUNTIME_ENVIRONMENT_ALLOWLIST[\s\S]*inheritedRuntimeEnvironment\(process\.env\)/);
+assert.doesNotMatch(npmPreflightSmoke, /\.\.\.process\.env/);
+assert.match(npmPreflightSmoke, /\/__dusk\/bootstrap[\s\S]*\/preflight\?path=duskds/);
+assert.match(npmPreflightSmoke, /spawn\(process\.execPath, \[primaryEntry, "local-actions", "--no-open"\]/);
+assert.match(npmPreflightSmoke, /waitForPortsClosed\(\)/);
+assert.match(npmPreflightSmoke, /studio_loopback_services_stopped: true/);
+assert.match(
+  npmBrowserSmoke,
+  /Network\[\.\]getResponseBody\.\*No data found for resource with given identifier[\s\S]*context\.request\.get\(expectedUrl/,
+  "The package browser smoke must recover only the known Chrome response-body eviction race."
+);
+assert.match(
+  npmBrowserSmoke,
+  /stableResponse\.status\(\)[\s\S]*200[\s\S]*return stableResponse\.json\(\)/,
+  "The response-body fallback must re-read the same authenticated endpoint and require HTTP 200."
+);
+assert.doesNotMatch(
+  npmBrowserSmoke,
+  /validatePreflightConsumerContract\(\s*await preflightResponse\.json\(\)/,
+  "The authoritative browser smoke must not depend exclusively on an evictable CDP response body."
+);
 assert.match(npmAssuranceWorkflow, /--lifecycle-self-test --no-open/);
 assert.match(npmAssuranceWorkflow, /local-actions --lifecycle-self-test --no-open/);
+assert.match(
+  npmAssuranceWorkflow,
+  /npm-package-preflight-smoke\.mjs[\s\S]*--primary="\$PRIMARY"[\s\S]*--consumer=apps\/studio\/src\/app\/responseSchemas\.ts[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed/
+);
+assert.match(
+  npmAssuranceWorkflow,
+  /Copy-Item[^\n]*npm-package-preflight-smoke\.mjs[\s\S]*responseSchemas\.ts[\s\S]*-EntryPoint \$preflightScript[\s\S]*--primary=\$publicPrimary[\s\S]*--consumer=\$preflightConsumer[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed/
+);
 assert.match(npmAssuranceWorkflow, /fs\.mkdtempSync[\s\S]*unpackedBytes \+= stats\.size[\s\S]*maximum_unpacked_bytes/);
+assert.ok((npmAssuranceWorkflow.match(/inspectNpmTarballBytes/g) ?? []).length >= 3);
+assert.doesNotMatch(npmAssuranceWorkflow, /files\.join\("\\n"\)/);
+assert.match(npmAssuranceWorkflow, /package_file_count=\$\{inspected\.inventory_file_count\}/);
+assert.match(npmAssuranceWorkflow, /record\.package_file_count[\s\S]*EXPECTED_PACKAGE_FILE_COUNT/);
+assert.match(npmAssuranceWorkflow, /Recheck source cleanliness after restore, build, tests, package, and browser smoke[\s\S]*git diff --exit-code[\s\S]*git diff --cached --exit-code[\s\S]*git status --short --untracked-files=all/);
 assert.match(npmAssuranceWorkflow, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential[\s\S]*create-duskds', 'platform-direct-counter'[\s\S]*'--lifecycle-self-test', '--no-open'[\s\S]*'local-actions', '--lifecycle-self-test', '--no-open'/);
-assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
-assert.match(npmAssuranceWorkflow, /EXPECTED_BROWSER_SMOKE !== "passed"[\s\S]*browser_boot_and_pairing_smoke: "passed"/);
-assert.match(npmAssuranceWorkflow, /schema_version: 2[\s\S]*direct_cli_scaffold_smoke: "passed"[\s\S]*local_actions_scaffold_smoke: "passed"[\s\S]*scaffold_preservation_smoke: "passed"[\s\S]*shutdown_smoke: "passed"/);
-assert.match(npmAssuranceWorkflow, /record\.schema_version !== 2[\s\S]*record\.direct_cli_scaffold_smoke !== "passed"[\s\S]*record\.local_actions_scaffold_smoke !== "passed"[\s\S]*record\.scaffold_preservation_smoke !== "passed"[\s\S]*record\.shutdown_smoke !== "passed"/);
+assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
+assert.match(npmAssuranceWorkflow, /NPM_INSTALL_SMOKE=passed[\s\S]*NPM_CLEANUP_SMOKE=passed/);
+assert.match(npmAssuranceWorkflow, /rm -rf "\$INSTALL_ROOT"[\s\S]*test ! -e "\$removed"/);
+assert.match(npmAssuranceWorkflow, /Windows npm assurance cleanup left a bounded test root behind/);
+assert.match(npmAssuranceWorkflow, /Get-CimInstance Win32_UserProfile[\s\S]*Remove-CimInstance[\s\S]*temporary user profile behind/);
+assert.match(npmAssuranceWorkflow, /EXPECTED_BROWSER_SMOKE !== "passed"[\s\S]*EXPECTED_LOCAL_ACTIONS_PREFLIGHT_SMOKE !== "passed"[\s\S]*browser_boot_and_pairing_smoke: "passed"/);
+assert.match(npmAssuranceWorkflow, /schema_version: 2[\s\S]*install_smoke: "passed"[\s\S]*local_actions_preflight_verified: true[\s\S]*local_actions_preflight_check_id: process\.env\.PREFLIGHT_CHECK_ID[\s\S]*direct_cli_scaffold_smoke: "passed"[\s\S]*local_actions_scaffold_smoke: "passed"[\s\S]*scaffold_preservation_smoke: "passed"[\s\S]*shutdown_smoke: "passed"[\s\S]*cleanup_smoke: "passed"/);
+assert.match(npmAssuranceWorkflow, /record\.schema_version !== 2[\s\S]*record\.local_actions_preflight_verified !== true[\s\S]*record\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID[\s\S]*record\.direct_cli_scaffold_smoke !== "passed"[\s\S]*record\.local_actions_scaffold_smoke !== "passed"[\s\S]*record\.scaffold_preservation_smoke !== "passed"[\s\S]*record\.shutdown_smoke !== "passed"/);
+assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_loopback_services_stopped !== true/);
+assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_consumer_contract_source_sha256 !== consumerContractSha256/);
+assert.match(npmAssuranceWorkflow, /local_actions_preflight_verified: true[\s\S]*consumer_contract_source_sha256: consumerContractSha256[\s\S]*platform_smoke: records/);
+assert.match(npmAssuranceWorkflow, /const checkFields = \{[\s\S]*install_smoke[\s\S]*cleanup_smoke[\s\S]*does not prove \$\{check\} through \$\{field\}/);
+assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_verified !== true/);
+assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_scaffold_verified !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.scaffold_preserved_after_shutdown !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.studio_shutdown_verified !== true/);
 for (const field of [
-  "exact_tarball_direct_cli_scaffold_smoke",
-  "exact_tarball_local_actions_scaffold_smoke",
-  "exact_tarball_scaffold_preservation_smoke",
-  "exact_tarball_shutdown_smoke"
+  "direct_cli_scaffold_smoke",
+  "local_actions_scaffold_smoke",
+  "scaffold_preservation_smoke",
+  "shutdown_smoke"
 ]) {
   assert.match(npmAssuranceWorkflow, new RegExp(`${field}: "passed"`));
 }
 assert.match(npmAssuranceWorkflow, /name: npm-platform-\$\{\{ matrix\.runner \}\}[\s\S]*path: output\/npm\/platform\/npm-platform-\$\{\{ matrix\.runner \}\}\.json/);
 assert.match(npmAssuranceWorkflow, /name: studio-npm-assurance-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*path: output\/npm\/studio-npm-assurance-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false/);
+assert.match(npmAssuranceWorkflow, /id: assurance-evidence-upload[\s\S]*name: studio-npm-assurance-evidence-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false[\s\S]*artifact-id[\s\S]*artifact-url[\s\S]*artifact-digest/);
+assert.match(npmAssuranceWorkflow, /kind: "final-package-assurance"[\s\S]*evidence_class: "package-lifecycle-smoke"[\s\S]*producer: "ci-package-assurance"[\s\S]*capture_mode: "machine-observed"[\s\S]*test_fixture: false/);
+assert.match(npmAssuranceWorkflow, /policy_sha256:[\s\S]*source_commit:[\s\S]*package_sha256:[\s\S]*repository_tag:/);
+assert.match(npmAssuranceWorkflow, /package_path: `output\/npm\/\$\{process\.env\.EXPECTED_CANDIDATE_ARTIFACT\}`/);
+assert.match(npmAssuranceWorkflow, /EVIDENCE_ARTIFACT_DIGEST !== payloadSha256[\s\S]*evidence_payload_sha256: payloadSha256[\s\S]*mode: "github-actions-upload-artifact-v7"[\s\S]*run_id:[\s\S]*run_attempt:[\s\S]*run_event:[\s\S]*run_ref:[\s\S]*run_commit:[\s\S]*artifact_id:[\s\S]*artifact_digest_sha256: payloadSha256/);
+assert.ok((npmAssuranceWorkflow.match(/if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main' && github\.run_attempt == 1/g) ?? []).length >= 3);
+const comprehensiveValidator = read("scripts/check-comprehensive-validation.mjs");
+assert.match(comprehensiveValidator, /downloadGitHubActionsReceipt/);
+assert.match(comprehensiveValidator, /expectedRef: "refs\/heads\/main"/);
+assert.match(comprehensiveValidator, /independently reverified against the exact successful GitHub run and downloaded artifact bytes/);
+assert.match(comprehensiveValidator, /merge-base", "--is-ancestor"/);
+assert.match(comprehensiveValidator, /evidence_ledger_commit === finalCandidate\.source_commit/);
+assert.match(comprehensiveValidator, /evidence_is_strict_descendant !== true/);
+assert.match(comprehensiveValidator, /final_evidence_ledger_paths/);
+assert.match(comprehensiveValidator, /fs\.lstat\(absolutePath\)[\s\S]*stat\.isSymbolicLink\(\)[\s\S]*MAX_DURABLE_RECEIPT_BYTES/);
+assert.match(comprehensiveValidator, /invalid or oversized compressed payload/);
 assert.match(elevatedArchiveStep, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential/);
 for (const workflow of [requiredWindowsWorkflow, npmAssuranceWorkflow]) {
   assert.match(workflow, /NODE_BIN="\$\(command -v node\)"[\s\S]*sudo -n "\$NODE_BIN" "\$PRIMARY"/);
   assert.doesNotMatch(workflow, /sudo -n node /);
   assert.match(workflow, /\$dataRoot = Join-Path \$env:PUBLIC[\s\S]*"\*\$\{userSid\}:\(OI\)\(CI\)M"/);
   assert.match(workflow, /\$childEnvironment = @\{[\s\S]*HOME = \$profileRoot[\s\S]*LOCALAPPDATA = \$localAppData[\s\S]*USERPROFILE = \$profileRoot[\s\S]*-Environment \$childEnvironment/);
-  assert.match(workflow, /\$elevatedStatus = \$LASTEXITCODE[\s\S]*?Dusk Developer Studio refuses elevated or root execution\.[\s\S]*?finally \{[\s\S]*?Remove-Item -LiteralPath \$dataRoot -Recurse -Force[\s\S]*?\$global:LASTEXITCODE = 0/);
-  assert.match(workflow, /Test-Path -LiteralPath \$dataRoot[\s\S]*Remove-Item -LiteralPath \$dataRoot -Recurse -Force/);
+  assert.match(workflow, /\$elevatedStatus = \$LASTEXITCODE[\s\S]*?Dusk Developer Studio refuses elevated or root execution\.[\s\S]*?finally \{[\s\S]*?(?:Remove-Item -LiteralPath \$dataRoot -Recurse -Force|foreach \(\$cleanupRoot in @\(\$publicRoot, \$dataRoot\)\)[\s\S]*?Remove-Item -LiteralPath \$cleanupRoot -Recurse -Force)[\s\S]*?\$global:LASTEXITCODE = 0/);
+  assert.match(workflow, /(?:Test-Path -LiteralPath \$dataRoot[\s\S]*Remove-Item -LiteralPath \$dataRoot -Recurse -Force|foreach \(\$cleanupRoot in @\(\$publicRoot, \$dataRoot\)\)[\s\S]*Test-Path -LiteralPath \$cleanupRoot[\s\S]*Remove-Item -LiteralPath \$cleanupRoot -Recurse -Force)/);
 }
+assert.match(npmAssuranceWorkflow, /Get-LocalUser -Name \$userName -ErrorAction SilentlyContinue[\s\S]*temporary local account behind/);
 
 const npmPublishWorkflow = read(".github/workflows/studio-npm-publish.yml");
 assert.match(npmPublishWorkflow, /^ {4}tags:\n {6}- v1\.0\.0$/m);
@@ -394,7 +512,7 @@ assert.match(npmPublishWorkflow, /name: studio-npm-publication-receipt-\$\{\{ gi
 assert.doesNotMatch(npmPublishWorkflow, /\bbeta\b|\bfinal\b|release candidate|internal-rc|prototype/i);
 const npmOidcWorkflow = read(".github/workflows/studio-npm-oidc-publish.yml");
 assert.match(npmOidcWorkflow, /github\.ref_name != 'v1\.0\.0'/);
-assert.match(npmOidcWorkflow, /id-token: write/);
+assert.match(npmOidcWorkflow, /actions: read[\s\S]*id-token: write/);
 assert.match(npmOidcWorkflow, /environment: npm-trusted-publication/);
 assert.match(npmOidcWorkflow, /registry-url: https:\/\/registry\.npmjs\.org/);
 assert.match(npmOidcWorkflow, /test -z "\$\{NODE_AUTH_TOKEN:-\}"[\s\S]*npm publish "\$TARBALL" --access public --provenance/);
@@ -405,6 +523,10 @@ assert.match(npmOidcWorkflow, /verify-npm-provenance\.mjs[\s\S]*--publication=su
 assert.match(npmOidcWorkflow, /publisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*publisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);
 assert.match(npmOidcWorkflow, /record\.replace\(\/\\s\+<\[\^>\]\+>\$\/u, ""\)\.trim\(\)[\s\S]*npmPublisher !== policy\.publication\.expected_oidc_publisher/);
 assert.match(npmOidcWorkflow, /registryPublisher\?\.name !== policy\.publication\.expected_oidc_publisher[\s\S]*registryPublisher\?\.trustedPublisher\?\.id !== policy\.publication\.expected_oidc_trusted_publisher_id/);
+assert.match(npmOidcWorkflow, /GITHUB_API_TOKEN: \$\{\{ github\.token \}\}[\s\S]*resolve-main-assurance-artifact\.mjs[\s\S]*--repository=\$GITHUB_REPOSITORY[\s\S]*--commit=\$GITHUB_SHA[\s\S]*--workflow=\.github\/workflows\/studio-npm-package-assurance\.yml/);
+assert.match(npmOidcWorkflow, /Download the reviewed main-push candidate[\s\S]*artifact-ids: \$\{\{ steps\.main-assurance\.outputs\.artifact_id \}\}[\s\S]*run-id: \$\{\{ steps\.main-assurance\.outputs\.run_id \}\}[\s\S]*github-token: \$\{\{ github\.token \}\}/);
+assert.match(npmOidcWorkflow, /Download the tag-run candidate exercised by all platform lanes[\s\S]*prepublication-candidate-binding\.mjs[\s\S]*--main=output\/main-assurance\/[\s\S]*--tag=output\/tag-assurance\//);
+assert.match(npmOidcWorkflow, /main_assurance_artifact_digest_sha256:[\s\S]*prepublication_cross_run_byte_match:/);
 assert.doesNotMatch(npmOidcWorkflow, /npmUser !== policy\.publication\.expected_npm_maintainer/);
 assert.doesNotMatch(npmOidcWorkflow, /secrets\.|NPM_INITIAL_PUBLISH_TOKEN/);
 for (const receiptBinding of [
@@ -417,6 +539,17 @@ for (const receiptBinding of [
 ]) {
   assert.match(npmOidcWorkflow, receiptBinding);
 }
+const prepublicationBinding = read("scripts/prepublication-candidate-binding.mjs");
+assert.match(prepublicationBinding, /timingSafeEqual/);
+assert.match(prepublicationBinding, /Tag assurance rebuilt different bytes from the reviewed main-push candidate/);
+assert.match(prepublicationBinding, /inspectNpmTarballBytes\(main\.bytes\)[\s\S]*inspectNpmTarballBytes\(tag\.bytes\)/);
+assert.match(packageJson.scripts.test, /test-prepublication-candidate-binding\.mjs/);
+const mainAssuranceResolver = read("scripts/resolve-main-assurance-artifact.mjs");
+assert.match(mainAssuranceResolver, /run\.head_sha === requirement\.commit[\s\S]*run\.head_branch === "main"[\s\S]*run\.event === "push"[\s\S]*run\.run_attempt === 1/);
+assert.match(mainAssuranceResolver, /artifact\.workflow_run\?\.head_sha === requirement\.commit[\s\S]*sha256:\[a-f0-9\]\{64\}/);
+assert.match(mainAssuranceResolver, /actions\/workflows\/\$\{encodeURIComponent\(requirement\.workflowPath\)\}\/runs\?branch=main&event=push&status=success&head_sha=\$\{encodeURIComponent\(requirement\.commit\)\}&per_page=100/);
+assert.match(mainAssuranceResolver, /artifact_id=\$\{resolved\.artifact_id\}/);
+assert.match(packageJson.scripts.test, /test-resolve-main-assurance-artifact\.mjs/);
 const npmProvenanceVerifier = read("scripts/verify-npm-provenance.mjs");
 assert.match(npmProvenanceVerifier, /published\.dist\.attestations\.url[\s\S]*\/-\/npm\/v1\/attestations\//);
 assert.match(npmProvenanceVerifier, /expectedSubject = `pkg:npm\/\$\{policy\.package\.name\}@\$\{policy\.package\.version\}`/);
@@ -531,7 +664,8 @@ assert.match(publicReleaseSpec, /route\.abort\("blockedbyclient"\)/);
 assert.match(publicReleaseSpec, /requestUrl\.origin !== publicOrigin/);
 assert.match(publicReleaseSpec, /rpc\.testnet\.evm\.dusk\.network/);
 assert.match(publicReleaseSpec, /redirectedFrom\(\)/);
-assert.match(publicReleaseSpec, /expect\(page\.url\(\), pathname\)\.toBe\(expected\.href\)/);
+assert.match(publicReleaseSpec, /await expect\(page, pathname\)\.toHaveURL\(expected\.href\)/);
+assert.match(publicReleaseSpec, /evmCanonicalRoutes = \["access", "build", "inspect"\][\s\S]*toHaveURL\(`\$\{publicOrigin\}\/#setup`\)/);
 const publicMonitoring = read("docs/operations/public-monitoring.md");
 assert.match(publicMonitoring, /Both controls use GitHub Actions and GitHub Issues/);
 assert.match(publicMonitoring, /GitHub outage can affect monitoring and alert delivery at the same time/);
@@ -620,12 +754,23 @@ assert.match(phase5ProvenanceVerifier, /verifyExactNpmPackageSignatures/);
 assert.match(phase5ProvenanceVerifier, /npm-registry-slsa-fallback[\s\S]*cryptographic_verifier/);
 assert.match(phase5ProvenanceVerifier, /"audit",[\s\S]*"signatures"/);
 assert.match(phase5ProvenanceVerifier, /label: "npm initial publication"[\s\S]*historicalInitialPublication: true/);
+assert.match(phase5ProvenanceVerifier, /label: "npm package assurance"[\s\S]*event: "push"[\s\S]*expectedRef: "refs\/heads\/main"/);
+assert.match(phase5ProvenanceVerifier, /verifyGitHubActionsArtifactBytes[\s\S]*MAX_PACKAGE_ARTIFACT_BYTES/);
+assert.match(phase5ProvenanceVerifier, /label: "npm package assurance evidence payload"[\s\S]*label: "npm reviewed main-push candidate"/);
 assert.match(read("package.json"), /scripts\/test-github-actions-provenance\.mjs/);
 assert.match(read("package.json"), /scripts\/test-agent-pilot-collector\.mjs/);
 assert.match(read("package.json"), /scripts\/test-agent-pilot-plan\.mjs/);
 assert.match(read("package.json"), /scripts\/test-agent-pilot-evidence-assembler\.mjs/);
 assert.match(agentPilotCollector, /operator-attested-machine-collected/);
 assert.match(agentPilotCollector, /canonicalSha256\(result\.receipt\.plan\)/);
+assert.match(agentPilotCollector, /const packageInventory = validateManifestFiles\(records, manifest\);/);
+assert.match(agentPilotCollector, /const packageInventorySha256 = canonicalSha256\(packageInventory\);/);
+assert.match(agentPilotCollector, /package_file_count: packageInventory\.length/);
+assert.doesNotMatch(agentPilotCollector, /records\.map\(\(record\) => record\.path\)\.join/);
+assert.doesNotMatch(
+  read("scripts/check-comprehensive-validation.mjs"),
+  /export function validateComprehensiveCampaignTestFixture/
+);
 assert.match(agentPilotPlan, /win-keyboard-recovery/);
 assert.match(agentPilotCollector, /operator-attested-machine-collected/);
 assert.match(agentPilotCollector, /independent_execution: false/);
@@ -762,8 +907,8 @@ assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total
 assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
 assert.deepEqual(phase5Policy.npm_distribution, {
   package_name: "dusk-developer-studio",
-  package_version: "1.0.1",
-  tag: "v1.0.1",
+  package_version: "1.0.2",
+  tag: "v1.0.2",
   registry_url: "https://registry.npmjs.org/dusk-developer-studio",
   node_engine: ">=24.18.0 <25",
   assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",
@@ -790,7 +935,14 @@ assert.deepEqual(phase5Policy.npm_distribution, {
   trusted_publisher_configuration_required: true,
   subsequent_registry_authentication: "github-oidc",
   subsequent_workflow_path: ".github/workflows/studio-npm-oidc-publish.yml",
-  required_platforms: ["ubuntu-24.04", "windows-2025", "macos-15"]
+  required_platforms: ["ubuntu-24.04", "windows-2025", "macos-15"],
+  required_package_platforms: ["windows-x64", "ubuntu-24.04-x64", "macos-15-arm64"],
+  native_ci_runner_map: {
+    "windows-x64": "windows-2025",
+    "ubuntu-24.04-x64": "ubuntu-24.04",
+    "macos-15-arm64": "macos-15"
+  },
+  required_package_checks: ["install", "safe", "local-actions", "create-duskds", "shutdown", "cleanup"]
 });
 assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
 assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/smart-contracts-duskds/"));
@@ -818,7 +970,7 @@ assert.equal(phase5Policy.monitoring_evidence.accepted_risk.owner, "George");
 assert.equal(phase5Policy.monitoring_evidence.accepted_risk.authority_reference, "docs/operations/public-monitoring.md");
 assert.ok(phase5Policy.monitoring_evidence.accepted_risk.revisit_triggers.length >= 2);
 const phase5Template = JSON.parse(read("config/phase5-evidence.template.json"));
-assert.equal(phase5Template.schema_version, 9);
+assert.equal(phase5Template.schema_version, 10);
 assert.equal(Object.hasOwn(phase5Template, "companion_distribution"), false);
 assert.equal(phase5Template.pilot.evidence_class, phase5Policy.pilot.evidence_class);
 assert.equal(phase5Template.pilot.operator_type, phase5Policy.pilot.operator_type);
@@ -834,7 +986,7 @@ assert.match(phase5Template.pilot.fixed_limitation, /do not independently prove 
 assert.equal(phase5Template.support.on_call_owner, phase5Policy.responsibility_model.human_owner);
 assert.equal(phase5Template.support.launch_message_owner, phase5Policy.responsibility_model.human_owner);
 assert.equal(phase5Template.support.incident_message_owner, phase5Policy.responsibility_model.human_owner);
-assert.match(phase5Evaluator, /schema_version !== 9/);
+assert.match(phase5Evaluator, /schema_version !== 10/);
 assert.match(phase5Evaluator, /agent_operated_simulations/);
 assert.match(phase5Evaluator, /human_attestations: \["product_signoff"\]/);
 assert.match(phase5Evaluator, /agent_attestations: \["separate_agent_challenge_reviews", "support_assignments", "rollback_execution"\]/);
@@ -844,10 +996,18 @@ assert.match(phase5Evaluator, /package_inventory_sha256/);
 assert.match(phase5Evaluator, /environment_identity/);
 assert.match(phase5Evaluator, /raw_observation_bundle_sha256/);
 assert.match(phase5Evaluator, /operator-attested-machine-collected/);
+assert.match(phase5Evaluator, /final-package-assurance/);
+assert.match(phase5Evaluator, /github-actions-upload-artifact-v7/);
+assert.match(phase5Evaluator, /evidence_payload_sha256/);
+assert.match(phase5Evaluator, /prepublication_cross_run_byte_match/);
+assert.match(phase5Evaluator, /main_assurance_artifact_digest_sha256/);
+assert.match(phase5Evaluator, /\["push"\][\s\S]*studio-npm-assurance-receipt/);
 assert.equal(phase5Template.npm_distribution.package_name, phase5Policy.npm_distribution.package_name);
 assert.equal(phase5Template.npm_distribution.package_version, phase5Policy.npm_distribution.package_version);
 assert.equal(phase5Template.npm_distribution.node_engine, phase5Policy.npm_distribution.node_engine);
 assert.equal(phase5Template.npm_distribution.registry_url, phase5Policy.npm_distribution.registry_url);
+assert.ok(Object.hasOwn(phase5Template.npm_distribution, "package_sha256"));
+assert.ok(Object.hasOwn(phase5Template.npm_distribution, "package_file_count"));
 assert.deepEqual(Object.keys(phase5Template.npm_distribution.platform_smoke), phase5Policy.npm_distribution.required_platforms);
 for (const platform of phase5Policy.npm_distribution.required_platforms) {
   const smoke = phase5Template.npm_distribution.platform_smoke[platform];
@@ -856,22 +1016,33 @@ for (const platform of phase5Policy.npm_distribution.required_platforms) {
   assert.equal(smoke.node_version, "24.18.0");
   assert.ok(Object.hasOwn(smoke, "integrity"));
   assert.ok(Object.hasOwn(smoke, "package_inventory_sha256"));
+  assert.ok(Object.hasOwn(smoke, "package_file_count"));
   assert.ok(Object.hasOwn(smoke, "elevated_refusal"));
   for (const field of [
+    "install_smoke",
+    "safe_smoke",
+    "local_actions_capability_contract_smoke",
     "direct_cli_scaffold_smoke",
     "local_actions_scaffold_smoke",
     "scaffold_preservation_smoke",
-    "shutdown_smoke"
+    "shutdown_smoke",
+    "cleanup_smoke",
+    "elevated_refusal"
   ]) assert.equal(smoke[field], "pending");
+  assert.equal(smoke.local_actions_preflight_verified, false);
+  assert.equal(smoke.local_actions_preflight_loopback_services_stopped, false);
+  assert.ok(Object.hasOwn(smoke, "local_actions_preflight_check_id"));
+  assert.ok(Object.hasOwn(smoke, "local_actions_preflight_consumer_contract_source_sha256"));
 }
 assert.equal(phase5Template.npm_distribution.assurance.workflow_path, phase5Policy.npm_distribution.assurance_workflow);
+assert.equal(phase5Template.npm_distribution.assurance.provenance.run_event, "push");
 for (const field of [
   "exact_tarball_direct_cli_scaffold_smoke",
   "exact_tarball_local_actions_scaffold_smoke",
   "exact_tarball_scaffold_preservation_smoke",
   "exact_tarball_shutdown_smoke"
 ]) {
-  assert.equal(phase5Template.npm_distribution.assurance[field], "pending");
+  assert.equal(Object.hasOwn(phase5Template.npm_distribution.assurance, field), false);
 }
 assert.equal(
   Object.hasOwn(phase5Template.npm_distribution.assurance, "browser_boot_and_pairing_smoke"),

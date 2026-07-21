@@ -207,8 +207,8 @@
   ],
   "npm_distribution": {
     "package_name": "dusk-developer-studio",
-    "package_version": "1.0.1",
-    "tag": "v1.0.1",
+    "package_version": "1.0.2",
+    "tag": "v1.0.2",
     "registry_url": "https://registry.npmjs.org/dusk-developer-studio",
     "node_engine": ">=24.18.0 <25",
     "assurance_workflow": ".github/workflows/studio-npm-package-assurance.yml",
@@ -250,6 +250,24 @@
       "ubuntu-24.04",
       "windows-2025",
       "macos-15"
+    ],
+    "required_package_platforms": [
+      "windows-x64",
+      "ubuntu-24.04-x64",
+      "macos-15-arm64"
+    ],
+    "native_ci_runner_map": {
+      "windows-x64": "windows-2025",
+      "ubuntu-24.04-x64": "ubuntu-24.04",
+      "macos-15-arm64": "macos-15"
+    },
+    "required_package_checks": [
+      "install",
+      "safe",
+      "local-actions",
+      "create-duskds",
+      "shutdown",
+      "cleanup"
     ]
   }
 }

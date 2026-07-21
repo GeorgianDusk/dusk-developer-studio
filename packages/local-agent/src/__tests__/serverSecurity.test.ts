@@ -4,6 +4,7 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { isPreflightResult } from "../../../../apps/studio/src/app/responseSchemas";
 import { createLocalAgentServer, type LocalAgentServerOptions } from "../server";
 
 const ORIGIN = "http://127.0.0.1:5173";
@@ -494,7 +495,7 @@ describe("local companion containment boundary", () => {
       ok: false,
       checkedAt: "2026-07-10T00:00:00.000Z",
       path: "evm" as const,
-      tools: [{ name: "Forge", command: "forge", ok: false, required: true, version: "C:\\Users\\person\\forge.exe\n1.2.3", error: "secret detail C:\\Users\\person", installHint: "Install Foundry." }]
+      tools: [{ name: "Forge", command: "forge", ok: false, required: true, version: `C:\\Users\\person\\forge.exe\n${"1.2.3 ".repeat(40)}`, error: "secret detail C:\\Users\\person", installHint: "Install Foundry." }]
     }));
     const { port } = await startServer({ capabilitiesEnabled: true, dependencies: { runPreflight } });
     const cookie = await pair(port);
@@ -505,6 +506,8 @@ describe("local companion containment boundary", () => {
     expect(serialized).not.toContain("secret detail");
     expect(serialized).toContain("[local-path]");
     expect(serialized).toContain("Check failed.");
+    expect(isPreflightResult(response.body)).toBe(true);
+    expect(String((response.body.tools as Array<{ version?: string }>)[0]?.version).length).toBeLessThanOrEqual(128);
   });
 
   it("rate-limits and serializes authenticated capability requests", async () => {

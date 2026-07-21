@@ -21,8 +21,8 @@ const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "phase5-poli
 const now = new Date("2026-07-15T12:00:00Z");
 policy.monitoring_evidence.accepted_risk.accepted_at = "2026-07-15T00:30:00Z";
 policy.npm_distribution.expected_npm_maintainer = "phase5-test-maintainer";
-assert.equal(policy.npm_distribution.package_version, "1.0.1");
-assert.equal(policy.npm_distribution.tag, "v1.0.1");
+assert.equal(policy.npm_distribution.package_version, "1.0.2");
+assert.equal(policy.npm_distribution.tag, "v1.0.2");
 assert.equal(policy.npm_distribution.publication_workflow, ".github/workflows/studio-npm-oidc-publish.yml");
 assert.equal(policy.npm_distribution.publication_environment, "npm-trusted-publication");
 assert.equal(policy.npm_distribution.initial_package_version, "1.0.0");
@@ -49,7 +49,12 @@ const npmAssuranceRunUrl = "https://github.com/GeorgianDusk/dusk-developer-studi
 const npmPublicationRunUrl = "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/123460";
 const npmIntegrity = `sha512-${Buffer.alloc(64, 0x42).toString("base64")}`;
 const npmIntegrityHex = Buffer.alloc(64, 0x42).toString("hex");
+const npmPackageBytes = Buffer.from("phase5-exact-npm-candidate", "utf8");
+const npmPackageSha256 = createHash("sha256").update(npmPackageBytes).digest("hex");
 const npmInventoryDigest = "e".repeat(64);
+const npmPackageFileCount = 29;
+const preflightCheckId = "local-actions-preflight";
+const consumerContractSha256 = "7".repeat(64);
 const emptySha256 = createHash("sha256").update(Buffer.alloc(0)).digest("hex");
 const environmentIdentity = (environment) => `env-${canonicalSha256({
   context: environment.context,
@@ -76,6 +81,17 @@ const rewriteReceipt = (record, mutate) => {
     record.provenance.artifact_digest_sha256 = record.receipt_sha256;
     record.provenance.artifact_sha256 = record.receipt_sha256;
   }
+};
+const rewriteCurrentAssuranceReceipt = (record, mutate) => {
+  rewriteReceipt(record, (receipt) => {
+    mutate(receipt);
+    receipt.evidence_payload_json = JSON.stringify(receipt.evidence_payload);
+    receipt.evidence_payload_sha256 = createHash("sha256")
+      .update(receipt.evidence_payload_json, "utf8")
+      .digest("hex");
+    receipt.github_actions_provenance.artifact_digest_sha256 =
+      receipt.evidence_payload_sha256;
+  });
 };
 const rewriteMachineReceipt = (record, mutate) => {
   const receipt = JSON.parse(record.receipt_json);
@@ -479,35 +495,115 @@ const npmPlatformSmoke = Object.fromEntries(policy.npm_distribution.required_pla
   status: "passed",
   runner: platform,
   node_version: "24.18.0",
+  install_smoke: "passed",
   safe_smoke: "passed",
   local_actions_capability_contract_smoke: "passed",
+  local_actions_preflight_verified: true,
+  local_actions_preflight_check_id: preflightCheckId,
+  local_actions_preflight_loopback_services_stopped: true,
+  local_actions_preflight_consumer_contract_source_sha256: consumerContractSha256,
   direct_cli_scaffold_smoke: "passed",
   local_actions_scaffold_smoke: "passed",
   scaffold_preservation_smoke: "passed",
   shutdown_smoke: "passed",
+  cleanup_smoke: "passed",
   elevated_refusal: "passed",
   candidate_commit: candidateCommit,
   integrity: npmIntegrity,
   package_inventory_sha256: npmInventoryDigest,
+  package_file_count: npmPackageFileCount,
   observed_at: `2026-07-15T06:3${index}:00Z`
 }]));
-const npmAssuranceReceipt = {
-  schema_version: 2,
-  status: "passed",
+const npmAssuranceRunId = Number(new URL(npmAssuranceRunUrl).pathname.split("/").at(-1));
+const npmEvidenceId = `CV-E-FINAL-PACKAGE-${npmAssuranceRunId}`;
+const npmPlatformReceiptDigests = Object.fromEntries(
+  Object.entries(npmPlatformSmoke).map(([runner, record]) => [
+    runner,
+    createHash("sha256").update(JSON.stringify(record), "utf8").digest("hex")
+  ])
+);
+const npmAssuranceRecord = {
+  evidence_id: npmEvidenceId,
+  source_commit: candidateCommit,
   package_name: policy.npm_distribution.package_name,
   package_version: policy.npm_distribution.package_version,
-  node_engine: policy.npm_distribution.node_engine,
-  candidate_commit: candidateCommit,
-  workflow_path: policy.npm_distribution.assurance_workflow,
-  observed_at: "2026-07-15T06:40:00Z",
-  integrity: npmIntegrity,
+  package_path: `output/npm/${policy.npm_distribution.package_name}-${policy.npm_distribution.package_version}.tgz`,
+  package_sha256: npmPackageSha256,
   package_inventory_sha256: npmInventoryDigest,
-  browser_boot_and_pairing_smoke: "passed",
-  exact_tarball_direct_cli_scaffold_smoke: "passed",
-  exact_tarball_local_actions_scaffold_smoke: "passed",
-  exact_tarball_scaffold_preservation_smoke: "passed",
-  exact_tarball_shutdown_smoke: "passed",
-  platform_smoke: npmPlatformSmoke
+  package_file_count: npmPackageFileCount,
+  npm_integrity: npmIntegrity,
+  observed_at: "2026-07-15T06:40:00Z",
+  platforms_verified: [...policy.npm_distribution.required_package_platforms],
+  checks_verified: [...policy.npm_distribution.required_package_checks],
+  platform_results: policy.npm_distribution.required_package_platforms.map((platform) => {
+    const runner = policy.npm_distribution.native_ci_runner_map[platform];
+    return {
+      platform,
+      status: "passed",
+      evidence_refs: [`${npmEvidenceId}:platform:${runner}:${npmPlatformReceiptDigests[runner]}`]
+    };
+  }),
+  check_results: policy.npm_distribution.required_package_checks.map((check) => ({
+    check,
+    status: "passed",
+    evidence_refs: policy.npm_distribution.required_platforms.map((runner) =>
+      `${npmEvidenceId}:check:${check}:${runner}:${npmPlatformReceiptDigests[runner]}`
+    )
+  }))
+};
+const npmAssurancePayload = {
+  schema_version: 1,
+  record: npmAssuranceRecord,
+  native_ci_evidence: {
+    browser_boot_and_pairing_smoke: "passed",
+    local_actions_preflight_verified: true,
+    consumer_contract_source_sha256: consumerContractSha256,
+    platform_smoke: npmPlatformSmoke
+  }
+};
+const npmAssurancePayloadJson = JSON.stringify(npmAssurancePayload);
+const npmAssurancePayloadSha256 = createHash("sha256")
+  .update(npmAssurancePayloadJson, "utf8")
+  .digest("hex");
+const npmAssuranceEvidenceArtifactId = "8459";
+const npmAssuranceReceipt = {
+  schema_version: 1,
+  kind: "final-package-assurance",
+  record_id: npmEvidenceId,
+  evidence_class: "package-lifecycle-smoke",
+  producer: "ci-package-assurance",
+  capture_mode: "machine-observed",
+  test_fixture: false,
+  validation_context: {
+    policy_sha256: "8".repeat(64),
+    source_commit: candidateCommit,
+    package_name: policy.npm_distribution.package_name,
+    package_version: policy.npm_distribution.package_version,
+    package_sha256: npmPackageSha256,
+    npm_integrity: npmIntegrity,
+    repository_tag: policy.npm_distribution.tag
+  },
+  record: npmAssuranceRecord,
+  evidence_payload_json: npmAssurancePayloadJson,
+  evidence_payload: npmAssurancePayload,
+  evidence_payload_sha256: npmAssurancePayloadSha256,
+  github_actions_provenance: {
+    schema_version: 1,
+    mode: "github-actions-upload-artifact-v7",
+    repository: "GeorgianDusk/dusk-developer-studio",
+    workflow_path: policy.npm_distribution.assurance_workflow,
+    run_id: String(npmAssuranceRunId),
+    run_attempt: 1,
+    run_event: "push",
+    run_ref: "refs/heads/main",
+    run_commit: candidateCommit,
+    run_url: npmAssuranceRunUrl,
+    job_name: "aggregate-assurance",
+    artifact_id: npmAssuranceEvidenceArtifactId,
+    artifact_name: `studio-npm-assurance-evidence-${npmAssuranceRunId}.json`,
+    artifact_url: `${npmAssuranceRunUrl}/artifacts/${npmAssuranceEvidenceArtifactId}`,
+    artifact_digest_sha256: npmAssurancePayloadSha256
+  }
 };
 const npmPublicationReceipt = {
   schema_version: 1,
@@ -525,6 +621,16 @@ const npmPublicationReceipt = {
   npm_maintainer: policy.npm_distribution.expected_npm_maintainer,
   npm_publisher: policy.npm_distribution.expected_oidc_publisher,
   trusted_publisher_id: policy.npm_distribution.expected_oidc_trusted_publisher_id,
+  main_assurance_run_id: npmAssuranceRunId,
+  main_assurance_run_url: npmAssuranceRunUrl,
+  main_assurance_run_attempt: 1,
+  main_assurance_artifact_id: 9460,
+  main_assurance_artifact_name:
+    `${policy.npm_distribution.package_name}-${policy.npm_distribution.package_version}.tgz`,
+  main_assurance_artifact_digest_sha256: npmPackageSha256,
+  main_assurance_tarball_sha256: npmPackageSha256,
+  tag_assurance_tarball_sha256: npmPackageSha256,
+  prepublication_cross_run_byte_match: true,
   registry_authentication: policy.npm_distribution.subsequent_registry_authentication,
   provenance_verification: "npm-audit-signatures-and-slsa-source-bound",
   provenance_predicate_type: "https://slsa.dev/provenance/v1",
@@ -588,7 +694,7 @@ policy.npm_distribution.initial_publication_evidence = {
   observed_at: initialPublicationObservedAt
 };
 const evidence = {
-  schema_version: 9,
+  schema_version: 10,
   candidate: {
     artifact_fingerprint_sha256: digest,
     public_fingerprint_sha256: digest,
@@ -608,23 +714,21 @@ const evidence = {
     node_engine: policy.npm_distribution.node_engine,
     registry_url: policy.npm_distribution.registry_url,
     integrity: npmIntegrity,
+    package_sha256: npmPackageSha256,
     package_inventory_sha256: npmInventoryDigest,
+    package_file_count: npmPackageFileCount,
     platform_smoke: npmPlatformSmoke,
     assurance: {
       candidate_commit: candidateCommit,
-      exact_tarball_direct_cli_scaffold_smoke: "passed",
-      exact_tarball_local_actions_scaffold_smoke: "passed",
-      exact_tarball_scaffold_preservation_smoke: "passed",
-      exact_tarball_shutdown_smoke: "passed",
       ...npmAssuranceBoundReceipt,
       workflow_path: policy.npm_distribution.assurance_workflow,
       run_url: npmAssuranceRunUrl,
       artifact_name: "studio-npm-assurance-receipt-123459.json",
-      observed_at: npmAssuranceReceipt.observed_at,
+      observed_at: npmAssuranceRecord.observed_at,
       provenance: provenanceFor({
         workflowPath: policy.npm_distribution.assurance_workflow,
         runUrl: npmAssuranceRunUrl,
-        runEvent: "workflow_dispatch",
+        runEvent: "push",
         artifactId: 459,
         artifactName: "studio-npm-assurance-receipt-123459.json",
         receiptPath: "studio-npm-assurance-receipt-123459.json",
@@ -878,6 +982,7 @@ function onlineFetchFor(testPolicy, testEvidence) {
         html_url: record.run_url,
         artifacts_url: `${runApi}/artifacts`,
         path: `${record.workflow_path}@main`,
+        head_branch: "main",
         head_sha: runCommit,
         status: "completed",
         conclusion: "success",
@@ -898,6 +1003,47 @@ function onlineFetchFor(testPolicy, testEvidence) {
     routes.set(artifact.archive_download_url, { kind: "redirect", location: signedUrl });
     routes.set(signedUrl, { kind: "bytes", value: receiptBytes });
   }
+  const addAssuranceArtifact = ({ artifactId, artifactName, bytes }) => {
+    const runId = npmAssuranceRunId;
+    const runApi = `https://api.github.com/repos/${repository}/actions/runs/${runId}`;
+    const artifactApi = `https://api.github.com/repos/${repository}/actions/artifacts/${artifactId}`;
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const artifact = {
+      id: artifactId,
+      name: artifactName,
+      size_in_bytes: bytes.length,
+      url: artifactApi,
+      archive_download_url: `${artifactApi}/zip`,
+      expired: false,
+      created_at: "2026-07-15T06:41:00Z",
+      expires_at: "2026-10-13T06:41:00Z",
+      digest: `sha256:${digest}`,
+      workflow_run: {
+        id: runId,
+        repository_id: 99,
+        head_repository_id: 99,
+        head_sha: candidateCommit
+      }
+    };
+    routes.set(`${runApi}/artifacts?name=${encodeURIComponent(artifactName)}&per_page=100`, {
+      kind: "json",
+      value: { total_count: 1, artifacts: [artifact] }
+    });
+    const signedUrl =
+      `https://results-receiver.actions.githubusercontent.com/artifacts/${artifactId}?sig=redacted`;
+    routes.set(artifact.archive_download_url, { kind: "redirect", location: signedUrl });
+    routes.set(signedUrl, { kind: "bytes", value: bytes });
+  };
+  addAssuranceArtifact({
+    artifactId: Number(npmAssuranceEvidenceArtifactId),
+    artifactName: `studio-npm-assurance-evidence-${npmAssuranceRunId}.json`,
+    bytes: Buffer.from(npmAssurancePayloadJson, "utf8")
+  });
+  addAssuranceArtifact({
+    artifactId: npmPublicationReceipt.main_assurance_artifact_id,
+    artifactName: npmPublicationReceipt.main_assurance_artifact_name,
+    bytes: npmPackageBytes
+  });
   return async (input, init = {}) => {
     const url = String(input);
     const route = routes.get(url);
@@ -935,9 +1081,19 @@ async function formalDecision(testPolicy, testEvidence) {
 assert.equal(evaluatePhase5Evidence(policy, evidence, { now }).decision, "no-go");
 assert.match(evaluatePhase5Evidence(policy, evidence, { now }).blockers.join("\n"), /Online GitHub Actions/);
 const baselineFormalDecision = await formalDecision(policy, evidence);
-assert.equal(baselineFormalDecision.decision, "go");
+assert.equal(
+  baselineFormalDecision.decision,
+  "go",
+  baselineFormalDecision.blockers?.join("\n")
+);
 assert.equal(baselineFormalDecision.assurance_scope, "policy-complete-under-declared-human-and-agent-assembly");
 assert.equal(Object.hasOwn(baselineFormalDecision, "trusted_human_attestations"), false);
+const obsoleteSchemaEvidence = JSON.parse(JSON.stringify(evidence));
+obsoleteSchemaEvidence.schema_version = 9;
+assert.match(
+  evaluatePhase5Evidence(policy, obsoleteSchemaEvidence, { now }).blockers.join("\n"),
+  /evidence schema is unsupported/
+);
 assert.deepEqual(baselineFormalDecision.human_attestations, ["product_signoff"]);
 assert.deepEqual(
   baselineFormalDecision.agent_attestations,
@@ -1844,10 +2000,15 @@ const mismatchedNpmPlatform = JSON.parse(JSON.stringify(evidence));
 mismatchedNpmPlatform.npm_distribution.platform_smoke["windows-2025"].integrity = `sha512-${Buffer.alloc(64, 0x43).toString("base64")}`;
 assert.match(evaluatePhase5Evidence(policy, mismatchedNpmPlatform, { now }).blockers.join("\n"), /required lifecycle checks/);
 for (const field of [
+  "install_smoke",
+  "safe_smoke",
+  "local_actions_capability_contract_smoke",
   "direct_cli_scaffold_smoke",
   "local_actions_scaffold_smoke",
   "scaffold_preservation_smoke",
-  "shutdown_smoke"
+  "shutdown_smoke",
+  "cleanup_smoke",
+  "elevated_refusal"
 ]) {
   const failedPlatformProof = JSON.parse(JSON.stringify(evidence));
   failedPlatformProof.npm_distribution.platform_smoke["windows-2025"][field] = "failed";
@@ -1863,56 +2024,109 @@ assert.match(
   evaluatePhase5Evidence(policy, wrongPlatformSchema, { now }).blockers.join("\n"),
   /required lifecycle checks/
 );
+for (const [field, value] of [
+  ["local_actions_preflight_verified", false],
+  ["local_actions_preflight_loopback_services_stopped", false],
+  ["local_actions_preflight_check_id", "invalid value"],
+  ["local_actions_preflight_consumer_contract_source_sha256", "invalid"],
+  ["package_file_count", npmPackageFileCount + 1]
+]) {
+  const invalidPlatformProof = JSON.parse(JSON.stringify(evidence));
+  invalidPlatformProof.npm_distribution.platform_smoke["windows-2025"][field] = value;
+  assert.match(
+    evaluatePhase5Evidence(policy, invalidPlatformProof, { now }).blockers.join("\n"),
+    /required lifecycle checks/,
+    field
+  );
+}
+const expandedPlatformProof = JSON.parse(JSON.stringify(evidence));
+expandedPlatformProof.npm_distribution.platform_smoke["ubuntu-24.04"].unexpected = true;
+assert.match(
+  evaluatePhase5Evidence(policy, expandedPlatformProof, { now }).blockers.join("\n"),
+  /npm platform smoke ubuntu-24\.04 fields are invalid/
+);
 const missingNpmAssuranceReceipt = JSON.parse(JSON.stringify(evidence));
 delete missingNpmAssuranceReceipt.npm_distribution.assurance.receipt_sha256;
 assert.match(evaluatePhase5Evidence(policy, missingNpmAssuranceReceipt, { now }).blockers.join("\n"), /npm assurance receipt bytes/);
 const forgedNpmAssurance = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(forgedNpmAssurance.npm_distribution.assurance, (receipt) => {
-  receipt.platform_smoke["macos-15"].safe_smoke = "failed";
+  receipt.evidence_payload.native_ci_evidence.platform_smoke["macos-15"].safe_smoke = "failed";
 });
-assert.match(evaluatePhase5Evidence(policy, forgedNpmAssurance, { now }).blockers.join("\n"), /three-platform lifecycle smoke/);
+assert.match(evaluatePhase5Evidence(policy, forgedNpmAssurance, { now }).blockers.join("\n"), /current first-attempt main-push package/);
 const missingBrowserBootAndPairing = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(missingBrowserBootAndPairing.npm_distribution.assurance, (receipt) => {
-  delete receipt.browser_boot_and_pairing_smoke;
+  delete receipt.evidence_payload.native_ci_evidence.browser_boot_and_pairing_smoke;
 });
-assert.match(evaluatePhase5Evidence(policy, missingBrowserBootAndPairing, { now }).blockers.join("\n"), /browser boot and pairing/);
+assert.match(evaluatePhase5Evidence(policy, missingBrowserBootAndPairing, { now }).blockers.join("\n"), /current first-attempt main-push package/);
 const failedBrowserBootAndPairing = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(failedBrowserBootAndPairing.npm_distribution.assurance, (receipt) => {
-  receipt.browser_boot_and_pairing_smoke = "failed";
+  receipt.evidence_payload.native_ci_evidence.browser_boot_and_pairing_smoke = "failed";
 });
-assert.match(evaluatePhase5Evidence(policy, failedBrowserBootAndPairing, { now }).blockers.join("\n"), /browser boot and pairing/);
-const exactTarballAssuranceFields = [
-  "exact_tarball_direct_cli_scaffold_smoke",
-  "exact_tarball_local_actions_scaffold_smoke",
-  "exact_tarball_scaffold_preservation_smoke",
-  "exact_tarball_shutdown_smoke"
-];
-for (const field of exactTarballAssuranceFields) {
-  const missingExactTarballReceiptProof = JSON.parse(JSON.stringify(evidence));
-  rewriteReceipt(missingExactTarballReceiptProof.npm_distribution.assurance, (receipt) => {
-    delete receipt[field];
+assert.match(evaluatePhase5Evidence(policy, failedBrowserBootAndPairing, { now }).blockers.join("\n"), /current first-attempt main-push package/);
+const obsoleteFlatAssurance = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(obsoleteFlatAssurance.npm_distribution.assurance, (receipt) => {
+  for (const key of Object.keys(receipt)) delete receipt[key];
+  Object.assign(receipt, {
+    schema_version: 2,
+    status: "passed",
+    package_name: policy.npm_distribution.package_name,
+    package_version: "1.0.1",
+    platform_smoke: npmPlatformSmoke
+  });
+});
+assert.match(
+  evaluatePhase5Evidence(policy, obsoleteFlatAssurance, { now }).blockers.join("\n"),
+  /npm assurance receipt JSON fields are invalid/
+);
+const workflowDispatchAssurance = JSON.parse(JSON.stringify(evidence));
+workflowDispatchAssurance.npm_distribution.assurance.provenance.run_event = "workflow_dispatch";
+rewriteReceipt(workflowDispatchAssurance.npm_distribution.assurance, (receipt) => {
+  receipt.github_actions_provenance.run_event = "workflow_dispatch";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, workflowDispatchAssurance, { now }).blockers.join("\n"),
+  /current first-attempt main-push package|lacks complete downloaded GitHub/
+);
+const internallyRehashedNestedMismatch = JSON.parse(JSON.stringify(evidence));
+rewriteCurrentAssuranceReceipt(internallyRehashedNestedMismatch.npm_distribution.assurance, (receipt) => {
+  receipt.evidence_payload.native_ci_evidence.platform_smoke["macos-15"].cleanup_smoke = "failed";
+});
+assert.match(
+  evaluatePhase5Evidence(policy, internallyRehashedNestedMismatch, { now }).blockers.join("\n"),
+  /current first-attempt main-push package/
+);
+const recordPayloadDivergence = JSON.parse(JSON.stringify(evidence));
+rewriteCurrentAssuranceReceipt(recordPayloadDivergence.npm_distribution.assurance, (receipt) => {
+  receipt.record.package_file_count += 1;
+});
+assert.match(
+  evaluatePhase5Evidence(policy, recordPayloadDivergence, { now }).blockers.join("\n"),
+  /current first-attempt main-push package/
+);
+for (const [field, value] of [
+  ["run_event", "workflow_dispatch"],
+  ["run_ref", "refs/heads/feature"],
+  ["job_name", "different-job"],
+  ["artifact_name", "studio-npm-assurance-receipt-123459.json"]
+]) {
+  const invalidInnerProvenance = JSON.parse(JSON.stringify(evidence));
+  rewriteCurrentAssuranceReceipt(invalidInnerProvenance.npm_distribution.assurance, (receipt) => {
+    receipt.github_actions_provenance[field] = value;
   });
   assert.match(
-    evaluatePhase5Evidence(policy, missingExactTarballReceiptProof, { now }).blockers.join("\n"),
-    /Local Actions scaffold, preservation, shutdown/
-  );
-
-  const failedExactTarballReceiptProof = JSON.parse(JSON.stringify(evidence));
-  rewriteReceipt(failedExactTarballReceiptProof.npm_distribution.assurance, (receipt) => {
-    receipt[field] = "failed";
-  });
-  assert.match(
-    evaluatePhase5Evidence(policy, failedExactTarballReceiptProof, { now }).blockers.join("\n"),
-    /Local Actions scaffold, preservation, shutdown/
-  );
-
-  const failedExactTarballSummary = JSON.parse(JSON.stringify(evidence));
-  failedExactTarballSummary.npm_distribution.assurance[field] = "failed";
-  assert.match(
-    evaluatePhase5Evidence(policy, failedExactTarballSummary, { now }).blockers.join("\n"),
-    /does not declare the required/
+    evaluatePhase5Evidence(policy, invalidInnerProvenance, { now }).blockers.join("\n"),
+    /current first-attempt main-push package/,
+    field
   );
 }
+const invalidInnerArtifactDigest = JSON.parse(JSON.stringify(evidence));
+rewriteReceipt(invalidInnerArtifactDigest.npm_distribution.assurance, (receipt) => {
+  receipt.github_actions_provenance.artifact_digest_sha256 = "0".repeat(64);
+});
+assert.match(
+  evaluatePhase5Evidence(policy, invalidInnerArtifactDigest, { now }).blockers.join("\n"),
+  /current first-attempt main-push package/
+);
 const wrongPublicationTag = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(wrongPublicationTag.npm_distribution.publication, (receipt) => { receipt.tag = "v1.0.0"; });
 assert.match(evaluatePhase5Evidence(policy, wrongPublicationTag, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
@@ -1937,6 +2151,27 @@ rewriteReceipt(wrongTrustedPublisher.npm_distribution.publication, (receipt) => 
   receipt.trusted_publisher_id = "unexpected";
 });
 assert.match(evaluatePhase5Evidence(policy, wrongTrustedPublisher, { now }).blockers.join("\n"), /exact-tag OIDC publication/);
+for (const [field, value] of [
+  ["main_assurance_run_id", npmAssuranceRunId + 1],
+  ["main_assurance_run_url", "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/999999"],
+  ["main_assurance_run_attempt", 2],
+  ["main_assurance_artifact_id", 0],
+  ["main_assurance_artifact_name", "different.tgz"],
+  ["main_assurance_artifact_digest_sha256", "0".repeat(64)],
+  ["main_assurance_tarball_sha256", "0".repeat(64)],
+  ["tag_assurance_tarball_sha256", "0".repeat(64)],
+  ["prepublication_cross_run_byte_match", false]
+]) {
+  const invalidCrossRunPublication = JSON.parse(JSON.stringify(evidence));
+  rewriteReceipt(invalidCrossRunPublication.npm_distribution.publication, (receipt) => {
+    receipt[field] = value;
+  });
+  assert.match(
+    evaluatePhase5Evidence(policy, invalidCrossRunPublication, { now }).blockers.join("\n"),
+    /exact-tag OIDC publication/,
+    field
+  );
+}
 const wrongOidcProvenanceWorkflow = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(wrongOidcProvenanceWorkflow.npm_distribution.publication, (receipt) => {
   receipt.provenance_workflow = policy.npm_distribution.expected_initial_provenance_workflow;

@@ -68,7 +68,23 @@ export const steps = {
 
 export const resourceIds = { evm: ["build-on-dusk", "duskevm-deep-dive", "duskevm-bridge", "deploy-on-duskevm", "blockscout-verification"], duskds: ["build-on-dusk", "duskds-smart-contracts", "dusk-forge", "w3sper-integration", "dusk-connect-docs", "duskds-tx-lifecycle", "studio-local-security-boundary", "windows-wsl-ubuntu-setup"] } satisfies Record<BuilderPath, string[]>;
 export const capabilityIds = { evm: ["duskevm-solidity-contracts", "duskevm-wallets-network", "duskevm-testnet-bridge", "duskevm-confidential-hedger"], duskds: ["duskds-forge-contracts", "duskds-data-drivers", "duskds-w3sper-node-sdk", "dusk-connect-wallets"] } satisfies Record<BuilderPath, string[]>;
-export const troubleIds = { evm: ["wrong-chain", "no-wallet", "insufficient-gas", "rpc-unavailable", "foundry-missing", "verification-failed"], duskds: ["duskds-browser-public-node-csp", "dusk-forge-windows-wasm-opt-shim", "dusk-forge-windows-long-path-linker", "rust-wasm-target-missing", "dusk-forge-rust-stable-drift", "data-driver-build-missing", "dusk-forge-test-linux-required", "duskds-driver-unavailable-after-deploy"] } satisfies Record<BuilderPath, string[]>;
+export const troubleIds = { evm: ["wrong-chain", "no-wallet", "insufficient-gas", "rpc-unavailable", "foundry-missing", "verification-failed"], duskds: ["duskds-public-node-unavailable", "duskds-browser-public-node-csp", "dusk-forge-windows-wasm-opt-shim", "dusk-forge-windows-long-path-linker", "rust-wasm-target-missing", "dusk-forge-rust-stable-drift", "data-driver-build-missing", "dusk-forge-test-linux-required", "duskds-driver-unavailable-after-deploy"] } satisfies Record<BuilderPath, string[]>;
+export const prelaunchTroubleIds = [
+  "wrong-chain",
+  "no-wallet",
+  "user-rejected",
+  "insufficient-gas",
+  "rpc-unavailable",
+  "blockscout-unavailable",
+  "foundry-missing",
+  "bridge-pending",
+  "verification-failed",
+  "evm-no-public-mempool-assumption",
+  "foundry-signature-cache-access-denied",
+  "hedger-source-gap",
+  "hyperlane-no-dusk-guide",
+  "trex-onchainid-overpositioned"
+] as const;
 
 export const evidenceLabels: Record<EvidenceCode, string> = {
   "evm-rpc-chain": "Future gate: Testnet RPC chain verified", "evm-wallet-chain": "Future gate: wallet chain verified", "evm-wallet-account": "Future gate: selected account observed", "evm-balance-read": "Future gate: read-only balance succeeded", "evm-positive-balance": "Future gate: positive Testnet balance observed", "evm-starter-structure": "Future gate: Counter scaffold verified", "evm-build-test-attestation": "Future gate: build and tests passed", "evm-read-inspection": "Future gate: read-only RPC inspection passed",
@@ -77,6 +93,7 @@ export const evidenceLabels: Record<EvidenceCode, string> = {
 
 export const blockerLabels: Record<BlockerCode, string> = {
   "rpc-unavailable": "The public node request could not be completed",
+  "duskds-public-node-unavailable": "The DuskDS public node request could not be completed",
   "wrong-chain": "The selected wallet network does not match",
   "no-wallet": "No compatible wallet was found",
   "no-account": "No wallet account was selected",

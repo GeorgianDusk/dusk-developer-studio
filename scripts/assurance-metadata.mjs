@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { URL } from "node:url";
+import { gzipSync } from "node:zlib";
 
 const RECEIPT_NAME = "assurance-receipt.json";
 const RELEASE_MANIFEST_NAME = "release-manifest.json";
@@ -87,11 +88,15 @@ function validateHeaders(root, policy) {
 
 function validateAssets(root, policy) {
   const dist = path.join(root, "apps", "studio", "dist");
-  const totals = { javascript_bytes: 0, css_bytes: 0, html_bytes: 0, total_bytes: 0 };
+  const totals = { javascript_bytes: 0, javascript_gzip_bytes: 0, css_bytes: 0, html_bytes: 0, total_bytes: 0 };
   for (const relative of walk(dist)) {
-    const bytes = fs.statSync(path.join(dist, relative)).size;
+    const absolute = path.join(dist, relative);
+    const bytes = fs.statSync(absolute).size;
     totals.total_bytes += bytes;
-    if (relative.endsWith(".js")) totals.javascript_bytes += bytes;
+    if (relative.endsWith(".js")) {
+      totals.javascript_bytes += bytes;
+      totals.javascript_gzip_bytes += gzipSync(fs.readFileSync(absolute), { level: 9 }).length;
+    }
     if (relative.endsWith(".css")) totals.css_bytes += bytes;
     if (relative.endsWith(".html")) totals.html_bytes += bytes;
   }
