@@ -12,6 +12,7 @@ import {
   validatePilotPlan
 } from "./agent-pilot-collector.mjs";
 import {
+  isExpectedPortConflict,
   isExpectedToolchainMismatch,
   isSafeModeMachineActionRefusal,
   materializeAgentPilotPlan,
@@ -61,6 +62,33 @@ assert.equal(
   isSafeModeMachineActionRefusal({
     status: 200,
     body: JSON.stringify({ ok: true, code: "capabilities_disabled" })
+  }),
+  false
+);
+assert.equal(
+  isExpectedPortConflict({
+    status: 1,
+    signal: null,
+    stdout: "",
+    stderr: "Local Studio could not start because 127.0.0.1:5173 is already in use. Any partially started Studio service was stopped."
+  }),
+  true
+);
+assert.equal(
+  isExpectedPortConflict({
+    status: 1,
+    signal: null,
+    stdout: "",
+    stderr: "network unavailable"
+  }),
+  false
+);
+assert.equal(
+  isExpectedPortConflict({
+    status: 0,
+    signal: null,
+    stdout: "Local Studio started on 127.0.0.1:5173",
+    stderr: ""
   }),
   false
 );

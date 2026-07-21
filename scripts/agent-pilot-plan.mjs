@@ -607,11 +607,18 @@ async function observePortConflict(packageRoot, workRoot) {
       ["--lifecycle-self-test", "--no-open"],
       workRoot
     );
-    return result.status !== 0
-      && /(?:EADDRINUSE|address already in use)/iu.test(`${result.stderr}\n${result.stdout}`);
+    return isExpectedPortConflict(result);
   } finally {
     await new Promise((resolve) => blocker.close(resolve));
   }
+}
+
+export function isExpectedPortConflict(result) {
+  return result.status !== 0
+    && result.signal === null
+    && /(?:EADDRINUSE|address already in use|127[.]0[.]0[.]1:5173 is already in use)/iu.test(
+      `${result.stderr}\n${result.stdout}`
+    );
 }
 
 async function observeControlledFailure(scenario, packageRoot, workRoot) {

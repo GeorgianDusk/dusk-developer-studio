@@ -66,6 +66,8 @@ describe("Phase 2 evidence journeys", () => {
     expect(screen.getByText("No live evidence is recorded")).toBeInTheDocument();
     expect(screen.getByText("https://rpc.testnet.evm.dusk.network")).toBeVisible();
     expect(screen.getByRole("link", { name: /Official docs source/ })).toHaveAttribute("href", "https://github.com/dusk-network/docs");
+    expect(screen.getByRole("link", { name: /DuskEVM deep dive/ })).toHaveAttribute("href", "https://docs.dusk.network/learn/deep-dive/dusk-evm/");
+    expect(screen.getByText(/never pass a raw private key in a command/i)).toBeInTheDocument();
     expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
     expect(provider.request).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account");
@@ -80,6 +82,9 @@ describe("Phase 2 evidence journeys", () => {
     render(<App />);
     fireEvent.change(screen.getByLabelText("Example identifier"), { target: { value: address } });
     expect(screen.getByText("address")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Example identifier"), { target: { value: "12345" } });
+    expect(screen.getByText("block")).toBeInTheDocument();
+    expect(screen.getByText(/unsigned decimal block number such as 12345/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-read-inspection");
   });
@@ -389,7 +394,7 @@ describe("Phase 2 evidence journeys", () => {
     expect(screen.getByText("Complete or skip Setup before saving Access evidence.")).toBeInTheDocument();
   });
 
-  it("keeps Build and Inspect evidence actions disabled until their preceding steps have a truthful disposition", () => {
+  it("keeps Build-dependent Inspect evidence disabled while leaving the independent block read available", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#build";
     const build = render(<App />);
@@ -401,10 +406,11 @@ describe("Phase 2 evidence journeys", () => {
     build.unmount();
     window.location.hash = "#inspect";
     render(<App />);
-    expect(screen.getByText("Complete or skip Build first")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Read latest block" })).toBeDisabled();
+    expect(screen.getByText("Build evidence is still incomplete")).toBeInTheDocument();
+    expect(screen.getByText(/independent latest-block observation remains available/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read latest block" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
-    expect(screen.getByRole("button", { name: "Save manual block observation" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save manual block observation" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Save source match" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save availability confirmation" })).toBeDisabled();
   });
@@ -475,6 +481,7 @@ describe("Phase 2 evidence journeys", () => {
       && content.includes(`dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`))).toBeInTheDocument();
     expect(screen.getByText((content, element) => element?.tagName === "PRE"
       && content.includes("Node.js >=24.18.0 <25 is required before starter creation.")
+      && content.includes("npm.cmd --version")
       && content.includes(`dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`))).toBeInTheDocument();
     expect(screen.getByText((content, element) => element?.tagName === "PRE"
       && content.includes("rustup run ''1.94.0'' \"$forgeExe\" test"))).toBeInTheDocument();
@@ -499,6 +506,8 @@ describe("Phase 2 evidence journeys", () => {
 
     const prepare = screen.getByRole("heading", { name: "Prepare project" }).parentElement?.querySelector("pre")?.textContent ?? "";
     expect(prepare).toContain("Node.js >=24.18.0 <25 is required before starter creation.");
+    expect(prepare).toContain("npm.cmd --version");
+    expect(prepare).not.toContain("npm --version");
     expect(prepare.indexOf("process.versions.node")).toBeLessThan(prepare.indexOf("New-Item"));
     expect(prepare).toContain(`npx.cmd --yes dusk-developer-studio@${DUSK_STUDIO_NPM_PACKAGE_VERSION} create-duskds`);
     expect(prepare).toContain("Reviewed DuskDS template creation failed; no existing target was overwritten.");

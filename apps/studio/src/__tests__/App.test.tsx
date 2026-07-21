@@ -140,7 +140,7 @@ describe("App", () => {
   it("shows maturity, source status, and freshness in references", () => {
     window.location.hash = "#reference";
     render(<App />);
-    expect(screen.getAllByText(/reviewed July 20, 2026/).length).toBeGreaterThan(2);
+    expect(screen.getAllByText(/reviewed July 21, 2026/).length).toBeGreaterThan(2);
     expect(screen.getAllByText("Pre-launch Testnet reference").length).toBeGreaterThan(0);
     expect(screen.getByText("pre-launch metadata")).toBeInTheDocument();
     expect(screen.getAllByText("reference only")).toHaveLength(2);
@@ -179,8 +179,21 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
 
     expect(screen.getByRole("button", { name: "All reviewed issues" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("45 reviewed entries found.")).toBeInTheDocument();
+    expect(screen.getByText("46 reviewed entries found.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hedger is mentioned but not ready for Studio automation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Wallet is on the wrong chain" })).toBeInTheDocument();
+  });
+
+  it("clears a contextual recovery focus when the complete reviewed index is requested", () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.sessionStorage.setItem("dusk-studio-troubleshooting-focus", "duskds-driver-unavailable-after-deploy");
+    window.location.hash = "#troubleshooting";
+    render(<App />);
+
+    expect(screen.getByText("1 recovery entry found.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
+
+    expect(screen.getByText("46 reviewed entries found.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Wallet is on the wrong chain" })).toBeInTheDocument();
   });
 
@@ -341,6 +354,8 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByRole("heading", { name: "Run the full Studio locally with npm." })).toBeInTheDocument();
+    expect(screen.getByText("DuskEVM remains reference-only")).toBeInTheDocument();
+    expect(screen.getByText(/Local machine checks and starter creation are DuskDS-only/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Continue in the hosted guide" })).toBeInTheDocument();
     expect(screen.getByText(`npx dusk-developer-studio@${STUDIO_RELEASE.version}`)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Review this package version and provenance/i })).toHaveAttribute(

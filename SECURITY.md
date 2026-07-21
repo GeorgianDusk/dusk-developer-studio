@@ -40,8 +40,8 @@ For non-sensitive product or documentation problems, follow [SUPPORT.md](SUPPORT
 For a version-pinned invocation that also refuses npm install lifecycle scripts:
 
 ```bash
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.4 -- dusk-developer-studio
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.4 -- dusk-developer-studio local-actions
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.5 -- dusk-developer-studio
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.5 -- dusk-developer-studio local-actions
 ```
 
 The embedded DuskDS Cargo lock is checked against GitHub advisories and the
