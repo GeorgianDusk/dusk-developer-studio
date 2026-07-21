@@ -94,7 +94,7 @@ Wallet secrets and funded actions remain outside the Studio. Public network data
 - Reject administrator, root, mismatched POSIX identities, and active Linux process capabilities.
 - Use fixed ports and fail closed on collision.
 - Generate pairing material from at least 32 random bytes and keep it in memory.
-- Accept bootstrap and session requests only from exact loopback Host and Origin values.
+- Accept bootstrap and session requests only from exact loopback Host and Origin values whose hostnames use the same loopback spelling.
 - Use an origin-bound `HttpOnly`, `SameSite=Strict` session.
 - Authenticate before request-body parsing.
 - Validate CORS and Private Network Access explicitly.
