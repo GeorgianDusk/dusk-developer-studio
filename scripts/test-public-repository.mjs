@@ -378,6 +378,7 @@ assert.match(localRuntime, /exactRegularFileInventory[\s\S]*scaffold_preservatio
 assert.match(localRuntime, /shutdown_smoke: "passed"/);
 assert.match(npmAssuranceWorkflow, /runner: \[ubuntu-24\.04, windows-2025, macos-15\]/);
 assert.match(npmAssuranceWorkflow, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*node scripts\/npm-package-pack\.mjs/);
+assert.match(npmBrowserSmoke, /await context\.close\(\);[\s\S]*context = undefined;[\s\S]*validateBrowserTransportEvidence/);
 assert.doesNotMatch(npmAssuranceWorkflow, /^\s+paths:/m);
 assert.doesNotMatch(npmAssuranceWorkflow, /dusk-developer-studio-\d+\.\d+\.\d+\.tgz/);
 assert.doesNotMatch(requiredWindowsWorkflow, /dusk-developer-studio-\d+\.\d+\.\d+\.tgz/);

@@ -227,6 +227,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     const page = await context.newPage();
     const errors = [];
     const responses = new Map();
+    const requestEvents = [];
     const responseEvents = [];
     const responseByRequest = new Map();
     const bootstrapRequests = [];
@@ -245,6 +246,9 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     });
     page.on("pageerror", (error) => errors.push({ kind: "page", text: error.message, url: "" }));
     page.on("request", (request) => {
+      if (/^https?:\/\//u.test(request.url())) {
+        requestEvents.push({ request, url: request.url() });
+      }
       if (new URL(request.url()).pathname === "/__dusk/bootstrap") {
         bootstrapRequests.push(request);
       }
@@ -469,6 +473,11 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
         )
       ] : [])
     ]);
+    // Freeze the page-owned network stream before classifying it. Context close
+    // settles or aborts every remaining request, then prevents a duplicate from
+    // arriving after the validator's final snapshot.
+    await context.close();
+    context = undefined;
     assert.deepEqual(
       responseEvents
         .filter(({ status }) => status >= 400)
@@ -489,6 +498,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       preflightResponse,
       preflightResponseHeaders,
       preflightUiRendered,
+      requestEvents,
       requestFailures,
       responseByRequest,
       responseEvents

@@ -4352,6 +4352,16 @@
       "root_cause": "Release identity lived in package policy and manifests, but the two live workflows also carried handwritten semantic-version filenames that the release bump contract did not prohibit.",
       "fix": "Derive the exact artifact filename from the generated pack receipt, validate it against the current package manifest, publish it as the build job's candidate output, and bind every downstream lane to that output instead of a copied version literal.",
       "regression_test": "The public-repository contract requires pack-receipt binding and downstream build-output propagation, and rejects any semantic-version tarball literal in either live assurance workflow. Focused validation passes; fresh GitHub native execution remains required."
+    },
+    {
+      "defect_id": "CV-D-078",
+      "severity": "P1",
+      "status": "fixed_local_pending_native_retest",
+      "summary": "The preflight transport classifier counted only HTTP 200 events, so Safe mode could issue an exact-endpoint request returning 204 and Local Actions could observe a valid 200 plus an alternate-status duplicate without failing.",
+      "source": "CV-E-CHALLENGE-7BC032A-RETEST-20260721",
+      "root_cause": "Response cardinality was filtered by raw endpoint string, one hostname and expected status before exclusivity was asserted; the smoke lacked complete route-family coverage, a page-request inventory, reference-identity bijection, uniform redirect refusal, Response-field self-validation and a frozen final network snapshot.",
+      "fix": "Record every HTTP page request; classify companion routes across the explicit 127/localhost authority set and health/healthz aliases by canonical pathname; require zero route-level preflight requests/responses in Safe mode and exactly one in Local Actions before requiring the sole raw 127 URL/query, method, status, Origin, CORS, ordering, contract, UI and terminal state. Require distinct Request/Response objects, Set.has reference-identity bijection, response.request/url/status back-binding and no redirects for every accepted pairing/preflight exchange. Close the browser context before the final unexpected-status and transport validation over the frozen stream.",
+      "regression_test": "Focused adversarial fixtures reject all 33 challenge mutations plus Response URL/status forgery: request-only, 204, encoded/extra-query, localhost and healthz variants; exact or semantic duplicates; wrong methods; shallow clones, mismatched/duplicated/impostor identities; redirects on all pairing/preflight exchanges; wrong Origin/CORS; invalid ordering; missing contract/UI proof; and every invalid terminal or unrelated-failure state. Two real Chrome exact-package previews and the full 346-test local gate passed during remediation; final independent challenge returned GO. Clean native GitHub assurance remains required."
     }
   ],
   "challenge_reviews": [
@@ -4446,6 +4456,36 @@
       "identity": "Independent read-only review of clean commit 215701249170239a065f6573914eb74e116bd8ab, local tag v1.0.2 and exact 1e84d8af package before native CI",
       "summary": "NO-GO: the retained Phase 5 release gate still expected 1.0.1, obsolete flat platform/assurance receipts and workflow-dispatch provenance, and rejected the current cross-run publication receipt. It also found bounded artifact-ID and head-sha lookup hardening gaps. CV-D-072 through CV-D-074 preserve the findings.",
       "cleanup": "Read-only source, workflow, policy, fixture, exact-package and public GitHub API inspection only; no GitHub, npm, production, package installation, browser profile or developer-machine state was changed."
+    },
+    {
+      "evidence_id": "CV-E-CHALLENGE-7BC032A-20260721",
+      "evidence_class": "challenge-review",
+      "scope": "security-release-evidence-integrity",
+      "observed_at": "2026-07-21T14:44:30Z",
+      "result": "findings",
+      "identity": "Independent read-only review of PR 44 clean head 7bc032ae540553217da0f065c5f6b7020108ae77 after successful three-platform npm assurance run 29839805802",
+      "summary": "NO-GO: direct classifier reproduction proved that Safe mode could issue the forbidden exact preflight request with a 204 response and that Local Actions could accept one valid 200 plus an alternate-status duplicate. CV-D-078 preserves the P1 false-green finding. CV-D-077's dynamic artifact binding was independently assessed GO and the GitHub run built, uploaded, downloaded and aggregated 1.0.3 across Ubuntu, Windows and macOS.",
+      "cleanup": "Read-only source, workflow, test and GitHub-run inspection only; no repository, package, browser profile, production or developer-machine state was changed."
+    },
+    {
+      "evidence_id": "CV-E-CHALLENGE-7BC032A-RETEST-20260721",
+      "evidence_class": "challenge-review",
+      "scope": "security-release-evidence-integrity",
+      "observed_at": "2026-07-21T15:01:51Z",
+      "result": "findings",
+      "identity": "Independent read-only adversarial retest of the first dirty CV-D-078 remediation atop PR 44 head 7bc032ae540553217da0f065c5f6b7020108ae77",
+      "summary": "NO-GO: the original exact-URL 204 bypasses were closed, but canonical query variants still evaded raw-string cardinality; pairing records were not bijectively identity-bound; and final validation preceded browser-context closure. Direct attacks covered encoded and extra preflight queries, health query variants, mismatched/duplicated Request and Response objects and response.request impostors. The next repair classifies canonical routes, requires distinct one-to-one identities with back-binding and freezes the network stream before validation.",
+      "cleanup": "Read-only classifier, smoke, server-routing, fixture and direct-attack inspection only; no files, GitHub state, package publication, production or developer-machine state were changed."
+    },
+    {
+      "evidence_id": "CV-E-CHALLENGE-CV-D-078-FINAL-20260721",
+      "evidence_class": "challenge-review",
+      "scope": "security-release-evidence-integrity",
+      "observed_at": "2026-07-21T15:25:45Z",
+      "result": "precommit_clear",
+      "identity": "Independent read-only precommit challenge of the complete dirty CV-D-078 remediation atop PR 44 head 7bc032ae540553217da0f065c5f6b7020108ae77 before clean-candidate commit",
+      "summary": "GO for commit and push after all 33 accumulated adversarial mutations were rejected, including exact, encoded, extra-query, localhost and healthz route variants; shallow-clone and impostor identities; duplicate objects; all redirects; Origin/CORS/order/contract/UI failures; and every invalid terminal state. Context closure precedes the final status and transport checks. The reviewer's non-blocking Response URL/status self-validation suggestion was then closed and focused checks were rerun. Clean exact-package and native GitHub evidence remain required before merge.",
+      "cleanup": "Read-only classifier, smoke, server-routing, fixture and direct-attack inspection only; no files, GitHub state, package publication, production or developer-machine state were changed."
     }
   ],
   "completion": {
