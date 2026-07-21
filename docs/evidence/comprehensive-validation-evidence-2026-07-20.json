@@ -107,6 +107,14 @@
       "identity": "unpublishable dirty-worktree npm preview atop 47c97822969ccf375808887cea6b78ad371a6e8b; dusk-developer-studio-1.0.1.tgz; sha256 1801d3006c83cb4d7b0db9df73641ac8fdd396e96e5f5c8feb83e147bf9e2b78; sha512-sNh45UgHXg2v28l7F9cMKWZKPgzZs+sMc4eJ8EI75QrkqQ3GVEM/EkW6eeb40NYcAY7/QHFz7MzuN2/2IJupkQ==",
       "result": "passed",
       "summary": "Chrome 150 exercised the exact 308452-byte, 30-file preview tarball through Safe and Local Actions pairing, automatic Windows preflight, direct and UI DuskDS starter creation, both fixed-port conflicts, unrelated-listener preservation, project preservation, shutdown and cleanup with zero unexpected console/page errors. The automatic preflight rendered bounded tool rows and did not reproduce public 1.0.1's schema-safety error. This proves the packaged local repair but cannot serve as clean final-candidate evidence."
+    },
+    {
+      "evidence_id": "CV-E-PACKAGE-PREFLIGHT-TRANSPORT-20260721",
+      "evidence_class": "package-lifecycle-smoke",
+      "observed_at": "2026-07-21T14:08:45Z",
+      "identity": "failed immutable v1.0.2 tag assurance at b8b19256ab3b29ababe067bce305ef870b441af9 followed by an unpublishable dirty-worktree 1.0.3 remediation preview",
+      "result": "findings_repaired_local",
+      "summary": "GitHub tag run 29834025572 stopped before npm publication when Chrome 150 emitted one late net::ERR_ABORTED for the exact successful DuskDS preflight request; the gate had no identity-bound classifier for that request. The 1.0.3 local repair requires exact page Request and Response identity, complete Origin and credentialed CORS headers, no redirect, HTTP 200, authenticated-pairing order, authoritative schema validation, rendered UI proof and finish-or-one-late-abort exclusivity before tolerating only that exact failure object. Adversarial tests reject every weakened invariant and unrelated failure. Full verify:local passed 35 files and 346 tests; one initial and five consecutive exact-package Chrome runs passed pairing, preflight, scaffolding, preservation, fixed-port recovery and shutdown. Clean main, native CI and immutable 1.0.3 package proof remain required."
     }
   ],
   "pilot_executions": [
@@ -4316,6 +4324,16 @@
       "root_cause": "Direct CLI and Local Actions share the same fail-closed scaffold recovery function, but its missing-receipt error was written only for the Local Studio session model; every separate direct CLI invocation intentionally has no in-memory completion receipt.",
       "fix": "Keep the refusal and preservation boundary while replacing the mode-specific statement with truthful actionable guidance to choose a new project name or a different empty parent directory.",
       "regression_test": "The scaffold unit rejects an existing target with the actionable generic guidance, and the exact-package browser smoke repeats the direct CLI command, requires that guidance and rejects any reference to a running Local Studio."
+    },
+    {
+      "defect_id": "CV-D-076",
+      "severity": "P1",
+      "status": "fixed_local_pending_native_retest",
+      "summary": "The exact-package browser assurance rejected Chrome's late preflight abort telemetry even after the application had validated and rendered the successful response, blocking the immutable v1.0.2 release before publication.",
+      "source": "CV-E-PACKAGE-PREFLIGHT-TRANSPORT-20260721",
+      "root_cause": "The identity-bound late-abort classifier covered pairing requests only; the long-running DuskDS preflight request remained in the final global failure set even when its exact HTTP 200 response, authoritative body contract and rendered UI had already succeeded.",
+      "fix": "Add a preflight-specific classifier that accepts only the original page-owned GET and exact Response object after authenticated pairing, exact loopback endpoint and Origin, no redirect, credentialed CORS, HTTP 200, authoritative contract validation, rendered result proof and an exclusive normal-finish or one later same-object net::ERR_ABORTED terminal state. Preserve one final global assertion for every unclassified failure and move the corrected immutable release identity to 1.0.3.",
+      "regression_test": "Focused tests accept normal finish and one exact late abort, while rejecting wrong identity, response binding, timing, method, URL, Origin, redirect, CORS, status, contract/UI proof, duplicates, finish-plus-abort and unrelated failures. Full verify:local passed 346 tests, and six consecutive real-Chrome exact-package runs passed; fresh GitHub native assurance remains required."
     }
   ],
   "challenge_reviews": [

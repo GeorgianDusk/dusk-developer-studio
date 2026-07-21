@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { clearTimeout, setTimeout } from "node:timers";
 
 const LATE_ABORT_TEXT = "net::ERR_ABORTED";
+const EXPECTED_PREFLIGHT_URL = "http://127.0.0.1:8788/preflight?path=duskds";
+const EXPECTED_STUDIO_ORIGIN = "http://127.0.0.1:5173";
 
 export function createRequestTerminalTracker({
   finishedRequests,
@@ -119,7 +121,7 @@ function validateTerminalState({
   return correlatedAborts;
 }
 
-export function validatePairingTransportEvidence({
+function validatePairingTransportEvidence({
   bootstrapRequest,
   expectedBootstrapUrl,
   expectedProbeUrl,
@@ -197,24 +199,147 @@ export function validatePairingTransportEvidence({
     requestFailures,
     responseByRequest
   });
+  return {
+    authenticatedHealthSequence: authenticatedHealthEvent.sequence,
+    lateAbortTelemetry: {
+      unauthenticated_health: probeAborts.length,
+      authenticated_health: authenticatedHealthAborts.length,
+      bootstrap: bootstrapAborts.length
+    },
+    toleratedFailures: [
+      ...probeAborts,
+      ...bootstrapAborts,
+      ...authenticatedHealthAborts
+    ]
+  };
+}
+
+function validatePreflightTransportEvidence({
+  afterSequence,
+  expectedPreflightUrl,
+  finishedRequests,
+  mode,
+  preflightContractValidated,
+  preflightRequestHeaders,
+  preflightResponse,
+  preflightResponseHeaders,
+  preflightUiRendered,
+  requestFailures,
+  responseByRequest,
+  responseEvents
+}) {
+  if (mode === "safe") {
+    assert.equal(expectedPreflightUrl, undefined);
+    assert.equal(preflightContractValidated, false);
+    assert.equal(preflightRequestHeaders, undefined);
+    assert.equal(preflightResponse, undefined);
+    assert.equal(preflightResponseHeaders, undefined);
+    assert.equal(preflightUiRendered, false);
+    assert.equal(
+      matchingResponseEvents(responseEvents, EXPECTED_PREFLIGHT_URL, 200).length,
+      0,
+      "Safe mode cannot issue a successful Local Actions preflight request."
+    );
+    return { lateAbortTelemetry: 0, toleratedFailures: [] };
+  }
+  assert.equal(mode, "local-actions", "Browser transport mode is invalid.");
+  assert.equal(
+    expectedPreflightUrl,
+    EXPECTED_PREFLIGHT_URL,
+    "Preflight telemetry may classify only the exact DuskDS endpoint."
+  );
+  assert.equal(
+    preflightContractValidated,
+    true,
+    "Preflight transport telemetry requires successful authoritative contract validation."
+  );
+  assert.equal(
+    preflightUiRendered,
+    true,
+    "Preflight transport telemetry requires the application to render the validated response."
+  );
+  assert.ok(preflightResponse, "Preflight transport telemetry requires the exact page response.");
+  const preflightEvents = matchingResponseEvents(responseEvents, EXPECTED_PREFLIGHT_URL, 200);
+  assert.equal(
+    preflightEvents.length,
+    1,
+    "Local Actions must observe exactly one successful DuskDS preflight response."
+  );
+  const [preflightEvent] = preflightEvents;
+  assert.equal(
+    preflightEvent.response,
+    preflightResponse,
+    "Preflight telemetry must bind the exact captured page Response object."
+  );
+  assert.equal(
+    preflightEvent.request,
+    preflightResponse.request(),
+    "Preflight telemetry must bind the original page-owned Request object."
+  );
+  validateResponseBinding(
+    preflightEvent,
+    "GET",
+    responseByRequest,
+    "The successful DuskDS preflight request"
+  );
+  assert.equal(
+    preflightEvent.request.redirectedFrom(),
+    null,
+    "The successful DuskDS preflight request cannot follow a redirect."
+  );
+  assert.equal(
+    preflightRequestHeaders?.origin,
+    EXPECTED_STUDIO_ORIGIN,
+    "The successful DuskDS preflight request must carry the exact Studio origin."
+  );
+  assert.equal(
+    preflightResponseHeaders?.["access-control-allow-origin"],
+    EXPECTED_STUDIO_ORIGIN,
+    "The successful DuskDS preflight response must allow only the exact Studio origin."
+  );
+  assert.equal(
+    preflightResponseHeaders?.["access-control-allow-credentials"],
+    "true",
+    "The successful DuskDS preflight response must retain credentialed CORS."
+  );
+  assert.ok(
+    preflightEvent.sequence > afterSequence,
+    "The successful DuskDS preflight response must occur after authenticated pairing."
+  );
+  const preflightAborts = validateTerminalState({
+    event: preflightEvent,
+    finishedRequests,
+    label: "The successful DuskDS preflight request",
+    requestFailures,
+    responseByRequest
+  });
+  return {
+    lateAbortTelemetry: preflightAborts.length,
+    toleratedFailures: preflightAborts
+  };
+}
+
+export function validateBrowserTransportEvidence(input) {
+  const pairing = validatePairingTransportEvidence(input);
+  const preflight = validatePreflightTransportEvidence({
+    ...input,
+    afterSequence: pairing.authenticatedHealthSequence
+  });
   const toleratedFailures = new Set([
-    ...probeAborts,
-    ...bootstrapAborts,
-    ...authenticatedHealthAborts
+    ...pairing.toleratedFailures,
+    ...preflight.toleratedFailures
   ]);
   assert.deepEqual(
-    requestFailures
+    input.requestFailures
       .filter((failure) => !toleratedFailures.has(failure))
       .map(({ text, url }) => ({ text, url })),
     [],
     "Browser smoke produced an unexpected request failure."
   );
-
   return {
     lateAbortTelemetry: {
-      unauthenticated_health: probeAborts.length,
-      authenticated_health: authenticatedHealthAborts.length,
-      bootstrap: bootstrapAborts.length
+      ...pairing.lateAbortTelemetry,
+      preflight: preflight.lateAbortTelemetry
     }
   };
 }

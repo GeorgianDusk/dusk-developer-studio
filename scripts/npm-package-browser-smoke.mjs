@@ -10,7 +10,7 @@ import { URL } from "node:url";
 import { chromium } from "playwright";
 import {
   createRequestTerminalTracker,
-  validatePairingTransportEvidence
+  validateBrowserTransportEvidence
 } from "./npm-package-browser-telemetry.mjs";
 import { readPreflightResponseJson } from "./npm-package-browser-response.mjs";
 import {
@@ -337,19 +337,30 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       && error.text === "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
       && error.url === expectedProbeUrl;
     let preflightContract;
+    let preflightResponse;
+    let preflightRequestHeaders;
+    let preflightResponseHeaders;
+    let preflightContractValidated = false;
+    let preflightUiRendered = false;
+    const expectedPreflightUrl = capabilitiesEnabled
+      ? "http://127.0.0.1:8788/preflight?path=duskds"
+      : undefined;
     if (capabilitiesEnabled) {
       await page.getByRole("button", { name: /Start DuskDS/i }).click();
       const preflightButton = page.getByRole("button", { name: "Run automatic preflight" });
       await preflightButton.waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
-      const expectedPreflightUrl = "http://127.0.0.1:8788/preflight?path=duskds";
       const preflightResponsePromise = page.waitForResponse(
         (response) => response.url() === expectedPreflightUrl
           && response.request().method() === "GET",
         { timeout: PREFLIGHT_TIMEOUT_MS }
       );
       await preflightButton.click();
-      const preflightResponse = await preflightResponsePromise;
+      preflightResponse = await preflightResponsePromise;
       assert.equal(preflightResponse.status(), 200);
+      [preflightRequestHeaders, preflightResponseHeaders] = await Promise.all([
+        preflightResponse.request().allHeaders(),
+        preflightResponse.allHeaders()
+      ]);
       preflightContract = await validatePreflightConsumerContract(
         await readPreflightResponseJson({
           context,
@@ -360,6 +371,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
         }),
         PREFLIGHT_CONSUMER_SOURCE
       );
+      preflightContractValidated = true;
       const preflightResults = page.locator('[aria-label="Automatic preflight results"]');
       await preflightResults.waitFor({ state: "visible", timeout: PREFLIGHT_TIMEOUT_MS });
       assert.equal(
@@ -372,6 +384,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
         0,
         "The exact-package producer response must satisfy the Studio preflight schema."
       );
+      preflightUiRendered = true;
       const expectedScaffoldUrl = "http://127.0.0.1:8788/scaffold-duskds-forge";
       const scaffoldResponsePromise = page.waitForResponse(
         (response) =>
@@ -448,7 +461,13 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       requestTerminalTracker.wait(
         authenticatedHealthEvent.request,
         "The successful authenticated health request"
-      )
+      ),
+      ...(preflightResponse ? [
+        requestTerminalTracker.wait(
+          preflightResponse.request(),
+          "The successful DuskDS preflight request"
+        )
+      ] : [])
     ]);
     assert.deepEqual(
       responseEvents
@@ -457,12 +476,19 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       [{ url: expectedProbeUrl, status: 401 }],
       "The only expected HTTP failure is the one unauthenticated health probe before pairing."
     );
-    const pairingTransport = validatePairingTransportEvidence({
+    const browserTransport = validateBrowserTransportEvidence({
       bootstrapRequest,
       expectedBootstrapUrl,
+      expectedPreflightUrl,
       expectedProbeUrl,
       finishedRequests,
+      mode: capabilitiesEnabled ? "local-actions" : "safe",
       pairingValidated: true,
+      preflightContractValidated,
+      preflightRequestHeaders,
+      preflightResponse,
+      preflightResponseHeaders,
+      preflightUiRendered,
       requestFailures,
       responseByRequest,
       responseEvents
@@ -480,7 +506,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       mode: capabilitiesEnabled ? "local-actions" : "safe",
       paired_ui: expectedMode,
       assets,
-      late_abort_telemetry: pairingTransport.lateAbortTelemetry,
+      late_abort_telemetry: browserTransport.lateAbortTelemetry,
       ...(preflightContract ? {
         preflight_verified: true,
         preflight_check_id: PREFLIGHT_CHECK_ID,

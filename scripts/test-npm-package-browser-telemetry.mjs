@@ -2,23 +2,50 @@ import assert from "node:assert/strict";
 import { setTimeout } from "node:timers";
 import {
   createRequestTerminalTracker,
-  validatePairingTransportEvidence
+  validateBrowserTransportEvidence
 } from "./npm-package-browser-telemetry.mjs";
 
 const expectedProbeUrl = "http://127.0.0.1:8788/health";
 const expectedBootstrapUrl = "http://127.0.0.1:5173/__dusk/bootstrap";
+const expectedPreflightUrl = "http://127.0.0.1:8788/preflight?path=duskds";
+const expectedStudioOrigin = "http://127.0.0.1:5173";
 
-function request(method, url) {
-  return { method: () => method, url: () => url };
+function request(method, url, {
+  headers = {},
+  redirectedFrom = null
+} = {}) {
+  return {
+    headers: () => headers,
+    method: () => method,
+    redirectedFrom: () => redirectedFrom,
+    url: () => url
+  };
 }
 
-function fixture({ bootstrapAbort = false, healthAbort = false, probeAbort = false } = {}) {
+function response(requestObject, headers = {}) {
+  return { headers: () => headers, request: () => requestObject };
+}
+
+function fixture({
+  bootstrapAbort = false,
+  healthAbort = false,
+  preflight = false,
+  preflightAbort = false,
+  probeAbort = false
+} = {}) {
   const probeRequest = request("GET", expectedProbeUrl);
   const bootstrapRequest = request("POST", expectedBootstrapUrl);
   const healthRequest = request("GET", expectedProbeUrl);
-  const probeResponse = {};
-  const bootstrapResponse = {};
-  const healthResponse = {};
+  const preflightRequest = request("GET", expectedPreflightUrl, {
+    headers: { origin: expectedStudioOrigin }
+  });
+  const probeResponse = response(probeRequest);
+  const bootstrapResponse = response(bootstrapRequest);
+  const healthResponse = response(healthRequest);
+  const preflightResponse = response(preflightRequest, {
+    "access-control-allow-origin": expectedStudioOrigin,
+    "access-control-allow-credentials": "true"
+  });
   const responseEvents = [
     {
       request: probeRequest,
@@ -47,9 +74,19 @@ function fixture({ bootstrapAbort = false, healthAbort = false, probeAbort = fal
     [bootstrapRequest, bootstrapResponse],
     [healthRequest, healthResponse]
   ]);
+  if (preflight) {
+    responseEvents.push({
+      request: preflightRequest,
+      response: preflightResponse,
+      sequence: 4,
+      status: 200,
+      url: expectedPreflightUrl
+    });
+    responseByRequest.set(preflightRequest, preflightResponse);
+  }
   const requestFailures = [];
   const finishedRequests = new Map();
-  let sequence = 4;
+  let sequence = preflight ? 5 : 4;
   if (probeAbort) {
     requestFailures.push({
       request: probeRequest,
@@ -80,13 +117,33 @@ function fixture({ bootstrapAbort = false, healthAbort = false, probeAbort = fal
   } else {
     finishedRequests.set(healthRequest, sequence++);
   }
+  if (preflight) {
+    if (preflightAbort) {
+      requestFailures.push({
+        request: preflightRequest,
+        sequence: sequence++,
+        text: "net::ERR_ABORTED",
+        url: expectedPreflightUrl
+      });
+    } else {
+      finishedRequests.set(preflightRequest, sequence++);
+    }
+  }
   return {
     bootstrapRequest,
     expectedBootstrapUrl,
+    expectedPreflightUrl: preflight ? expectedPreflightUrl : undefined,
     expectedProbeUrl,
     finishedRequests,
     healthRequest,
+    mode: preflight ? "local-actions" : "safe",
     pairingValidated: true,
+    preflightContractValidated: preflight,
+    preflightRequestHeaders: preflight ? { origin: expectedStudioOrigin } : undefined,
+    preflightRequest,
+    preflightResponse: preflight ? preflightResponse : undefined,
+    preflightResponseHeaders: preflight ? preflightResponse.headers() : undefined,
+    preflightUiRendered: preflight,
     probeRequest,
     requestFailures,
     responseByRequest,
@@ -95,20 +152,94 @@ function fixture({ bootstrapAbort = false, healthAbort = false, probeAbort = fal
 }
 
 function validate(input) {
-  return validatePairingTransportEvidence(input);
+  return validateBrowserTransportEvidence(input);
 }
 
 for (const [options, telemetry] of [
-  [{}, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0 }],
-  [{ probeAbort: true }, { unauthenticated_health: 1, authenticated_health: 0, bootstrap: 0 }],
-  [{ healthAbort: true }, { unauthenticated_health: 0, authenticated_health: 1, bootstrap: 0 }],
-  [{ bootstrapAbort: true }, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 1 }],
+  [{}, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0, preflight: 0 }],
+  [{ probeAbort: true }, { unauthenticated_health: 1, authenticated_health: 0, bootstrap: 0, preflight: 0 }],
+  [{ healthAbort: true }, { unauthenticated_health: 0, authenticated_health: 1, bootstrap: 0, preflight: 0 }],
+  [{ bootstrapAbort: true }, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 1, preflight: 0 }],
   [
     { bootstrapAbort: true, healthAbort: true, probeAbort: true },
-    { unauthenticated_health: 1, authenticated_health: 1, bootstrap: 1 }
+    { unauthenticated_health: 1, authenticated_health: 1, bootstrap: 1, preflight: 0 }
+  ],
+  [
+    { preflight: true },
+    { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0, preflight: 0 }
+  ],
+  [
+    { preflight: true, preflightAbort: true },
+    { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0, preflight: 1 }
   ]
 ]) {
   assert.deepEqual(validate(fixture(options)).lateAbortTelemetry, telemetry);
+}
+
+{
+  const input = fixture({ preflight: true, preflightAbort: true });
+  input.requestFailures.at(-1).sequence = 4;
+  assert.throws(() => validate(input), /must either finish|unexpected request failure/u);
+}
+{
+  const input = fixture({ preflight: true, preflightAbort: true });
+  input.requestFailures.at(-1).request = request("GET", expectedPreflightUrl);
+  assert.throws(() => validate(input), /must either finish/u);
+}
+for (const mutation of [
+  (input) => { input.requestFailures.at(-1).text = "net::ERR_FAILED"; },
+  (input) => { input.requestFailures.at(-1).url = `${expectedPreflightUrl}&retry=1`; },
+  (input) => { input.preflightRequest.url = () => `${expectedPreflightUrl}&retry=1`; },
+  (input) => { input.preflightRequest.method = () => "POST"; },
+  (input) => { input.preflightRequestHeaders = { origin: "http://localhost:5173" }; },
+  (input) => { input.preflightRequest.redirectedFrom = () => request("GET", expectedPreflightUrl); },
+  (input) => { input.preflightResponseHeaders = { "access-control-allow-credentials": "true" }; },
+  (input) => { input.preflightResponseHeaders = {
+    "access-control-allow-origin": expectedStudioOrigin,
+    "access-control-allow-credentials": "false"
+  }; },
+  (input) => { input.responseEvents[3].status = 204; },
+  (input) => { input.responseByRequest.set(input.preflightRequest, {}); }
+]) {
+  const input = fixture({ preflight: true, preflightAbort: true });
+  mutation(input);
+  assert.throws(() => validate(input));
+}
+for (const property of ["preflightContractValidated", "preflightUiRendered"]) {
+  const input = fixture({ preflight: true, preflightAbort: true });
+  input[property] = false;
+  assert.throws(() => validate(input), /requires/u);
+}
+{
+  const input = fixture({ preflight: true, preflightAbort: true });
+  input.responseEvents.push({ ...input.responseEvents[3], sequence: 5 });
+  assert.throws(() => validate(input), /exactly one successful DuskDS preflight/u);
+}
+{
+  const input = fixture({ preflight: true, preflightAbort: true });
+  input.requestFailures.push({ ...input.requestFailures.at(-1), sequence: 9 });
+  assert.throws(() => validate(input), /duplicate Chromium abort/u);
+}
+{
+  const input = fixture({ preflight: true, preflightAbort: true });
+  input.finishedRequests.set(input.preflightRequest, 9);
+  assert.throws(() => validate(input), /must either finish/u);
+}
+{
+  const input = fixture({ preflight: true, preflightAbort: true });
+  const unrelatedRequest = request("GET", "http://127.0.0.1:5173/assets/app.js");
+  input.requestFailures.push({
+    request: unrelatedRequest,
+    sequence: 9,
+    text: "net::ERR_ABORTED",
+    url: unrelatedRequest.url()
+  });
+  assert.throws(() => validate(input), /unexpected request failure/u);
+}
+{
+  const input = fixture();
+  input.preflightContractValidated = true;
+  assert.throws(() => validate(input));
 }
 
 {

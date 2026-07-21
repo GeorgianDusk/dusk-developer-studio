@@ -194,13 +194,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.2",
-  tag: "v1.0.2",
+  version: "1.0.3",
+  tag: "v1.0.3",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.2.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.3.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -404,6 +404,7 @@ assert.match(npmPreflightSmoke, /spawn\(process\.execPath, \[primaryEntry, "loca
 assert.match(npmPreflightSmoke, /waitForPortsClosed\(\)/);
 assert.match(npmPreflightSmoke, /studio_loopback_services_stopped: true/);
 const npmBrowserResponse = read("scripts/npm-package-browser-response.mjs");
+const npmBrowserTelemetry = read("scripts/npm-package-browser-telemetry.mjs");
 assert.match(
   npmBrowserResponse,
   /Network\[\.\]getResponseBody\.\*No data found for resource with given identifier[\s\S]*context\.request\.get\(expectedUrl/,
@@ -418,6 +419,26 @@ assert.doesNotMatch(
   npmBrowserSmoke,
   /validatePreflightConsumerContract\(\s*await preflightResponse\.json\(\)/,
   "The authoritative browser smoke must not depend exclusively on an evictable CDP response body."
+);
+assert.match(
+  npmBrowserTelemetry,
+  /EXPECTED_PREFLIGHT_URL[\s\S]*EXPECTED_STUDIO_ORIGIN[\s\S]*preflightEvent\.response[\s\S]*preflightResponse[\s\S]*preflightEvent\.request[\s\S]*preflightResponse\.request\(\)/,
+  "Preflight abort classification must bind the exact page Request and Response objects."
+);
+assert.match(
+  npmBrowserTelemetry,
+  /redirectedFrom\(\)[\s\S]*null[\s\S]*preflightRequestHeaders[\s\S]*origin[\s\S]*EXPECTED_STUDIO_ORIGIN[\s\S]*preflightResponseHeaders[\s\S]*access-control-allow-origin[\s\S]*access-control-allow-credentials/,
+  "Preflight abort classification must preserve the exact origin, no-redirect, and credentialed CORS boundary."
+);
+assert.match(
+  npmBrowserSmoke,
+  /preflightResponse\.request\(\)\.allHeaders\(\)[\s\S]*preflightResponse\.allHeaders\(\)/,
+  "The browser smoke must capture complete headers from the exact preflight Request and Response."
+);
+assert.match(
+  npmBrowserTelemetry,
+  /preflightContractValidated[\s\S]*true[\s\S]*preflightUiRendered[\s\S]*true[\s\S]*validateTerminalState[\s\S]*toleratedFailures[\s\S]*unexpected request failure/,
+  "Preflight abort classification must require consumer and UI proof, an exact terminal event, and one final global failure check."
 );
 assert.match(npmAssuranceWorkflow, /--lifecycle-self-test --no-open/);
 assert.match(npmAssuranceWorkflow, /local-actions --lifecycle-self-test --no-open/);
@@ -910,8 +931,8 @@ assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total
 assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
 assert.deepEqual(phase5Policy.npm_distribution, {
   package_name: "dusk-developer-studio",
-  package_version: "1.0.2",
-  tag: "v1.0.2",
+  package_version: "1.0.3",
+  tag: "v1.0.3",
   registry_url: "https://registry.npmjs.org/dusk-developer-studio",
   node_engine: ">=24.18.0 <25",
   assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",
