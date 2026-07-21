@@ -147,6 +147,17 @@ function validHostHeader(hostHeader: string | undefined, port: number): boolean 
   return normalized === `127.0.0.1:${port}` || normalized === `localhost:${port}`;
 }
 
+function originMatchesHost(origin: string, hostHeader: string | undefined, port: number): boolean {
+  if (!hostHeader || !validHostHeader(hostHeader, port)) return false;
+  try {
+    const originHostname = new URL(origin).hostname.toLowerCase();
+    const hostHostname = hostHeader.toLowerCase().slice(0, -`:${port}`.length);
+    return originHostname === hostHostname;
+  } catch {
+    return false;
+  }
+}
+
 function corsHeaders(origin: string): Record<string, string> {
   return { "access-control-allow-origin": origin, "access-control-allow-credentials": "true", "vary": "origin" };
 }
@@ -367,9 +378,11 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   const capabilityWindows = new Map<string, RateWindow>();
   let activeCapabilityRequests = 0;
 
-  function requireOrigin(request: http.IncomingMessage): string {
+  function requireOrigin(request: http.IncomingMessage, listeningPort: number): string {
     const origin = typeof request.headers.origin === "string" ? request.headers.origin : "";
-    if (!origin || !allowedOrigins.has(origin)) throw new RequestError(403, "Origin is not allowed.", "origin_denied");
+    if (!origin || !allowedOrigins.has(origin) || !originMatchesHost(origin, request.headers.host, listeningPort)) {
+      throw new RequestError(403, "Origin is not allowed.", "origin_denied");
+    }
     return origin;
   }
 
@@ -419,7 +432,7 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
     try {
       const listeningPort = readListeningPort(server, port);
       if (!validHostHeader(request.headers.host, listeningPort)) throw new RequestError(403, "Host is not allowed.", "host_denied");
-      origin = requireOrigin(request);
+      origin = requireOrigin(request, listeningPort);
       const requestUrl = new URL(request.url ?? "/", `http://${HOST}:${listeningPort}`);
 
       if (request.method === "OPTIONS") {

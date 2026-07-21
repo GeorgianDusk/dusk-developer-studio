@@ -4,6 +4,12 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.6 - 2026-07-22
+
+### Security
+
+- Require the companion request Host and browser Origin to use the same approved loopback hostname spelling, while preserving exact `127.0.0.1` and exact `localhost` operation.
+
 ## 1.0.5 - 2026-07-21
 
 ### Fixed

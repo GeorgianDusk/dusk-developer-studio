@@ -4372,6 +4372,76 @@
       "root_cause": "The subsequent-publication workflow omitted the recursive receipt-directory creation already present in the initial-publication workflow. The publication job downloaded its candidate under output/main-assurance, so no earlier step established output/npm.",
       "fix": "Create output/npm recursively immediately before writing the direct OIDC publication receipt, without changing the immutable v1.0.3 tag or already-published registry artifact.",
       "regression_test": "The public-repository contract now requires the recursive directory creation to precede the OIDC receipt write. Focused repository and comprehensive-validation fixtures must pass before the patch is pushed; native proof is deferred to the next idempotent subsequent-publication execution because v1.0.3 is immutable."
+    },
+    {
+      "defect_id": "CV-D-080",
+      "severity": "P2",
+      "status": "fixed_in_v1.0.4_pending_final_candidate_retest",
+      "summary": "Back or Forward could restore a deep scroll position while moving keyboard focus to an off-screen route heading instead of a visible control near the restored reading position.",
+      "source": "Source-blind v1.0.3 history-navigation pilot preserved in PR 48",
+      "root_cause": "Route changes restored scroll and unconditionally focused the route heading; history entries did not preserve a bounded focus target or distinguish history navigation from a new route push.",
+      "fix": "Capture a bounded structural focus path in each history entry, distinguish history navigation, restore a still-visible focusable element after scroll restoration, and fall back to the first visible main control or route heading.",
+      "regression_test": "Component and five-project browser Back/Forward regressions use keyboard activation and require restored scroll, the exact prior visible control and synchronized title without accepting hidden or out-of-range focus paths. Final-candidate source-blind retest remains required."
+    },
+    {
+      "defect_id": "CV-D-081",
+      "severity": "P3",
+      "status": "fixed_in_v1.0.4_pending_final_candidate_retest",
+      "summary": "Escape did not cancel the browser-progress reset confirmation, leaving keyboard users dependent on the explicit Cancel button.",
+      "source": "Source-blind v1.0.3 settings/reset pilot preserved in PR 48",
+      "root_cause": "The inline confirmation group exposed Cancel and Reset controls but had no Escape-key handler or focus-restoration path for keyboard cancellation.",
+      "fix": "Handle Escape on the confirmation group through the same cancel path and restore focus to Reset browser progress without changing saved data.",
+      "regression_test": "The Settings component opens reset confirmation, focuses Cancel, sends Escape, verifies the dialog closes, saved progress remains intact and focus returns to Reset browser progress. Final-candidate source-blind retest remains required."
+    },
+    {
+      "defect_id": "CV-D-082",
+      "severity": "P2",
+      "status": "fixed_in_v1.0.4_pending_final_candidate_retest",
+      "summary": "Reopening saved manual Access evidence restored the node observation but not its required Deno confirmation, creating a contradictory completed record and allowing ambiguous future-contract inference.",
+      "source": "Source-blind v1.0.3 Access re-entry pilot preserved in PR 48",
+      "root_cause": "The saved manual record did not bind the exact required tool identity/count, and re-entry initialized every tool confirmation as empty while restoring the block observation independently.",
+      "fix": "Persist the bounded Deno tool identity and required-count metadata, restore it only for an exact current record or the narrowly defined legacy shape, restore the saved platform, and reject incomplete, companion-produced or future multi-tool records.",
+      "regression_test": "Access component tests cover exact restoration, bounded legacy restoration, incomplete metadata, companion-source forgery and future required-tool expansion. Final-candidate source-blind retest remains required."
+    },
+    {
+      "defect_id": "CV-D-083",
+      "severity": "P3",
+      "status": "fixed_in_v1.0.4_pending_final_candidate_retest",
+      "summary": "The raw JavaScript release ceiling rejected the accessibility and evidence-integrity repairs even though compressed transfer and total-transfer budgets remained within their stricter limits.",
+      "source": "v1.0.4 exact-candidate release-gate observation preserved in PR 48",
+      "root_cause": "The raw 450,000-byte ceiling had less than the needed headroom for the new focus and evidence validation logic and was a weaker transfer-cost proxy than the unchanged gzip and total-transfer ceilings.",
+      "fix": "Narrowly raise only the raw JavaScript ceiling to 460,000 bytes while keeping the 140,000-byte gzip ceiling and total-transfer controls unchanged.",
+      "regression_test": "Assurance and production-build checks enforce the new raw maximum together with the unchanged stricter gzip and total-transfer budgets. Exact final-candidate build verification remains required."
+    },
+    {
+      "defect_id": "CV-D-084",
+      "severity": "P2",
+      "status": "fixed_in_v1.0.4_pending_final_candidate_retest",
+      "summary": "A Local Studio tab could keep its connecting or unpaired title after the same route changed to paired and ready, so browser-tab identity contradicted visible session state.",
+      "source": "Source-blind v1.0.3 Local Studio state-transition pilot preserved in PR 48",
+      "root_cause": "Document-title synchronization depended on route and path changes but not on companion-status transitions that change the route heading in place.",
+      "fix": "Include companion status in the title/focus synchronization effect so same-route pairing transitions update the browser title to the visible heading.",
+      "regression_test": "The Local Studio component completes bootstrap and health checks, reaches paired-ready state and requires the document title to match the paired-ready heading. Final-candidate source-blind retest remains required."
+    },
+    {
+      "defect_id": "CV-D-085",
+      "severity": "P3",
+      "status": "fixed_local_pending_final_candidate_retest",
+      "summary": "The local companion accepted an allowed localhost Origin with a 127.0.0.1 Host, or the reverse, before pairing rejected the unauthenticated request.",
+      "source": "CV-SEC-01 source-blind public v1.0.5 black-box pilot on 2026-07-21",
+      "root_cause": "The companion validated Host and Origin against independent two-entry loopback allowlists but did not require their hostname spellings to match, unlike the one-time static bootstrap boundary.",
+      "fix": "Keep both exact loopback aliases available, but require the Origin hostname to use the same approved spelling as the validated request Host before CORS, pairing or session handling.",
+      "regression_test": "The 40-test local companion security suite now rejects both cross-spelling combinations without CORS, preserves matching localhost through pairing_required and preserves matching 127.0.0.1 behavior. Exact-package black-box retest remains required."
+    },
+    {
+      "defect_id": "CV-D-086",
+      "severity": "P3",
+      "status": "verified",
+      "summary": "The history-focus browser regression used pointer activation but required WebKit to focus the clicked button, creating deterministic false failures in WebKit desktop and Mobile Safari emulation.",
+      "source": "Initial v1.0.6 candidate Playwright matrix and focused repeated WebKit reproductions on 2026-07-22",
+      "root_cause": "Chromium focuses a button after pointer activation while Safari/WebKit intentionally may not; the regression conflated pointer focus behavior with the keyboard history-restoration contract it was meant to test.",
+      "fix": "Focus the Reference control explicitly and activate it with Enter before navigating Back and Forward, while retaining the exact restored-control, viewport, scroll, title and forward-focus-path assertions.",
+      "regression_test": "The corrected test passed 10 of 10 focused executions across WebKit desktop and Mobile Safari emulation, followed by a clean complete five-project matrix with 84 passes and 16 intentional offline or pre-launch skips."
     }
   ],
   "challenge_reviews": [

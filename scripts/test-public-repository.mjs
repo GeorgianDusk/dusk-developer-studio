@@ -194,13 +194,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.5",
-  tag: "v1.0.5",
+  version: "1.0.6",
+  tag: "v1.0.6",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.5.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.6.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -941,8 +941,8 @@ assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total
 assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
 assert.deepEqual(phase5Policy.npm_distribution, {
   package_name: "dusk-developer-studio",
-  package_version: "1.0.5",
-  tag: "v1.0.5",
+  package_version: "1.0.6",
+  tag: "v1.0.6",
   registry_url: "https://registry.npmjs.org/dusk-developer-studio",
   node_engine: ">=24.18.0 <25",
   assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",

@@ -83,7 +83,9 @@ test("browser history restores the document title and prior scroll position", as
   expect(overviewScrollY).toBeGreaterThan(500);
   await expect.poll(() => page.evaluate(() => window.history.state?.duskStudioScrollY)).toBe(overviewScrollY);
   const referenceButton = page.getByRole("button", { name: "Reference", exact: true });
-  await referenceButton.click();
+  await referenceButton.focus();
+  await expect(referenceButton).toBeFocused();
+  await referenceButton.press("Enter");
   const referenceHeading = page.getByRole("heading", { name: "Source-backed context for the task in front of you." });
   await expect(referenceHeading).toBeVisible();
   await expect(referenceHeading).toBeFocused();

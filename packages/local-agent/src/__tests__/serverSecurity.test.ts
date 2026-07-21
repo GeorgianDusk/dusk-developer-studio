@@ -128,6 +128,24 @@ describe("local companion containment boundary", () => {
       expect(response.status).toBe(403);
       expect(response.body.code).toBe("host_denied");
     }
+
+    for (const mismatch of [
+      { host: `127.0.0.1:${port}`, origin: "http://localhost:5173" },
+      { host: `localhost:${port}`, origin: ORIGIN }
+    ]) {
+      const response = await request(port, mismatch);
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe("origin_denied");
+      expect(response.headers["access-control-allow-origin"]).toBeUndefined();
+    }
+
+    const exactLocalhost = await request(port, {
+      host: `localhost:${port}`,
+      origin: "http://localhost:5173"
+    });
+    expect(exactLocalhost.status).toBe(401);
+    expect(exactLocalhost.body.code).toBe("pairing_required");
+    expect(exactLocalhost.headers["access-control-allow-origin"]).toBe("http://localhost:5173");
   });
 
   it("requires the correct pairing token and returns only an HttpOnly session cookie", async () => {
