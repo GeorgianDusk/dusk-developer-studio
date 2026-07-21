@@ -6,6 +6,7 @@ import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
+import { downloadGitHubActionsReceipt } from "./github-actions-provenance.mjs";
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const productRoot = path.resolve(scriptDirectory, "..");
@@ -63,7 +64,9 @@ const TRACE_OUTCOME_CLASSES = Object.freeze({
 });
 const TAR_BLOCK_BYTES = 512;
 const DEFAULT_MAX_TAR_FILES = 512;
+const DEFAULT_MAX_TAR_ARCHIVE_BYTES = 32 * 1024 * 1024;
 const DEFAULT_MAX_TAR_UNCOMPRESSED_BYTES = 32 * 1024 * 1024;
+const MAX_DURABLE_RECEIPT_BYTES = 4 * 1024 * 1024;
 const FORBIDDEN_KEYS = new Set([
   "confidence",
   "confidence_score",
@@ -241,8 +244,16 @@ function safeTarPackagePath(value) {
 }
 
 function parseTarEntries(packageBytes, options = {}) {
+  const maximumArchiveBytes = options.maxArchiveBytes ?? DEFAULT_MAX_TAR_ARCHIVE_BYTES;
   const maximumBytes = options.maxUncompressedBytes ?? DEFAULT_MAX_TAR_UNCOMPRESSED_BYTES;
   const maximumFiles = options.maxFiles ?? DEFAULT_MAX_TAR_FILES;
+  if (
+    !Buffer.isBuffer(packageBytes)
+    || packageBytes.byteLength <= 0
+    || packageBytes.byteLength > maximumArchiveBytes
+  ) {
+    throw new Error("The npm tarball has an invalid or oversized compressed payload.");
+  }
   const tar = gunzipSync(packageBytes, { maxOutputLength: maximumBytes });
   if (tar.byteLength === 0 || tar.byteLength > maximumBytes || tar.byteLength % TAR_BLOCK_BYTES !== 0) {
     throw new Error("The npm tarball has an invalid or oversized uncompressed payload.");
@@ -401,6 +412,7 @@ function validateFinalPackageAssuranceProvenance(
   expectedRecord,
   policy,
   finalCandidate,
+  liveVerification,
   label,
   errors
 ) {
@@ -429,8 +441,7 @@ function validateFinalPackageAssuranceProvenance(
     || provenance.repository !== policy?.canonical_identity?.repository
     || provenance.workflow_path !== policy?.intended_final_candidate?.assurance_workflow_path
     || !/^[1-9][0-9]{0,19}$/u.test(runId ?? "")
-    || !Number.isSafeInteger(provenance.run_attempt)
-    || provenance.run_attempt < 1
+    || provenance.run_attempt !== 1
     || provenance.run_event !== "push"
     || provenance.run_ref !== "refs/heads/main"
     || provenance.run_commit !== finalCandidate?.source_commit
@@ -450,6 +461,25 @@ function validateFinalPackageAssuranceProvenance(
     || !valuesMatch(payload.record, expectedRecord)
   ) {
     errors.push(`${label} must contain a directly consumable GitHub Actions artifact provenance envelope bound to the exact evidence payload bytes.`);
+    return;
+  }
+  if (
+    liveVerification?.verified !== true
+    || liveVerification.repository !== provenance.repository
+    || liveVerification.workflow_path !== provenance.workflow_path
+    || String(liveVerification.run_id) !== runId
+    || liveVerification.run_url !== provenance.run_url
+    || liveVerification.run_attempt !== provenance.run_attempt
+    || liveVerification.run_event !== provenance.run_event
+    || liveVerification.run_ref !== provenance.run_ref
+    || liveVerification.run_commit !== provenance.run_commit
+    || String(liveVerification.artifact_id) !== artifactId
+    || liveVerification.artifact_name !== provenance.artifact_name
+    || liveVerification.artifact_digest_sha256 !== payloadSha256
+    || liveVerification.evidence_payload_sha256 !== payloadSha256
+    || !valuesMatch(liveVerification.evidence_payload, payload)
+  ) {
+    errors.push(`${label} must be independently reverified against the exact successful GitHub run and downloaded artifact bytes${liveVerification?.error ? `: ${liveVerification.error}` : "."}`);
     return;
   }
   const nativeEvidence = payload.native_ci_evidence;
@@ -473,6 +503,7 @@ function validateFinalPackageAssuranceProvenance(
       !policy.required_package_platforms?.includes(platform)
       || record?.status !== "passed"
       || record?.runner !== runner
+      || record?.install_smoke !== "passed"
       || record?.candidate_commit !== finalCandidate?.source_commit
       || record?.integrity !== finalCandidate?.npm_integrity
       || record?.package_inventory_sha256 !== finalCandidate?.package_inventory_sha256
@@ -480,8 +511,47 @@ function validateFinalPackageAssuranceProvenance(
       || record?.local_actions_preflight_verified !== true
       || record?.local_actions_preflight_consumer_contract_source_sha256
         !== nativeEvidence.consumer_contract_source_sha256
+      || record?.cleanup_smoke !== "passed"
     ) {
       errors.push(`${label} GitHub Actions evidence payload contains an invalid ${platform} native runner receipt.`);
+    }
+  }
+  const checkFields = {
+    install: ["install_smoke"],
+    safe: ["safe_smoke"],
+    "local-actions": [
+      "local_actions_capability_contract_smoke",
+      "local_actions_preflight_verified",
+      "local_actions_preflight_loopback_services_stopped"
+    ],
+    "create-duskds": [
+      "direct_cli_scaffold_smoke",
+      "local_actions_scaffold_smoke",
+      "scaffold_preservation_smoke"
+    ],
+    shutdown: ["shutdown_smoke"],
+    cleanup: ["cleanup_smoke"]
+  };
+  for (const result of payload.record?.check_results ?? []) {
+    const fields = checkFields[result?.check];
+    const expectedRefs = Object.entries(nativeEvidence.platform_smoke ?? {}).map(
+      ([runner, platformRecord]) => {
+        if (!fields?.every((field) => platformRecord[field] === "passed" || platformRecord[field] === true)) {
+          return null;
+        }
+        const digest = createHash("sha256")
+          .update(JSON.stringify(platformRecord), "utf8")
+          .digest("hex");
+        return `${expectedRecord.evidence_id}:check:${result.check}:${runner}:${digest}`;
+      }
+    );
+    if (
+      !fields
+      || !Array.isArray(result?.evidence_refs)
+      || expectedRefs.some((value) => value === null)
+      || !valuesMatch([...(result?.evidence_refs ?? [])].sort(), expectedRefs.sort())
+    ) {
+      errors.push(`${label} GitHub Actions evidence payload does not independently prove the ${result?.check ?? "unknown"} package check on every native runner.`);
     }
   }
 }
@@ -498,6 +568,7 @@ function validateReceiptContentBinding(
     policySha256,
     policy,
     finalCandidate,
+    finalPackageProvenanceVerification,
     allowTestFixtures = false
   } = {}
 ) {
@@ -538,6 +609,7 @@ function validateReceiptContentBinding(
       expectedRecord,
       policy,
       finalCandidate,
+      finalPackageProvenanceVerification,
       label,
       errors
     );
@@ -573,6 +645,7 @@ function validateComprehensiveCampaignInternal(
     receiptContents = new Map(),
     policySha256,
     authoritativeState,
+    finalPackageProvenanceVerification,
     now,
     allowTestFixtures = false
   } = {}
@@ -644,6 +717,22 @@ function validateComprehensiveCampaignInternal(
   if (!isNonEmptyStringArray(policy.required_package_checks)) {
     errors.push("policy.required_package_checks must be a non-empty string array.");
   }
+  if (
+    !isNonEmptyStringArray(policy.final_evidence_ledger_paths)
+    || duplicateValues(policy.final_evidence_ledger_paths ?? []).length
+    || !(policy.final_evidence_ledger_paths ?? []).every((value) => {
+      const directory = value.endsWith("/");
+      const candidate = directory ? value.slice(0, -1) : value;
+      return candidate.length > 0
+        && !candidate.includes("\\")
+        && !path.posix.isAbsolute(candidate)
+        && path.posix.normalize(candidate) === candidate
+        && !candidate.startsWith("../");
+    })
+    || !policy.final_evidence_ledger_paths.includes(`${policy.receipt_root}/`)
+  ) {
+    errors.push("policy.final_evidence_ledger_paths must contain unique safe repository-relative evidence paths including receipt_root/.");
+  }
   pushMissingObjectFields(
     policy.intended_final_candidate,
     ["package_name", "package_version", "repository_tag", "assurance_workflow_path"],
@@ -685,10 +774,12 @@ function validateComprehensiveCampaignInternal(
   if (
     !Number.isSafeInteger(policy.candidate_tarball_limits?.maximum_files)
     || policy.candidate_tarball_limits.maximum_files <= 0
+    || !Number.isSafeInteger(policy.candidate_tarball_limits?.maximum_archive_bytes)
+    || policy.candidate_tarball_limits.maximum_archive_bytes <= 0
     || !Number.isSafeInteger(policy.candidate_tarball_limits?.maximum_uncompressed_bytes)
     || policy.candidate_tarball_limits.maximum_uncompressed_bytes <= 0
   ) {
-    errors.push("policy.candidate_tarball_limits must define positive integer file and uncompressed-byte limits.");
+    errors.push("policy.candidate_tarball_limits must define positive integer file, archive-byte and uncompressed-byte limits.");
   }
   if (!Array.isArray(policy.required_defect_ids) || duplicateValues(policy.required_defect_ids).length) {
     errors.push("policy.required_defect_ids must be a duplicate-free array.");
@@ -900,7 +991,13 @@ function validateComprehensiveCampaignInternal(
           ],
           receiptContents,
           errors,
-          { policy, policySha256, finalCandidate: evidence.final_candidate, allowTestFixtures }
+          {
+            policy,
+            policySha256,
+            finalCandidate: evidence.final_candidate,
+            finalPackageProvenanceVerification,
+            allowTestFixtures
+          }
         );
         validateFreshness(
           execution.ended_at,
@@ -1234,8 +1331,9 @@ function validateComprehensiveCampaignInternal(
         errors.push(`Final validation requires authoritative local candidate inspection${authoritativeState?.error ? `: ${authoritativeState.error}` : "."}`);
       } else if (
         authoritativeState.clean_worktree !== true
-        || authoritativeState.head_commit !== finalCandidate.source_commit
         || authoritativeState.tag_commit !== finalCandidate.source_commit
+        || authoritativeState.source_is_ancestor_of_evidence !== true
+        || authoritativeState.release_source_unchanged !== true
         || authoritativeState.package_sha256 !== finalCandidate.package_sha256
         || authoritativeState.npm_integrity !== finalCandidate.npm_integrity
         || authoritativeState.package_path !== evidence.final_package_assurance?.package_path
@@ -1252,7 +1350,7 @@ function validateComprehensiveCampaignInternal(
         || authoritativeState.tarball?.inventory_sha256 !== finalCandidate.package_inventory_sha256
         || authoritativeState.tarball?.inventory_file_count !== finalCandidate.package_file_count
       ) {
-        errors.push("Final candidate must match the current clean HEAD, repository tag, computed tarball bytes, package.json, package manifest, and exact inventory.");
+        errors.push("Final candidate must match its immutable repository tag, computed tarball bytes, package.json, package manifest and exact inventory, while the clean descendant evidence ledger changes only approved evidence/report paths.");
       }
     }
     pushMissingObjectFields(
@@ -1374,7 +1472,13 @@ function validateComprehensiveCampaignInternal(
         ],
         receiptContents,
         errors,
-        { policy, policySha256, finalCandidate, allowTestFixtures }
+        {
+          policy,
+          policySha256,
+          finalCandidate,
+          finalPackageProvenanceVerification,
+          allowTestFixtures
+        }
       );
     }
     pushMissingObjectFields(
@@ -1747,7 +1851,7 @@ function validateComprehensiveCampaignInternal(
     const latestPreChallenge = preChallengeTimes.length ? Math.max(...preChallengeTimes) : null;
     for (const review of clearChallenges) {
       const reviewTime = parseTimestamp(review.observed_at);
-      if (latestPreChallenge !== null && reviewTime !== null && reviewTime < latestPreChallenge) {
+      if (latestPreChallenge !== null && reviewTime !== null && reviewTime <= latestPreChallenge) {
         errors.push(`Challenge review ${review.evidence_id} must be rerun after all final-candidate pilot, retest, automation, package, registry, and production evidence.`);
       }
     }
@@ -1791,13 +1895,6 @@ export function validateComprehensiveCampaign(policy, evidence, options = {}) {
   });
 }
 
-export function validateComprehensiveCampaignTestFixture(policy, evidence, options = {}) {
-  return validateComprehensiveCampaignInternal(policy, evidence, {
-    ...options,
-    allowTestFixtures: true
-  });
-}
-
 async function loadReceiptDigests(policy, evidence) {
   const records = [
     ...(Array.isArray(evidence.pilot_executions) ? evidence.pilot_executions : []),
@@ -1813,7 +1910,15 @@ async function loadReceiptDigests(policy, evidence) {
   const contents = new Map();
   for (const receiptPath of paths) {
     try {
-      const bytes = await fs.readFile(path.resolve(productRoot, receiptPath));
+      const absolutePath = path.resolve(productRoot, receiptPath);
+      const stat = await fs.lstat(absolutePath);
+      if (
+        !stat.isFile()
+        || stat.isSymbolicLink()
+        || stat.size <= 0
+        || stat.size > MAX_DURABLE_RECEIPT_BYTES
+      ) continue;
+      const bytes = await fs.readFile(absolutePath);
       digests.set(receiptPath, createHash("sha256").update(bytes).digest("hex"));
       try {
         contents.set(receiptPath, JSON.parse(bytes.toString("utf8")));
@@ -1827,6 +1932,64 @@ async function loadReceiptDigests(policy, evidence) {
   return { digests, contents };
 }
 
+async function verifyFinalPackageAssuranceArtifact(evidence, policy, receiptEvidence) {
+  try {
+    const record = evidence.final_package_assurance;
+    const receipt = receiptEvidence.contents.get(record?.receipt_path);
+    const provenance = receipt?.github_actions_provenance;
+    const payloadJson = receipt?.evidence_payload_json;
+    if (!isObject(record) || !isObject(receipt) || !isObject(provenance) || typeof payloadJson !== "string") {
+      throw new Error("the final package receipt or its GitHub evidence payload is missing");
+    }
+    const payloadSha256 = createHash("sha256").update(payloadJson, "utf8").digest("hex");
+    const downloaded = await downloadGitHubActionsReceipt(
+      {
+        label: "Final package assurance",
+        repository: policy.canonical_identity.repository,
+        workflowPath: policy.intended_final_candidate.assurance_workflow_path,
+        event: "push",
+        expectedRef: "refs/heads/main",
+        candidateCommit: record.source_commit,
+        artifactName: provenance.artifact_name,
+        record: {
+          run_url: provenance.run_url,
+          artifact_name: provenance.artifact_name,
+          receipt_sha256: payloadSha256,
+          receipt_json: payloadJson,
+          observed_at: record.observed_at,
+          provenance: {}
+        }
+      },
+      {
+        token: process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? "",
+        requireRecordedProvenance: false
+      }
+    );
+    return {
+      verified: true,
+      repository: downloaded.provenance.repository,
+      workflow_path: downloaded.provenance.workflow_path,
+      run_id: downloaded.provenance.run_id,
+      run_url: downloaded.provenance.run_url,
+      run_attempt: downloaded.provenance.run_attempt,
+      run_event: downloaded.provenance.run_event,
+      run_ref: "refs/heads/main",
+      run_commit: downloaded.provenance.run_commit,
+      artifact_id: downloaded.provenance.artifact_id,
+      artifact_name: downloaded.provenance.artifact_name,
+      artifact_digest_sha256: downloaded.provenance.artifact_digest_sha256,
+      evidence_payload_sha256: payloadSha256,
+      evidence_payload: downloaded.receipt,
+      verified_at: downloaded.provenance.downloaded_at
+    };
+  } catch (error) {
+    return {
+      verified: false,
+      error: error instanceof Error ? error.message.slice(0, 256) : "GitHub verification failed"
+    };
+  }
+}
+
 async function inspectAuthoritativeLocalCandidate(evidence, policy) {
   try {
     const candidate = evidence.final_candidate;
@@ -1834,20 +1997,54 @@ async function inspectAuthoritativeLocalCandidate(evidence, policy) {
     if (!isObject(candidate) || !candidatePackagePathIsSafe(packagePath)) {
       throw new Error("final candidate or safe package_path is missing");
     }
-    const [{ stdout: status }, { stdout: head }, { stdout: tagCommit }, packageBytes] = await Promise.all([
+    const packageAbsolutePath = path.resolve(productRoot, packagePath);
+    const [{ stdout: status }, { stdout: head }, { stdout: tagCommit }, packageStat] = await Promise.all([
       execFileAsync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { cwd: productRoot, encoding: "utf8" }),
       execFileAsync("git", ["rev-parse", "--verify", "HEAD"], { cwd: productRoot, encoding: "utf8" }),
       execFileAsync("git", ["rev-parse", "--verify", `refs/tags/${candidate.repository_tag}^{commit}`], { cwd: productRoot, encoding: "utf8" }),
-      fs.readFile(path.resolve(productRoot, packagePath))
+      fs.lstat(packageAbsolutePath)
     ]);
+    if (
+      !packageStat.isFile()
+      || packageStat.isSymbolicLink()
+      || packageStat.size <= 0
+      || packageStat.size > policy.candidate_tarball_limits.maximum_archive_bytes
+    ) {
+      throw new Error("final package_path is not a bounded regular archive");
+    }
+    const packageBytes = await fs.readFile(packageAbsolutePath);
+    const sourceCommit = tagCommit.trim().toLowerCase();
+    const evidenceCommit = head.trim().toLowerCase();
+    await execFileAsync(
+      "git",
+      ["merge-base", "--is-ancestor", sourceCommit, evidenceCommit],
+      { cwd: productRoot, encoding: "utf8" }
+    );
+    const { stdout: changedOutput } = await execFileAsync(
+      "git",
+      ["diff", "--name-only", "--diff-filter=ACDMRTUXB", `${sourceCommit}..${evidenceCommit}`, "--"],
+      { cwd: productRoot, encoding: "utf8" }
+    );
+    const changedPaths = changedOutput.split(/\r?\n/u).filter(Boolean);
+    const allowedPaths = policy.final_evidence_ledger_paths ?? [];
+    const unexpectedChangedPaths = changedPaths.filter((changedPath) => !allowedPaths.some(
+      (allowedPath) => allowedPath.endsWith("/")
+        ? changedPath.startsWith(allowedPath)
+        : changedPath === allowedPath
+    ));
     const tarball = inspectNpmTarballBytes(packageBytes, {
       maxFiles: policy.candidate_tarball_limits?.maximum_files,
+      maxArchiveBytes: policy.candidate_tarball_limits?.maximum_archive_bytes,
       maxUncompressedBytes: policy.candidate_tarball_limits?.maximum_uncompressed_bytes
     });
     return {
       clean_worktree: status.trim() === "",
-      head_commit: head.trim().toLowerCase(),
-      tag_commit: tagCommit.trim().toLowerCase(),
+      evidence_ledger_commit: evidenceCommit,
+      tag_commit: sourceCommit,
+      source_is_ancestor_of_evidence: true,
+      release_source_unchanged: unexpectedChangedPaths.length === 0,
+      changed_paths: changedPaths,
+      unexpected_changed_paths: unexpectedChangedPaths,
       package_path: packagePath,
       package_sha256: createHash("sha256").update(packageBytes).digest("hex"),
       npm_integrity: `sha512-${createHash("sha512").update(packageBytes).digest("base64")}`,
@@ -1891,12 +2088,16 @@ async function main() {
   const authoritativeState = options.final
     ? await inspectAuthoritativeLocalCandidate(evidence, policy)
     : undefined;
+  const finalPackageProvenanceVerification = options.final
+    ? await verifyFinalPackageAssuranceArtifact(evidence, policy, receiptEvidence)
+    : undefined;
   const errors = validateComprehensiveCampaign(policy, evidence, {
     final: options.final,
     receiptDigests: receiptEvidence.digests,
     receiptContents: receiptEvidence.contents,
     policySha256,
-    authoritativeState
+    authoritativeState,
+    finalPackageProvenanceVerification
   });
   if (errors.length) {
     for (const error of errors) process.stderr.write(`- ${error}\n`);

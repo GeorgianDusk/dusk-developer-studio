@@ -414,12 +414,17 @@ assert.match(npmAssuranceWorkflow, /record\.package_file_count[\s\S]*EXPECTED_PA
 assert.match(npmAssuranceWorkflow, /Recheck source cleanliness after restore, build, tests, package, and browser smoke[\s\S]*git diff --exit-code[\s\S]*git diff --cached --exit-code[\s\S]*git status --short --untracked-files=all/);
 assert.match(npmAssuranceWorkflow, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential[\s\S]*create-duskds', 'platform-direct-counter'[\s\S]*'--lifecycle-self-test', '--no-open'[\s\S]*'local-actions', '--lifecycle-self-test', '--no-open'/);
 assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
+assert.match(npmAssuranceWorkflow, /NPM_INSTALL_SMOKE=passed[\s\S]*NPM_CLEANUP_SMOKE=passed/);
+assert.match(npmAssuranceWorkflow, /rm -rf "\$INSTALL_ROOT"[\s\S]*test ! -e "\$removed"/);
+assert.match(npmAssuranceWorkflow, /Windows npm assurance cleanup left a bounded test root behind/);
+assert.match(npmAssuranceWorkflow, /Get-CimInstance Win32_UserProfile[\s\S]*Remove-CimInstance[\s\S]*temporary user profile behind/);
 assert.match(npmAssuranceWorkflow, /EXPECTED_BROWSER_SMOKE !== "passed"[\s\S]*EXPECTED_LOCAL_ACTIONS_PREFLIGHT_SMOKE !== "passed"[\s\S]*browser_boot_and_pairing_smoke: "passed"/);
-assert.match(npmAssuranceWorkflow, /schema_version: 2[\s\S]*local_actions_preflight_verified: true[\s\S]*local_actions_preflight_check_id: process\.env\.PREFLIGHT_CHECK_ID[\s\S]*direct_cli_scaffold_smoke: "passed"[\s\S]*local_actions_scaffold_smoke: "passed"[\s\S]*scaffold_preservation_smoke: "passed"[\s\S]*shutdown_smoke: "passed"/);
+assert.match(npmAssuranceWorkflow, /schema_version: 2[\s\S]*install_smoke: "passed"[\s\S]*local_actions_preflight_verified: true[\s\S]*local_actions_preflight_check_id: process\.env\.PREFLIGHT_CHECK_ID[\s\S]*direct_cli_scaffold_smoke: "passed"[\s\S]*local_actions_scaffold_smoke: "passed"[\s\S]*scaffold_preservation_smoke: "passed"[\s\S]*shutdown_smoke: "passed"[\s\S]*cleanup_smoke: "passed"/);
 assert.match(npmAssuranceWorkflow, /record\.schema_version !== 2[\s\S]*record\.local_actions_preflight_verified !== true[\s\S]*record\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID[\s\S]*record\.direct_cli_scaffold_smoke !== "passed"[\s\S]*record\.local_actions_scaffold_smoke !== "passed"[\s\S]*record\.scaffold_preservation_smoke !== "passed"[\s\S]*record\.shutdown_smoke !== "passed"/);
 assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_loopback_services_stopped !== true/);
 assert.match(npmAssuranceWorkflow, /record\.local_actions_preflight_consumer_contract_source_sha256 !== consumerContractSha256/);
 assert.match(npmAssuranceWorkflow, /local_actions_preflight_verified: true[\s\S]*consumer_contract_source_sha256: consumerContractSha256[\s\S]*platform_smoke: records/);
+assert.match(npmAssuranceWorkflow, /const checkFields = \{[\s\S]*install_smoke[\s\S]*cleanup_smoke[\s\S]*does not prove \$\{check\} through \$\{field\}/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_verified !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_scaffold_verified !== true/);
@@ -440,14 +445,23 @@ assert.match(npmAssuranceWorkflow, /kind: "final-package-assurance"[\s\S]*eviden
 assert.match(npmAssuranceWorkflow, /policy_sha256:[\s\S]*source_commit:[\s\S]*package_sha256:[\s\S]*repository_tag:/);
 assert.match(npmAssuranceWorkflow, /package_path: `output\/npm\/\$\{process\.env\.EXPECTED_CANDIDATE_ARTIFACT\}`/);
 assert.match(npmAssuranceWorkflow, /EVIDENCE_ARTIFACT_DIGEST !== payloadSha256[\s\S]*evidence_payload_sha256: payloadSha256[\s\S]*mode: "github-actions-upload-artifact-v7"[\s\S]*run_id:[\s\S]*run_attempt:[\s\S]*run_event:[\s\S]*run_ref:[\s\S]*run_commit:[\s\S]*artifact_id:[\s\S]*artifact_digest_sha256: payloadSha256/);
+assert.ok((npmAssuranceWorkflow.match(/if: github\.event_name == 'push' && github\.ref == 'refs\/heads\/main' && github\.run_attempt == 1/g) ?? []).length >= 3);
+const comprehensiveValidator = read("scripts/check-comprehensive-validation.mjs");
+assert.match(comprehensiveValidator, /downloadGitHubActionsReceipt/);
+assert.match(comprehensiveValidator, /expectedRef: "refs\/heads\/main"/);
+assert.match(comprehensiveValidator, /independently reverified against the exact successful GitHub run and downloaded artifact bytes/);
+assert.match(comprehensiveValidator, /merge-base", "--is-ancestor"/);
+assert.match(comprehensiveValidator, /final_evidence_ledger_paths/);
+assert.match(comprehensiveValidator, /fs\.lstat\(absolutePath\)[\s\S]*stat\.isSymbolicLink\(\)[\s\S]*MAX_DURABLE_RECEIPT_BYTES/);
+assert.match(comprehensiveValidator, /invalid or oversized compressed payload/);
 assert.match(elevatedArchiveStep, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential/);
 for (const workflow of [requiredWindowsWorkflow, npmAssuranceWorkflow]) {
   assert.match(workflow, /NODE_BIN="\$\(command -v node\)"[\s\S]*sudo -n "\$NODE_BIN" "\$PRIMARY"/);
   assert.doesNotMatch(workflow, /sudo -n node /);
   assert.match(workflow, /\$dataRoot = Join-Path \$env:PUBLIC[\s\S]*"\*\$\{userSid\}:\(OI\)\(CI\)M"/);
   assert.match(workflow, /\$childEnvironment = @\{[\s\S]*HOME = \$profileRoot[\s\S]*LOCALAPPDATA = \$localAppData[\s\S]*USERPROFILE = \$profileRoot[\s\S]*-Environment \$childEnvironment/);
-  assert.match(workflow, /\$elevatedStatus = \$LASTEXITCODE[\s\S]*?Dusk Developer Studio refuses elevated or root execution\.[\s\S]*?finally \{[\s\S]*?Remove-Item -LiteralPath \$dataRoot -Recurse -Force[\s\S]*?\$global:LASTEXITCODE = 0/);
-  assert.match(workflow, /Test-Path -LiteralPath \$dataRoot[\s\S]*Remove-Item -LiteralPath \$dataRoot -Recurse -Force/);
+  assert.match(workflow, /\$elevatedStatus = \$LASTEXITCODE[\s\S]*?Dusk Developer Studio refuses elevated or root execution\.[\s\S]*?finally \{[\s\S]*?(?:Remove-Item -LiteralPath \$dataRoot -Recurse -Force|foreach \(\$cleanupRoot in @\(\$publicRoot, \$dataRoot\)\)[\s\S]*?Remove-Item -LiteralPath \$cleanupRoot -Recurse -Force)[\s\S]*?\$global:LASTEXITCODE = 0/);
+  assert.match(workflow, /(?:Test-Path -LiteralPath \$dataRoot[\s\S]*Remove-Item -LiteralPath \$dataRoot -Recurse -Force|foreach \(\$cleanupRoot in @\(\$publicRoot, \$dataRoot\)\)[\s\S]*Test-Path -LiteralPath \$cleanupRoot[\s\S]*Remove-Item -LiteralPath \$cleanupRoot -Recurse -Force)/);
 }
 
 const npmPublishWorkflow = read(".github/workflows/studio-npm-publish.yml");
@@ -708,6 +722,14 @@ assert.match(read("package.json"), /scripts\/test-agent-pilot-plan\.mjs/);
 assert.match(read("package.json"), /scripts\/test-agent-pilot-evidence-assembler\.mjs/);
 assert.match(agentPilotCollector, /operator-attested-machine-collected/);
 assert.match(agentPilotCollector, /canonicalSha256\(result\.receipt\.plan\)/);
+assert.match(agentPilotCollector, /const packageInventory = validateManifestFiles\(records, manifest\);/);
+assert.match(agentPilotCollector, /const packageInventorySha256 = canonicalSha256\(packageInventory\);/);
+assert.match(agentPilotCollector, /package_file_count: packageInventory\.length/);
+assert.doesNotMatch(agentPilotCollector, /records\.map\(\(record\) => record\.path\)\.join/);
+assert.doesNotMatch(
+  read("scripts/check-comprehensive-validation.mjs"),
+  /export function validateComprehensiveCampaignTestFixture/
+);
 assert.match(agentPilotPlan, /win-keyboard-recovery/);
 assert.match(agentPilotCollector, /operator-attested-machine-collected/);
 assert.match(agentPilotCollector, /independent_execution: false/);

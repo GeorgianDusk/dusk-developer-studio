@@ -3906,6 +3906,76 @@
       "root_cause": "The workflow reused its runner-local TARBALL basename for the durable evidence record while the final gate requires a safe repository-relative path under output/npm.",
       "fix": "Emit the canonical output/npm/<exact candidate artifact> path in the evidence payload while retaining the separately bound candidate artifact name and package hashes.",
       "regression_test": "The public-repository contract requires the exact output/npm/${EXPECTED_CANDIDATE_ARTIFACT} producer expression, while comprehensive final fixtures reject unsafe package paths."
+    },
+    {
+      "defect_id": "CV-D-063",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The agent-pilot collector still used the obsolete path-only 30-file inventory and rejected the exact candidate's canonical 29-record content inventory.",
+      "source": "CV-E-CHALLENGE-DDC263B-20260721",
+      "root_cause": "The native workflow inventory producer was repaired without updating the collector's duplicated tarball inventory calculation or its synthetic fixture.",
+      "fix": "Derive the pilot digest and count from the exact manifest-bound path/byte/SHA-256 records returned by manifest validation, excluding package-manifest.json just like build, platform and final validation.",
+      "regression_test": "The exact Node collector fixture now uses the content-bound digest and asserts two manifest-bound files; the public contract rejects the obsolete newline-joined archive-path algorithm."
+    },
+    {
+      "defect_id": "CV-D-064",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The final gate required evidence-ledger HEAD to equal the immutable package commit, creating an impossible post-CI evidence completion cycle.",
+      "source": "CV-E-CHALLENGE-DDC263B-20260721",
+      "root_cause": "Source/package identity and the later evidence-ledger identity were conflated in one clean-HEAD equality even though CI, registry, production and final-challenge receipts are necessarily observed after packaging.",
+      "fix": "Keep the package bound to its immutable tag and manifest commit, require a clean descendant evidence-ledger commit, and fail unless every change since the source tag is confined to the three explicit evidence/receipt/report paths.",
+      "regression_test": "Focused fixtures accept a clean descendant evidence ledger and reject release-source changes or unsafe ledger paths; public contracts require the ancestor and path-diff checks."
+    },
+    {
+      "defect_id": "CV-D-065",
+      "severity": "P1",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "The final validator trusted locally supplied GitHub run and artifact metadata without independently querying GitHub or downloading the claimed evidence bytes.",
+      "source": "CV-E-CHALLENGE-DDC263B-20260721",
+      "root_cause": "Structural receipt checks were treated as provenance even though the same local campaign could fabricate both the receipt and its GitHub envelope.",
+      "fix": "At the production final CLI boundary, query the exact successful first-attempt main-branch run, validate workflow/ref/commit/artifact metadata, download the direct artifact, and compare its exact bytes and digest with the embedded payload before accepting assurance.",
+      "regression_test": "Focused final fixtures reject absent or divergent live verification, the GitHub downloader's adversarial API/download suite remains in the full test chain, and public contracts require the independent download path."
+    },
+    {
+      "defect_id": "CV-D-066",
+      "severity": "P2",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "A clear final challenge could share the same timestamp as the latest failed exact-candidate observation and still pass chronology.",
+      "source": "CV-E-CHALLENGE-DDC263B-20260721",
+      "root_cause": "The ordering predicate rejected only challenge timestamps strictly earlier than the latest evidence instead of requiring the challenge to be strictly later.",
+      "fix": "Reject a clear challenge whose timestamp is earlier than or equal to any final-candidate pilot, retest, automation, package, registry or production observation.",
+      "regression_test": "A focused final fixture adds a failed exact-candidate execution ending at the exact challenge timestamp and now requires another challenge."
+    },
+    {
+      "defect_id": "CV-D-067",
+      "severity": "P2",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "Pull-request, workflow-call and manual-dispatch assurance runs emitted receipts that the final validator correctly accepts only from a main-branch push.",
+      "source": "CV-E-CHALLENGE-DDC263B-20260721",
+      "root_cause": "The reusable aggregate job served build outputs and durable final receipt production without separating nonfinal event contexts from the release-evidence context.",
+      "fix": "Continue aggregate assurance for reusable callers, but upload the immutable final evidence payload and receipt only on a first-attempt push to refs/heads/main.",
+      "regression_test": "The public workflow contract requires the first-attempt main-push guard on all three final-evidence upload/finalization steps."
+    },
+    {
+      "defect_id": "CV-D-068",
+      "severity": "P2",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "Aggregate package assurance marked cleanup passed from the policy list instead of deriving it from each platform's cleanup observation.",
+      "source": "CV-E-CHALLENGE-DDC263B-20260721",
+      "root_cause": "Platform receipts omitted install/cleanup fields and aggregate check_results were generated unconditionally for every required check.",
+      "fix": "Delete and verify bounded test roots on POSIX and Windows, remove the temporary Windows user profile and account, record install_smoke and cleanup_smoke per platform, and derive every aggregate check result and evidence reference from required receipt fields on all three runners.",
+      "regression_test": "Public workflow contracts require bounded root, user and profile cleanup, absent-path verification, per-platform install/cleanup fields and field-derived aggregate checks; the final validator independently re-derives check references from downloaded platform records."
+    },
+    {
+      "defect_id": "CV-D-069",
+      "severity": "P3",
+      "status": "fixed_local_pending_pilot_retest",
+      "summary": "A test-fixture-accepting comprehensive-validation function remained exported from the production module.",
+      "source": "CV-E-CHALLENGE-DDC263B-20260721",
+      "root_cause": "The production CLI correctly disabled fixture provenance, but unit-test convenience was still exposed as a public module API and made the broader security claim inaccurate.",
+      "fix": "Remove the fixture-accepting export and make focused final fixtures use production-shaped receipts through the normal production validator while retaining explicit fixture-rejection coverage.",
+      "regression_test": "The public repository contract forbids the exported fixture helper, and the focused suite proves validator-test-fixture provenance is still rejected by the production API."
     }
   ],
   "challenge_reviews": [
@@ -3970,6 +4040,16 @@
       "identity": "Independent read-only review of clean commit 7a2ce88ef7cfdad0c5b209e70019c50b8fffb441 and exact local 1.0.2 tarball before native CI",
       "summary": "NO-GO: CI and the validator used incompatible inventory digests; aggregate assurance lacked directly consumable GitHub artifact provenance; later exact-candidate failures did not invalidate a prior clear challenge; nonzero TAR trailing data was accepted; and post-build worktree cleanliness was not rechecked. CV-D-057 through CV-D-061 preserve the findings. Root review then found and repaired the related canonical package-path ingestion defect CV-D-062.",
       "cleanup": "Read-only source, workflow, validator, policy and exact-tarball inspection; no external repository, package, production or developer-machine state was changed."
+    },
+    {
+      "evidence_id": "CV-E-CHALLENGE-DDC263B-20260721",
+      "evidence_class": "challenge-review",
+      "scope": "security-release-evidence-integrity",
+      "observed_at": "2026-07-21T05:58:16Z",
+      "result": "findings",
+      "identity": "Independent read-only review of clean commit ddc263b27e981d57b06ecc461ade5a0f49b30cf8, local tag v1.0.2 and exact 8afb1564 package before any native CI push",
+      "summary": "NO-GO: the pilot collector rejected the canonical package inventory; final evidence had an impossible clean-HEAD causality cycle; GitHub artifact provenance was not independently queried and downloaded; challenge equality, non-main final receipts and policy-generated cleanup remained unsound; and a test-fixture helper was still exported. CV-D-063 through CV-D-069 preserve the findings.",
+      "cleanup": "Read-only source, workflow, validator, policy and exact-tarball inspection only; no GitHub, npm, production, package installation, browser profile or developer-machine state was changed."
     }
   ],
   "completion": {

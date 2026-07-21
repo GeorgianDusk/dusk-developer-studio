@@ -7,8 +7,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   inspectNpmTarballBytes,
-  validateComprehensiveCampaign,
-  validateComprehensiveCampaignTestFixture
+  validateComprehensiveCampaign
 } from "./check-comprehensive-validation.mjs";
 
 const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -127,6 +126,24 @@ function buildReceiptBoundFinal() {
     "registry-verification": "operator-receipt",
     "production-verification": "operator-receipt"
   };
+  const receiptProducer = {
+    "black-box-pilot": "codex-source-blind-pilot",
+    "defect-retest": "codex-defect-retest",
+    "automated-regression": "ci-automation",
+    "challenge-review": "codex-independent-challenge",
+    "final-package-assurance": "ci-package-assurance",
+    "registry-verification": "npm-registry-verifier",
+    "production-verification": "production-verifier"
+  };
+  const receiptCaptureMode = {
+    "black-box-pilot": "source-blind-machine-observed",
+    "defect-retest": "machine-observed",
+    "automated-regression": "machine-observed",
+    "challenge-review": "independent-adversarial",
+    "final-package-assurance": "machine-observed",
+    "registry-verification": "external-observation",
+    "production-verification": "external-observation"
+  };
   const validationContext = {
     policy_sha256: policySha256,
     source_commit: candidate.source_commit,
@@ -141,9 +158,9 @@ function buildReceiptBoundFinal() {
     kind,
     record_id: id,
     evidence_class: receiptEvidenceClass[kind],
-    producer: "validator-test-fixture",
-    capture_mode: "validator-test-fixture",
-    test_fixture: true,
+    producer: receiptProducer[kind],
+    capture_mode: receiptCaptureMode[kind],
+    test_fixture: false,
     validation_context: validationContext,
     record: Object.fromEntries(fields.map((field) => [field, record[field]])),
     ...(trace_claims.length ? { trace_claims } : {}),
@@ -372,14 +389,31 @@ function buildReceiptBoundFinal() {
       status: "passed",
       runner,
       node_version: "24.18.0",
+      install_smoke: "passed",
+      safe_smoke: "passed",
+      local_actions_capability_contract_smoke: "passed",
       local_actions_preflight_verified: true,
+      local_actions_preflight_loopback_services_stopped: true,
       local_actions_preflight_consumer_contract_source_sha256: consumerContractSourceSha256,
+      direct_cli_scaffold_smoke: "passed",
+      local_actions_scaffold_smoke: "passed",
+      scaffold_preservation_smoke: "passed",
+      shutdown_smoke: "passed",
+      cleanup_smoke: "passed",
+      elevated_refusal: "passed",
       candidate_commit: candidate.source_commit,
       integrity: candidate.npm_integrity,
       package_inventory_sha256: candidate.package_inventory_sha256,
       package_file_count: candidate.package_file_count
     }])
   );
+  packageAssuranceRecord.check_results = policy.required_package_checks.map((check) => ({
+    check,
+    status: "passed",
+    evidence_refs: Object.entries(nativeCiPlatformSmoke).map(([runner, record]) => (
+      `${packageAssuranceRecord.evidence_id}:check:${check}:${runner}:${sha256(Buffer.from(JSON.stringify(record), "utf8"))}`
+    ))
+  }));
   const assuranceEvidencePayload = {
     schema_version: 1,
     record: packageAssuranceRecord,
@@ -481,15 +515,37 @@ function buildReceiptBoundFinal() {
     minimum_counted_pilots: 32,
     ...Object.fromEntries(policy.required_completion_fields.map((field) => [field, true]))
   };
+  const finalPackageReceipt = receiptContents.get(fixture.final_package_assurance.receipt_path);
+  const finalPackageProvenance = finalPackageReceipt.github_actions_provenance;
   return {
     fixture,
     receiptDigests,
     receiptContents,
     policySha256,
+    finalPackageProvenanceVerification: {
+      verified: true,
+      repository: finalPackageProvenance.repository,
+      workflow_path: finalPackageProvenance.workflow_path,
+      run_id: finalPackageProvenance.run_id,
+      run_url: finalPackageProvenance.run_url,
+      run_attempt: finalPackageProvenance.run_attempt,
+      run_event: finalPackageProvenance.run_event,
+      run_ref: finalPackageProvenance.run_ref,
+      run_commit: finalPackageProvenance.run_commit,
+      artifact_id: finalPackageProvenance.artifact_id,
+      artifact_name: finalPackageProvenance.artifact_name,
+      artifact_digest_sha256: finalPackageProvenance.artifact_digest_sha256,
+      evidence_payload_sha256: finalPackageReceipt.evidence_payload_sha256,
+      evidence_payload: finalPackageReceipt.evidence_payload
+    },
     authoritativeState: {
       clean_worktree: true,
-      head_commit: candidate.source_commit,
+      evidence_ledger_commit: "2".repeat(40),
       tag_commit: candidate.source_commit,
+      source_is_ancestor_of_evidence: true,
+      release_source_unchanged: true,
+      changed_paths: [...policy.final_evidence_ledger_paths],
+      unexpected_changed_paths: [],
       package_path: packageAssuranceRecord.package_path,
       package_sha256: candidate.package_sha256,
       npm_integrity: candidate.npm_integrity,
@@ -519,6 +575,13 @@ duplicatePolicy.pilots[1].id = duplicatePolicy.pilots[0].id;
 assert.match(
   validateComprehensiveCampaign(duplicatePolicy, evidence).join("\n"),
   /Duplicate pilot ids/u
+);
+
+const unsafeEvidenceLedgerPolicy = clone(policy);
+unsafeEvidenceLedgerPolicy.final_evidence_ledger_paths = ["../outside-evidence/"];
+assert.match(
+  validateComprehensiveCampaign(unsafeEvidenceLedgerPolicy, evidence).join("\n"),
+  /unique safe repository-relative evidence paths including receipt_root/u
 );
 
 const humanLikeMetric = clone(evidence);
@@ -599,27 +662,67 @@ assert.match(
 
 const validFinal = buildReceiptBoundFinal();
 const fixtureNow = "2026-07-21T04:00:00Z";
-const validateFinalFixture = (fixture, options = {}) => validateComprehensiveCampaignTestFixture(
+const validateFinalFixture = (fixture, options = {}) => validateComprehensiveCampaign(
   policy,
   fixture,
-  { now: fixtureNow, ...options }
+  {
+    now: fixtureNow,
+    finalPackageProvenanceVerification: validFinal.finalPackageProvenanceVerification,
+    ...options
+  }
 );
 assert.deepEqual(validateFinalFixture(validFinal.fixture, {
   final: true,
   receiptDigests: validFinal.receiptDigests,
   receiptContents: validFinal.receiptContents,
   policySha256: validFinal.policySha256,
-  authoritativeState: validFinal.authoritativeState
+  authoritativeState: validFinal.authoritativeState,
+  finalPackageProvenanceVerification: validFinal.finalPackageProvenanceVerification
 }), []);
 
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState,
+    finalPackageProvenanceVerification: { verified: false, error: "synthetic GitHub lookup failure" }
+  }).join("\n"),
+  /independently reverified against the exact successful GitHub run and downloaded artifact bytes/u
+);
+
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState,
+    finalPackageProvenanceVerification: {
+      ...validFinal.finalPackageProvenanceVerification,
+      artifact_id: "111111111"
+    }
+  }).join("\n"),
+  /independently reverified against the exact successful GitHub run and downloaded artifact bytes/u
+);
+
+const fixtureReceiptContents = new Map(validFinal.receiptContents);
+const fixturePackageReceipt = clone(fixtureReceiptContents.get(
+  validFinal.fixture.final_package_assurance.receipt_path
+));
+fixturePackageReceipt.producer = "validator-test-fixture";
+fixturePackageReceipt.capture_mode = "validator-test-fixture";
+fixturePackageReceipt.test_fixture = true;
+fixtureReceiptContents.set(validFinal.fixture.final_package_assurance.receipt_path, fixturePackageReceipt);
 const productionFixtureBoundary = validateComprehensiveCampaign(policy, validFinal.fixture, {
   final: true,
   receiptDigests: validFinal.receiptDigests,
-  receiptContents: validFinal.receiptContents,
+  receiptContents: fixtureReceiptContents,
   policySha256: validFinal.policySha256,
   authoritativeState: validFinal.authoritativeState,
+  finalPackageProvenanceVerification: validFinal.finalPackageProvenanceVerification,
   now: fixtureNow,
-  allowTestFixtures: true
 }).join("\n");
 assert.match(productionFixtureBoundary, /validator-test-fixture receipt provenance.*forbidden/u);
 
@@ -642,9 +745,9 @@ assert.match(
     receiptDigests: validFinal.receiptDigests,
     receiptContents: validFinal.receiptContents,
     policySha256: validFinal.policySha256,
-    authoritativeState: { ...validFinal.authoritativeState, head_commit: "b".repeat(40) }
+    authoritativeState: { ...validFinal.authoritativeState, release_source_unchanged: false }
   }).join("\n"),
-  /computed tarball bytes, package\.json, package manifest, and exact inventory/u
+  /clean descendant evidence ledger changes only approved evidence\/report paths/u
 );
 
 const missingPackagePlatformReceipt = new Map(validFinal.receiptContents);
@@ -1053,7 +1156,7 @@ assert.match(
       tarball: { ...validFinal.authoritativeState.tarball, manifest_version: "9.9.9" }
     }
   }).join("\n"),
-  /package\.json, package manifest, and exact inventory/u
+  /package\.json, package manifest and exact inventory/u
 );
 
 const reverseChronology = clone(validFinal.fixture);
@@ -1164,6 +1267,28 @@ assert.match(
   /must be rerun after all final-candidate pilot, retest, automation, package, registry, and production evidence/u
 );
 
+const sameTimestampFailure = clone(validFinal.fixture);
+const tiedFailure = clone(sameTimestampFailure.pilot_executions[0]);
+tiedFailure.execution_id = "CV-X-TIED-EXACT-CANDIDATE-FAILURE";
+tiedFailure.counted = false;
+tiedFailure.status = "failed";
+tiedFailure.started_at = "2026-07-21T03:29:00Z";
+tiedFailure.ended_at = "2026-07-21T03:30:00Z";
+tiedFailure.evidence_refs = [`${tiedFailure.execution_id}:E1 tied final challenge timestamp`];
+delete tiedFailure.receipt_path;
+delete tiedFailure.receipt_sha256;
+sameTimestampFailure.pilot_executions.push(tiedFailure);
+assert.match(
+  validateFinalFixture(sameTimestampFailure, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState
+  }).join("\n"),
+  /must be rerun after all final-candidate pilot, retest, automation, package, registry, and production evidence/u
+);
+
 const tarballInspection = inspectNpmTarballBytes(buildTarballFixture());
 assert.equal(tarballInspection.package_name, "dusk-developer-studio");
 assert.equal(tarballInspection.package_version, "1.0.2");
@@ -1177,6 +1302,10 @@ assert.throws(
 assert.throws(
   () => inspectNpmTarballBytes(buildTarballFixture({ trailingNonzero: true })),
   /nonzero data after its end marker/u
+);
+assert.throws(
+  () => inspectNpmTarballBytes(buildTarballFixture(), { maxArchiveBytes: 1 }),
+  /invalid or oversized compressed payload/u
 );
 
 process.stdout.write("Comprehensive validation policy and evidence fixtures passed.\n");

@@ -417,7 +417,12 @@ jobs:
           set -e
           test "$ELEVATED_STATUS" -ne 0
           printf '%s' "$ELEVATED_OUTPUT" | grep -F "Dusk Developer Studio refuses elevated or root execution."
+          rm -rf "$INSTALL_ROOT" "$DIRECT_PARENT" "$LOCAL_ACTIONS_ROOT" "$PREFLIGHT_HOME" "$PREFLIGHT_RECEIPT"
+          for removed in "$INSTALL_ROOT" "$DIRECT_PARENT" "$LOCAL_ACTIONS_ROOT" "$PREFLIGHT_HOME" "$PREFLIGHT_RECEIPT"; do
+            test ! -e "$removed"
+          done
           printf '%s\n' \
+            'NPM_INSTALL_SMOKE=passed' \
             'NPM_SAFE_SMOKE=passed' \
             'NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE=passed' \
             'NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed' \
@@ -425,6 +430,7 @@ jobs:
             'NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed' \
             'NPM_SCAFFOLD_PRESERVATION_SMOKE=passed' \
             'NPM_SHUTDOWN_SMOKE=passed' \
+            'NPM_CLEANUP_SMOKE=passed' \
             'NPM_ELEVATED_REFUSAL=passed' >> "$GITHUB_ENV"
       - name: Install and exercise npm package on Windows
         if: runner.os == 'Windows'
@@ -439,6 +445,7 @@ jobs:
           $password = ConvertTo-SecureString $passwordPlain -AsPlainText -Force
           $credential = [PSCredential]::new("$env:COMPUTERNAME\$userName", $password)
           $userCreated = $false
+          $userSid = $null
           try {
             if ((Test-Path -LiteralPath $publicRoot) -or (Test-Path -LiteralPath $dataRoot)) {
               throw 'Windows npm assurance roots must not already exist.'
@@ -615,10 +622,45 @@ jobs:
             ) | Add-Content -LiteralPath $env:GITHUB_ENV
           } finally {
             $passwordPlain = $null
-            if ($userCreated) { Remove-LocalUser -Name $userName -ErrorAction SilentlyContinue }
-            if (Test-Path -LiteralPath $publicRoot) { Remove-Item -LiteralPath $publicRoot -Recurse -Force }
-            if (Test-Path -LiteralPath $dataRoot) { Remove-Item -LiteralPath $dataRoot -Recurse -Force }
+            $cleanupFailures = [Collections.Generic.List[string]]::new()
+            if ($userSid) {
+              try {
+                $profiles = @(Get-CimInstance Win32_UserProfile -Filter "SID = '$userSid'")
+                foreach ($profile in $profiles) {
+                  if ($profile.Special) { throw 'Refused to remove a special user profile.' }
+                  $profile | Remove-CimInstance -ErrorAction Stop
+                }
+              } catch {
+                $cleanupFailures.Add('temporary profile')
+              }
+            }
+            if ($userCreated) {
+              try { Remove-LocalUser -Name $userName -ErrorAction Stop }
+              catch { $cleanupFailures.Add('temporary user') }
+            }
+            foreach ($cleanupRoot in @($publicRoot, $dataRoot)) {
+              try {
+                if (Test-Path -LiteralPath $cleanupRoot) {
+                  Remove-Item -LiteralPath $cleanupRoot -Recurse -Force -ErrorAction Stop
+                }
+              } catch {
+                $cleanupFailures.Add('bounded test root')
+              }
+            }
+            if ($cleanupFailures.Count -ne 0) {
+              throw "Windows npm assurance cleanup failed for: $($cleanupFailures -join ', ')."
+            }
           }
+          if ((Test-Path -LiteralPath $publicRoot) -or (Test-Path -LiteralPath $dataRoot)) {
+            throw 'Windows npm assurance cleanup left a bounded test root behind.'
+          }
+          if ($userSid -and @(Get-CimInstance Win32_UserProfile -Filter "SID = '$userSid'").Count -ne 0) {
+            throw 'Windows npm assurance cleanup left the temporary user profile behind.'
+          }
+          @(
+            'NPM_INSTALL_SMOKE=passed'
+            'NPM_CLEANUP_SMOKE=passed'
+          ) | Add-Content -LiteralPath $env:GITHUB_ENV
           # GitHub's pwsh wrapper exits with the last native process status.
           # The non-zero status above is expected and has already been verified.
           $global:LASTEXITCODE = 0
@@ -631,7 +673,8 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const runner = process.env.RUNNER_LABEL;
-          if (process.env.NPM_SAFE_SMOKE !== "passed"
+          if (process.env.NPM_INSTALL_SMOKE !== "passed"
+              || process.env.NPM_SAFE_SMOKE !== "passed"
               || process.env.NPM_LOCAL_ACTIONS_CAPABILITY_CONTRACT_SMOKE !== "passed"
               || process.env.NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED !== "passed"
               || !/^[0-9a-f]{64}$/u.test(process.env.NPM_LOCAL_ACTIONS_PREFLIGHT_CONSUMER_SHA256 ?? "")
@@ -639,6 +682,7 @@ jobs:
               || process.env.NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE !== "passed"
               || process.env.NPM_SCAFFOLD_PRESERVATION_SMOKE !== "passed"
               || process.env.NPM_SHUTDOWN_SMOKE !== "passed"
+              || process.env.NPM_CLEANUP_SMOKE !== "passed"
               || process.env.NPM_ELEVATED_REFUSAL !== "passed") {
             throw new Error("Platform receipt cannot be written before all exact-tarball lifecycle and scaffold smokes execute successfully.");
           }
@@ -647,6 +691,7 @@ jobs:
             status: "passed",
             runner,
             node_version: process.env.NODE_VERSION,
+            install_smoke: "passed",
             safe_smoke: "passed",
             local_actions_capability_contract_smoke: "passed",
             local_actions_preflight_verified: true,
@@ -658,6 +703,7 @@ jobs:
             local_actions_scaffold_smoke: "passed",
             scaffold_preservation_smoke: "passed",
             shutdown_smoke: "passed",
+            cleanup_smoke: "passed",
             elevated_refusal: "passed",
             candidate_commit: process.env.GITHUB_SHA,
             integrity: process.env.NPM_INTEGRITY,
@@ -1010,6 +1056,7 @@ jobs:
                 || record.status !== "passed"
                 || record.runner !== runner
                 || record.node_version !== process.env.NODE_VERSION
+                || record.install_smoke !== "passed"
                 || record.safe_smoke !== "passed"
                 || record.local_actions_capability_contract_smoke !== "passed"
                 || record.local_actions_preflight_verified !== true
@@ -1020,6 +1067,7 @@ jobs:
                 || record.local_actions_scaffold_smoke !== "passed"
                 || record.scaffold_preservation_smoke !== "passed"
                 || record.shutdown_smoke !== "passed"
+                || record.cleanup_smoke !== "passed"
                 || record.elevated_refusal !== "passed"
                 || record.candidate_commit !== process.env.EXPECTED_CANDIDATE_COMMIT
                 || record.integrity !== process.env.EXPECTED_NPM_INTEGRITY
@@ -1042,11 +1090,40 @@ jobs:
               evidence_refs: [`${evidenceId}:platform:${runner}:${platformReceiptSha256}`]
             };
           });
-          const checkResults = validationPolicy.required_package_checks.map((check) => ({
-            check,
-            status: "passed",
-            evidence_refs: [`${evidenceId}:check:${check}`]
-          }));
+          const checkFields = {
+            install: ["install_smoke"],
+            safe: ["safe_smoke"],
+            "local-actions": [
+              "local_actions_capability_contract_smoke",
+              "local_actions_preflight_verified",
+              "local_actions_preflight_loopback_services_stopped"
+            ],
+            "create-duskds": [
+              "direct_cli_scaffold_smoke",
+              "local_actions_scaffold_smoke",
+              "scaffold_preservation_smoke"
+            ],
+            shutdown: ["shutdown_smoke"],
+            cleanup: ["cleanup_smoke"]
+          };
+          if (JSON.stringify(Object.keys(checkFields))
+              !== JSON.stringify(validationPolicy.required_package_checks)) {
+            throw new Error("Package assurance check derivation does not exact-match policy.");
+          }
+          const checkResults = validationPolicy.required_package_checks.map((check) => {
+            const evidenceRefs = Object.entries(records).map(([runner, platformRecord]) => {
+              for (const field of checkFields[check]) {
+                if (platformRecord[field] !== "passed" && platformRecord[field] !== true) {
+                  throw new Error(`npm ${runner} receipt does not prove ${check} through ${field}.`);
+                }
+              }
+              const platformReceiptSha256 = createHash("sha256")
+                .update(JSON.stringify(platformRecord), "utf8")
+                .digest("hex");
+              return `${evidenceId}:check:${check}:${runner}:${platformReceiptSha256}`;
+            });
+            return { check, status: "passed", evidence_refs: evidenceRefs };
+          });
           const record = {
             evidence_id: evidenceId,
             source_commit: process.env.EXPECTED_CANDIDATE_COMMIT,
@@ -1059,7 +1136,7 @@ jobs:
             npm_integrity: process.env.EXPECTED_NPM_INTEGRITY,
             observed_at: observedAt,
             platforms_verified: [...validationPolicy.required_package_platforms],
-            checks_verified: [...validationPolicy.required_package_checks],
+            checks_verified: checkResults.map(({ check }) => check),
             platform_results: platformResults,
             check_results: checkResults
           };
@@ -1092,6 +1169,7 @@ jobs:
           ].join("\n"));
           NODE
       - name: Upload the immutable native-CI evidence payload
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1
         id: assurance-evidence-upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -1101,6 +1179,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
       - name: Finalize the directly consumable provenance-bound receipt
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1
         env:
           EVIDENCE_ARTIFACT_ID: ${{ steps.assurance-evidence-upload.outputs.artifact-id }}
           EVIDENCE_ARTIFACT_URL: ${{ steps.assurance-evidence-upload.outputs.artifact-url }}
@@ -1169,6 +1248,7 @@ jobs:
           );
           NODE
       - name: Upload the direct npm assurance receipt
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: studio-npm-assurance-receipt-${{ github.run_id }}.json
