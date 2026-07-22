@@ -19,12 +19,13 @@ function listen(server: http.Server): Promise<number> {
   });
 }
 
-function request(port: number, options: { method?: string; path?: string; origin?: string; host?: string; contentType?: string; body?: string } = {}): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
+function request(port: number, options: { method?: string; path?: string; origin?: string; host?: string; contentType?: string; cookie?: string; body?: string } = {}): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }> {
   return new Promise((resolve, reject) => {
     const req = http.request({ hostname: "127.0.0.1", port, method: options.method ?? "GET", path: options.path ?? "/", headers: {
       host: options.host ?? `127.0.0.1:${port}`,
       ...(options.origin ? { origin: options.origin } : {}),
-      ...(options.contentType ? { "content-type": options.contentType } : {})
+      ...(options.contentType ? { "content-type": options.contentType } : {}),
+      ...(options.cookie ? { cookie: options.cookie } : {})
     } }, (res) => { const chunks: Buffer[] = []; res.on("data", (chunk) => chunks.push(Buffer.from(chunk))); res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") })); });
     req.once("error", reject); req.end(options.method === "POST" ? (options.body ?? "{}") : undefined);
   });
@@ -36,6 +37,32 @@ afterEach(async () => {
 });
 
 describe("npm local static server", () => {
+  it("maps companion authentication loss to a bounded same-origin session status", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-session-")); roots.push(root);
+    await fs.writeFile(path.join(root, "index.html"), "ok");
+    const companion = http.createServer((req, res) => {
+      if (req.url !== "/health" || req.headers.origin === undefined) {
+        res.writeHead(400).end(); return;
+      }
+      if (req.headers.cookie !== "dusk_studio_session=current") {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end('{"ok":false,"code":"pairing_required"}'); return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end('{"ok":true,"service":"dusk-studio-local-agent","paired":true,"capabilitiesEnabled":true}');
+    });
+    const companionPort = await listen(companion);
+    const server = await createLocalStudioServer({ studioRoot: root, port: 5173, companionPort, pairingToken: "p".repeat(43) });
+    const port = await listen(server);
+    const unpaired = await request(port, { path: "/__dusk/session" });
+    expect(unpaired.status).toBe(200);
+    expect(JSON.parse(unpaired.body)).toEqual({ ok: true, paired: false });
+    const paired = await request(port, { path: "/__dusk/session", cookie: "dusk_studio_session=current" });
+    expect(paired.status).toBe(200);
+    expect(JSON.parse(paired.body)).toMatchObject({ paired: true, capabilitiesEnabled: true });
+    expect(paired.headers["set-cookie"]).toBeUndefined();
+  });
+
   it("serves preliminary GET and HEAD requests without consuming the one-time same-origin bootstrap", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-")); roots.push(root);
     await fs.writeFile(path.join(root, "index.html"), "<title>Local</title>");

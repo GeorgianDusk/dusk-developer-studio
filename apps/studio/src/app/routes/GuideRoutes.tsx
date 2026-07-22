@@ -5,6 +5,8 @@ import {
   quotePowerShellArg,
   resolveDuskDsProjectParent,
   resolveDuskDsProjectPath,
+  WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH,
+  WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH,
   windowsPathToWsl,
   type CommandPlatform
 } from "@dusk/core/commands";
@@ -301,6 +303,7 @@ function EvmPreviewPage() {
           <StatusPill tone={classification ? "good" : invalidIdentifier ? "danger" : "neutral"}>
             {classification?.type ?? (invalidIdentifier ? "Unrecognized shape" : "Waiting for an example")}
           </StatusPill>
+          {classification ? <span><strong>Normalized value:</strong> <code>{classification.value}</code></span> : null}
         </div>
       </div>
       <div className="focus-card secondary wide">
@@ -1043,16 +1046,30 @@ function buildManualCommands({
   } else {
     test = "";
   }
+  const existingBaseline = platform === "windows"
+    ? [
+        enter,
+        "$changes = @(git status --porcelain=v1 --untracked-files=all)",
+        "if ($LASTEXITCODE -ne 0) { throw 'Git working-tree check failed.' }",
+        "if ($changes.Count -ne 0) { throw 'Existing repository has tracked or untracked changes. Commit, stash, or remove them before recording evidence.' }",
+        checkedPowerShell("git rev-parse --verify HEAD", "Git revision read failed.")
+      ]
+    : [
+        enter,
+        'changes="$(git status --porcelain=v1 --untracked-files=all)"',
+        '[ -z "$changes" ] || { echo "Existing repository has tracked or untracked changes. Commit, stash, or remove them before recording evidence." >&2; exit 1; }',
+        "git rev-parse --verify HEAD"
+      ];
   return {
     projectPath: root,
     prepare: platform === "windows"
       ? [
+          ...existingBaseline,
           ...forgeGuard,
-          enter,
           checkedPowerShell(`rustup override set ${DUSKDS_RUST_TOOLCHAIN}`, "Rust override failed."),
           checkedPowerShell(forge("check"), "Dusk Forge check failed.")
         ].join("\n")
-      : posixBlock(...forgeGuard, enter, `rustup override set ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)}`, forge("check")),
+      : posixBlock(...existingBaseline, ...forgeGuard, `rustup override set ${quotePosixArg(DUSKDS_RUST_TOOLCHAIN)}`, forge("check")),
     build: platform === "windows"
       ? [
           ...forgeGuard,
@@ -1062,20 +1079,7 @@ function buildManualCommands({
         ].join("\n")
       : posixBlock(...forgeGuard, enter, forge("check"), forge("build all")),
     test,
-    revision: platform === "windows"
-      ? [
-          enter,
-          "$changes = @(git status --porcelain=v1 --untracked-files=all)",
-          "if ($LASTEXITCODE -ne 0) { throw 'Git working-tree check failed.' }",
-          "if ($changes.Count -ne 0) { throw 'Existing repository has tracked or untracked changes. Commit, stash, or remove them before recording evidence.' }",
-          checkedPowerShell("git rev-parse --verify HEAD", "Git revision read failed.")
-        ].join("\n")
-      : posixBlock(
-          enter,
-          'changes="$(git status --porcelain=v1 --untracked-files=all)"',
-          '[ -z "$changes" ] || { echo "Existing repository has tracked or untracked changes. Commit, stash, or remove them before recording evidence." >&2; exit 1; }',
-          "git rev-parse --verify HEAD"
-        )
+    revision: platform === "windows" ? existingBaseline.join("\n") : posixBlock(...existingBaseline)
   };
 }
 
@@ -1154,7 +1158,7 @@ function DuskDsBuild({
   const [vmEnvironmentConfirmed, setVmEnvironmentConfirmed] = useState(false);
   const manualBuildHeadingRef = useRef<HTMLHeadingElement>(null);
   const projectInputError = projectMode === "new" ? projectNameError(projectName) : "";
-  const commandPathError = projectMode === "existing"
+  const baseCommandPathError = projectMode === "existing"
     ? pathFieldError(existingRoot, { label: "Existing project root", platform, requireAbsolute: true })
     : pathFieldError(parentDir, {
         label: method === "automatic" && automaticAvailable ? "Managed-root subfolder" : "Parent folder",
@@ -1162,6 +1166,24 @@ function DuskDsBuild({
         managedSubfolder: method === "automatic" && automaticAvailable,
         rejectFilesystemRoot: method === "manual"
       });
+  const windowsCommandPathError = (() => {
+    if (platform !== "windows" || projectInputError || baseCommandPathError) return "";
+    if (projectMode === "existing") {
+      return existingRoot.trim().length > WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH
+        ? `Existing project root must be ${WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH} characters or fewer on Windows so Forge can build its generated files.`
+        : "";
+    }
+    if (method === "automatic" && automaticAvailable && !createdProjectPath) return "";
+    const projectPath = createdProjectPath || resolveDuskDsProjectPath(parentDir.trim(), projectName.trim(), "windows");
+    const projectParent = resolveDuskDsProjectParent(projectPath, projectName.trim(), "windows");
+    if (projectParent.length > WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH) {
+      return `Parent folder must be ${WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH} characters or fewer on Windows so Forge can build its generated files.`;
+    }
+    return projectPath.length > WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH
+      ? `DuskDS project path must be ${WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH} characters or fewer on Windows so Forge can build its generated files.`
+      : "";
+  })();
+  const commandPathError = baseCommandPathError || windowsCommandPathError;
   const commandInputError = projectInputError || commandPathError;
   const projectInputErrorVisible = projectMode === "new" && Boolean(projectInputError);
   const commandPathErrorVisible = Boolean(commandPathError)
@@ -1644,6 +1666,7 @@ function DuskDsBuild({
         </div>
         {projectInputErrorVisible ? <p id="duskds-build-project-name-error" className="validation-message" role="alert">{projectInputError}</p> : null}
         {commandPathErrorVisible ? <p id={projectMode === "existing" ? "existing-project-root-error" : "duskds-build-parent-dir-error"} className="validation-message" role="alert">{commandPathError}</p> : null}
+        {platform === "windows" ? <p className="quiet-note">Keep the parent folder at {WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH} characters or fewer and the complete project path at {WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH} characters or fewer so Forge's generated native-linker paths remain buildable.</p> : null}
         <p className="quiet-note">Paths stay only in this tab's active memory and are never written to browser storage, journey evidence, or diagnostics.</p>
       </div>
       {method === "automatic" ? (
@@ -1711,8 +1734,17 @@ function DuskDsBuild({
               </div>
             ) : null}
             {commands ? (
-              <CommandPair firstTitle="Prepare project" first={commands.prepare} secondTitle={projectMode === "new" ? "Record source snapshot" : "Initial clean-tree check + full commit"} second={commands.revision} />
+              projectMode === "new"
+                ? <CommandPair firstTitle="Prepare project" first={commands.prepare} secondTitle="Record source snapshot" second={commands.revision} />
+                : <CommandPair firstTitle="Verify clean source + record full commit" first={commands.revision} secondTitle="Prepare project (rechecks clean source first)" second={commands.prepare} />
             ) : <p className="quiet-note">{commandContextPrompt}</p>}
+            {projectMode === "existing" ? (
+              <div className="manual-record-notice">
+                <StatusPill tone="warn">Writable checkout required</StatusPill>
+                <p>The existing-project lane must write build artifacts and may update ignored tool output. If this checkout is read-only, create a writable clone or worktree in a trusted location and use that path instead. The first command records the clean Git baseline before any project tool runs; Prepare project repeats that guard.</p>
+                <button className="secondary-button" type="button" onClick={() => setRoute("troubleshooting")}>Open read-only repository recovery</button>
+              </div>
+            ) : null}
             <ManualRecordNotice>
               Confirm the two required files and save the full Git tree or commit ID printed by the command. A new starter uses a tree ID so first-time Git users do not need to invent an author identity. For an existing repository, this is the initial Git-tracked source identity; you must revalidate the same commit and clean unignored working tree after building, testing, and hashing. Ignored local files are outside this evidence and must not be build inputs. The project path is deliberately not stored.
             </ManualRecordNotice>

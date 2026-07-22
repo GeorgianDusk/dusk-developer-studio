@@ -260,14 +260,23 @@ async function checkDuskForgeIdentityAsync(
       version: `${identity.package} ${identity.packageVersion} @ ${identity.revision}`,
       installHint: tool.installHint
     };
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const missing = (error as NodeJS.ErrnoException | undefined)?.code === "ENOENT"
+      || /No Cargo install receipt was found/i.test(message);
+    const mismatch = /does not match the reviewed package version and source revision/i.test(message);
+    const failureKind: ToolFailureKind = missing ? "missing" : mismatch ? "version-mismatch" : "execution-failed";
     return {
       name: tool.name,
       command: tool.command,
       required: tool.required,
       ok: false,
-      error: "The Cargo install receipt did not match the required Dusk Forge package version and source revision.",
-      failureKind: "version-mismatch",
+      error: missing
+        ? "No Cargo install receipt was found for the required Dusk Forge package."
+        : mismatch
+          ? "The Cargo install receipt did not match the required Dusk Forge package version and source revision."
+          : "The Cargo install receipt could not be read or validated.",
+      failureKind,
       installHint: tool.installHint
     };
   }
@@ -286,10 +295,12 @@ export async function runPreflightAsync(
   const runProcess = runtime.runProcess ?? runBoundedProcess;
   const readDuskForgeIdentity = runtime.readDuskForgeIdentity ?? (() => readReviewedDuskForgeIdentity());
   let duskForgeIdentityVerified = path !== "duskds";
+  let duskForgeIdentityFailureKind: ToolFailureKind = "version-mismatch";
   for (const tool of getToolAllowlist(path)) {
     if (tool.checkKind === "dusk-forge-identity") {
       const result = await checkDuskForgeIdentityAsync(tool, readDuskForgeIdentity);
       duskForgeIdentityVerified = result.ok;
+      if (!result.ok && result.failureKind) duskForgeIdentityFailureKind = result.failureKind;
       tools.push(result);
     } else if (tool.command === DUSK_FORGE_BINARY && !duskForgeIdentityVerified) {
       tools.push({
@@ -297,8 +308,12 @@ export async function runPreflightAsync(
         command: tool.command,
         required: tool.required,
         ok: false,
-        error: "Dusk Forge was not executed because its Cargo install receipt did not match the required package version and source revision.",
-        failureKind: "version-mismatch",
+        error: duskForgeIdentityFailureKind === "missing"
+          ? "Dusk Forge was not executed because its Cargo install receipt is missing."
+          : duskForgeIdentityFailureKind === "version-mismatch"
+            ? "Dusk Forge was not executed because its Cargo install receipt did not match the required package version and source revision."
+            : "Dusk Forge was not executed because its Cargo install receipt could not be read or validated.",
+        failureKind: duskForgeIdentityFailureKind,
         installHint: tool.installHint
       });
     } else {

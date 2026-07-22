@@ -76,7 +76,7 @@ describe("local npm runtime CLI mode", () => {
 
   it("uses one managed DuskDS root and supports only explicit safe absolute overrides", () => {
     const managed = path.resolve("runtime-projects");
-    const override = path.join(managed, "short-duskds-root");
+    const override = process.platform === "win32" ? "C:\\tmp\\short-duskds-root" : path.join(managed, "short-duskds-root");
     expect(resolveDuskDsProjectRoot(managed, "")).toBe(path.join(managed, "duskds"));
     expect(resolveDuskDsProjectRoot(managed, override)).toBe(path.resolve(override));
     expect(() => resolveDuskDsProjectRoot(managed, "relative-root")).toThrow(/normal absolute local path/);

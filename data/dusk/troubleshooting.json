@@ -1,5 +1,21 @@
 [
     {
+        "id":  "duskds-existing-repository-read-only",
+        "title":  "Existing DuskDS repository is read-only",
+        "symptoms":  [
+                         "duskds",
+                         "existing repository",
+                         "read-only repository",
+                         "readonly",
+                         "permission denied",
+                         "access denied",
+                         "writable checkout"
+                     ],
+        "severity":  "medium",
+        "fix":  "The existing-project lane needs a writable checkout because Dusk Forge and Cargo create build artifacts and may update ignored tool output. Keep the protected source unchanged; create a trusted writable clone or Git worktree, verify that its full commit matches the intended source, and enter that writable absolute path in Build.",
+        "safeNextStep":  "Do not weaken permissions on protected source just to make Studio pass. Use a writable clone or worktree, run the clean-tree and full-commit command before Prepare project, and confirm the same commit and clean unignored tree again after build and test."
+    },
+    {
         "id":  "duskds-node-npm-runtime",
         "title":  "Node or npm cannot prepare the DuskDS starter",
         "symptoms":  [

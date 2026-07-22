@@ -14,13 +14,14 @@ import {
 import { scaffoldFoundryTemplate } from "./commands/scaffoldTemplate";
 import {
   assertBoundedScaffoldPath,
+  assertWindowsForgeManagedRoot,
   MAX_SCAFFOLD_PATH_LENGTH,
   sanitizeProjectName,
   ScaffoldPathError,
   ScaffoldProjectNameError
 } from "./commands/safePaths";
 
-export { MAX_SCAFFOLD_PATH_LENGTH };
+export { assertWindowsForgeManagedRoot, MAX_SCAFFOLD_PATH_LENGTH };
 export { scaffoldDuskDsForge };
 
 const HOST = "127.0.0.1";

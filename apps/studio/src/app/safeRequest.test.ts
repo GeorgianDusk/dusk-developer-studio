@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LOCAL_ACTION_TIMEOUT_MS, requestJson } from "./safeRequest";
+import { COMPANION_SESSION_LOST_EVENT, LOCAL_ACTION_TIMEOUT_MS, requestJson } from "./safeRequest";
 
 const isOk = (value: unknown): value is { ok: true } => Boolean(value) && typeof value === "object" && (value as { ok?: unknown }).ok === true;
 
@@ -33,6 +33,18 @@ describe("safe request boundary", () => {
       code: "scaffold_parent_outside_root",
       message: "Parent folder must stay inside the managed DuskDS project root."
     });
+  });
+
+  it("announces an authenticated companion-session loss without confusing unrelated 401 responses", async () => {
+    const listener = vi.fn();
+    window.addEventListener(COMPANION_SESSION_LOST_EVENT, listener);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: false }), { status: 401 })));
+    await expect(requestJson("http://127.0.0.1:8788/preflight", { validate: isOk })).rejects.toMatchObject({ status: 401 });
+    expect(listener).toHaveBeenCalledOnce();
+    listener.mockClear();
+    await expect(requestJson("https://testnet.nodes.dusk.network/health", { validate: isOk })).rejects.toMatchObject({ status: 401 });
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener(COMPANION_SESSION_LOST_EVENT, listener);
   });
 
   it("rejects declared and streamed oversized bodies", async () => {

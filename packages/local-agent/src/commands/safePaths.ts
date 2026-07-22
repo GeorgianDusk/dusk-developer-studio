@@ -1,5 +1,10 @@
 ﻿import path from "node:path";
 
+import {
+  WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH,
+  WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH
+} from "@dusk/core/commands";
+
 const PROJECT_NAME_RE = /^[a-z](?:[a-z0-9]|-(?=[a-z0-9])){0,79}$/;
 const WINDOWS_RESERVED_NAME_RE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i;
 export const RUST_2024_RESERVED_PROJECT_NAMES: ReadonlySet<string> = new Set([
@@ -15,6 +20,7 @@ export interface ScaffoldTargetOptions {
   defaultParent?: string;
   allowedRoots?: string[];
   errorLabel?: string;
+  platform?: NodeJS.Platform;
 }
 
 export interface ScaffoldPlan {
@@ -83,6 +89,32 @@ export function assertBoundedScaffoldPath(value: string, label = "Scaffold path"
   return resolved;
 }
 
+export function assertWindowsForgeManagedRoot(
+  value: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  const resolved = path.resolve(value);
+  if (platform === "win32" && resolved.length > WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH) {
+    throw new ScaffoldPathError(
+      `Managed DuskDS project root must be ${WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH} characters or fewer on Windows so Forge can build its generated files.`
+    );
+  }
+  return resolved;
+}
+
+export function assertWindowsForgeProjectPath(
+  value: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  const resolved = path.resolve(value);
+  if (platform === "win32" && resolved.length > WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH) {
+    throw new ScaffoldPathError(
+      `DuskDS project path must be ${WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH} characters or fewer on Windows so Forge can build its generated files.`
+    );
+  }
+  return resolved;
+}
+
 function isPathInsideAny(roots: string[], target: string): boolean {
   return roots.some((root) => isPathInside(root, target));
 }
@@ -102,9 +134,15 @@ export function buildScaffoldPlan(workspaceRoot: string, projectName: string, pa
   const target = path.resolve(base, safeName);
 
   assertBoundedScaffoldPath(defaultParent, "Managed scaffold root");
-  for (const root of allowedRoots) assertBoundedScaffoldPath(root, "Allowed scaffold root");
+  assertWindowsForgeManagedRoot(defaultParent, options.platform);
+  for (const root of allowedRoots) {
+    assertBoundedScaffoldPath(root, "Allowed scaffold root");
+    assertWindowsForgeManagedRoot(root, options.platform);
+  }
   assertBoundedScaffoldPath(base, "Scaffold parent");
+  assertWindowsForgeManagedRoot(base, options.platform);
   assertBoundedScaffoldPath(target, "Scaffold response path");
+  assertWindowsForgeProjectPath(target, options.platform);
 
   if (!isPathInsideAny(allowedRoots, base) || !isPathInsideAny(allowedRoots, target)) {
     throw new ScaffoldPathError(`Parent folder must stay inside ${options.errorLabel ?? "the Studio workspace"}.`);

@@ -1,5 +1,10 @@
 export type CommandPlatform = "windows" | "posix";
 
+// Forge's generated native-linker paths are substantially longer than the
+// selected project path. Keep Windows roots short enough for the full build.
+export const WINDOWS_DUSKDS_MANAGED_ROOT_MAX_LENGTH = 120;
+export const WINDOWS_DUSKDS_PROJECT_PATH_MAX_LENGTH = 140;
+
 export interface DuskDsDeployCommandSet {
   platform: CommandPlatform;
   prerequisiteChecks: string;

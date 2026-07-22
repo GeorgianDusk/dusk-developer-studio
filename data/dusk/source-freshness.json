@@ -19,7 +19,7 @@
     },
     {
       "path": "data/dusk/troubleshooting.json",
-      "sha256": "d4adb5dbf3135238b5336cf5baf835d1da74ecd74fbafb93bf867f54b2817090"
+      "sha256": "705a24faf5893d401a85f74443eb754df84d7539512bf501c31e146a3ea2673d"
     }
   ],
   "sources": [
@@ -94,7 +94,7 @@
       "capabilities": 22,
       "networks": 3,
       "resources": 51,
-      "troubleshooting": 46
+      "troubleshooting": 47
     }
   }
 }

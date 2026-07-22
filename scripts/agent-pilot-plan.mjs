@@ -485,7 +485,7 @@ async function runKeyboardBrowserFlow(packageRoot, workRoot, phase) {
     );
     if (!Number.isFinite(transitionDuration) || transitionDuration > 0.00001) return false;
     await page.keyboard.press("Enter");
-    await page.waitForURL(/#setup$/u, { timeout: 10_000 });
+    await page.waitForURL(/#duskds\/setup$/u, { timeout: 10_000 });
     const setupHeading = page.getByRole("heading", {
       name: "Record the native toolchain checks you ran."
     });
@@ -495,7 +495,7 @@ async function runKeyboardBrowserFlow(packageRoot, workRoot, phase) {
     const referenceButton = page.getByRole("button", { name: "Reference", exact: true });
     await referenceButton.focus();
     await page.keyboard.press("Enter");
-    await page.waitForURL(/#reference$/u, { timeout: 10_000 });
+    await page.waitForURL(/#duskds\/reference$/u, { timeout: 10_000 });
     const search = page.getByPlaceholder(/Search docs, capabilities/iu);
     await search.focus();
     if (phase === "controlled-failure") {

@@ -399,6 +399,7 @@ export function TroubleshootingPage({
 }
 
 const duskDsTroubleActions: Partial<Record<string, { route: "setup" | "build"; label: string; command?: string }>> = {
+  "duskds-existing-repository-read-only": { route: "build", label: "Return to Build" },
   "dusk-forge-windows-wasm-opt-shim": { route: "setup", label: "Open Setup" },
   "dusk-forge-windows-long-path-linker": { route: "build", label: "Open Build" },
   "rust-wasm-target-missing": { route: "setup", label: "Open Setup", command: "rustup toolchain install 1.94.0 --component rust-src --target wasm32-unknown-unknown" },

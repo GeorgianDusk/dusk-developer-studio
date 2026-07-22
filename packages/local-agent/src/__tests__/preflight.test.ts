@@ -195,6 +195,27 @@ describe("path preflight", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("reports a missing Forge receipt and skips the unverified CLI as missing", async () => {
+    const runProcess = vi.fn(async (options: BoundedProcessOptions) => ({ stdout: successfulOutput(options), stderr: "", exitCode: 0 }));
+    const missingReceipt = Object.assign(new Error("ENOENT: .crates2.json was not found"), { code: "ENOENT" });
+    const result = await runPreflightAsync("duskds", {
+      runProcess,
+      readDuskForgeIdentity: async () => { throw missingReceipt; }
+    });
+    expect(result.tools.find((tool) => tool.name === "Dusk Forge Cargo receipt")).toMatchObject({
+      ok: false,
+      required: true,
+      failureKind: "missing"
+    });
+    expect(result.tools.find((tool) => tool.name === "Dusk Forge CLI")).toMatchObject({
+      ok: false,
+      required: true,
+      failureKind: "missing"
+    });
+    expect(runProcess.mock.calls.some(([options]) => options.command === reviewedDuskForgeExecutable())).toBe(false);
+    expect(result.ok).toBe(false);
+  });
+
   it("parses only the exact Cargo install receipt and returns bounded Forge identity", () => {
     const raw = JSON.stringify({
       installs: {

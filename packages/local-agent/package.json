@@ -19,6 +19,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@dusk/core": "workspace:*",
     "zod": "^4.1.12"
   }
 }

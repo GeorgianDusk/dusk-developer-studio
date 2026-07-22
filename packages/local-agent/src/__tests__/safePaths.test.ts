@@ -1,6 +1,8 @@
 ﻿import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertWindowsForgeManagedRoot,
+  assertWindowsForgeProjectPath,
   buildScaffoldTarget,
   isPathInside,
   MAX_SCAFFOLD_PATH_LENGTH,
@@ -83,9 +85,22 @@ describe("safe path helpers", () => {
     const overlong = path.resolve(workspace, "a".repeat(MAX_SCAFFOLD_PATH_LENGTH + 1));
     expect(() => buildScaffoldTarget(workspace, "demo", undefined, {
       defaultParent: overlong,
-      allowedRoots: [overlong]
+      allowedRoots: [overlong],
+      platform: "linux"
     })).toThrow("1,024 characters or fewer");
-    expect(() => buildScaffoldTarget(workspace, "demo", "a".repeat(MAX_SCAFFOLD_PATH_LENGTH + 1)))
+    expect(() => buildScaffoldTarget(workspace, "demo", "a".repeat(MAX_SCAFFOLD_PATH_LENGTH + 1), { platform: "linux" }))
       .toThrow("1,024 characters or fewer");
+  });
+
+  it("enforces the tested Windows Forge root and complete-project path budgets", () => {
+    const sizedPath = (length: number) => {
+      const base = path.resolve("forge-path-budget");
+      return path.join(base, "x".repeat(length - base.length - 1));
+    };
+    expect(assertWindowsForgeManagedRoot(sizedPath(120), "win32")).toHaveLength(120);
+    expect(assertWindowsForgeProjectPath(sizedPath(140), "win32")).toHaveLength(140);
+    expect(() => assertWindowsForgeManagedRoot(sizedPath(121), "win32")).toThrow("120 characters or fewer");
+    expect(() => assertWindowsForgeProjectPath(sizedPath(141), "win32")).toThrow("140 characters or fewer");
+    expect(assertWindowsForgeManagedRoot(sizedPath(121), "linux")).toHaveLength(121);
   });
 });

@@ -149,14 +149,14 @@ describe("Phase 3 interaction semantics", () => {
   it("returns from DuskEVM support routes to the pre-launch overview", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /Open pre-launch overview/i }));
-    expect(window.location.hash).toBe("#setup");
+    expect(window.location.hash).toBe("#evm/setup");
 
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
     const returnToOverview = screen.getByRole("button", { name: "Return to DuskEVM pre-launch overview" });
     expect(returnToOverview).toHaveTextContent("Return to pre-launch overview");
     fireEvent.click(returnToOverview);
 
-    expect(window.location.hash).toBe("#setup");
+    expect(window.location.hash).toBe("#evm/setup");
     expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
     expect(screen.getByLabelText("Example identifier")).toBeInTheDocument();
   });
@@ -199,7 +199,7 @@ describe("Phase 3 interaction semantics", () => {
     window.history.pushState({}, "", "#build");
     render(<App />);
 
-    await waitFor(() => expect(window.location.hash).toBe("#setup"));
+    await waitFor(() => expect(window.location.hash).toBe("#evm/setup"));
     expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
 
     await act(async () => {
@@ -213,7 +213,7 @@ describe("Phase 3 interaction semantics", () => {
       window.history.forward();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
-    await waitFor(() => expect(window.location.hash).toBe("#setup"));
+    await waitFor(() => expect(window.location.hash).toBe("#evm/setup"));
     expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
   });
 

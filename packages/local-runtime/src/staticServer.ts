@@ -7,6 +7,7 @@ const HOST = "127.0.0.1";
 const DUSKDS_TESTNET_ORIGIN = "https://testnet.nodes.dusk.network";
 const MAX_BOOTSTRAP_RESPONSE_BYTES = 8 * 1024;
 const MAX_BOOTSTRAP_REQUEST_BYTES = 1024;
+const MAX_SESSION_STATUS_BYTES = 8 * 1024;
 const MIME = new Map([
   [".css", "text/css; charset=utf-8"],
   [".html", "text/html; charset=utf-8"],
@@ -98,6 +99,46 @@ async function proxyPair(
   });
 }
 
+async function proxySessionStatus(
+  companionPort: number,
+  origin: string,
+  cookie: string | undefined,
+  signal?: AbortSignal
+): Promise<{ status: number; body: Buffer }> {
+  return new Promise((resolve, reject) => {
+    const request = http.request({
+      hostname: HOST,
+      port: companionPort,
+      path: "/health",
+      method: "GET",
+      headers: {
+        host: `${HOST}:${companionPort}`,
+        origin,
+        ...(cookie ? { cookie } : {})
+      }
+    }, (response) => {
+      const chunks: Buffer[] = [];
+      let bytes = 0;
+      response.on("data", (chunk: Buffer | string) => {
+        const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        bytes += buffer.byteLength;
+        if (bytes <= MAX_SESSION_STATUS_BYTES) chunks.push(buffer);
+      });
+      response.on("end", () => {
+        if (bytes > MAX_SESSION_STATUS_BYTES) reject(new Error("Companion session-status response exceeded its bound."));
+        else resolve({ status: response.statusCode ?? 502, body: Buffer.concat(chunks) });
+      });
+    });
+    request.setTimeout(1_200, () => request.destroy(new Error("Companion session-status request timed out.")));
+    const abort = () => request.destroy(new Error("Companion session-status client disconnected."));
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
+    request.once("error", reject);
+    request.once("close", () => signal?.removeEventListener("abort", abort));
+    request.end();
+  });
+}
+
 async function safeStaticPath(realRoot: string, pathname: string): Promise<string | undefined> {
   let decoded: string;
   try { decoded = decodeURIComponent(pathname); } catch { return undefined; }
@@ -162,6 +203,38 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
         sendJson(response, 403, { ok: false, code: "host_denied" }, options.companionPort); return;
       }
       const url = new URL(request.url ?? "/", `http://${HOST}:${listeningPort}`);
+      if (url.pathname === "/__dusk/session") {
+        if (request.method !== "GET") { sendJson(response, 405, { ok: false, code: "method_denied" }, options.companionPort, { allow: "GET" }); return; }
+        if (request.headers["sec-fetch-site"] === "cross-site") {
+          sendJson(response, 403, { ok: false, code: "session_status_denied" }, options.companionPort); return;
+        }
+        const origin = `http://${request.headers.host!.toLowerCase()}`;
+        const clientAbort = new AbortController();
+        const abortOnDisconnect = () => {
+          if (!response.writableEnded) clientAbort.abort();
+        };
+        request.once("aborted", abortOnDisconnect);
+        response.once("close", abortOnDisconnect);
+        try {
+          const status = await proxySessionStatus(
+            options.companionPort,
+            origin,
+            typeof request.headers.cookie === "string" ? request.headers.cookie : undefined,
+            clientAbort.signal
+          );
+          if (status.status === 401) {
+            sendJson(response, 200, { ok: true, paired: false }, options.companionPort); return;
+          }
+          if (status.status !== 200) {
+            sendJson(response, 503, { ok: false, code: "local_runtime_unavailable" }, options.companionPort); return;
+          }
+          response.writeHead(200, { ...securityHeaders(options.companionPort), "content-type": "application/json; charset=utf-8" });
+          response.end(status.body); return;
+        } finally {
+          request.removeListener("aborted", abortOnDisconnect);
+          response.removeListener("close", abortOnDisconnect);
+        }
+      }
       if (url.pathname === "/__dusk/bootstrap") {
         if (request.method !== "POST") { sendJson(response, 405, { ok: false, code: "method_denied" }, options.companionPort, { allow: "POST" }); return; }
         const origin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
