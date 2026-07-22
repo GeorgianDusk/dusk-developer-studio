@@ -4,6 +4,12 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.8 - 2026-07-22
+
+### Fixed
+
+- Keep keyboard focus on the Access and Inspect hosted-check controls while their asynchronous node reads are running and after the result appears.
+
 ## 1.0.7 - 2026-07-22
 
 ### Fixed

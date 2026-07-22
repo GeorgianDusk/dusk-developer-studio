@@ -628,6 +628,7 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
   }
 
   async function runHostedRead() {
+    if (automaticState === "loading") return;
     setAutomaticState("loading");
     setAutomaticMessage("Reading one latest-block header from the public DuskDS Testnet node.");
     setObservation(null);
@@ -703,7 +704,13 @@ function DuskDsAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
         <div className="focus-card wide">
           <h2>Read the public Testnet tip</h2>
           <p>This sends one bounded, read-only GraphQL request to {DUSKDS_TESTNET_NODE}. It uses no wallet, key, account, transaction, or companion.</p>
-          <button className="primary-button" type="button" disabled={!setupComplete || automaticState === "loading"} onClick={runHostedRead}>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={!setupComplete}
+            aria-disabled={!setupComplete || automaticState === "loading"}
+            onClick={runHostedRead}
+          >
             {automaticState === "loading" ? "Reading latest block" : observation ? "Run safe check again" : "Run hosted safe check"}
           </button>
           {automaticState === "idle"
@@ -2089,6 +2096,7 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   } as const;
 
   async function runLatestBlockRead() {
+    if (blockState === "loading") return;
     setBlockState("loading");
     setBlockMessage("Reading one latest-block header from the public DuskDS Testnet node.");
     setObservation(null);
@@ -2449,7 +2457,14 @@ function DuskDsInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
         />
         {blockMethod === "automatic" ? (
           <>
-            <button className="primary-button" type="button" disabled={blockState === "loading"} onClick={runLatestBlockRead}>Read latest block</button>
+            <button
+              className="primary-button"
+              type="button"
+              aria-disabled={blockState === "loading"}
+              onClick={runLatestBlockRead}
+            >
+              Read latest block
+            </button>
             {blockState === "idle"
               ? <p className="quiet-note">{blockMessage}</p>
               : <AsyncNotice state={blockState} message={blockMessage} onRetry={blockState === "error" || blockState === "timeout" || blockState === "unavailable" ? runLatestBlockRead : undefined} />}

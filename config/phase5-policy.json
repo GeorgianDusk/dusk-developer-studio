@@ -207,8 +207,8 @@
   ],
   "npm_distribution": {
     "package_name": "dusk-developer-studio",
-    "package_version": "1.0.7",
-    "tag": "v1.0.7",
+    "package_version": "1.0.8",
+    "tag": "v1.0.8",
     "registry_url": "https://registry.npmjs.org/dusk-developer-studio",
     "node_engine": ">=24.18.0 <25",
     "assurance_workflow": ".github/workflows/studio-npm-package-assurance.yml",

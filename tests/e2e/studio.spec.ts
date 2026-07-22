@@ -334,3 +334,52 @@ test("keyboard reset cancellation restores focus to its trigger", async ({ page 
   await expect(page.getByText("Reset canceled. Browser progress was not changed.")).toBeVisible();
   await expect(resetTrigger).toBeFocused();
 });
+
+test("keyboard focus survives hosted node reads", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.route("https://testnet.nodes.dusk.network/on/graphql/query", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          block: {
+            header: {
+              height: 3_857_999,
+              hash: "a".repeat(64)
+            }
+          }
+        }
+      })
+    });
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: /Start DuskDS/i }).click();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await page.getByRole("button", { name: "Next: Access" }).click();
+
+  const accessCard = page.getByRole("heading", { name: "Read the public Testnet tip" }).locator("..");
+  const accessButton = accessCard.getByRole("button");
+  await accessButton.focus();
+  await accessButton.press("Enter");
+  await expect(accessButton).toHaveAttribute("aria-disabled", "true");
+  await expect(accessButton).toBeFocused();
+  await expect(accessCard.getByText(/Observed block 3857999/)).toBeVisible();
+  await expect(accessButton).toHaveAttribute("aria-disabled", "false");
+  await expect(accessButton).toBeFocused();
+
+  await page.getByRole("button", { name: "Next: Build" }).click();
+  await page.getByRole("button", { name: "Skip for now" }).click();
+  await page.getByRole("button", { name: "Next: Inspect" }).click();
+
+  const inspectCard = page.getByRole("heading", { name: "1. Observe a latest block" }).locator("..");
+  const inspectButton = inspectCard.getByRole("button", { name: "Read latest block" });
+  await inspectButton.focus();
+  await inspectButton.press("Enter");
+  await expect(inspectButton).toHaveAttribute("aria-disabled", "true");
+  await expect(inspectButton).toBeFocused();
+  await expect(inspectCard.getByText(/Observed latest block 3857999/)).toBeVisible();
+  await expect(inspectButton).toHaveAttribute("aria-disabled", "false");
+  await expect(inspectButton).toBeFocused();
+});
