@@ -24,7 +24,7 @@ The package is self-contained, installs no additional runtime dependencies, and 
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.11
+npx dusk-developer-studio@1.0.12
 ```
 
 Safe mode starts the local Studio, pairs the browser, and provides the guided experience without running developer tools or creating projects.
@@ -32,7 +32,7 @@ Safe mode starts the local Studio, pairs the browser, and provides the guided ex
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.11 local-actions
+npx dusk-developer-studio@1.0.12 local-actions
 ```
 
 Local Actions adds allowlisted prerequisite checks and constrained starter creation. It uses developer tools already installed on your machine; it does not install or update them.
@@ -42,10 +42,10 @@ The browser opens automatically and each launch pairs one browser profile. To ch
 To create a DuskDS counter starter directly from the same reviewed package template:
 
 ```bash
-npx --yes dusk-developer-studio@1.0.11 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.12 create-duskds my-counter
 ```
 
-The command writes one new child of your current working directory, refuses an existing target, and preserves the packaged Rust `1.94.0` toolchain, dependency lock, and template provenance. Dusk Forge remains a separate prerequisite for the subsequent check, build, test, and verification commands. Local Actions uses the separate managed DuskDS project root described below.
+The command writes one new project child, refuses an existing target, and preserves the packaged Rust `1.94.0` toolchain, dependency lock, and template provenance. It also keeps a reserved `.dusk-studio-staging` sibling as a crash-recovery workspace. Successful operations and handled failures whose cleanup can be proven safe leave it empty. If the process is forcibly terminated mid-creation, a later starter operation removes only a stale stage whose ownership and bounded tree it can verify; a fresh lease may need to expire first, and ambiguous or unsafe residue is preserved for inspection. Dusk Forge remains a separate prerequisite for the subsequent check, build, test, and verification commands. Local Actions uses the separate managed DuskDS project root described below.
 
 Both commands open `http://127.0.0.1:5173`. Keep the terminal open while using the Studio and press `Ctrl+C` to stop it. On Windows, if `npx` asks `Terminate batch job (Y/N)?`, type `Y` and press Enter; both loopback services then close.
 

@@ -69,7 +69,8 @@
     "CV-D-065", "CV-D-066", "CV-D-067", "CV-D-068", "CV-D-069", "CV-D-070", "CV-D-071", "CV-D-072",
     "CV-D-073", "CV-D-074", "CV-D-075", "CV-D-076", "CV-D-077", "CV-D-078", "CV-D-079", "CV-D-080",
     "CV-D-081", "CV-D-082", "CV-D-083", "CV-D-084", "CV-D-085", "CV-D-086", "CV-D-087", "CV-D-088",
-    "CV-D-089", "CV-D-090", "CV-D-091", "CV-D-092", "CV-D-093"
+    "CV-D-089", "CV-D-090", "CV-D-091", "CV-D-092", "CV-D-093", "CV-D-094", "CV-D-095", "CV-D-096",
+    "CV-D-097", "CV-D-098", "CV-D-099", "CV-D-100", "CV-D-101", "CV-D-102", "CV-D-103", "CV-D-104"
   ],
   "required_final_challenge_scopes": [
     "product-ui-developer-experience",
@@ -88,8 +89,8 @@
   },
   "intended_final_candidate": {
     "package_name": "dusk-developer-studio",
-    "package_version": "1.0.11",
-    "repository_tag": "v1.0.11",
+    "package_version": "1.0.12",
+    "repository_tag": "v1.0.12",
     "assurance_workflow_path": ".github/workflows/studio-npm-package-assurance.yml"
   },
   "historical_evidence": {

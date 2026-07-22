@@ -1,4 +1,4 @@
-const CLI_VERSION = "1.0.11";
+const CLI_VERSION = "1.0.12";
 const REQUIRED_NODE = ">=24.18.0 <25";
 const NODE_RECOVERY = "Install Node.js 24.18.0 from https://nodejs.org/en/download/archive/v24.18.0, open a new terminal, confirm `node --version`, then rerun your Dusk Developer Studio command.";
 const INFORMATIONAL_FLAGS = new Map([
@@ -27,7 +27,7 @@ function helpText() {
     "  npx dusk-developer-studio create-duskds <project-name>",
     "",
     "Runs Safe mode by default. Add local-actions to enable reviewed DuskDS machine actions.",
-    "create-duskds writes the packaged reviewed starter as one new child of the current directory.",
+    "create-duskds writes one new project child and uses a reserved .dusk-studio-staging sibling for crash-safe promotion.",
     "",
     "Options:",
     "  --no-open        Choose the browser profile yourself; open the printed URL within five minutes",

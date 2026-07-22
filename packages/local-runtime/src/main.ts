@@ -145,6 +145,20 @@ export function resolveDuskDsProjectRoot(
   return assertWindowsForgeManagedRoot(resolved);
 }
 
+export function resolveLocalRuntimeProjectRoots(
+  managedProjectRoot: string,
+  capabilitiesEnabled: boolean,
+  configured = process.env.DUSK_STUDIO_DUSKDS_PROJECT_ROOT
+): { projectRoot: string; duskDsProjectRoot: string } {
+  const projectRoot = path.resolve(managedProjectRoot);
+  return {
+    projectRoot,
+    duskDsProjectRoot: capabilitiesEnabled
+      ? resolveDuskDsProjectRoot(projectRoot, configured)
+      : path.join(projectRoot, "duskds")
+  };
+}
+
 export async function resolveCanonicalNpmPackageRoot(packageRoot: string): Promise<string> {
   const requested = path.resolve(packageRoot);
   const canonical = await fs.realpath(requested);
@@ -236,8 +250,10 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
   }
 
   const pairingToken = randomBytes(32).toString("base64url");
-  const projectRoot = path.resolve(options.projectRoot ?? defaultProjectRoot());
-  const duskDsProjectRoot = resolveDuskDsProjectRoot(projectRoot);
+  const { projectRoot, duskDsProjectRoot } = resolveLocalRuntimeProjectRoots(
+    options.projectRoot ?? defaultProjectRoot(),
+    options.capabilitiesEnabled
+  );
   await fs.mkdir(projectRoot, { recursive: true, mode: 0o700 });
   const releaseIdentity = {
     product: "Dusk Developer Studio",
@@ -252,7 +268,7 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
     processCwd: packageRoot,
     foundryTemplateRoot: path.join(packageRoot, "templates", "foundry-counter-dusk-evm"),
     duskDsTemplateRoot: path.join(packageRoot, "templates", "duskds-counter-forge"),
-    duskDsProjectRoot,
+    ...(options.capabilitiesEnabled ? { duskDsProjectRoot } : {}),
     allowedOrigins: [`http://${HOST}:${studioPort}`, `http://localhost:${studioPort}`],
     capabilitiesEnabled: options.capabilitiesEnabled,
     evmScaffoldEnabled: false,
@@ -641,7 +657,10 @@ async function runLifecycleSelfTest(
   if (runtime.projectRoot !== expectedProjectRoot) {
     throw new Error("Lifecycle project root did not use the isolated platform user-data root.");
   }
-  if (runtime.duskDsProjectRoot !== resolveDuskDsProjectRoot(expectedProjectRoot)) {
+  const expectedDuskDsProjectRoot = capabilitiesEnabled
+    ? resolveDuskDsProjectRoot(expectedProjectRoot)
+    : path.join(expectedProjectRoot, "duskds");
+  if (runtime.duskDsProjectRoot !== expectedDuskDsProjectRoot) {
     throw new Error("Lifecycle DuskDS project root did not match the managed containment root.");
   }
   const projectStat = await fs.lstat(runtime.projectRoot);

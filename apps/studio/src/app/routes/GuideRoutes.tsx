@@ -1742,7 +1742,14 @@ function DuskDsBuild({
               <div className="manual-record-notice">
                 <StatusPill tone="warn">Writable checkout required</StatusPill>
                 <p>The existing-project lane must write build artifacts and may update ignored tool output. If this checkout is read-only, create a writable clone or worktree in a trusted location and use that path instead. The first command records the clean Git baseline before any project tool runs; Prepare project repeats that guard.</p>
-                <button className="secondary-button" type="button" onClick={() => setRoute("troubleshooting")}>Open read-only repository recovery</button>
+                <button className="secondary-button" type="button" onClick={() => {
+                  try {
+                    window.sessionStorage.setItem("dusk-studio-troubleshooting-focus", "duskds-existing-repository-read-only");
+                  } catch {
+                    // The route remains usable when session storage is disabled.
+                  }
+                  setRoute("troubleshooting");
+                }}>Open read-only repository recovery</button>
               </div>
             ) : null}
             <ManualRecordNotice>

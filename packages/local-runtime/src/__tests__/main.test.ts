@@ -10,6 +10,7 @@ import {
   localRuntimeStopInstruction,
   parseWindowsNetstatListeningEndpoints,
   resolveDuskDsProjectRoot,
+  resolveLocalRuntimeProjectRoots,
   resolveLocalBrowserLaunch,
   resolveLocalRuntimeCliMode
 } from "../main";
@@ -89,6 +90,29 @@ describe("local npm runtime CLI mode", () => {
       .toThrow(/1,024 characters or fewer/);
     expect(() => resolveDuskDsProjectRoot("m".repeat(1_100), ""))
       .toThrow(/1,024 characters or fewer/);
+  });
+
+  it("does not validate an unused Local Actions root during Safe-mode startup", () => {
+    const filesystemRoot = path.parse(process.cwd()).root;
+    const managed = path.join(filesystemRoot, "x".repeat(120 - filesystemRoot.length));
+    expect(managed).toHaveLength(120);
+
+    expect(resolveLocalRuntimeProjectRoots(managed, false, "relative-override")).toEqual({
+      projectRoot: managed,
+      duskDsProjectRoot: path.join(managed, "duskds")
+    });
+    expect(() => resolveLocalRuntimeProjectRoots(managed, true, "relative-override"))
+      .toThrow(/normal absolute local path/);
+    if (process.platform === "win32") {
+      expect(() => resolveDuskDsProjectRoot(managed, "")).toThrow(/120 characters or fewer/);
+      expect(() => resolveLocalRuntimeProjectRoots(managed, true, ""))
+        .toThrow(/120 characters or fewer/);
+    } else {
+      expect(resolveLocalRuntimeProjectRoots(managed, true, "")).toEqual({
+        projectRoot: managed,
+        duskDsProjectRoot: path.join(managed, "duskds")
+      });
+    }
   });
 
   it("parses locale-independent Windows netstat listener rows for the exact owner", () => {

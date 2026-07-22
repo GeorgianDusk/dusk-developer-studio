@@ -4,6 +4,18 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.12 - 2026-07-22
+
+### Fixed
+
+- Open the exact read-only-repository recovery from the existing-project Build lane, focus it, and label the destination as selected guidance instead of reporting that no blocker was recorded.
+- Let Safe mode start when an unused Local Actions project root is invalid or exceeds the Windows Forge path budget; the stricter root validation now applies only when machine actions are enabled.
+- Document the reserved `.dusk-studio-staging` transaction directory and its bounded stale-stage recovery after an uncatchable process termination instead of promising that starter creation leaves no coordination sibling.
+
+### Verification
+
+- Exercise the Safe-mode fix in Windows package assurance with a deliberately over-budget default project path and an invalid Local Actions override before running the normal Local Actions lifecycle.
+
 ## 1.0.11 - 2026-07-22
 
 ### Fixed
