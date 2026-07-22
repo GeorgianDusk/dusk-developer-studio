@@ -17,13 +17,15 @@ import {
   type RecordEvidenceOptions,
   type StepRoute
 } from "./journeyProgress";
-import { isCompanionHealth, isPairingResult, type CompanionHealth } from "./responseSchemas";
+import { isCompanionSessionStatus, isPairingResult, type CompanionHealth, type CompanionSessionStatus } from "./responseSchemas";
 import { hasLocalReleaseParity, type StudioRuntime } from "./runtime";
-import { requestJson, safeRequestMessage, SafeRequestError } from "./safeRequest";
+import { COMPANION_SESSION_LOST_EVENT, requestJson, safeRequestMessage, SafeRequestError } from "./safeRequest";
 import { localAgentUrl, studioRuntime } from "./studioConfig";
 import type { CompanionStatus, RouteId } from "./types";
 
 const routeIds: RouteId[] = ["overview", "setup", "access", "build", "inspect", "reference", "troubleshooting", "companion", "settings"];
+const pathScopedRouteIds = new Set<RouteId>(["setup", "access", "build", "inspect", "reference", "troubleshooting"]);
+const routeAliases: Record<string, RouteId> = { capabilities: "reference", docs: "reference", network: "setup", funding: "access", deploy: "build", verify: "inspect" };
 const ROUTE_SCROLL_STATE_KEY = "duskStudioScrollY";
 const ROUTE_FOCUS_STATE_KEY = "duskStudioFocus";
 const ROUTE_BUILDER_PATH_STATE_KEY = "duskStudioBuilderPath";
@@ -156,12 +158,39 @@ function replaceRouteBuilderPath(path: BuilderPath | null): void {
   window.history.replaceState(historyStateWithBuilderPath(path), "", window.location.href);
 }
 
+function parseRouteHash(): { raw: string; route: RouteId; builderPath?: BuilderPath } {
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  const parts = raw.split("/");
+  const pathPrefix = parts.length === 2 && (parts[0] === "evm" || parts[0] === "duskds")
+    ? parts[0] as BuilderPath
+    : undefined;
+  const rawRoute = pathPrefix ? parts[1] : raw;
+  const route = routeAliases[rawRoute] ?? rawRoute;
+  const validRoute = routeIds.includes(route as RouteId) ? route as RouteId : "overview";
+  return {
+    raw,
+    route: validRoute,
+    builderPath: pathPrefix && pathScopedRouteIds.has(validRoute) ? pathPrefix : undefined
+  };
+}
+
+function routeHash(route: RouteId, builderPath?: BuilderPath | null): string {
+  return builderPath && pathScopedRouteIds.has(route)
+    ? `#${builderPath}/${route}`
+    : `#${route}`;
+}
+
 function getRouteBuilderPath(): BuilderPath | null | undefined {
-  const value = window.history.state?.[ROUTE_BUILDER_PATH_STATE_KEY];
+  const hashPath = parseRouteHash().builderPath;
   const stateGeneration = window.history.state?.[ROUTE_BUILDER_PATH_GENERATION_STATE_KEY];
   const currentGeneration = currentBuilderPathGeneration();
   const generationMatches = stateGeneration === currentGeneration
     || (stateGeneration === undefined && currentGeneration === 0);
+  if (hashPath) {
+    if (stateGeneration === undefined || generationMatches) return hashPath;
+    return undefined;
+  }
+  const value = window.history.state?.[ROUTE_BUILDER_PATH_STATE_KEY];
   if (generationMatches && (value === "evm" || value === "duskds" || value === null)) return value;
   return undefined;
 }
@@ -212,10 +241,7 @@ export function useStudioRuntime(): StudioRuntimeContextValue {
 }
 
 function getInitialRoute(): RouteId {
-  const aliases: Record<string, RouteId> = { capabilities: "reference", docs: "reference", network: "setup", funding: "access", deploy: "build", verify: "inspect" };
-  const raw = window.location.hash.replace(/^#\/?/, "");
-  const route = aliases[raw] ?? raw;
-  return routeIds.includes(route as RouteId) ? route as RouteId : "overview";
+  return parseRouteHash().route;
 }
 
 export function useRoute(): [RouteId, (route: RouteId, options?: { replace?: boolean }) => void, RouteNavigation] {
@@ -230,9 +256,12 @@ export function useRoute(): [RouteId, (route: RouteId, options?: { replace?: boo
     if (window.history.state?.[ROUTE_SCROLL_STATE_KEY] === undefined) replaceRouteScroll(window.scrollY);
     let popstateHref: string | null = null;
     const syncRoute = (kind: RouteNavigationKind) => {
-      const next = getInitialRoute();
-      const raw = window.location.hash.replace(/^#\/?/, "");
-      if (raw && raw !== next) window.history.replaceState(window.history.state, "", `#${next}`);
+      const parsed = parseRouteHash();
+      const next = parsed.route;
+      const canonicalHash = routeHash(next, parsed.builderPath ? getRouteBuilderPath() : undefined);
+      if (parsed.raw && window.location.hash !== canonicalHash) {
+        window.history.replaceState(window.history.state, "", canonicalHash);
+      }
       if (window.history.state?.[ROUTE_SCROLL_STATE_KEY] === undefined) replaceRouteScroll(0);
       setRouteState(next);
       if (kind !== "initial") advanceNavigation(kind);
@@ -274,11 +303,12 @@ export function useRoute(): [RouteId, (route: RouteId, options?: { replace?: boo
   }, [advanceNavigation]);
   const setRoute = useCallback((next: RouteId, options?: { replace?: boolean }) => {
     const current = getInitialRoute();
-    if (current !== next) {
+    const nextHash = routeHash(next, getRouteBuilderPath());
+    if (current !== next || window.location.hash !== nextHash) {
       replaceRouteNavigationSnapshot(window.scrollY);
       const state = { ...historyStateWithScroll(0), [ROUTE_FOCUS_STATE_KEY]: null };
-      if (options?.replace) window.history.replaceState(state, "", `#${next}`);
-      else window.history.pushState(state, "", `#${next}`);
+      if (options?.replace) window.history.replaceState(state, "", nextHash);
+      else window.history.pushState(state, "", nextHash);
       advanceNavigation(options?.replace ? "replace" : "push");
     }
     setRouteState(next);
@@ -298,7 +328,9 @@ export function useBuilderPath(): [BuilderPath | null, (path: BuilderPath | null
     pathRef.current = path;
   }, [path]);
   useEffect(() => {
-    if (getRouteBuilderPath() === undefined) replaceRouteBuilderPath(pathRef.current);
+    if (window.history.state?.[ROUTE_BUILDER_PATH_STATE_KEY] === undefined) {
+      replaceRouteBuilderPath(pathRef.current);
+    }
     const onHistory = () => {
       let next = getRouteBuilderPath();
       if (next === undefined) {
@@ -336,10 +368,10 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
       ? "Local companion has not been checked."
       : "Hosted preview is read-only. Run the local companion for preflights or starter files."
   });
-  const readHealth = useCallback(async (): Promise<CompanionHealth> => {
+  const readSession = useCallback(async (): Promise<CompanionSessionStatus> => {
     if (!companionBaseUrl) throw new SafeRequestError("unavailable", "The local companion is unavailable.", true);
-    return requestJson(companionBaseUrl + "/health", {
-      init: { credentials: "include" }, timeoutMs: 1_200, validate: isCompanionHealth
+    return requestJson(window.location.origin + "/__dusk/session", {
+      init: { credentials: "include" }, timeoutMs: 1_500, validate: isCompanionSessionStatus
     });
   }, [companionBaseUrl]);
   const applyHealth = useCallback((data: CompanionHealth) => {
@@ -365,11 +397,13 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
     }
     setStatus({ state: "checking", message: "Checking local companion..." });
     try {
-      applyHealth(await readHealth());
+      const session = await readSession();
+      if (session.paired) applyHealth(session);
+      else setStatus({ state: "unavailable", message: "This browser session is not paired with the current Local Studio run. Reload this page once to use the new run's pairing window; if it remains unpaired, stop the npm command and start it again." });
     } catch (error) {
       setStatus({ state: "unavailable", message: safeRequestMessage(error) });
     }
-  }, [applyHealth, companionBaseUrl, readHealth, runtime.companionAvailable]);
+  }, [applyHealth, companionBaseUrl, readSession, runtime.companionAvailable]);
   useEffect(() => {
     if (runtime.channel !== "npm" || !runtime.companionAvailable || !companionBaseUrl || localBootstrapStarted.current) return;
     localBootstrapStarted.current = true;
@@ -377,13 +411,14 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
       setStatus({ state: "checking", message: "Starting the local session..." });
       try {
         try {
-          applyHealth(await readHealth());
-          return;
-        } catch (error) {
-          if (!(error instanceof SafeRequestError) || error.status !== 401) {
-            setStatus({ state: "unavailable", message: safeRequestMessage(error) });
+          const session = await readSession();
+          if (session.paired) {
+            applyHealth(session);
             return;
           }
+        } catch (error) {
+          setStatus({ state: "unavailable", message: safeRequestMessage(error) });
+          return;
         }
         await requestJson(window.location.origin + "/__dusk/bootstrap", {
           init: { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}" },
@@ -395,21 +430,46 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
       } catch (error) {
         if (error instanceof SafeRequestError && (error.status === 409 || error.status === 410)) {
           try {
-            applyHealth(await readHealth());
-            return;
+            const session = await readSession();
+            if (session.paired) {
+              applyHealth(session);
+              return;
+            }
           } catch {
-            setStatus({
-              state: "unavailable",
-              message: "This Local Studio launch is already paired in another browser profile or its five-minute pairing window expired. Close local Studio pages, stop the npm command with Ctrl+C, and rerun it. To choose a specific profile, add --no-open and open http://127.0.0.1:5173/#companion in that profile before any other local page."
-            });
-            return;
+            // The bounded instruction below covers both an unavailable probe
+            // and an explicitly unpaired probe after a concurrent bootstrap.
           }
+          setStatus({
+            state: "unavailable",
+            message: "This Local Studio launch is already paired in another browser profile or its five-minute pairing window expired. Close local Studio pages, stop the npm command with Ctrl+C, and rerun it. To choose a specific profile, add --no-open and open http://127.0.0.1:5173/#companion in that profile before any other local page."
+          });
+          return;
         }
         setStatus({ state: "unavailable", message: safeRequestMessage(error) });
       }
     };
     void bootstrap();
-  }, [applyHealth, companionBaseUrl, readHealth, refresh, runtime.channel, runtime.companionAvailable]);
+  }, [applyHealth, companionBaseUrl, readSession, refresh, runtime.channel, runtime.companionAvailable]);
+  useEffect(() => {
+    if (!runtime.companionAvailable) return;
+    const markSessionLost = () => setStatus({
+      state: "unavailable",
+      message: "The current Local Studio session ended or changed. Reload this page once to pair with the current run; if it remains unpaired, stop the npm command and start it again."
+    });
+    const recheck = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener(COMPANION_SESSION_LOST_EVENT, markSessionLost);
+    window.addEventListener("focus", recheck);
+    document.addEventListener("visibilitychange", recheck);
+    const interval = window.setInterval(recheck, 15_000);
+    return () => {
+      window.removeEventListener(COMPANION_SESSION_LOST_EVENT, markSessionLost);
+      window.removeEventListener("focus", recheck);
+      document.removeEventListener("visibilitychange", recheck);
+      window.clearInterval(interval);
+    };
+  }, [refresh, runtime.companionAvailable]);
   return [status, refresh];
 }
 

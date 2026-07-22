@@ -83,11 +83,14 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /Open pre-launch overview/i }));
 
-    expect(window.location.hash).toBe("#setup");
+    expect(window.location.hash).toBe("#evm/setup");
     expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
     const identifier = screen.getByLabelText("Example identifier");
     fireEvent.change(identifier, { target: { value: `0x${"b".repeat(40)}` } });
     expect(screen.getByText("address")).toBeInTheDocument();
+    expect(screen.getByText(`0x${"b".repeat(40)}`)).toBeInTheDocument();
+    fireEvent.change(identifier, { target: { value: "12345" } });
+    expect(screen.getByText("0x3039")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Resume DuskEVM/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
   });
@@ -133,7 +136,7 @@ describe("App", () => {
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Start DuskDS/i }));
     expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
-    expect(window.location.hash).toBe("#build");
+    expect(window.location.hash).toBe("#duskds/build");
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
   });
 
@@ -179,7 +182,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
 
     expect(screen.getByRole("button", { name: "All reviewed issues" })).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("46 reviewed entries found.")).toBeInTheDocument();
+    expect(screen.getByText("47 reviewed entries found.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Hedger is mentioned but not ready for Studio automation" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Wallet is on the wrong chain" })).toBeInTheDocument();
   });
@@ -193,7 +196,7 @@ describe("App", () => {
     expect(screen.getByText("1 recovery entry found.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
 
-    expect(screen.getByText("46 reviewed entries found.")).toBeInTheDocument();
+    expect(screen.getByText("47 reviewed entries found.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Wallet is on the wrong chain" })).toBeInTheDocument();
   });
 
@@ -205,7 +208,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Build" }));
 
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
-    expect(window.location.hash).toBe("#build");
+    expect(window.location.hash).toBe("#duskds/build");
     expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
   });
 
@@ -219,7 +222,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Build" }));
 
     expect(window.localStorage.getItem("dusk-studio-builder-path")).toBe("duskds");
-    expect(window.location.hash).toBe("#build");
+    expect(window.location.hash).toBe("#duskds/build");
     expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
   });
 
@@ -423,7 +426,7 @@ describe("App", () => {
 
   it("bootstraps an npm same-origin session and requires exact release parity", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease })));
     vi.stubGlobal("fetch", fetchMock);
@@ -439,7 +442,7 @@ describe("App", () => {
     expect(screen.queryByLabelText("Pairing token")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "http://" + window.location.hostname + ":8788/health",
+      window.location.origin + "/__dusk/session",
       expect.objectContaining({ credentials: "include" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -454,14 +457,14 @@ describe("App", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
-      "http://" + window.location.hostname + ":8788/health",
+      window.location.origin + "/__dusk/session",
       expect.objectContaining({ credentials: "include" }),
     );
   });
 
   it("blocks local actions when the companion release does not match", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: { ...npmRelease, commit: "b".repeat(40) } })));
     vi.stubGlobal("fetch", fetchMock);
@@ -491,15 +494,42 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0]?.[0]).endsWith(":8788/health")).toBe(true);
+    expect(String(fetchMock.mock.calls[0]?.[0]).endsWith("/__dusk/session")).toBe(true);
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/__dusk/bootstrap"))).toBe(false);
+  });
+
+  it("replaces stale ready state when a restarted companion no longer recognizes the session", async () => {
+    let sessionChecks = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (!url.endsWith("/__dusk/session")) throw new Error(`Unexpected URL ${url}`);
+      sessionChecks += 1;
+      return sessionChecks === 1
+        ? new Response(JSON.stringify({
+            ok: true,
+            service: "dusk-studio-local-agent",
+            paired: true,
+            capabilitiesEnabled: true,
+            release: npmRelease
+          }))
+        : new Response(JSON.stringify({ ok: true, paired: false }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Not connected/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
+    expect(screen.getByRole("heading", { name: "Local Studio is not paired." })).toBeInTheDocument();
+    expect(screen.getByText(/Reload this page once to use the new run's pairing window/)).toBeInTheDocument();
   });
 
   it("waits through a delayed same-origin pair before checking health", async () => {
     let finishPair!: (response: Response) => void;
     const delayedPair = new Promise<Response>((resolve) => { finishPair = resolve; });
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockReturnValueOnce(delayedPair)
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
@@ -531,7 +561,7 @@ describe("App", () => {
       release: npmRelease
     };
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_in_progress" }), { status: 409 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(health)));
     vi.stubGlobal("fetch", fetchMock);
@@ -542,11 +572,11 @@ describe("App", () => {
   });
 
   it("explains how to restart after a genuinely expired npm launch", async () => {
-    const unpaired = new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 });
+    const unpaired = new Response(JSON.stringify({ ok: true, paired: false }));
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(unpaired)
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_expired" }), { status: 410 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "pairing_required" }), { status: 401 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })));
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
@@ -562,7 +592,7 @@ describe("App", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
-      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.endsWith("/__dusk/session")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
       if (url.includes("/preflight?path=duskds")) {
         return new Response(JSON.stringify({
           ok: false,
@@ -606,7 +636,7 @@ describe("App", () => {
       if (url.endsWith("/__dusk/bootstrap")) {
         return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
       }
-      if (url.endsWith("/health")) {
+      if (url.endsWith("/__dusk/session")) {
         return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
       }
       if (url.endsWith("/scaffold-duskds-forge")) {
@@ -688,7 +718,7 @@ describe("App", () => {
     const projectPath = "/Users/tester/Library/Application Support/Dusk/DeveloperStudio/projects/duskds/duskds-forge-starter";
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.endsWith("/health")) {
+      if (url.endsWith("/__dusk/session")) {
         return new Response(JSON.stringify({
           ok: true,
           service: "dusk-studio-local-agent",
@@ -757,9 +787,12 @@ describe("App", () => {
     expect(screen.getByText(/single hyphens/)).toHaveAttribute("id", "duskds-build-project-name-error");
     expect(screen.getByText(/cannot contain NUL/)).toHaveAttribute("id", "duskds-build-parent-dir-error");
     fireEvent.change(projectName, { target: { value: "safe-demo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
+    fireEvent.change(parent, { target: { value: `C:\\${"a".repeat(119)}` } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Parent folder must be 120 characters or fewer on Windows");
+    expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
     fireEvent.change(parent, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
     const root = screen.getByLabelText("Existing project root");
     expect(screen.queryByText("Enter an absolute existing project root.")).not.toBeInTheDocument();
     expect(root).toHaveAttribute("aria-invalid", "false");
@@ -775,6 +808,9 @@ describe("App", () => {
       expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
       expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
     }
+    fireEvent.change(root, { target: { value: `C:\\${"b".repeat(139)}` } });
+    expect(screen.getByRole("alert")).toHaveTextContent("Existing project root must be 140 characters or fewer on Windows");
+    expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
     fireEvent.change(root, { target: { value: "/" } });
     expect(screen.getAllByRole("alert").length).toBeGreaterThan(0);
@@ -783,11 +819,11 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
     fireEvent.change(root, { target: { value: "C:\\work\r\nWrite-Host bad" } });
     expect(root).toHaveValue("C:\\workWrite-Host bad");
-    expect(screen.getByRole("heading", { name: "Prepare project" }).parentElement?.querySelector("pre")?.textContent)
+    expect(screen.getByRole("heading", { name: "Prepare project (rechecks clean source first)" }).parentElement?.querySelector("pre")?.textContent)
       .not.toContain("\nWrite-Host bad");
 
     fireEvent.change(root, { target: { value: "C:\\work\\safe-demo" } });
-    expect(screen.getByRole("button", { name: "Copy Prepare project" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Prepare project (rechecks clean source first)" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
     expect(screen.getAllByRole("alert").some((alert) =>
       /must be an absolute path/.test(alert.textContent ?? "")
@@ -808,7 +844,7 @@ describe("App", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
-      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.endsWith("/__dusk/session")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
       if (url.endsWith("/scaffold-duskds-forge")) return deferredScaffold;
       throw new Error(`Unexpected URL ${url}`);
     });
@@ -844,7 +880,7 @@ describe("App", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
-      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.endsWith("/__dusk/session")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
       if (url.endsWith("/scaffold-duskds-forge")) return new Response(JSON.stringify(scaffoldReceipt(projectPath)));
       throw new Error(`Unexpected URL ${url}`);
     });
@@ -872,7 +908,7 @@ describe("App", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/__dusk/bootstrap")) return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
-      if (url.endsWith("/health")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
+      if (url.endsWith("/__dusk/session")) return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
       if (url.endsWith("/scaffold-duskds-forge")) {
         scaffoldCalls += 1;
         if (scaffoldCalls === 1) {
@@ -921,7 +957,7 @@ describe("App", () => {
       if (url.endsWith("/__dusk/bootstrap")) {
         return new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 }));
       }
-      if (url.endsWith("/health")) {
+      if (url.endsWith("/__dusk/session")) {
         return new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease }));
       }
       if (url.endsWith("/scaffold-duskds-forge")) {

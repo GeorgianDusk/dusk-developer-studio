@@ -12,7 +12,10 @@ import {
   createRequestTerminalTracker,
   validateBrowserTransportEvidence
 } from "./npm-package-browser-telemetry.mjs";
-import { readPreflightResponseJson } from "./npm-package-browser-response.mjs";
+import {
+  captureResponseJson,
+  readPreflightResponseJson
+} from "./npm-package-browser-response.mjs";
 import {
   npmPackageName,
   npmPackageVersion,
@@ -209,7 +212,7 @@ async function stopStudio(runtime) {
   }
 }
 
-async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot) {
+async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot, expectedCommit) {
   await fs.mkdir(homeRoot, { recursive: true });
   let runtime;
   let context;
@@ -272,9 +275,13 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       const url = response.url();
       if (/^https?:\/\//u.test(url)) {
         const request = response.request();
+        const readJson = new URL(url).pathname === "/__dusk/session"
+          ? captureResponseJson(response)
+          : undefined;
         responseEvents.push({
           request,
           response,
+          readJson,
           sequence: ++networkEventSequence,
           url,
           status: response.status()
@@ -318,11 +325,11 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     );
     assert.ok(
       [...responses].some(([url, status]) =>
-        url.startsWith("http://127.0.0.1:8788/health") && status === 200
+        url.endsWith("/__dusk/session") && status === 200
       ),
-      "Browser application did not complete authenticated companion health."
+      "Browser application did not complete same-origin companion session status."
     );
-    const expectedProbeUrl = "http://127.0.0.1:8788/health";
+    const expectedProbeUrl = new URL("/__dusk/session", page.url()).href;
     const expectedBootstrapUrl = new URL("/__dusk/bootstrap", page.url()).href;
     assert.equal(bootstrapRequests.length, 1, "Local pairing must make exactly one bootstrap request.");
     const [bootstrapRequest] = bootstrapRequests;
@@ -336,10 +343,6 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       { url: expectedBootstrapUrl, status: 200 },
       "The single bootstrap request must receive the observed successful response."
     );
-    const isExpectedProbeConsoleError = (error) =>
-      error.kind === "console"
-      && error.text === "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
-      && error.url === expectedProbeUrl;
     let preflightContract;
     let preflightResponse;
     let preflightRequestHeaders;
@@ -434,24 +437,29 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       createdProjectPath = scaffold.body.projectPath;
       assert.equal(typeof createdProjectPath, "string");
     }
-    const authenticatedHealthEvents = responseEvents.filter(({ url, status }) =>
-      url === expectedProbeUrl && status === 200
-    );
-    const unauthenticatedHealthEvents = responseEvents.filter(({ url, status }) =>
-      url === expectedProbeUrl && status === 401
-    );
+    const sessionEvents = responseEvents
+      .filter(({ url }) => url === expectedProbeUrl)
+      .sort((left, right) => left.sequence - right.sequence);
     assert.equal(
-      unauthenticatedHealthEvents.length,
-      1,
-      "Local pairing must observe exactly one unauthenticated health response."
+      sessionEvents.length,
+      2,
+      "Local pairing must observe exactly one unpaired and one paired same-origin session response."
     );
-    assert.equal(
-      authenticatedHealthEvents.length,
-      1,
-      "Local pairing must observe exactly one successful authenticated health response."
+    const [unauthenticatedHealthEvent, authenticatedHealthEvent] = sessionEvents;
+    assert.equal(typeof unauthenticatedHealthEvent.readJson, "function");
+    assert.equal(typeof authenticatedHealthEvent.readJson, "function");
+    const unauthenticatedSession = await unauthenticatedHealthEvent.readJson();
+    const authenticatedSession = await authenticatedHealthEvent.readJson();
+    assert.deepEqual(
+      unauthenticatedSession,
+      { ok: true, paired: false },
+      "The initial same-origin status must explicitly report an unpaired session without a browser-visible 401."
     );
-    const [unauthenticatedHealthEvent] = unauthenticatedHealthEvents;
-    const [authenticatedHealthEvent] = authenticatedHealthEvents;
+    assert.equal(authenticatedSession.ok, true);
+    assert.equal(authenticatedSession.paired, true);
+    assert.equal(authenticatedSession.capabilitiesEnabled, capabilitiesEnabled);
+    assert.equal(authenticatedSession.release?.version, npmPackageVersion);
+    assert.equal(authenticatedSession.release?.commit, expectedCommit);
     // Await exact terminal request events with a hard bound. Chromium can emit a
     // late requestfailed event after the application has already consumed a
     // valid response; the identity-bound classifier below decides whether it is
@@ -459,12 +467,12 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
     await Promise.all([
       requestTerminalTracker.wait(
         unauthenticatedHealthEvent.request,
-        "The expected unauthenticated health request"
+        "The expected unpaired session-status request"
       ),
       requestTerminalTracker.wait(bootstrapRequest, "The successful bootstrap request"),
       requestTerminalTracker.wait(
         authenticatedHealthEvent.request,
-        "The successful authenticated health request"
+        "The successful paired session-status request"
       ),
       ...(preflightResponse ? [
         requestTerminalTracker.wait(
@@ -482,8 +490,8 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       responseEvents
         .filter(({ status }) => status >= 400)
         .map(({ url, status }) => ({ url, status })),
-      [{ url: expectedProbeUrl, status: 401 }],
-      "The only expected HTTP failure is the one unauthenticated health probe before pairing."
+      [],
+      "Local pairing must not expose an expected authentication failure as a browser HTTP error."
     );
     const browserTransport = validateBrowserTransportEvidence({
       bootstrapRequest,
@@ -491,8 +499,10 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       expectedPreflightUrl,
       expectedProbeUrl,
       finishedRequests,
+      healthRequest: authenticatedHealthEvent.request,
       mode: capabilitiesEnabled ? "local-actions" : "safe",
       pairingValidated: true,
+      probeRequest: unauthenticatedHealthEvent.request,
       preflightContractValidated,
       preflightRequestHeaders,
       preflightResponse,
@@ -503,12 +513,8 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       responseByRequest,
       responseEvents
     });
-    assert.ok(
-      errors.filter(isExpectedProbeConsoleError).length <= 1,
-      "The expected unauthenticated health probe produced duplicate browser errors."
-    );
     assert.deepEqual(
-      errors.filter((error) => !isExpectedProbeConsoleError(error)),
+      errors,
       [],
       "Browser smoke produced an unexpected console or page error."
     );
@@ -562,7 +568,10 @@ const tarballStat = await fs.lstat(tarball);
 if (!tarballStat.isFile() || tarballStat.isSymbolicLink()) {
   throw new Error("Browser smoke requires a regular npm tarball.");
 }
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-studio-browser-smoke-"));
+const smokeParent = process.platform === "win32" && process.env.PUBLIC
+  ? await fs.realpath(process.env.PUBLIC)
+  : os.tmpdir();
+const root = await fs.mkdtemp(path.join(smokeParent, "dusk-smoke-"));
 let browser;
 try {
   await fs.writeFile(
@@ -628,7 +637,8 @@ try {
       browser,
       primaryEntry,
       capabilitiesEnabled,
-      path.join(root, capabilitiesEnabled ? "local-actions-home" : "safe-home")
+      path.join(root, capabilitiesEnabled ? "local-actions-home" : "safe-home"),
+      verified.manifest.commit
     ));
   }
   const receipt = {

@@ -58,6 +58,16 @@ describe("trusted executable resolution", () => {
     })).toEqual([pathApi.normalize(trusted)]);
   });
 
+  it("excludes a Windows launch directory reached through an 8.3 short-name alias", () => {
+    const shortAlias = "C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\untrusted";
+    const canonical = "C:\\Users\\runneradmin\\AppData\\Local\\Temp\\untrusted";
+    expect(sanitizeExecutablePathEntries([shortAlias], {
+      platform: "win32",
+      excludedRoots: [canonical],
+      realpath: (candidate) => candidate === shortAlias ? canonical : candidate
+    })).toEqual([]);
+  });
+
   it("excludes only the profile root when launched from home but excludes a nested project recursively", () => {
     const platform = process.platform === "win32" ? "win32" : "linux";
     const pathApi = platform === "win32" ? path.win32 : path.posix;

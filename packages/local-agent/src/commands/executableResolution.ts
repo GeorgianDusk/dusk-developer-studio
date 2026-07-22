@@ -28,6 +28,7 @@ export interface ExecutableSearchPathOptions {
   platform?: NodeJS.Platform;
   excludedRoots?: string[];
   excludedPaths?: string[];
+  realpath?(file: string): string;
 }
 
 export interface LaunchPathExclusions {
@@ -97,6 +98,7 @@ export function sanitizeExecutablePathEntries(
   const excludedPaths = (options.excludedPaths ?? [])
     .filter((value) => typeof value === "string" && pathApi.isAbsolute(value))
     .map((value) => comparisonKey(value, platform));
+  const realpath = options.realpath;
   const accepted: string[] = [];
   const seen = new Set<string>();
 
@@ -104,9 +106,24 @@ export function sanitizeExecutablePathEntries(
     const unquoted = stripBalancedQuotes(rawEntry);
     if (!unquoted || /[\0\r\n]/.test(unquoted) || !pathApi.isAbsolute(unquoted)) continue;
     const normalized = pathApi.normalize(unquoted);
+    let canonical = normalized;
+    if (realpath) {
+      try {
+        canonical = pathApi.normalize(realpath(normalized));
+      } catch {
+        // A lexical entry remains subject to every lexical exclusion. Actual
+        // executables are independently canonicalized before use.
+      }
+    }
     if (isProjectScopedShim(normalized, platform)) continue;
-    if (excludedPaths.includes(comparisonKey(normalized, platform))) continue;
-    if (excludedRoots.some((root) => isWithin(normalized, root, platform))) continue;
+    if (isProjectScopedShim(canonical, platform)) continue;
+    if (
+      excludedPaths.includes(comparisonKey(normalized, platform))
+      || excludedPaths.includes(comparisonKey(canonical, platform))
+    ) continue;
+    if (excludedRoots.some((root) =>
+      isWithin(normalized, root, platform) || isWithin(canonical, root, platform)
+    )) continue;
     const key = comparisonKey(normalized, platform);
     if (seen.has(key)) continue;
     seen.add(key);

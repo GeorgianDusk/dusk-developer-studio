@@ -273,7 +273,7 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
     fireEvent.click(screen.getByRole("button", { name: "Linux shell" }));
     fireEvent.change(screen.getByLabelText("Existing project root"), { target: { value: "/home/dev/existing-duskds" } });
-    const sourceCommand = screen.getByRole("heading", { name: "Initial clean-tree check + full commit" })
+    const sourceCommand = screen.getByRole("heading", { name: "Verify clean source + record full commit" })
       .parentElement?.querySelector("pre")?.textContent ?? "";
     expect(sourceCommand).toContain("git status --porcelain=v1 --untracked-files=all");
     expect(sourceCommand).toContain("git rev-parse --verify HEAD");
@@ -491,11 +491,17 @@ describe("Phase 2 evidence journeys", () => {
     fireEvent.change(screen.getByLabelText("Existing project root"), { target: { value: "C:\\work\\existing-duskds" } });
     expect(screen.getByText((content, element) => element?.tagName === "PRE"
       && content.includes("cd ''/mnt/c/work/existing-duskds''; rustup run ''1.94.0'' \"$forgeExe\" test"))).toBeInTheDocument();
-    const sourceRevision = screen.getByRole("heading", { name: "Initial clean-tree check + full commit" })
+    const sourceRevision = screen.getByRole("heading", { name: "Verify clean source + record full commit" })
       .parentElement?.querySelector("pre")?.textContent ?? "";
     expect(sourceRevision).toContain("git status --porcelain=v1 --untracked-files=all");
     expect(sourceRevision).toContain("git rev-parse --verify HEAD");
     expect(sourceRevision).toContain("tracked or untracked changes");
+    const prepareExisting = screen.getByRole("heading", { name: "Prepare project (rechecks clean source first)" })
+      .parentElement?.querySelector("pre")?.textContent ?? "";
+    expect(prepareExisting.indexOf("git status --porcelain=v1 --untracked-files=all"))
+      .toBeLessThan(prepareExisting.indexOf("rustup override set"));
+    expect(screen.getByText("Writable checkout required")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open read-only repository recovery" })).toBeInTheDocument();
   });
 
   it("renders fail-closed self-contained project and artifact command blocks", () => {
@@ -966,7 +972,7 @@ describe("Phase 2 evidence journeys", () => {
     render(<App />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open reference" }));
-    expect(window.location.hash).toBe("#reference");
+    expect(window.location.hash).toBe("#duskds/reference");
     expect(screen.getByRole("button", { name: "Return to DuskDS at Inspect" })).toHaveTextContent("4/4 complete");
   });
 
@@ -1209,7 +1215,7 @@ describe("Phase 2 evidence journeys", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open data-driver recovery" }));
 
-    expect(window.location.hash).toBe("#troubleshooting");
+    expect(window.location.hash).toBe("#duskds/troubleshooting");
     const heading = await screen.findByRole("heading", { name: "The deployed contract's data driver is unavailable" });
     await waitFor(() => expect(heading.closest("article")).toHaveFocus());
     expect(screen.getByText("1 recovery entry found.")).toBeInTheDocument();

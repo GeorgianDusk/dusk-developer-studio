@@ -186,6 +186,7 @@ jobs:
             $localAppData = Join-Path $profileRoot 'AppData\Local'
             $roamingAppData = Join-Path $profileRoot 'AppData\Roaming'
             $tempRoot = Join-Path $dataRoot 'Temp'
+            $localActionsRoot = Join-Path $dataRoot 'LocalActions'
             New-Item -ItemType Directory -Path $localAppData, $roamingAppData, $tempRoot -Force | Out-Null
             $resolvedTarball = (Resolve-Path -LiteralPath $tarball).Path
             npm install --ignore-scripts --prefix $publicRoot $resolvedTarball
@@ -210,6 +211,7 @@ jobs:
               TEMP = $tempRoot
               TMP = $tempRoot
               USERPROFILE = $profileRoot
+              DUSK_STUDIO_DUSKDS_PROJECT_ROOT = $localActionsRoot
             }
             function Invoke-StandardUserSmoke {
               param([string[]] $Arguments, [string] $Label)

@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readPreflightResponseJson } from "./npm-package-browser-response.mjs";
+import {
+  captureResponseJson,
+  readPreflightResponseJson
+} from "./npm-package-browser-response.mjs";
 
 const expectedOrigin = "http://127.0.0.1:5173";
 const expectedUrl = "http://127.0.0.1:8788/preflight?path=duskds";
@@ -32,6 +35,27 @@ function input({
       timeoutMs: 130_000
     }
   };
+}
+
+{
+  let resolveBody;
+  let reads = 0;
+  const readCaptured = captureResponseJson({
+    json: () => {
+      reads += 1;
+      return new Promise((resolve) => { resolveBody = resolve; });
+    }
+  });
+  assert.equal(reads, 1, "Response capture must begin while Chrome still retains the body.");
+  resolveBody({ ok: true, source: "captured-immediately" });
+  assert.deepEqual(await readCaptured(), { ok: true, source: "captured-immediately" });
+  assert.equal(reads, 1);
+}
+
+{
+  const expected = new Error("captured response failed");
+  const readCaptured = captureResponseJson({ json: async () => { throw expected; } });
+  await assert.rejects(() => readCaptured(), expected);
 }
 
 {

@@ -99,6 +99,17 @@ async function readBoundedBody(response: Response, maxBytes: number): Promise<Ui
   return body;
 }
 
+export const COMPANION_SESSION_LOST_EVENT = "dusk-studio-companion-session-lost";
+
+function isLoopbackCompanionRequest(url: string): boolean {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost") && parsed.port === "8788";
+  } catch {
+    return false;
+  }
+}
+
 export async function requestJson<T>(url: string, options: RequestJsonOptions<T>): Promise<T> {
   const controller = new AbortController();
   let timedOut = false;
@@ -126,6 +137,9 @@ export async function requestJson<T>(url: string, options: RequestJsonOptions<T>
     }
     if (!response.ok) {
       const publicError = parsePublicError(bytes);
+      if (response.status === 401 && isLoopbackCompanionRequest(url)) {
+        window.dispatchEvent(new Event(COMPANION_SESSION_LOST_EVENT));
+      }
       throw new SafeRequestError(
         "http-error",
         response.status === 401

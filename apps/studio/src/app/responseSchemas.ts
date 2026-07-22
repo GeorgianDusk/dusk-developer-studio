@@ -33,6 +33,8 @@ export interface CompanionHealth {
   release?: CompanionRelease;
 }
 
+export type CompanionSessionStatus = CompanionHealth | { ok: true; paired: false };
+
 export interface CompanionRelease {
   product: string;
   version: string;
@@ -80,6 +82,11 @@ export function isCompanionHealth(value: unknown): value is CompanionHealth {
       && boundedString(value.release.version, 64)
       && boundedString(value.release.commit, 64)
       && ["hosted", "npm", "source-dev"].includes(String(value.release.channel))));
+}
+
+export function isCompanionSessionStatus(value: unknown): value is CompanionSessionStatus {
+  return isCompanionHealth(value)
+    || (isRecord(value) && Object.keys(value).length === 2 && value.ok === true && value.paired === false);
 }
 
 export function isPairingResult(value: unknown): value is PairingResult {

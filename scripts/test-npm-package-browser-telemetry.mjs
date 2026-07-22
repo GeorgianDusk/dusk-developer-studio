@@ -5,7 +5,7 @@ import {
   validateBrowserTransportEvidence
 } from "./npm-package-browser-telemetry.mjs";
 
-const expectedProbeUrl = "http://127.0.0.1:8788/health";
+const expectedProbeUrl = "http://127.0.0.1:5173/__dusk/session";
 const expectedBootstrapUrl = "http://127.0.0.1:5173/__dusk/bootstrap";
 const expectedPreflightUrl = "http://127.0.0.1:8788/preflight?path=duskds";
 const expectedStudioOrigin = "http://127.0.0.1:5173";
@@ -47,7 +47,7 @@ function fixture({
   const preflightRequest = request("GET", expectedPreflightUrl, {
     headers: { origin: expectedStudioOrigin }
   });
-  const probeResponse = response(probeRequest, {}, { status: 401 });
+  const probeResponse = response(probeRequest);
   const bootstrapResponse = response(bootstrapRequest);
   const healthResponse = response(healthRequest);
   const preflightResponse = response(preflightRequest, {
@@ -59,7 +59,7 @@ function fixture({
       request: probeRequest,
       response: probeResponse,
       sequence: 1,
-      status: 401,
+      status: 200,
       url: expectedProbeUrl
     },
     {
@@ -171,21 +171,21 @@ function validate(input) {
 }
 
 for (const [options, telemetry] of [
-  [{}, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0, preflight: 0 }],
-  [{ probeAbort: true }, { unauthenticated_health: 1, authenticated_health: 0, bootstrap: 0, preflight: 0 }],
-  [{ healthAbort: true }, { unauthenticated_health: 0, authenticated_health: 1, bootstrap: 0, preflight: 0 }],
-  [{ bootstrapAbort: true }, { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 1, preflight: 0 }],
+  [{}, { unpaired_session: 0, paired_session: 0, bootstrap: 0, preflight: 0 }],
+  [{ probeAbort: true }, { unpaired_session: 1, paired_session: 0, bootstrap: 0, preflight: 0 }],
+  [{ healthAbort: true }, { unpaired_session: 0, paired_session: 1, bootstrap: 0, preflight: 0 }],
+  [{ bootstrapAbort: true }, { unpaired_session: 0, paired_session: 0, bootstrap: 1, preflight: 0 }],
   [
     { bootstrapAbort: true, healthAbort: true, probeAbort: true },
-    { unauthenticated_health: 1, authenticated_health: 1, bootstrap: 1, preflight: 0 }
+    { unpaired_session: 1, paired_session: 1, bootstrap: 1, preflight: 0 }
   ],
   [
     { preflight: true },
-    { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0, preflight: 0 }
+    { unpaired_session: 0, paired_session: 0, bootstrap: 0, preflight: 0 }
   ],
   [
     { preflight: true, preflightAbort: true },
-    { unauthenticated_health: 0, authenticated_health: 0, bootstrap: 0, preflight: 1 }
+    { unpaired_session: 0, paired_session: 0, bootstrap: 0, preflight: 1 }
   ]
 ]) {
   assert.deepEqual(validate(fixture(options)).lateAbortTelemetry, telemetry);
@@ -384,7 +384,7 @@ for (const property of ["probeRequest", "bootstrapRequest", "healthRequest"]) {
 {
   const input = fixture();
   input.responseEvents.push({ ...input.responseEvents[2], sequence: 4 });
-  assert.throws(() => validate(input), /exactly two health responses/u);
+  assert.throws(() => validate(input), /exactly two session-status responses/u);
 }
 {
   const input = fixture();
@@ -401,11 +401,11 @@ for (const property of ["probeRequest", "bootstrapRequest", "healthRequest"]) {
   });
   input.responseByRequest.set(duplicateRequest, duplicateResponse);
   input.finishedRequests.set(duplicateRequest, 8);
-  assert.throws(() => validate(input), /exactly two health responses/u);
+  assert.throws(() => validate(input), /exactly two session-status responses/u);
 }
 {
   const input = fixture();
-  const url = "http://localhost:8788/health";
+  const url = "http://localhost:5173/__dusk/session";
   const duplicateRequest = request("GET", url);
   const duplicateResponse = response(duplicateRequest);
   input.requestEvents.push({ request: duplicateRequest, url });
@@ -418,11 +418,11 @@ for (const property of ["probeRequest", "bootstrapRequest", "healthRequest"]) {
   });
   input.responseByRequest.set(duplicateRequest, duplicateResponse);
   input.finishedRequests.set(duplicateRequest, 8);
-  assert.throws(() => validate(input), /exactly two health responses/u);
+  assert.throws(() => validate(input), /exactly two session-status responses/u);
 }
 {
   const input = fixture();
-  const url = "http://127.0.0.1:8788/healthz";
+  const url = "http://127.0.0.1:5173/__dusk/session?duplicate=1";
   const duplicateRequest = request("GET", url);
   const duplicateResponse = response(duplicateRequest);
   input.requestEvents.push({ request: duplicateRequest, url });
@@ -435,7 +435,7 @@ for (const property of ["probeRequest", "bootstrapRequest", "healthRequest"]) {
   });
   input.responseByRequest.set(duplicateRequest, duplicateResponse);
   input.finishedRequests.set(duplicateRequest, 8);
-  assert.throws(() => validate(input), /exactly two health responses/u);
+  assert.throws(() => validate(input), /exactly two session-status responses/u);
 }
 {
   const input = fixture();
@@ -514,7 +514,7 @@ for (const mutation of [
   });
   input.responseByRequest.set(duplicateRequest, duplicateResponse);
   input.finishedRequests.set(duplicateRequest, 8);
-  assert.throws(() => validate(input), /exactly two health responses/u);
+  assert.throws(() => validate(input), /exactly two session-status responses/u);
 }
 {
   const input = fixture({ healthAbort: true });

@@ -8,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createLocalAgentServer,
+  assertWindowsForgeManagedRoot,
   MAX_SCAFFOLD_PATH_LENGTH,
   scaffoldDuskDsForge
 } from "@dusk/local-agent/server";
@@ -122,7 +123,7 @@ export function resolveDuskDsProjectRoot(
     if (defaultRoot.length > MAX_SCAFFOLD_PATH_LENGTH) {
       throw new Error(`Managed DuskDS project root must be ${MAX_SCAFFOLD_PATH_LENGTH.toLocaleString("en-US")} characters or fewer.`);
     }
-    return defaultRoot;
+    return assertWindowsForgeManagedRoot(defaultRoot);
   }
   if (
     !path.isAbsolute(candidate)
@@ -141,7 +142,7 @@ export function resolveDuskDsProjectRoot(
   if (resolved.length > MAX_SCAFFOLD_PATH_LENGTH) {
     throw new Error(`DUSK_STUDIO_DUSKDS_PROJECT_ROOT must be ${MAX_SCAFFOLD_PATH_LENGTH.toLocaleString("en-US")} characters or fewer.`);
   }
-  return resolved;
+  return assertWindowsForgeManagedRoot(resolved);
 }
 
 export async function resolveCanonicalNpmPackageRoot(packageRoot: string): Promise<string> {

@@ -22,8 +22,9 @@ const temporaryRoots: string[] = [];
 
 async function makeTemporaryRoot(prefix: string): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  temporaryRoots.push(root);
-  return root;
+  const canonicalRoot = await fs.realpath(root);
+  temporaryRoots.push(canonicalRoot);
+  return canonicalRoot;
 }
 
 async function copyRegularTree(source: string, destination: string): Promise<void> {

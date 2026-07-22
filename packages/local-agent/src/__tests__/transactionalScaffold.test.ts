@@ -12,8 +12,9 @@ const LEGACY_STAGE_TEST_RE = /^\.dusk-studio-stage-[0-9a-f]{8}-[0-9a-f]{4}-[1-5]
 
 async function makeTempRoot(prefix: string): Promise<string> {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
-  tempRoots.push(root);
-  return root;
+  const canonicalRoot = await fs.realpath(root);
+  tempRoots.push(canonicalRoot);
+  return canonicalRoot;
 }
 
 async function createDirectoryLink(target: string, link: string): Promise<void> {

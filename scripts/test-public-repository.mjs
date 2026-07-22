@@ -194,13 +194,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.10",
-  tag: "v1.0.10",
+  version: "1.0.11",
+  tag: "v1.0.11",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.10.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.11.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -334,6 +334,7 @@ assert.match(elevatedArchiveStep, /Dusk Developer Studio refuses elevated or roo
 assert.match(elevatedArchiveStep, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*pnpm pack:npm/);
 assert.match(elevatedArchiveStep, /pack-receipt\.json[\s\S]*Join-Path 'output\/npm' \(\[string\] \$packReceipt\.filename\)/);
 assert.match(elevatedArchiveStep, /node_modules\/dusk-developer-studio\/bin\/dusk-developer-studio\.mjs/);
+assert.match(elevatedArchiveStep, /DUSK_STUDIO_DUSKDS_PROJECT_ROOT = \$localActionsRoot/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'--lifecycle-self-test', '--no-open'(?:\)|\})/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'local-actions', '--lifecycle-self-test', '--no-open'(?:\)|\})/);
 
@@ -701,7 +702,7 @@ assert.match(publicReleaseSpec, /requestUrl\.origin !== publicOrigin/);
 assert.match(publicReleaseSpec, /rpc\.testnet\.evm\.dusk\.network/);
 assert.match(publicReleaseSpec, /redirectedFrom\(\)/);
 assert.match(publicReleaseSpec, /await expect\(page, pathname\)\.toHaveURL\(expected\.href\)/);
-assert.match(publicReleaseSpec, /evmCanonicalRoutes = \["access", "build", "inspect"\][\s\S]*toHaveURL\(`\$\{publicOrigin\}\/#setup`\)/);
+assert.match(publicReleaseSpec, /evmCanonicalRoutes = \["access", "build", "inspect"\][\s\S]*toHaveURL\(`\$\{publicOrigin\}\/#evm\/setup`\)/);
 const publicMonitoring = read("docs/operations/public-monitoring.md");
 assert.match(publicMonitoring, /Both controls use GitHub Actions and GitHub Issues/);
 assert.match(publicMonitoring, /GitHub outage can affect monitoring and alert delivery at the same time/);
@@ -943,8 +944,8 @@ assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total
 assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
 assert.deepEqual(phase5Policy.npm_distribution, {
   package_name: "dusk-developer-studio",
-  package_version: "1.0.10",
-  tag: "v1.0.10",
+  package_version: "1.0.11",
+  tag: "v1.0.11",
   registry_url: "https://registry.npmjs.org/dusk-developer-studio",
   node_engine: ">=24.18.0 <25",
   assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",

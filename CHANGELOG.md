@@ -4,6 +4,21 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.11 - 2026-07-22
+
+### Fixed
+
+- Keep legacy guide links neutral until the developer chooses DuskEVM or DuskDS, then preserve the selected path in navigation, browser history, Reference, and Troubleshooting links.
+- Require a clean, writable Git checkout before existing-repository setup and provide direct recovery guidance when the checkout is read-only or has uncommitted work.
+- Prevent DuskDS Forge starter failures on Windows by rejecting managed-root and project paths that exceed the tested linker-safe budgets before any files are created.
+- Refresh Local Studio pairing state after companion restarts without an expected unauthenticated health request appearing as a browser-console error.
+- Classify absent Dusk Forge receipts and executables as missing prerequisites while reserving version-mismatch results for installed but incompatible tools.
+- Display the normalized DuskEVM identifier produced by the helper instead of leaving developers to infer the converted value.
+
+### Security
+
+- Extend exact-package assurance to prove detached-process containment on Linux, Windows, and macOS and bind that result into every platform receipt.
+
 ## 1.0.10 - 2026-07-22
 
 ### Fixed

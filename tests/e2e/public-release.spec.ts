@@ -9,9 +9,9 @@ const publicOrigin = new URL(configuredPublicUrl ?? "http://127.0.0.1:5173").ori
 const allowedRpcOrigin = new URL("https://rpc.testnet.evm.dusk.network").origin;
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
-  ["setup", "Explore the planned DuskEVM developer workflow."],
-  ["reference", "Source-backed context for the task in front of you."],
-  ["troubleshooting", "Review DuskEVM launch-planning issues."],
+  ["evm/setup", "Explore the planned DuskEVM developer workflow."],
+  ["evm/reference", "Source-backed context for the task in front of you."],
+  ["evm/troubleshooting", "Review DuskEVM launch-planning issues."],
   ["companion", "Run the full Studio locally with npm."],
   ["settings", "See the build you are using and control its saved progress."]
 ] as const;
@@ -66,15 +66,15 @@ test("public candidate exposes the exact release across key routes", async ({ pa
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
   await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
-  await expect(page).toHaveURL(`${publicOrigin}/#setup`);
+  await expect(page).toHaveURL(`${publicOrigin}/#evm/setup`);
   for (const [route, heading] of routes) {
     await gotoExact(page, `/#${route}`);
     await expect(page).toHaveTitle(`${heading} | Dusk Developer Studio`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
   for (const route of evmCanonicalRoutes) {
-    await page.goto(`${publicOrigin}/#${route}`);
-    await expect(page, `/#${route} canonical route`).toHaveURL(`${publicOrigin}/#setup`);
+    await page.goto(`${publicOrigin}/#evm/${route}`);
+    await expect(page, `/#evm/${route} canonical route`).toHaveURL(`${publicOrigin}/#evm/setup`);
     await expect(page).toHaveTitle("Explore the planned DuskEVM developer workflow. | Dusk Developer Studio");
     await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
   }
@@ -149,7 +149,7 @@ test("public candidate keeps the DuskEVM pre-launch overview inert while offline
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
   await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
-  await gotoExact(page, "/#setup");
+  await gotoExact(page, "/#evm/setup");
   await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
   await context.setOffline(true);
   await page.getByLabel("Example identifier").fill(`0x${"b".repeat(40)}`);

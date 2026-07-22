@@ -5,8 +5,8 @@ The Hosted guide is a static web application. It provides path selection, educat
 Developers who need machine-specific checks or starter creation run the local Studio separately:
 
 ```bash
-npx dusk-developer-studio@1.0.10
-npx dusk-developer-studio@1.0.10 local-actions
+npx dusk-developer-studio@1.0.11
+npx dusk-developer-studio@1.0.11 local-actions
 ```
 
 ## Build

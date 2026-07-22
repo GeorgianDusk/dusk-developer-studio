@@ -36,7 +36,7 @@ test("a pathless guide deep link preserves the requested step until path choice"
   await expect(page.getByRole("heading", { name: "Choose a path to continue to Build." })).toBeVisible();
   await expect(page.getByRole("button", { name: /Open pre-launch overview/i })).toHaveAccessibleName("DuskEVM. Open pre-launch overview");
   await page.getByRole("button", { name: /Start DuskDS/i }).click();
-  await expect(page).toHaveURL(/#build$/);
+  await expect(page).toHaveURL(/#duskds\/build$/);
   await expect(page.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeVisible();
 });
 
@@ -66,7 +66,7 @@ test("keyboard and reduced-motion modes preserve the primary flow", async ({ pag
   const duration = await duskDsPath.evaluate((element) => getComputedStyle(element).transitionDuration);
   expect(Number.parseFloat(duration)).toBeLessThanOrEqual(0.00001);
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/#setup$/);
+  await expect(page).toHaveURL(/#duskds\/setup$/);
   const setupHeading = page.getByRole("heading", { name: "Record the native toolchain checks you ran." });
   await expect(setupHeading).toBeFocused();
   await expect(page).toHaveTitle(/Record the native toolchain checks you ran\. \| Dusk Developer Studio/);

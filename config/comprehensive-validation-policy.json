@@ -88,8 +88,8 @@
   },
   "intended_final_candidate": {
     "package_name": "dusk-developer-studio",
-    "package_version": "1.0.10",
-    "repository_tag": "v1.0.10",
+    "package_version": "1.0.11",
+    "repository_tag": "v1.0.11",
     "assurance_workflow_path": ".github/workflows/studio-npm-package-assurance.yml"
   },
   "historical_evidence": {
