@@ -334,6 +334,7 @@ assert.match(elevatedArchiveStep, /Dusk Developer Studio refuses elevated or roo
 assert.match(elevatedArchiveStep, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*pnpm pack:npm/);
 assert.match(elevatedArchiveStep, /pack-receipt\.json[\s\S]*Join-Path 'output\/npm' \(\[string\] \$packReceipt\.filename\)/);
 assert.match(elevatedArchiveStep, /node_modules\/dusk-developer-studio\/bin\/dusk-developer-studio\.mjs/);
+assert.match(elevatedArchiveStep, /DUSK_STUDIO_DUSKDS_PROJECT_ROOT = \$localActionsRoot/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'--lifecycle-self-test', '--no-open'(?:\)|\})/);
 assert.match(elevatedArchiveStep, /@(?:\(|\{)'local-actions', '--lifecycle-self-test', '--no-open'(?:\)|\})/);
 
