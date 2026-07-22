@@ -23,7 +23,7 @@ jobs:
       - name: Run counted source-blind security pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-SEC06-MAC15-20260722T105804Z-3FTV
+          EXEC_ID: CV-X-SEC06-MAC15-20260722T110620Z-FJY4
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
@@ -298,7 +298,8 @@ jobs:
               child(sys.argv[2], sys.argv[3])
               raise SystemExit(0)
 
-          state = pathlib.Path(os.environ["SEC06_STATE"])
+          fixture_root = pathlib.Path(__file__).resolve().parent.parent
+          state = fixture_root / "fixture-state"
           phase = (state / "current-phase").read_text(encoding="utf-8").strip()
           if phase not in {"timeout", "shutdown"}:
               raise SystemExit(77)
@@ -312,7 +313,7 @@ jobs:
               while True:
                   signal.pause()
 
-          private = "CV-SEC-06-PRIVATE-" + phase + "-" + os.environ["SEC06_EXEC_ID"]
+          private = "CV-SEC-06-PRIVATE-" + phase + "-" + fixture_root.name
           atomic(directory / "private.txt", private + "\n")
           atomic(directory / "self.env", metadata("fixture-parent"))
           child_argv = [sys.executable, str(pathlib.Path(__file__).resolve()), "--sec06-child"]
@@ -358,7 +359,8 @@ jobs:
           function portClosed(port){return new Promise((resolve)=>{const s=net.createConnection({host:'127.0.0.1',port});s.setTimeout(600);s.once('connect',()=>{s.destroy();resolve(false);});s.once('error',()=>resolve(true));s.once('timeout',()=>{s.destroy();resolve(true);});});}
           async function waitPortsClosed(ms=25000){const end=Date.now()+ms;while(Date.now()<end){if(await portClosed(5173)&&await portClosed(8788))return true;await wait(250);}return false;}
           async function press(page,name,kind){const loc=page.getByRole(/path/i.test(kind)?'button':'button',{name}).first();if(!(await loc.count())){actions.push({kind,pressed:false});return false;}await loc.focus();await loc.press('Enter');actions.push({kind,pressed:true,label:String(await loc.textContent()||'').trim().slice(0,300)});return true;}
-          async function pressAny(page,name,kind){for(const role of ['button','link']){const loc=page.getByRole(role,{name}).first();if(await loc.count()){const label=String(await loc.textContent()||'').trim().slice(0,300);await loc.focus();await loc.press('Enter');actions.push({kind,pressed:true,role,label});return true;}}actions.push({kind,pressed:false});return false;}
+          function progress(){fs.writeFileSync(path.join(process.env.LOGS,'driver-progress.json'),JSON.stringify({utc:now(),actions,requests:requests.slice(-30)},null,2));}
+          async function pressAny(page,name,kind){for(const role of ['button','link']){const loc=page.getByRole(role,{name}).first();if(await loc.count()){const label=String(await loc.textContent()||'').trim().slice(0,300);await loc.focus();await loc.press('Enter');actions.push({kind,pressed:true,role,label});progress();return true;}}actions.push({kind,pressed:false});progress();return false;}
           async function body(page){return String(await page.locator('body').textContent({timeout:10000})||'');}
           async function health(page){return page.evaluate(async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{credentials:'include'});return{status:r.status,text:(await r.text()).slice(0,2000)};}catch(e){return{status:0,error:String(e)};}});}
           async function waitTimeoutUI(page,ms=110000){const end=Date.now()+ms;while(Date.now()<end){const text=await body(page);const compact=text.replace(/\s+/g,' ');const i=compact.lastIndexOf('wasm-tools');const snippet=i>=0?compact.slice(i,i+900):'';if(/wasm-tools.*?Cause:\s*timeout/i.test(snippet)&&/Retry/i.test(compact))return{text,compact,snippet};await wait(300);}throw new Error('wasm-tools timeout result did not appear');}
@@ -375,6 +377,7 @@ jobs:
             await pressAny(page,/^Paths$|Choose or resume a path/i,'paths');await page.waitForTimeout(500);
             await pressAny(page,/DuskDS|Native Dusk path/i,'duskds');await page.waitForTimeout(500);
             await pressAny(page,/Run automatic preflight/i,'preflight');
+            fs.writeFileSync(path.join(process.env.LOGS,'driver-after-preflight.txt'),(await body(page)).slice(0,20000));
             const tSelf=await waitFile(path.join(state,'timeout','self.env'));
             const tNormal=await waitFile(path.join(state,'timeout','normal.env'));
             const tDetached=await waitFile(path.join(state,'timeout','detached.env'));
@@ -577,7 +580,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-SEC06-MAC15-20260722T105804Z-3FTV
-          path: ${{ runner.temp }}/CV-X-SEC06-MAC15-20260722T105804Z-3FTV-artifact
+          name: CV-X-SEC06-MAC15-20260722T110620Z-FJY4
+          path: ${{ runner.temp }}/CV-X-SEC06-MAC15-20260722T110620Z-FJY4-artifact
           if-no-files-found: error
           retention-days: 3
