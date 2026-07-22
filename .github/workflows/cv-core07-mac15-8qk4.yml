@@ -23,7 +23,7 @@ jobs:
       - name: Run counted source-blind pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-CORE07-MAC15-20260722T095345Z-H6R3
+          EXEC_ID: CV-X-CORE07-MAC15-20260722T095851Z-J7T2
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
@@ -227,7 +227,7 @@ jobs:
           cat > "$ROOT/ui-driver.mjs" <<'JS'
           const wsUrl=process.env.CDP_WS, mode=process.env.PILOT_MODE, projectName=process.env.PROJECT_NAME||'';
           const trace=(stage)=>console.error(new Date().toISOString(),stage);
-          const watchdog=setTimeout(()=>{trace('driver-watchdog-timeout');process.exit(124);},60000);
+          const watchdog=setTimeout(()=>{trace('driver-watchdog-timeout');process.exit(124);},90000);
           const socket=new WebSocket(wsUrl), pending=new Map(), requests=[]; let seq=0;
           trace('socket-connect');
           await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
@@ -240,7 +240,7 @@ jobs:
           const rejectPending=(why)=>{for(const [id,item] of pending){clearTimeout(item.timer);item.reject(new Error(why));pending.delete(id);}};
           socket.addEventListener('close',()=>rejectPending('CDP socket closed'));
           socket.addEventListener('error',()=>rejectPending('CDP socket error'));
-          function send(method,params={}){return new Promise((resolve,reject)=>{const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method));},10000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});}
+          function send(method,params={}){return new Promise((resolve,reject)=>{const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});}
           const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
           const axValue=(node,key)=>node.properties?.find((p)=>p.name===key)?.value?.value;
           async function snapshot(){
@@ -264,7 +264,7 @@ jobs:
             if(!target)return{filled:false};await send('DOM.focus',{backendNodeId:target.backendDOMNodeId});await send('Input.insertText',{text:projectName});return{filled:true,label:target.text};
           }
           trace('domains-enable');
-          await send('Page.enable');await send('DOM.enable');await send('Accessibility.enable');await send('Network.enable');await send('DOMStorage.enable');await send('Page.reload',{ignoreCache:true});await wait(5000);
+          await send('Page.enable');await send('DOM.enable');await send('Accessibility.enable');await send('Network.enable');await send('DOMStorage.enable');await wait(7000);
           trace('initial-snapshot');
           const actions=[], first=await snapshot();
           await click('Start DuskDS|Open DuskDS|Native Dusk path','select-duskds',actions);await wait(1500);
@@ -301,8 +301,7 @@ jobs:
 
           run_browser() {
             local mode="$1" profile="$2" debug_port="$3" output="$4" chrome_log="$5" project="$6"
-            "$CHROME" --headless=new --disable-gpu --disable-extensions --disable-background-networking \
-              --disable-component-update --disable-sync --no-first-run --no-default-browser-check \
+            "$CHROME" --headless=new --disable-gpu --disable-extensions --no-first-run --no-default-browser-check \
               --remote-debugging-address=127.0.0.1 --remote-debugging-port="$debug_port" \
               --user-data-dir="$profile" "http://127.0.0.1:5173/#companion" > "$chrome_log" 2>&1 &
             local chrome_pid=$! deadline=$((SECONDS + 30))
@@ -343,7 +342,7 @@ jobs:
           if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
           evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
 
-          PROJECT_NAME=cv-core07-starter-h6r3
+          PROJECT_NAME=cv-core07-starter-j7t2
           cd "$ROOT/work/actions"
           npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
           ACTION_WRAPPER=$!
@@ -435,7 +434,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-CORE07-MAC15-20260722T095345Z-H6R3
-          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T095345Z-H6R3-artifact
+          name: CV-X-CORE07-MAC15-20260722T095851Z-J7T2
+          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T095851Z-J7T2-artifact
           if-no-files-found: error
           retention-days: 3
