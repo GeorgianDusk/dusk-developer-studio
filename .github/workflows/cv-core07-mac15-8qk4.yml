@@ -23,7 +23,7 @@ jobs:
       - name: Run counted source-blind pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-CORE07-MAC15-20260722T100751Z-K8W4
+          EXEC_ID: CV-X-CORE07-MAC15-20260722T101618Z-L9S5
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
@@ -313,8 +313,7 @@ jobs:
           const mode=process.env.PILOT_MODE,projectName=process.env.PROJECT_NAME||'',profile=process.env.PROFILE_DIR;
           const trace=(stage)=>console.error(new Date().toISOString(),stage),requests=[];
           const watchdog=setTimeout(()=>{trace('playwright-watchdog-timeout');process.exit(124);},120000);
-          let context;
-          const health=await (async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{signal:AbortSignal.timeout(8000)});return{status:r.status,text:await r.text()};}catch(e){return{status:0,error:String(e)};}})();
+          let context,health={status:0,error:'not checked'};
           async function snapshot(page){
             const title=String(await page.title()).slice(0,300),text=String(await page.locator('body').textContent({timeout:10000})||'').slice(0,12000);
             const interactives=await page.locator('button,[role="button"],a,input,textarea,[role="tab"],[role="menuitem"]').evaluateAll((els)=>els.slice(0,120).map((el)=>({tag:el.tagName,text:String(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().slice(0,300),disabled:Boolean(el.disabled)||el.getAttribute('aria-disabled')==='true',type:el.getAttribute('type')||''})).filter((x)=>x.text));
@@ -340,7 +339,8 @@ jobs:
             context=await chromium.launchPersistentContext(profile,{executablePath:process.env.CHROME_PATH,headless:true,viewport:{width:1440,height:1000},args:['--no-first-run','--no-default-browser-check']});
             context.setDefaultTimeout(10000);context.on('request',(r)=>requests.push({method:r.method(),url:r.url()}));
             const page=context.pages()[0]||await context.newPage();await page.goto('http://127.0.0.1:5173/#companion',{waitUntil:'domcontentloaded',timeout:25000});await page.waitForTimeout(4000);
-            const actions=[],first=await snapshot(page);await press(page,/Start DuskDS|Open DuskDS|Native Dusk path/i,'select-duskds',actions);await page.waitForTimeout(1200);
+            health=await page.evaluate(async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{credentials:'include'});return{status:r.status,text:await r.text()};}catch(e){return{status:0,error:String(e)};}});
+            const actions=[],first=await snapshot(page);
             let safeDenied=null,projectInput=null;
             if(mode==='safe'){
               trace('safe-action-denial');const actionRe=/Run setup|Check prerequisites|Run preflight|Create.*starter|Generate.*starter|Run build|Build project/i;
@@ -349,9 +349,11 @@ jobs:
               safeDenied=(!attempt.clicked&&disabled)||/machine actions disabled|restart.*local actions|safe mode[^]*disabled|actions mode required/i.test(after.text);
             }else{
               trace('local-actions-interactions');
-              await press(page,/^Setup$|Check prerequisites|Preflight/i,'setup-navigation',actions);
+              await press(page,/Choose or resume a path|^Paths$/i,'paths-navigation',actions);
+              await press(page,/DuskDS|Native Dusk path/i,'select-duskds',actions);
+              await press(page,/^Setup$|Setup.*DuskDS|Check prerequisites|Preflight|Tool checks/i,'setup-navigation',actions);
               await press(page,/Run setup|Check prerequisites|Run preflight|Check tools/i,'setup-preflight',actions);
-              await press(page,/^Build$|Build \/ Check|Build & browser data/i,'build-navigation',actions);
+              await press(page,/^Build(?! & browser data)|Compile|VM test/i,'build-navigation',actions);
               await press(page,/Create.*starter|Generate.*starter|New starter/i,'starter-open',actions);
               projectInput=await fillName(page);await press(page,/Create.*starter|Generate.*starter|Confirm create|Create project/i,'starter-create',actions);await page.waitForTimeout(3500);
               await press(page,/Run build|Build project|Check build|Build starter/i,'build-exercise',actions);await page.waitForTimeout(3500);
@@ -401,7 +403,7 @@ jobs:
           if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
           evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
 
-          PROJECT_NAME=cv-core07-starter-k8w4
+          PROJECT_NAME=cv-core07-starter-l9s5
           cd "$ROOT/work/actions"
           npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
           ACTION_WRAPPER=$!
@@ -415,9 +417,9 @@ jobs:
           ACTION_UI_HEALTH="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.health.status))" "$LOGS/actions-ui.json")"
           ACTION_FLAGS="$(node -e "const r=require(process.argv[1]);for(const a of r.actions)if(a.clicked)process.stdout.write(a.kind+' ')" "$LOGS/actions-ui.json")"
           FINAL_TEXT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.final.text||'')" "$LOGS/actions-ui.json")"
-          SETUP_VISIBLE=false; BUILD_EXERCISED=false; CREATE_CLICKED=false
-          case "$ACTION_FLAGS $FINAL_TEXT" in *Setup*|*setup*|*prerequisite*|*Prerequisite*) SETUP_VISIBLE=true;; esac
-          case "$ACTION_FLAGS $FINAL_TEXT" in *Build*|*build*|*"Dusk Forge"*) BUILD_EXERCISED=true;; esac
+          SETUP_VISIBLE="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.actions.some(a=>a.clicked&&a.kind.startsWith('setup-'))))" "$LOGS/actions-ui.json")"
+          BUILD_EXERCISED="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.actions.some(a=>a.clicked&&a.kind.startsWith('build-'))))" "$LOGS/actions-ui.json")"
+          CREATE_CLICKED=false
           case "$ACTION_FLAGS" in *starter-create*) CREATE_CLICKED=true;; esac
           record local_actions_health "$ACTION_UI_HEALTH"; record setup_ui_exercised "$SETUP_VISIBLE"
           record build_ui_exercised "$BUILD_EXERCISED"; record starter_ui_create_clicked "$CREATE_CLICKED"
@@ -493,7 +495,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-CORE07-MAC15-20260722T100751Z-K8W4
-          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T100751Z-K8W4-artifact
+          name: CV-X-CORE07-MAC15-20260722T101618Z-L9S5
+          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T101618Z-L9S5-artifact
           if-no-files-found: error
           retention-days: 3
