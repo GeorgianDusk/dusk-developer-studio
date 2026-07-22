@@ -313,3 +313,24 @@ test("keyboard order, focus treatment, and Local Studio targets follow the acces
     expect(box!.width, `Local Studio target ${index + 1} should be at least 44px wide`).toBeGreaterThanOrEqual(44);
   }
 });
+
+test("keyboard reset cancellation restores focus to its trigger", async ({ page }) => {
+  await page.addInitScript(() => localStorage.clear());
+  await page.goto("/#settings");
+
+  const resetTrigger = page.getByRole("button", { name: "Reset browser progress" });
+  await resetTrigger.focus();
+  await page.keyboard.press("Enter");
+
+  const confirmation = page.getByRole("group", {
+    name: "Reset saved DuskDS journey progress in this browser?"
+  });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation.getByRole("button", { name: "Reset browser progress" })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(confirmation.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByText("Reset canceled. Browser progress was not changed.")).toBeVisible();
+  await expect(resetTrigger).toBeFocused();
+});

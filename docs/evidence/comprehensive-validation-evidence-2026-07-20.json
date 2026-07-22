@@ -4442,6 +4442,16 @@
       "root_cause": "Chromium focuses a button after pointer activation while Safari/WebKit intentionally may not; the regression conflated pointer focus behavior with the keyboard history-restoration contract it was meant to test.",
       "fix": "Focus the Reference control explicitly and activate it with Enter before navigating Back and Forward, while retaining the exact restored-control, viewport, scroll, title and forward-focus-path assertions.",
       "regression_test": "The corrected test passed 10 of 10 focused executions across WebKit desktop and Mobile Safari emulation, followed by a clean complete five-project matrix with 84 passes and 16 intentional offline or pre-launch skips."
+    },
+    {
+      "defect_id": "CV-D-087",
+      "severity": "P2",
+      "status": "fixed_local_pending_final_candidate_retest",
+      "summary": "Activating Cancel in the browser-progress reset confirmation with Enter left keyboard focus on the document body instead of returning it to the Reset browser progress trigger.",
+      "source": "CV-UI-01 source-blind public v1.0.6 keyboard-only Chrome pilot on 2026-07-22",
+      "root_cause": "Reset cancellation scheduled focus in requestAnimationFrame while React simultaneously replaced the focused confirmation subtree; real browser focus cleanup could run after the scheduled callback even though the jsdom unit test passed.",
+      "fix": "Mark reset-trigger focus for restoration before closing the confirmation and apply it in a layout effect immediately after React commits the replacement trigger.",
+      "regression_test": "The existing 35-test App suite passes and a real-browser Playwright regression activates Cancel with Enter and requires focus on the restored trigger across Chromium, Firefox and WebKit. Exact-package source-blind retest remains required."
     }
   ],
   "challenge_reviews": [
