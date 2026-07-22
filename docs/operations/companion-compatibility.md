@@ -25,24 +25,25 @@ Use a current browser supported by its vendor. The Studio attempts to open the d
 Safe mode:
 
 ```bash
-npx dusk-developer-studio@1.0.11
+npx dusk-developer-studio@1.0.12
 ```
 
 Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.11 local-actions
+npx dusk-developer-studio@1.0.12 local-actions
 ```
 
 Direct DuskDS starter creation:
 
 ```bash
-npx --yes dusk-developer-studio@1.0.11 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.12 create-duskds my-counter
 ```
 
-The direct command creates one new child of the current working directory.
-Local Actions instead writes only beneath its configured managed DuskDS project
-root.
+The direct command creates one new project child of the current working
+directory. It also uses a reserved `.dusk-studio-staging` sibling for
+crash-safe promotion and stale-stage recovery. Local Actions uses the same
+transaction boundary beneath its configured managed DuskDS project root.
 
 ## Common runtime behavior
 

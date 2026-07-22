@@ -5,13 +5,13 @@
 Safe mode:
 
 ```bash
-npx dusk-developer-studio@1.0.11
+npx dusk-developer-studio@1.0.12
 ```
 
 Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.11 local-actions
+npx dusk-developer-studio@1.0.12 local-actions
 ```
 
 Keep the terminal open while using the Studio. Press `Ctrl+C` before changing modes or restarting.
@@ -75,7 +75,7 @@ The Hosted guide provides browser guidance and public read-only checks but never
 That is expected. Stop Safe mode and deliberately start Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.11 local-actions
+npx dusk-developer-studio@1.0.12 local-actions
 ```
 
 ### A required tool is missing
@@ -104,9 +104,13 @@ Build accepts only a relative subfolder beneath the managed DuskDS root. Leave t
 
 To use another short root, stop Local Studio, set `DUSK_STUDIO_DUSKDS_PROJECT_ROOT` to a normal absolute local folder, and start Local Actions again. UNC paths, device paths, relative paths, and filesystem roots are rejected. Use a folder on a local fixed drive; a mapped Windows network drive can look like an ordinary drive-letter path and cannot be reliably distinguished at this boundary.
 
+Safe mode does not use or validate `DUSK_STUDIO_DUSKDS_PROJECT_ROOT`, because machine checks and project creation are disabled there. A Local Actions path problem must not prevent the read-only Safe-mode guide from starting.
+
 ### Starter creation was interrupted
 
 If creation failed before promotion, the final target remains absent. If the browser stopped waiting but template creation completed, leave the same companion running and use the retry action in Build; it either reports that the action is still busy or revalidates the completed target from its in-memory receipt. After a companion restart, an existing target is not recovered automatically.
+
+Starter creation uses a reserved `.dusk-studio-staging` directory beside the target for atomic promotion. Successful operations and handled failures whose cleanup can be proven safe leave it empty. An uncatchable process termination can leave a complete or partial stage without promoting the requested target. A later starter operation removes only a stale stage whose ownership and bounded tree it can verify; an immediate retry may need the short lease to expire first. Ambiguous ownership, unsafe filesystem entries, or an excessive directory count fail closed and leave the residue for inspection. Do not treat the reserved directory as a project and do not remove it while another Studio process may be creating a starter.
 
 Stop the Studio before inspecting temporary work. Do not follow or remove a temporary directory beneath a parent whose path or ownership changed unexpectedly.
 

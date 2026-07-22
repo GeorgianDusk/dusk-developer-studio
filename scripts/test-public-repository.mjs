@@ -194,13 +194,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.11",
-  tag: "v1.0.11",
+  version: "1.0.12",
+  tag: "v1.0.12",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.11.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.12.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -463,6 +463,7 @@ assert.match(npmAssuranceWorkflow, /package_file_count=\$\{inspected\.inventory_
 assert.match(npmAssuranceWorkflow, /record\.package_file_count[\s\S]*EXPECTED_PACKAGE_FILE_COUNT/);
 assert.match(npmAssuranceWorkflow, /Recheck source cleanliness after restore, build, tests, package, and browser smoke[\s\S]*git diff --exit-code[\s\S]*git diff --cached --exit-code[\s\S]*git status --short --untracked-files=all/);
 assert.match(npmAssuranceWorkflow, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential[\s\S]*create-duskds', 'platform-direct-counter'[\s\S]*'--lifecycle-self-test', '--no-open'[\s\S]*'local-actions', '--lifecycle-self-test', '--no-open'/);
+assert.match(npmAssuranceWorkflow, /longSafeDuskDsRoot\.Length -le 120[\s\S]*DUSK_STUDIO_DUSKDS_PROJECT_ROOT = 'relative-safe-mode-must-ignore'[\s\S]*safe-smoke-long-unused-project-root[\s\S]*DUSK_STUDIO_DUSKDS_PROJECT_ROOT = \$standardDuskDsProjectRoot/);
 assert.match(npmAssuranceWorkflow, /stagingEntries = entries\.filter[\s\S]*\.dusk-studio-staging[\s\S]*fs\.readdirSync\(staging\)\.length !== 0[\s\S]*one empty regular staging container/);
 assert.match(npmAssuranceWorkflow, /\$localStageContainers = @\([\s\S]*\.dusk-studio-staging[\s\S]*Get-ChildItem -LiteralPath \$localStageContainers\[0\]\.FullName -Force[\s\S]*one empty regular staging container/);
 assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
@@ -944,8 +945,8 @@ assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total
 assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
 assert.deepEqual(phase5Policy.npm_distribution, {
   package_name: "dusk-developer-studio",
-  package_version: "1.0.11",
-  tag: "v1.0.11",
+  package_version: "1.0.12",
+  tag: "v1.0.12",
   registry_url: "https://registry.npmjs.org/dusk-developer-studio",
   node_engine: ">=24.18.0 <25",
   assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",

@@ -611,7 +611,23 @@ jobs:
             ) {
               throw 'Exact-tarball Local Actions preflight contract receipt is incomplete.'
             }
-            $safeResult = Invoke-StandardUserSmoke -Arguments @('--lifecycle-self-test', '--no-open') -Label 'safe-smoke'
+            $standardLocalAppData = $childEnvironment.LOCALAPPDATA
+            $standardDuskDsProjectRoot = $childEnvironment.DUSK_STUDIO_DUSKDS_PROJECT_ROOT
+            $safeRootBase = Join-Path $dataRoot 'Dusk\DeveloperStudio\projects\duskds'
+            $safeRootPadding = [Math]::Max(1, 121 - $safeRootBase.Length)
+            $longSafeLocalAppData = Join-Path $dataRoot ('safe-' + ('x' * $safeRootPadding))
+            $longSafeDuskDsRoot = Join-Path $longSafeLocalAppData 'Dusk\DeveloperStudio\projects\duskds'
+            if ($longSafeDuskDsRoot.Length -le 120 -or $longSafeDuskDsRoot.Length -ge 220) {
+              throw 'Windows Safe-mode long-root fixture is outside its bounded test range.'
+            }
+            $childEnvironment.LOCALAPPDATA = $longSafeLocalAppData
+            $childEnvironment.DUSK_STUDIO_DUSKDS_PROJECT_ROOT = 'relative-safe-mode-must-ignore'
+            try {
+              $safeResult = Invoke-StandardUserSmoke -Arguments @('--lifecycle-self-test', '--no-open') -Label 'safe-smoke-long-unused-project-root'
+            } finally {
+              $childEnvironment.LOCALAPPDATA = $standardLocalAppData
+              $childEnvironment.DUSK_STUDIO_DUSKDS_PROJECT_ROOT = $standardDuskDsProjectRoot
+            }
             $localActionsResult = Invoke-StandardUserSmoke -Arguments @('local-actions', '--lifecycle-self-test', '--no-open') -Label 'local-actions-capability-contract-smoke'
             $lifecycleLines = @($localActionsResult.Output -split "`r?`n" | Where-Object { $_.StartsWith('DUSK_STUDIO_LIFECYCLE=') })
             if ($lifecycleLines.Count -ne 1) { throw 'Local Actions lifecycle receipt is missing or duplicated.' }

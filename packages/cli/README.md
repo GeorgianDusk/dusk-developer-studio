@@ -22,7 +22,7 @@ does not silently install or update them.
 ## Run Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.11
+npx dusk-developer-studio@1.0.12
 ```
 
 Safe mode opens the local Studio with machine actions disabled. It can serve the
@@ -32,7 +32,7 @@ information.
 ## Run Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.11 local-actions
+npx dusk-developer-studio@1.0.12 local-actions
 ```
 
 Local Actions enables only the reviewed tool checks and starter creation
@@ -47,14 +47,22 @@ opening any other Local Studio page.
 ## Create a DuskDS starter from the terminal
 
 ```bash
-npx --yes dusk-developer-studio@1.0.11 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.12 create-duskds my-counter
 ```
 
 This renders the reviewed DuskDS counter template shipped in the package as one
-new child of your current working directory. It refuses an existing target and preserves the
+new project child of your current working directory. It refuses an existing target and preserves the
 pinned Rust toolchain, dependency lock, MPL-2.0 license text, and provenance
 record. Install the separately reviewed Dusk Forge prerequisite before running
 the generated project's check, build, test, or verification commands.
+
+The command also uses a reserved `.dusk-studio-staging` sibling for crash-safe
+promotion. Successful operations and handled failures whose cleanup can be
+proven safe leave it empty. A forced process termination can leave an
+unpromoted stage there. A later starter operation removes it only after the
+short lease has expired and its ownership and bounded tree are verified;
+ambiguous, unsafe, or excessive residue is preserved for inspection. Do not
+use the reserved directory for project files.
 
 ## Stop Studio
 
@@ -75,7 +83,7 @@ and press Enter.
 - Run the command as your normal user. Studio refuses administrator and root
   execution.
 - If PowerShell reports that script execution is disabled, run `npx.cmd
-  dusk-developer-studio@1.0.11` (or add `local-actions`) instead. You do not need to
+  dusk-developer-studio@1.0.12` (or add `local-actions`) instead. You do not need to
   weaken your PowerShell execution policy.
 
 For product problems, use the

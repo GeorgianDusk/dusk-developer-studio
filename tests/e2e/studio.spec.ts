@@ -197,6 +197,29 @@ test("Troubleshooting no-result recovery returns focus to search", async ({ page
   await expect(page.getByText(/recovery entries found\./)).toBeVisible();
 });
 
+test("existing-project Build help opens the promised read-only recovery", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem("dusk-studio-builder-path", "duskds");
+  });
+  await page.goto("/#duskds/build");
+
+  await page.getByRole("button", { name: "Windows PowerShell" }).click();
+  await page.getByRole("button", { name: /Existing repository/ }).click();
+  await page.getByLabel("Existing project root").fill("C:\\work\\existing-duskds");
+  await page.getByRole("button", { name: "Open read-only repository recovery" }).click();
+
+  await expect(page).toHaveURL(/#duskds\/troubleshooting$/u);
+  await expect(page.getByText("Selected recovery")).toBeVisible();
+  await expect(page.getByText("No recorded blocker")).toHaveCount(0);
+  await expect(page.getByText("1 recovery entry found.")).toBeVisible();
+  const recovery = page.getByRole("article").filter({
+    has: page.getByRole("heading", { name: "Existing DuskDS repository is read-only" })
+  });
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toBeFocused();
+});
+
 test("invalid Build evidence identifies, describes, and focuses the recovery field", async ({ page }) => {
   await page.addInitScript(() => localStorage.clear());
   await page.goto("/");

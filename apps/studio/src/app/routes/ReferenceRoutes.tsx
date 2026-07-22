@@ -342,6 +342,11 @@ export function TroubleshootingPage({
           <strong>{blockedStep?.label ?? blockedRoute}: {blockerLabels[currentBlocker]}</strong>
           <a className="secondary-button" href={`#${blockedRoute}`}>Return to {blockedStep?.label ?? blockedRoute} and recheck</a>
         </div>
+      ) : focusedTroubleId ? (
+        <div className="current-blocker">
+          <StatusPill tone="neutral">Selected recovery</StatusPill>
+          <span>Showing the recovery opened from your previous step.</span>
+        </div>
       ) : builderPath ? (
         <div className="current-blocker">
           <StatusPill tone={prelaunch ? "warn" : "good"}>{prelaunch ? "Pre-launch" : "No recorded blocker"}</StatusPill>

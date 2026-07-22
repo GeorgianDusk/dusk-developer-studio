@@ -122,6 +122,7 @@ for (const flag of ["--help", "-h"]) {
   assert.equal(result.status, 0);
   assert.match(result.stdout, /npx dusk-developer-studio \[local-actions\] \[--no-open\]/);
   assert.match(result.stdout, /npx dusk-developer-studio create-duskds <project-name>/);
+  assert.match(result.stdout, /reserved \.dusk-studio-staging sibling for crash-safe promotion/);
 }
 const mixedInformation = spawnSync(process.execPath, [primaryBin, "--help", "--no-open"], {
   cwd: productRoot,

@@ -469,7 +469,7 @@ describe("Phase 2 evidence journeys", () => {
     expect(screen.getByRole("heading", { name: "Run the read-only script" })).toBeInTheDocument();
   });
 
-  it("uses the exact npm template creator and pins its reviewed WSL test to Rust 1.94.0", () => {
+  it("uses the exact npm template creator, pins its reviewed WSL test, and opens contextual read-only recovery", async () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#build";
     render(<App />);
@@ -501,7 +501,14 @@ describe("Phase 2 evidence journeys", () => {
     expect(prepareExisting.indexOf("git status --porcelain=v1 --untracked-files=all"))
       .toBeLessThan(prepareExisting.indexOf("rustup override set"));
     expect(screen.getByText("Writable checkout required")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open read-only repository recovery" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open read-only repository recovery" }));
+
+    expect(window.location.hash).toBe("#duskds/troubleshooting");
+    const recoveryHeading = await screen.findByRole("heading", { name: "Existing DuskDS repository is read-only" });
+    expect(screen.getByText(/1 recovery entry found/)).toBeInTheDocument();
+    expect(screen.getByText("Selected recovery")).toBeInTheDocument();
+    expect(screen.queryByText("No recorded blocker")).not.toBeInTheDocument();
+    await waitFor(() => expect(recoveryHeading.closest("article")).toHaveFocus());
   });
 
   it("renders fail-closed self-contained project and artifact command blocks", () => {
