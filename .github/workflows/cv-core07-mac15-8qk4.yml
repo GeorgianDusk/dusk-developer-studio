@@ -1,4 +1,4 @@
-name: CV-CORE-07 macOS arm64 public-package pilot
+name: CV-SEC-06 macOS arm64 public-package pilot
 
 on:
   pull_request:
@@ -20,17 +20,17 @@ jobs:
         with:
           node-version: 24.18.0
 
-      - name: Run counted source-blind pilot
+      - name: Run counted source-blind security pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-CORE07-MAC15-20260722T102359Z-N0U6
+          EXEC_ID: CV-X-SEC06-MAC15-20260722T103447Z-P1X7
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
           EXPECTED_COMMIT: 22312ecc9f221da0f091e9e96e3206f943ea5513
         run: |
-          # GitHub's bash wrapper injects -e. This pilot uses explicit receipt/status
-          # checks so expected non-zero probes and SIGINT waits must not abort it.
+          # The repository is intentionally not checked out. This job inspects only
+          # public package metadata/docs and black-box product behavior.
           set +e
           set -uo pipefail
           ROOT="$RUNNER_TEMP/$EXEC_ID"
@@ -38,12 +38,17 @@ jobs:
           LOGS="$ROOT/logs"
           RECEIPT="$ROOT/receipt.env"
           TIMELINE="$ROOT/timeline.log"
-          SAFE_WRAPPER=""; ACTION_WRAPPER=""; SAFE_LISTENER=""; ACTION_LISTENER=""
-          SAFE_CHROME=""; ACTION_CHROME=""; WATCHDOG_PID=""; OVERALL=0
+          STATE="$ROOT/fixture-state"
+          PRODUCT_WRAPPER=""
+          PRODUCT_LISTENERS=""
+          WATCHDOG_PID=""
+          TECHNICAL_FAILURE=0
+          PRODUCT_DEFECT=0
           rm -rf "$ROOT" "$ART"
-          mkdir -p "$ROOT" "$ART" "$LOGS" "$ROOT/home" "$ROOT/cache" "$ROOT/temp" \
-            "$ROOT/npm-cache" "$ROOT/npm-prefix" "$ROOT/package" "$ROOT/harness" "$ROOT/browser-safe" \
-            "$ROOT/browser-actions" "$ROOT/work/safe" "$ROOT/work/actions" "$ROOT/sentinel-project/nested"
+          mkdir -p "$ROOT" "$ART" "$LOGS" "$STATE" "$ROOT/home" "$ROOT/cache" \
+            "$ROOT/temp" "$ROOT/npm-cache" "$ROOT/npm-prefix" "$ROOT/package" \
+            "$ROOT/harness" "$ROOT/browser-profile" "$ROOT/work/actions" \
+            "$ROOT/fixture-bin" "$ROOT/sentinel/nested"
 
           record() { printf '%s=%s\n' "$1" "$2" >> "$RECEIPT"; }
           evidence() { printf '%s %s %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" | tee -a "$TIMELINE"; }
@@ -57,25 +62,6 @@ jobs:
             { lsof -nP -t -iTCP:5173 -sTCP:LISTEN 2>/dev/null
               lsof -nP -t -iTCP:8788 -sTCP:LISTEN 2>/dev/null
             } | sort -u
-          }
-          signal_listeners() {
-            local signal="$1" pid
-            shift
-            for pid in "$@"; do [ -z "$pid" ] || kill "-$signal" "$pid" 2>/dev/null || true; done
-          }
-          wait_bounded() {
-            local pid="$1"
-            local limit="$2"
-            local deadline=$((SECONDS + limit)) status
-            while kill -0 "$pid" 2>/dev/null; do
-              if [ "$SECONDS" -ge "$deadline" ]; then
-                kill -TERM "$pid" 2>/dev/null || true; sleep 2
-                kill -KILL "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
-                return 124
-              fi
-              sleep 1
-            done
-            wait "$pid" 2>/dev/null; status=$?; return "$status"
           }
           wait_ports() {
             local deadline=$((SECONDS + 60))
@@ -97,21 +83,58 @@ jobs:
           }
           snapshot_sentinel() {
             (
-              cd "$ROOT/sentinel-project"
+              cd "$ROOT/sentinel" || exit 1
               find . -type f -print0 | sort -z | while IFS= read -r -d '' file; do
                 stat -f '%N|%z|%SB|%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$file"
                 shasum -a 256 "$file"
               done
             )
           }
+          get_meta() {
+            local file="$1" key="$2"
+            [ -f "$file" ] || return 1
+            awk -F= -v wanted="$key" '$1==wanted {sub(/^[^=]*=/, ""); print; exit}' "$file"
+          }
+          pid_active() {
+            local pid="$1" stat
+            case "$pid" in ''|*[!0-9]*) return 1;; esac
+            stat="$(ps -o stat= -p "$pid" 2>/dev/null | tr -d ' ')"
+            [ -n "$stat" ] || return 1
+            case "$stat" in Z*) return 1;; *) return 0;; esac
+          }
+          safe_fixture_kill() {
+            local sig="$1" pid="$2" cmd
+            case "$pid" in ''|*[!0-9]*) return 0;; esac
+            cmd="$(ps -o command= -p "$pid" 2>/dev/null)"
+            case "$cmd" in
+              *"$ROOT/fixture-bin/wasm-tools"*|*"$ROOT/fixture-state"*) kill "-$sig" "$pid" 2>/dev/null || true;;
+              '') true;;
+              *) printf 'refused_unverified_pid=%s command=%s\n' "$pid" "$cmd" >> "$LOGS/cleanup-refusals.log"; return 1;;
+            esac
+          }
+          fixture_pids() {
+            find "$STATE" -type f \( -name 'self.env' -o -name 'normal.env' -o -name 'detached.env' \) -print 2>/dev/null |
+              while IFS= read -r file; do get_meta "$file" pid; done | sort -u
+          }
+          stop_known_fixtures() {
+            local pid
+            fixture_pids > "$ROOT/known-fixture-pids.txt"
+            while IFS= read -r pid; do safe_fixture_kill TERM "$pid" || true; done < "$ROOT/known-fixture-pids.txt"
+            sleep 2
+            while IFS= read -r pid; do if pid_active "$pid"; then safe_fixture_kill KILL "$pid" || true; fi; done < "$ROOT/known-fixture-pids.txt"
+            sleep 1
+          }
           finalize() {
-            local code=$?
+            local code=$? pid root_absent ports_closed candidate_processes fixture_survivors
             trap - EXIT
             set +e
             [ -z "$WATCHDOG_PID" ] || kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
-            signal_listeners INT $SAFE_LISTENER $ACTION_LISTENER
-            for pid in "$SAFE_CHROME" "$ACTION_CHROME" "$SAFE_WRAPPER" "$ACTION_WRAPPER"; do [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null; done
-            sleep 1
+            stop_known_fixtures
+            for pid in $PRODUCT_LISTENERS; do kill -INT "$pid" 2>/dev/null || true; done
+            [ -z "$PRODUCT_WRAPPER" ] || kill -TERM "$PRODUCT_WRAPPER" 2>/dev/null || true
+            sleep 2
+            for pid in $PRODUCT_LISTENERS; do kill -KILL "$pid" 2>/dev/null || true; done
+            [ -z "$PRODUCT_WRAPPER" ] || kill -KILL "$PRODUCT_WRAPPER" 2>/dev/null || true
             mkdir -p "$ART/logs"
             cp "$TIMELINE" "$RECEIPT" "$ART/" 2>/dev/null
             find "$LOGS" -maxdepth 1 -type f -exec cp {} "$ART/logs/" \; 2>/dev/null
@@ -129,23 +152,28 @@ jobs:
             fi
             if [ ! -f "$RECEIPT" ] || ! grep -qx 'receipt_complete=true' "$RECEIPT"; then code=98; fi
             rm -rf "$ROOT"
-            local root_absent ports_closed candidate_processes
             root_absent="$([ ! -e "$ROOT" ] && echo true || echo false)"
             ports_closed="$(! ports_open >/dev/null 2>&1 && echo true || echo false)"
             candidate_processes="$(pgrep -af dusk-developer-studio 2>/dev/null | wc -l | tr -d ' ')"
-            if [ "$root_absent" != true ] || [ "$ports_closed" != true ] || [ "$candidate_processes" != 0 ]; then code=99; fi
+            fixture_survivors=0
+            if [ -f "$ART/logs/known-fixture-pids.txt" ]; then
+              while IFS= read -r pid; do if pid_active "$pid"; then fixture_survivors=$((fixture_survivors + 1)); fi; done < "$ART/logs/known-fixture-pids.txt"
+            fi
+            if [ "$root_absent" != true ] || [ "$ports_closed" != true ] ||
+               [ "$candidate_processes" != 0 ] || [ "$fixture_survivors" != 0 ]; then code=99; fi
             {
               printf 'cleanup_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
               printf 'pilot_root_absent=%s\n' "$root_absent"
               printf 'ports_closed=%s\n' "$ports_closed"
               printf 'candidate_processes=%s\n' "$candidate_processes"
+              printf 'fixture_survivors=%s\n' "$fixture_survivors"
             } > "$ART/cleanup.txt"
             exit "$code"
           }
           trap finalize EXIT
           trap 'record harness_signal_received TERM; exit 124' TERM
           PILOT_SHELL_PID="$$"
-          (sleep 600; kill -TERM "$PILOT_SHELL_PID" 2>/dev/null || true) &
+          (sleep 900; kill -TERM "$PILOT_SHELL_PID" 2>/dev/null || true) &
           WATCHDOG_PID=$!
 
           export HOME="$ROOT/home"
@@ -160,7 +188,7 @@ jobs:
           record execution_id "$EXEC_ID"
           record started_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           record source_boundary "public npm metadata, package manifests/readme, and black-box Studio UI/API only"
-          evidence E1 "fresh redirected root; repository workspace intentionally unused"
+          evidence S1 "fresh redirected root; repository checkout absent"
 
           OS_VERSION="$(sw_vers | tr '\n' ';')"; ARCH="$(uname -m)"
           USER_ID="$(id -u)"; USER_NAME="$(id -un)"; ADMIN_CAPABLE=false
@@ -168,24 +196,25 @@ jobs:
           NODE_VERSION="$(node --version)"; NPM_VERSION="$(npm --version)"
           record runner_os "$OS_VERSION"; record runner_arch "$ARCH"; record runner_user "$USER_NAME"
           record runner_uid "$USER_ID"; record runner_sudo_capable "$ADMIN_CAPABLE"
-          record candidate_euid_nonroot "$([ "$USER_ID" -ne 0 ] && echo true || echo false)"
           record image_os "${ImageOS:-unknown}"; record image_version "${ImageVersion:-unknown}"
           record node_version "$NODE_VERSION"; record npm_version "$NPM_VERSION"
           { sw_vers; uname -a; sysctl -n machdep.cpu.brand_string 2>/dev/null || true; id;
             printf 'sudo_capable=%s\nnode=%s npm=%s\n' "$ADMIN_CAPABLE" "$NODE_VERSION" "$NPM_VERSION"; } > "$LOGS/environment.log"
           if [ "$ARCH" != arm64 ] || [ "$NODE_VERSION" != v24.18.0 ] || [ "$USER_ID" -eq 0 ]; then
-            record environment_status blocked; evidence E2 "expected macOS arm64, Node v24.18.0, non-root"; exit 2
+            record environment_status blocked; exit 2
           fi
-          record environment_status pass; evidence E2 "native macOS arm64, exact Node, non-root proved"
-          if ports_open > "$LOGS/ports-baseline.log"; then record ports_baseline fail; exit 3; fi
-          record ports_baseline clean
+          record environment_status pass
+          BASELINE_CANDIDATES="$(pgrep -af dusk-developer-studio 2>/dev/null | wc -l | tr -d ' ')"
+          ports_open > "$LOGS/ports-baseline.log"; BASELINE_PORT_STATUS=$?
+          record ports_baseline "$([ "$BASELINE_PORT_STATUS" -ne 0 ] && echo clean || echo occupied)"
+          record candidate_processes_baseline "$BASELINE_CANDIDATES"
+          if [ "$BASELINE_PORT_STATUS" -eq 0 ] || [ "$BASELINE_CANDIDATES" != 0 ]; then exit 3; fi
+          evidence S2 "native macOS arm64, exact Node, non-root, clean ports and process baseline"
 
-          printf 'CV-CORE-07 preservation sentinel\n' > "$ROOT/sentinel-project/README.txt"
-          printf '{"execution":"%s","purpose":"strict-preservation"}\n' "$EXEC_ID" > "$ROOT/sentinel-project/nested/fixture.json"
+          printf 'CV-SEC-06 preservation sentinel\n' > "$ROOT/sentinel/README.txt"
+          printf '{"execution":"%s","purpose":"security-preservation"}\n' "$EXEC_ID" > "$ROOT/sentinel/nested/fixture.json"
           snapshot_sentinel > "$ROOT/sentinel-baseline.txt"
           record sentinel_baseline_sha256 "$(shasum -a 256 "$ROOT/sentinel-baseline.txt" | awk '{print $1}')"
-          record sentinel_bytes "$(find "$ROOT/sentinel-project" -type f -exec stat -f %z {} \; | awk '{s+=$1} END {print s+0}')"
-          evidence E3 "sentinel bytes, timestamps, and hashes captured"
 
           npm view "$PACKAGE_SPEC" name version engines dist readme --json > "$ROOT/package/registry.json"
           npm pack "$PACKAGE_SPEC" --pack-destination "$ROOT/package" --json > "$ROOT/package/pack.json"
@@ -193,7 +222,7 @@ jobs:
           ACTUAL_SHA256="$(shasum -a 256 "$TGZ" | awk '{print $1}')"
           ACTUAL_SHASUM="$(shasum -a 1 "$TGZ" | awk '{print $1}')"
           ACTUAL_INTEGRITY="$(node - "$TGZ" <<'NODE'
-          const fs=require('node:fs'), crypto=require('node:crypto');
+          const fs=require('node:fs'),crypto=require('node:crypto');
           process.stdout.write('sha512-'+crypto.createHash('sha512').update(fs.readFileSync(process.argv[2])).digest('base64'));
           NODE
           )"
@@ -203,6 +232,7 @@ jobs:
           PACKAGE_COMMIT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.commit)" "$ROOT/package/package-manifest.json")"
           PACKAGE_VERSION="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.version)" "$ROOT/package/package-manifest.json")"
           PACKAGE_PRODUCT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.product)" "$ROOT/package/package-manifest.json")"
+          node -e "const r=require(process.argv[1]);process.stdout.write(r.readme||'')" "$ROOT/package/registry.json" > "$LOGS/public-readme.log"
           record package_sha256 "$ACTUAL_SHA256"; record package_shasum "$ACTUAL_SHASUM"
           record registry_shasum "$REGISTRY_SHASUM"; record package_integrity "$ACTUAL_INTEGRITY"
           record registry_integrity "$REGISTRY_INTEGRITY"; record package_commit "$PACKAGE_COMMIT"
@@ -212,7 +242,9 @@ jobs:
              [ "$PACKAGE_COMMIT" != "$EXPECTED_COMMIT" ] || [ "$PACKAGE_VERSION" != 1.0.9 ]; then
             record package_identity_status fail; exit 4
           fi
-          record package_identity_status pass; evidence E4 "exact public package hash, shasum, integrity, version, product, commit"
+          record package_identity_status pass
+          record public_containment_promise "$([ "$(grep -Eic 'sandbox|descendant process|process tree|setsid|detached process' "$LOGS/public-readme.log")" -eq 0 ] && echo none || echo present)"
+          evidence S3 "exact public package hash, integrity, version, product and commit; public README boundary captured"
 
           CHROME=""
           for candidate in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "/Applications/Chromium.app/Contents/MacOS/Chromium"; do
@@ -220,9 +252,7 @@ jobs:
           done
           if [ -z "$CHROME" ]; then record browser_status blocked; exit 5; fi
           "$CHROME" --version > "$LOGS/browser-version.log"
-          curl --version | head -1 > "$LOGS/http-client-version.log"
           record browser_version "$(cat "$LOGS/browser-version.log")"
-          record http_client_version "$(cat "$LOGS/http-client-version.log")"
           if npm install --ignore-scripts --no-save --no-package-lock --prefix "$ROOT/harness" playwright-core@latest > "$LOGS/playwright-install.log" 2> "$LOGS/playwright-install.stderr"; then
             PLAYWRIGHT_VERSION="$(node -e "process.stdout.write(require(process.argv[1]).version)" "$ROOT/harness/node_modules/playwright-core/package.json")"
             record browser_harness playwright-core; record playwright_version "$PLAYWRIGHT_VERSION"
@@ -230,272 +260,324 @@ jobs:
             record browser_harness install_failed; exit 5
           fi
 
-          cat > "$ROOT/ui-driver.mjs" <<'JS'
-          const wsUrl=process.env.CDP_WS, mode=process.env.PILOT_MODE, projectName=process.env.PROJECT_NAME||'';
-          const trace=(stage)=>console.error(new Date().toISOString(),stage);
-          const watchdog=setTimeout(()=>{trace('driver-watchdog-timeout');process.exit(124);},90000);
-          const socket=new WebSocket(wsUrl), pending=new Map(), requests=[]; let seq=0;
-          trace('socket-connect');
-          await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
-          trace('socket-open');
-          socket.addEventListener('message',(event)=>{
-            const message=JSON.parse(event.data);
-            if(message.id&&pending.has(message.id)){const item=pending.get(message.id);clearTimeout(item.timer);pending.delete(message.id);message.error?item.reject(new Error(JSON.stringify(message.error))):item.resolve(message.result);return;}
-            if(message.method==='Network.requestWillBeSent')requests.push({method:message.params.request.method,url:message.params.request.url});
-          });
-          const rejectPending=(why)=>{for(const [id,item] of pending){clearTimeout(item.timer);item.reject(new Error(why));pending.delete(id);}};
-          socket.addEventListener('close',()=>rejectPending('CDP socket closed'));
-          socket.addEventListener('error',()=>rejectPending('CDP socket error'));
-          function send(method,params={}){return new Promise((resolve,reject)=>{const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method));},20000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});}
-          const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
-          const axValue=(node,key)=>node.properties?.find((p)=>p.name===key)?.value?.value;
-          async function snapshot(){
-            const {nodes}=await send('Accessibility.getFullAXTree');
-            const title=String(nodes.find((n)=>n.role?.value==='RootWebArea')?.name?.value||'').slice(0,300);
-            const named=nodes.map((n)=>String(n.name?.value||'').trim()).filter(Boolean);
-            const roles=new Set(['button','link','tab','menuitem','textbox','searchbox']);
-            const interactives=nodes.filter((n)=>roles.has(n.role?.value)&&n.backendDOMNodeId).slice(0,120).map((n)=>({backendDOMNodeId:n.backendDOMNodeId,role:n.role.value,text:String(n.name?.value||'').trim().slice(0,300),disabled:axValue(n,'disabled')===true})).filter((x)=>x.text);
-            return {title,text:named.join('\n').slice(0,12000),interactives};
-          }
-          async function click(source,kind,actions){
-            const snap=await snapshot(),re=new RegExp(source,'i'),target=snap.interactives.find((x)=>re.test(x.text)&&!x.disabled);
-            if(!target){const result={clicked:false};actions.push({kind,source,...result});return result;}
-            await send('DOM.focus',{backendNodeId:target.backendDOMNodeId});
-            await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:36});
-            await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:36});
-            const result={clicked:true,text:target.text,role:target.role};actions.push({kind,source,...result});await wait(1800);return result;
-          }
-          async function fillName(){
-            const snap=await snapshot(),target=snap.interactives.find((x)=>/textbox|searchbox/.test(x.role)&&/project|starter|name|folder/i.test(x.text))||snap.interactives.find((x)=>/textbox|searchbox/.test(x.role)&&!x.disabled);
-            if(!target)return{filled:false};await send('DOM.focus',{backendNodeId:target.backendDOMNodeId});await send('Input.insertText',{text:projectName});return{filled:true,label:target.text};
-          }
-          trace('domains-enable');
-          await send('Page.enable');await send('DOM.enable');await send('Accessibility.enable');await send('Network.enable');await send('DOMStorage.enable');await wait(7000);
-          trace('initial-snapshot');
-          const actions=[], first=await snapshot();
-          await click('Start DuskDS|Open DuskDS|Native Dusk path','select-duskds',actions);await wait(1500);
-          trace('health');
-          const health=await (async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{signal:AbortSignal.timeout(8000)});return{status:r.status,text:await r.text()};}catch(e){return{status:0,error:String(e)};}})();
-          let safeDenied=null,projectInput=null;
-          if(mode==='safe'){
-            trace('safe-action-denial');
-            const before=await snapshot(),attempt=await click('Run setup|Check prerequisites|Run preflight|Create.*starter|Generate.*starter|Run build|Build project','safe-machine-action-attempt',actions),after=await snapshot();
-            const disabled=before.interactives.filter((x)=>x.disabled&&/setup|prerequisite|preflight|create|starter|build/i.test(x.text));
-            safeDenied=(!attempt.clicked&&disabled.length>0)||/machine actions disabled|restart.*local actions|safe mode[^]*disabled|actions mode required/i.test(after.text);
-          }else{
-            trace('local-actions-interactions');
-            await click('^Setup$|Check prerequisites|Preflight','setup-navigation',actions);
-            await click('Run setup|Check prerequisites|Run preflight|Check tools','setup-preflight',actions);
-            await click('^Build$|Build / Check|Build & browser data','build-navigation',actions);
-            await click('Create.*starter|Generate.*starter|New starter','starter-open',actions);
-            projectInput=await fillName();
-            await click('Create.*starter|Generate.*starter|Confirm create|Create project','starter-create',actions);await wait(5000);
-            await click('Run build|Build project|Check build|Build starter','build-exercise',actions);await wait(5000);
-          }
-          const final=await snapshot();
-          trace('storage-and-network-audit');
-          const storageId=(isLocalStorage)=>({securityOrigin:'http://127.0.0.1:5173',isLocalStorage});
-          const storageItems=async(isLocalStorage)=>{try{return (await send('DOMStorage.getDOMStorageItems',{storageId:storageId(isLocalStorage)})).entries||[];}catch(e){return[{error:String(e)}];}};
-          const storageBefore={local:await storageItems(true),session:await storageItems(false)};
-          try{await send('DOMStorage.clear',{storageId:storageId(true)});await send('DOMStorage.clear',{storageId:storageId(false)});await send('Storage.clearDataForOrigin',{origin:'http://127.0.0.1:5173',storageTypes:'all'});}catch(e){trace('storage-clear-error '+String(e));}
-          const storageAfter={local:await storageItems(true),session:await storageItems(false)};
-          await send('Network.clearBrowserCookies');await send('Network.clearBrowserCache');
-          const externalMutations=requests.filter((r)=>!/^(GET|HEAD|OPTIONS)$/i.test(r.method)&&!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(r.url));
-          process.stdout.write(JSON.stringify({mode,first,health,actions,safeDenied,projectInput,final,storageBefore,storageAfter,requests,externalMutations,walletOrDeployClicks:actions.filter((x)=>/wallet|deploy|fund|sign|transaction/i.test(x.text||'')).length},null,2));
-          trace('driver-complete');socket.close();await wait(200);clearTimeout(watchdog);process.exit(0);
-          JS
+          cat > "$ROOT/fixture-bin/wasm-tools" <<'PY'
+          #!/usr/bin/env python3
+          import os, pathlib, signal, subprocess, sys, time
 
-          # Playwright owns browser lifecycle and storage cleanup. This overwrites
-          # the lower-level diagnostic driver above after CDP proved unreliable.
+          def atomic(path, text):
+              tmp = path.with_name(path.name + ".tmp-" + str(os.getpid()))
+              tmp.write_text(text, encoding="utf-8")
+              os.replace(tmp, path)
+
+          def metadata(role):
+              return "\n".join([
+                  "role=" + role,
+                  "pid=" + str(os.getpid()),
+                  "ppid=" + str(os.getppid()),
+                  "pgid=" + str(os.getpgid(0)),
+                  "sid=" + str(os.getsid(0)),
+                  "started_utc=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                  "started_epoch_ms=" + str(time.time_ns() // 1_000_000),
+                  "argv=" + " ".join(sys.argv[1:]),
+                  "",
+              ])
+
+          def child(role, directory):
+              path = pathlib.Path(directory)
+              atomic(path / (role + ".env"), metadata(role))
+              def stop(signum, _frame):
+                  atomic(path / (role + ".exit.env"), "signal=" + str(signum) + "\nended_utc=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+                  raise SystemExit(128 + signum)
+              signal.signal(signal.SIGTERM, stop)
+              signal.signal(signal.SIGINT, stop)
+              signal.signal(signal.SIGHUP, stop)
+              while True:
+                  signal.pause()
+
+          if len(sys.argv) >= 4 and sys.argv[1] == "--sec06-child":
+              child(sys.argv[2], sys.argv[3])
+              raise SystemExit(0)
+
+          state = pathlib.Path(os.environ["SEC06_STATE"])
+          phase = (state / "current-phase").read_text(encoding="utf-8").strip()
+          if phase not in {"timeout", "shutdown"}:
+              raise SystemExit(77)
+          directory = state / phase
+          directory.mkdir(parents=True, exist_ok=True)
+          lock = directory / "invocation.lock"
+          try:
+              lock.mkdir()
+          except FileExistsError:
+              atomic(directory / ("duplicate-" + str(os.getpid()) + ".env"), metadata("duplicate"))
+              while True:
+                  signal.pause()
+
+          private = "CV-SEC-06-PRIVATE-" + phase + "-" + os.environ["SEC06_EXEC_ID"]
+          atomic(directory / "private.txt", private + "\n")
+          atomic(directory / "self.env", metadata("fixture-parent"))
+          child_argv = [sys.executable, str(pathlib.Path(__file__).resolve()), "--sec06-child"]
+          normal_log = open(directory / "normal.log", "ab", buffering=0)
+          detached_log = open(directory / "detached.log", "ab", buffering=0)
+          normal = subprocess.Popen(child_argv + ["normal", str(directory)], stdin=subprocess.DEVNULL, stdout=normal_log, stderr=normal_log)
+          detached = subprocess.Popen(child_argv + ["detached", str(directory)], stdin=subprocess.DEVNULL, stdout=detached_log, stderr=detached_log, start_new_session=True)
+          atomic(directory / "spawn.env", "normal_pid=" + str(normal.pid) + "\ndetached_pid=" + str(detached.pid) + "\n")
+          emitted = "CV-SEC-06-FIXTURE phase=" + phase + " pid=" + str(os.getpid()) + "\nbounded-output: fixture tool intentionally hangs\n"
+          atomic(directory / "emitted.txt", emitted)
+          print(emitted, end="", flush=True)
+
+          def parent_stop(signum, _frame):
+              atomic(directory / "parent.exit.env", "signal=" + str(signum) + "\nended_utc=" + time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n")
+              raise SystemExit(128 + signum)
+          signal.signal(signal.SIGTERM, parent_stop)
+          signal.signal(signal.SIGINT, parent_stop)
+          signal.signal(signal.SIGHUP, parent_stop)
+          while True:
+              signal.pause()
+          PY
+          chmod 700 "$ROOT/fixture-bin/wasm-tools"
+          printf 'timeout\n' > "$STATE/current-phase"
+          record fixture_tool wasm-tools
+          record fixture_path_precedence first
+          evidence S4 "disposable wasm-tools fixture staged with ordinary and setsid descendants; sentinel baseline captured"
+
           cat > "$ROOT/ui-driver.mjs" <<'JS'
           import {createRequire} from 'node:module';
+          import fs from 'node:fs';
+          import net from 'node:net';
+          import {execFileSync} from 'node:child_process';
+          import path from 'node:path';
           const require=createRequire(import.meta.url),{chromium}=require(process.env.PW_MODULE);
-          const mode=process.env.PILOT_MODE,projectName=process.env.PROJECT_NAME||'',profile=process.env.PROFILE_DIR;
-          const trace=(stage)=>console.error(new Date().toISOString(),stage),requests=[];
-          const watchdog=setTimeout(()=>{trace('playwright-watchdog-timeout');process.exit(124);},120000);
-          let context,health={status:0,error:'not checked'};
-          async function snapshot(page){
-            const title=String(await page.title()).slice(0,300),text=String(await page.locator('body').textContent({timeout:10000})||'').slice(0,12000);
-            const interactives=await page.locator('button,[role="button"],a,input,textarea,[role="tab"],[role="menuitem"]').evaluateAll((els)=>els.slice(0,120).map((el)=>({tag:el.tagName,text:String(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().slice(0,300),disabled:Boolean(el.disabled)||el.getAttribute('aria-disabled')==='true',type:el.getAttribute('type')||''})).filter((x)=>x.text));
-            return{title,text,interactives};
-          }
-          async function roleTarget(page,re){
-            for(const role of ['button','link','tab','menuitem']){const loc=page.getByRole(role,{name:re}).first();if(await loc.count())return{loc,role};}
-            return null;
-          }
-          async function press(page,pattern,kind,actions){
-            const source=pattern.source,target=await roleTarget(page,pattern);
-            if(!target||!(await target.loc.isEnabled().catch(()=>false))){const r={clicked:false};actions.push({kind,source,...r});return r;}
-            const text=String(await target.loc.textContent().catch(()=>'' )||await target.loc.getAttribute('aria-label').catch(()=>'' )||'').trim().slice(0,300);
-            await target.loc.focus();await target.loc.press('Enter');await page.waitForTimeout(1600);
-            const r={clicked:true,text,role:target.role};actions.push({kind,source,...r});return r;
-          }
-          async function fillName(page){
-            let loc=page.getByRole('textbox',{name:/project|starter|name|folder/i}).first();if(!(await loc.count()))loc=page.locator('input,textarea').first();
-            if(!(await loc.count()))return{filled:false};await loc.fill(projectName);return{filled:true,label:String(await loc.getAttribute('aria-label')||await loc.getAttribute('placeholder')||'textbox')};
-          }
+          const state=process.env.SEC06_STATE,profile=process.env.PROFILE_DIR,requests=[],responses=[],actions=[];
+          const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+          const now=()=>new Date().toISOString();
+          const trace=(s)=>console.error(now(),s);
+          const watchdog=setTimeout(()=>{trace('driver-watchdog-timeout');process.exit(124);},180000);
+          function readEnv(file){const out={};for(const line of fs.readFileSync(file,'utf8').split(/\r?\n/)){const i=line.indexOf('=');if(i>0)out[line.slice(0,i)]=line.slice(i+1);}return out;}
+          async function waitFile(file,ms=90000){const end=Date.now()+ms;while(Date.now()<end){if(fs.existsSync(file))return readEnv(file);await wait(150);}throw new Error('timed out waiting for '+file);}
+          function proc(pid){try{const s=execFileSync('/bin/ps',['-o','stat=','-o','ppid=','-o','pgid=','-o','sess=','-o','command=','-p',String(pid)],{encoding:'utf8'}).trim();if(!s)return{pid:Number(pid),exists:false,active:false};const m=s.match(/^(\S+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/s);return{pid:Number(pid),exists:true,active:!String(m?.[1]||'').startsWith('Z'),stat:m?.[1]||'',ppid:Number(m?.[2]||0),pgid:Number(m?.[3]||0),sid:Number(m?.[4]||0),command:String(m?.[5]||'').slice(0,500)};}catch{return{pid:Number(pid),exists:false,active:false};}}
+          function portClosed(port){return new Promise((resolve)=>{const s=net.createConnection({host:'127.0.0.1',port});s.setTimeout(600);s.once('connect',()=>{s.destroy();resolve(false);});s.once('error',()=>resolve(true));s.once('timeout',()=>{s.destroy();resolve(true);});});}
+          async function waitPortsClosed(ms=25000){const end=Date.now()+ms;while(Date.now()<end){if(await portClosed(5173)&&await portClosed(8788))return true;await wait(250);}return false;}
+          async function press(page,name,kind){const loc=page.getByRole(/path/i.test(kind)?'button':'button',{name}).first();if(!(await loc.count())){actions.push({kind,pressed:false});return false;}await loc.focus();await loc.press('Enter');actions.push({kind,pressed:true,label:String(await loc.textContent()||'').trim().slice(0,300)});return true;}
+          async function pressAny(page,name,kind){for(const role of ['button','link']){const loc=page.getByRole(role,{name}).first();if(await loc.count()){await loc.focus();await loc.press('Enter');actions.push({kind,pressed:true,role,label:String(await loc.textContent()||'').trim().slice(0,300)});return true;}}actions.push({kind,pressed:false});return false;}
+          async function body(page){return String(await page.locator('body').textContent({timeout:10000})||'');}
+          async function health(page){return page.evaluate(async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{credentials:'include'});return{status:r.status,text:(await r.text()).slice(0,2000)};}catch(e){return{status:0,error:String(e)};}});}
+          async function waitTimeoutUI(page,ms=110000){const end=Date.now()+ms;while(Date.now()<end){const text=await body(page);const compact=text.replace(/\s+/g,' ');const i=compact.lastIndexOf('wasm-tools');const snippet=i>=0?compact.slice(i,i+900):'';if(/wasm-tools.*?Cause:\s*timeout/i.test(snippet)&&/Retry/i.test(compact))return{text,compact,snippet};await wait(300);}throw new Error('wasm-tools timeout result did not appear');}
+          async function clearStorage(page,context){const before=await page.evaluate(async()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage),indexed:indexedDB.databases?(await indexedDB.databases()).map(x=>x.name):[],caches:globalThis.caches?await caches.keys():[]}));const after=await page.evaluate(async()=>{localStorage.clear();sessionStorage.clear();if(globalThis.caches)for(const k of await caches.keys())await caches.delete(k);if(indexedDB.databases)for(const x of await indexedDB.databases())if(x.name)indexedDB.deleteDatabase(x.name);return{local:Object.keys(localStorage),session:Object.keys(sessionStorage)};});await context.clearCookies();return{before,after};}
+          let context;
           try{
-            trace('launch');
             context=await chromium.launchPersistentContext(profile,{executablePath:process.env.CHROME_PATH,headless:true,viewport:{width:1440,height:1000},args:['--no-first-run','--no-default-browser-check']});
-            context.setDefaultTimeout(10000);context.on('request',(r)=>requests.push({method:r.method(),url:r.url()}));
-            const page=context.pages()[0]||await context.newPage();await page.goto('http://127.0.0.1:5173/#companion',{waitUntil:'domcontentloaded',timeout:25000});await page.waitForTimeout(4000);
-            health=await page.evaluate(async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{credentials:'include'});return{status:r.status,text:await r.text()};}catch(e){return{status:0,error:String(e)};}});
-            const actions=[],first=await snapshot(page);
-            let safeDenied=null,projectInput=null;
-            if(mode==='safe'){
-              trace('safe-action-denial');const actionRe=/Run setup|Check prerequisites|Run preflight|Create.*starter|Generate.*starter|Run build|Build project/i;
-              const before=await snapshot(page),candidate=await roleTarget(page,actionRe),disabled=Boolean(candidate)&&!(await candidate.loc.isEnabled().catch(()=>false));
-              const attempt=await press(page,actionRe,'safe-machine-action-attempt',actions),after=await snapshot(page);
-              safeDenied=(!attempt.clicked&&disabled)||/machine actions disabled|restart.*local actions|safe mode[^]*disabled|actions mode required/i.test(after.text);
-            }else{
-              trace('local-actions-interactions');
-              await press(page,/Choose or resume a path|^Paths$/i,'paths-navigation',actions);
-              await press(page,/DuskDS|Native Dusk path/i,'select-duskds',actions);
-              await press(page,/^Setup$|Setup.*DuskDS|Check prerequisites|Preflight|Tool checks/i,'setup-navigation',actions);
-              await press(page,/Run setup|Check prerequisites|Run preflight|Check tools/i,'setup-preflight',actions);
-              await press(page,/3\s*Build|Build contract and data-driver WASM|Compile|VM test/i,'build-navigation',actions);
-              await press(page,/Create.*starter|Generate.*starter|New starter/i,'starter-open',actions);
-              projectInput=await fillName(page);await press(page,/Create.*starter|Generate.*starter|Confirm create|Create project/i,'starter-create',actions);await page.waitForTimeout(3500);
-              await press(page,/Run build|Build project|Check build|Build starter/i,'build-exercise',actions);await page.waitForTimeout(3500);
-            }
-            const final=await snapshot(page);
-            const storageBefore=await page.evaluate(async()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage),indexed:indexedDB.databases?(await indexedDB.databases()).map((x)=>x.name):[],caches:globalThis.caches?await caches.keys():[]}));
-            const storageAfter=await page.evaluate(async()=>{localStorage.clear();sessionStorage.clear();if(globalThis.caches)for(const k of await caches.keys())await caches.delete(k);if(indexedDB.databases)for(const x of await indexedDB.databases())if(x.name)indexedDB.deleteDatabase(x.name);return{local:Object.keys(localStorage),session:Object.keys(sessionStorage)};});
-            await context.clearCookies();
-            const externalMutations=requests.filter((r)=>!/^(GET|HEAD|OPTIONS)$/i.test(r.method)&&!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(r.url));
-            process.stdout.write(JSON.stringify({mode,first,health,actions,safeDenied,projectInput,final,storageBefore,storageAfter,requests,externalMutations,walletOrDeployClicks:actions.filter((x)=>/wallet|deploy|fund|sign|transaction/i.test(x.text||'')).length},null,2));
-            trace('complete');
-          }finally{
-            if(context)await context.close().catch(()=>{});clearTimeout(watchdog);
-          }
+            context.setDefaultTimeout(12000);
+            context.on('request',r=>requests.push({method:r.method(),url:r.url()}));
+            context.on('response',async r=>{if(r.url().includes('/preflight')){try{const text=await r.text();responses.push({url:r.url(),status:r.status(),bytes:Buffer.byteLength(text),text:text.slice(0,65536)});}catch(e){responses.push({url:r.url(),status:r.status(),error:String(e)});}}});
+            const page=context.pages()[0]||await context.newPage();
+            await page.goto('http://127.0.0.1:5173/#companion',{waitUntil:'domcontentloaded',timeout:25000});await page.waitForTimeout(3000);
+            const healthBefore=await health(page);
+            await pressAny(page,/^Paths$|Choose or resume a path/i,'paths');await page.waitForTimeout(500);
+            await pressAny(page,/DuskDS|Native Dusk path/i,'duskds');await page.waitForTimeout(500);
+            await pressAny(page,/Run automatic preflight/i,'preflight');
+            const tSelf=await waitFile(path.join(state,'timeout','self.env'));
+            const tNormal=await waitFile(path.join(state,'timeout','normal.env'));
+            const tDetached=await waitFile(path.join(state,'timeout','detached.env'));
+            const timeoutUI=await waitTimeoutUI(page);
+            await page.screenshot({path:path.join(process.env.LOGS,'timeout-result.png'),fullPage:true});
+            await wait(500);
+            const timeoutEnded=Date.now(),healthAfterTimeout=await health(page);
+            const privateTimeout=fs.readFileSync(path.join(state,'timeout','private.txt'),'utf8').trim();
+            const timeoutResponse=responses[0]||{};
+            const timeoutProcs={parent:proc(tSelf.pid),normal:proc(tNormal.pid),detached:proc(tDetached.pid)};
+            const timeoutResult={
+              elapsedMs:timeoutEnded-Number(tSelf.started_epoch_ms),
+              uiCauseTimeout:/wasm-tools.*?Cause:\s*timeout/i.test(timeoutUI.snippet),
+              uiBlocked:/At least one required tool.*fix before Build|EvidenceBlocked|Current blocker/i.test(timeoutUI.compact),
+              fixtureOutputVisible:/CV-SEC-06-FIXTURE|bounded-output: fixture tool intentionally hangs/i.test(timeoutUI.snippet)||/CV-SEC-06-FIXTURE|bounded-output: fixture tool intentionally hangs/i.test(timeoutResponse.text||''),
+              privateLeak:timeoutUI.text.includes(privateTimeout)||String(timeoutResponse.text||'').includes(privateTimeout),
+              uiChars:timeoutUI.text.length,
+              fixtureSnippet:timeoutUI.snippet.slice(0,900),
+              responseStatus:timeoutResponse.status||0,
+              responseBytes:timeoutResponse.bytes||0,
+              healthAfter:healthAfterTimeout,
+              procs:timeoutProcs,
+              metadata:{parent:tSelf,normal:tNormal,detached:tDetached},
+            };
+            fs.writeFileSync(path.join(state,'current-phase'),'shutdown\n');
+            await pressAny(page,/^Retry$/i,'retry');
+            const sSelf=await waitFile(path.join(state,'shutdown','self.env'));
+            const sNormal=await waitFile(path.join(state,'shutdown','normal.env'));
+            const sDetached=await waitFile(path.join(state,'shutdown','detached.env'));
+            const shutdownActive={parent:proc(sSelf.pid),normal:proc(sNormal.pid),detached:proc(sDetached.pid)};
+            await page.screenshot({path:path.join(process.env.LOGS,'shutdown-active.png'),fullPage:true});
+            const storage=await clearStorage(page,context);
+            const studioPids=process.env.STUDIO_PIDS.split(',').filter(Boolean).map(Number);
+            for(const pid of studioPids){try{process.kill(pid,'SIGINT');}catch{}}
+            const portsClosedAfterSigint=await waitPortsClosed();
+            await wait(5000);
+            const shutdownAfter={parent:proc(sSelf.pid),normal:proc(sNormal.pid),detached:proc(sDetached.pid)};
+            const privateShutdown=fs.readFileSync(path.join(state,'shutdown','private.txt'),'utf8').trim();
+            const allResponseText=responses.map(x=>x.text||'').join('\n');
+            const externalMutations=requests.filter(r=>!/^(GET|HEAD|OPTIONS)$/i.test(r.method)&&!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(r.url));
+            const duplicates={timeout:fs.readdirSync(path.join(state,'timeout')).filter(x=>x.startsWith('duplicate-')),shutdown:fs.readdirSync(path.join(state,'shutdown')).filter(x=>x.startsWith('duplicate-'))};
+            const result={healthBefore,actions,timeout:timeoutResult,shutdown:{active:shutdownActive,after:shutdownAfter,metadata:{parent:sSelf,normal:sNormal,detached:sDetached},portsClosedAfterSigint},storage,requests,responses:responses.map(x=>({...x,text:String(x.text||'').slice(0,4000)})),externalMutations,walletOrDeployClicks:actions.filter(x=>/wallet|deploy|fund|sign|transaction/i.test(x.label||'')).length,privateLeakAny:timeoutUI.text.includes(privateShutdown)||allResponseText.includes(privateTimeout)||allResponseText.includes(privateShutdown),duplicates};
+            process.stdout.write(JSON.stringify(result,null,2));
+          }finally{if(context)await context.close().catch(()=>{});clearTimeout(watchdog);}
           JS
 
-          run_browser() {
-            local mode="$1" profile="$2" debug_port="$3" output="$4" chrome_log="$5" project="$6"
-            printf 'playwright-core=%s chrome=%s\n' "$PLAYWRIGHT_VERSION" "$CHROME" > "$chrome_log"
-            PW_MODULE="$ROOT/harness/node_modules/playwright-core" CHROME_PATH="$CHROME" PROFILE_DIR="$profile" \
-              PILOT_MODE="$mode" PROJECT_NAME="$project" node "$ROOT/ui-driver.mjs" > "$output" 2> "$output.stderr"
-            return $?
-          }
-
-          cd "$ROOT/work/safe"
-          npx --yes "$PACKAGE_SPEC" --no-open > "$LOGS/safe-stdout.log" 2> "$LOGS/safe-stderr.log" &
-          SAFE_WRAPPER=$!
-          if ! wait_ports; then record safe_status fail; evidence E5 "Safe launch failed"; exit 6; fi
-          SAFE_LISTENER="$(listener_pids)"
-          ports_open > "$LOGS/safe-ports.log" || true
-          if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/safe-stdout.log" ||
-             ! grep -q 'Mode: safe mode; machine actions disabled' "$LOGS/safe-stdout.log"; then record safe_status fail; exit 7; fi
-          if run_browser safe "$ROOT/browser-safe" 9222 "$LOGS/safe-ui.json" "$LOGS/safe-chrome.log" ""; then record safe_driver_status pass; else record safe_driver_status fail; OVERALL=1; fi
-          SAFE_CHROME="$(cat "$ROOT/chrome-safe.pid" 2>/dev/null)"
-          SAFE_UI_OK=false
-          if node - "$LOGS/safe-ui.json" <<'NODE'
-          const fs=require('node:fs'),r=JSON.parse(fs.readFileSync(process.argv[2]));
-          process.exit(r.health.status===200&&r.safeDenied===true&&r.externalMutations.length===0&&r.walletOrDeployClicks===0&&r.storageAfter.local.length===0&&r.storageAfter.session.length===0?0:1);
-          NODE
-          then SAFE_UI_OK=true; fi
-          if [ "$(find "$ROOT/work/safe" -mindepth 1 -print | wc -l | tr -d ' ')" != 0 ]; then SAFE_UI_OK=false; fi
-          if [ "$SAFE_UI_OK" = true ]; then record safe_status pass; evidence E5 "Safe paired; action denied; no work/network mutation"; else record safe_status fail; OVERALL=1; fi
-          signal_listeners INT $SAFE_LISTENER
-          if wait_ports_closed; then record safe_shutdown sigint_pass; else record safe_shutdown recovery_term; signal_listeners TERM $SAFE_LISTENER; kill -TERM "$SAFE_WRAPPER" 2>/dev/null||true; sleep 2; fi
-          kill -TERM "$SAFE_CHROME" 2>/dev/null||true; kill -TERM "$SAFE_WRAPPER" 2>/dev/null||true; wait_bounded "$SAFE_WRAPPER" 10 || true; rm -rf "$ROOT/browser-safe"
-          if ports_open > "$LOGS/safe-ports-after.log"; then record safe_cleanup fail; OVERALL=1; else record safe_cleanup pass; fi
-          if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
-          evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
-
-          PROJECT_NAME=cv-core07-starter-n0u6
           cd "$ROOT/work/actions"
-          npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
-          ACTION_WRAPPER=$!
-          if ! wait_ports; then record local_actions_status fail; exit 8; fi
-          ACTION_LISTENER="$(listener_pids)"
-          ports_open > "$LOGS/actions-ports.log" || true
-          if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/actions-stdout.log" ||
-             ! grep -q 'Mode: local tool checks and starter creation enabled' "$LOGS/actions-stdout.log"; then record local_actions_status fail; exit 9; fi
-          if run_browser actions "$ROOT/browser-actions" 9223 "$LOGS/actions-ui.json" "$LOGS/actions-chrome.log" "$PROJECT_NAME"; then record actions_driver_status pass; else record actions_driver_status fail; OVERALL=1; fi
-          ACTION_CHROME="$(cat "$ROOT/chrome-actions.pid" 2>/dev/null)"
-          ACTION_UI_HEALTH="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.health.status))" "$LOGS/actions-ui.json")"
-          ACTION_FLAGS="$(node -e "const r=require(process.argv[1]);for(const a of r.actions)if(a.clicked)process.stdout.write(a.kind+' ')" "$LOGS/actions-ui.json")"
-          FINAL_TEXT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.final.text||'')" "$LOGS/actions-ui.json")"
-          SETUP_VISIBLE="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.actions.some(a=>a.clicked&&a.kind.startsWith('setup-'))))" "$LOGS/actions-ui.json")"
-          BUILD_EXERCISED="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.actions.some(a=>a.clicked&&a.kind.startsWith('build-'))))" "$LOGS/actions-ui.json")"
-          CREATE_CLICKED=false
-          case "$ACTION_FLAGS" in *starter-create*) CREATE_CLICKED=true;; esac
-          record local_actions_health "$ACTION_UI_HEALTH"; record setup_ui_exercised "$SETUP_VISIBLE"
-          record build_ui_exercised "$BUILD_EXERCISED"; record starter_ui_create_clicked "$CREATE_CLICKED"
-          UI_SAFETY_OK=true
-          node - "$LOGS/actions-ui.json" <<'NODE' || UI_SAFETY_OK=false
-          const fs=require('node:fs'),r=JSON.parse(fs.readFileSync(process.argv[2]));
-          process.exit(r.health.status===200&&r.externalMutations.length===0&&r.walletOrDeployClicks===0&&r.storageAfter.local.length===0&&r.storageAfter.session.length===0?0:1);
-          NODE
-
-          PROJECT_DIR="$(find "$ROOT" -type d -name "$PROJECT_NAME" -not -path "$ROOT/npm-cache/*" -not -path "$ROOT/package/*" -print -quit)"
-          STARTER_RECOVERY=none
-          if [ -z "$PROJECT_DIR" ]; then
-            mkdir -p "$ROOT/work/starter-cli"; cd "$ROOT/work/starter-cli"
-            npx --yes "$PACKAGE_SPEC" create-duskds "$PROJECT_NAME" > "$LOGS/starter-cli.log" 2> "$LOGS/starter-cli.stderr" &
-            STARTER_PID=$!
-            if wait_bounded "$STARTER_PID" 90; then PROJECT_DIR="$ROOT/work/starter-cli/$PROJECT_NAME"; STARTER_RECOVERY=documented_cli; else STARTER_RECOVERY=failed_or_timeout; fi
+          PATH="$ROOT/fixture-bin:$PATH" SEC06_STATE="$STATE" SEC06_EXEC_ID="$EXEC_ID" \
+            npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/product-stdout.log" 2> "$LOGS/product-stderr.log" &
+          PRODUCT_WRAPPER=$!
+          if ! wait_ports; then record launch_status fail; exit 6; fi
+          PRODUCT_LISTENERS="$(listener_pids)"
+          printf '%s\n' "$PRODUCT_LISTENERS" > "$LOGS/product-listener-pids.txt"
+          ports_open > "$LOGS/ports-active.log" || true
+          if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/product-stdout.log" ||
+             ! grep -q 'Mode: local tool checks and starter creation enabled' "$LOGS/product-stdout.log"; then
+            record launch_status fail; exit 7
           fi
-          record starter_recovery "$STARTER_RECOVERY"; record project_dir "$PROJECT_DIR"
-          if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
-            record starter_status pass
-            (cd "$PROJECT_DIR"; find . -type f -not -path './target/*' -print0 | sort -z | xargs -0 shasum -a 256) > "$LOGS/starter-manifest.log"
-          else record starter_status fail; OVERALL=1; fi
+          record launch_status pass; record product_listener_pids "$(printf '%s' "$PRODUCT_LISTENERS" | tr '\n' ',')"
+          evidence S5 "Local Actions launched from exact package with disposable fixture PATH; both loopback listeners paired"
 
-          node -e "const r=require(process.argv[1]);process.stdout.write(r.readme||'')" "$ROOT/package/registry.json" > "$LOGS/public-readme.log"
-          LIMITATION_TRUTHFUL=false; GUIDANCE_ACTIONABLE=false
-          grep -Eiq 'does not record a native macOS DuskDS VM-test pass|validated natively on Linux.*WSL' "$LOGS/public-readme.log" && LIMITATION_TRUTHFUL=true
-          grep -Eiq 'Dusk Forge|prerequisite|install|missing|required|macOS|Linux|WSL|VM' "$LOGS/actions-ui.json" "$LOGS/public-readme.log" && GUIDANCE_ACTIONABLE=true
-          record vm_limitation_truthful "$LIMITATION_TRUTHFUL"; record build_guidance_actionable "$GUIDANCE_ACTIONABLE"
-          if [ "$ACTION_UI_HEALTH" = 200 ] && [ "$SETUP_VISIBLE" = true ] && [ "$BUILD_EXERCISED" = true ] &&
-             [ "$LIMITATION_TRUTHFUL" = true ] && [ "$GUIDANCE_ACTIONABLE" = true ] && [ "$UI_SAFETY_OK" = true ]; then
-            record local_actions_status pass; record setup_build_status pass
-          else record local_actions_status fail; record setup_build_status fail; OVERALL=1; fi
-          evidence E7 "Local Actions paired; Setup/preflight and Build exercised"
-          evidence E8 "fresh starter under redirected root; documented CLI recovery recorded if needed"
-          evidence E9 "macOS VM-test boundary and prerequisite guidance checked"
+          STUDIO_PIDS="$(printf '%s' "$PRODUCT_LISTENERS" | paste -sd, -)"
+          PW_MODULE="$ROOT/harness/node_modules/playwright-core" CHROME_PATH="$CHROME" \
+            PROFILE_DIR="$ROOT/browser-profile" SEC06_STATE="$STATE" LOGS="$LOGS" STUDIO_PIDS="$STUDIO_PIDS" \
+            node "$ROOT/ui-driver.mjs" > "$LOGS/sec-ui.json" 2> "$LOGS/sec-ui.stderr"
+          DRIVER_STATUS=$?
+          record ui_driver_exit "$DRIVER_STATUS"
+          if [ "$DRIVER_STATUS" -ne 0 ] || [ ! -s "$LOGS/sec-ui.json" ]; then record ui_driver_status fail; exit 8; fi
+          record ui_driver_status pass
 
-          if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_actions pass; else record sentinel_after_actions fail; OVERALL=1; fi
-          case "$PROJECT_DIR" in "$ROOT"/*) record managed_root_containment pass;; *) record managed_root_containment fail; OVERALL=1;; esac
-          EXTERNAL_MUTATIONS="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.externalMutations.length))" "$LOGS/actions-ui.json")"
-          WALLET_DEPLOY_CLICKS="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.walletOrDeployClicks))" "$LOGS/actions-ui.json")"
-          record external_mutating_browser_requests "$EXTERNAL_MUTATIONS"; record wallet_deploy_action_clicks "$WALLET_DEPLOY_CLICKS"
-          if [ "$EXTERNAL_MUTATIONS" != 0 ] || [ "$WALLET_DEPLOY_CLICKS" != 0 ]; then OVERALL=1; fi
-          evidence E10 "no wallet/deploy clicks or external mutating browser requests; sentinel and containment checked"
+          node - "$LOGS/sec-ui.json" "$RECEIPT" <<'NODE'
+          const fs=require('node:fs'),r=JSON.parse(fs.readFileSync(process.argv[2],'utf8')),out=[];
+          const rec=(k,v)=>out.push(`${k}=${String(v).replace(/[\r\n]/g,' ')}`);
+          rec('health_before',r.healthBefore.status);rec('timeout_elapsed_ms',r.timeout.elapsedMs);
+          rec('timeout_ui_cause_timeout',r.timeout.uiCauseTimeout);rec('timeout_ui_blocked',r.timeout.uiBlocked);
+          rec('timeout_fixture_output_visible',r.timeout.fixtureOutputVisible);rec('timeout_private_leak',r.timeout.privateLeak);
+          rec('timeout_ui_chars',r.timeout.uiChars);rec('timeout_response_status',r.timeout.responseStatus);
+          rec('timeout_response_bytes',r.timeout.responseBytes);rec('health_after_timeout',r.timeout.healthAfter.status);
+          for(const role of ['parent','normal','detached']){const p=r.timeout.procs[role];rec(`timeout_${role}_pid`,p.pid);rec(`timeout_${role}_active`,p.active);rec(`timeout_${role}_pgid`,r.timeout.metadata[role].pgid);rec(`timeout_${role}_sid`,r.timeout.metadata[role].sid);}
+          for(const role of ['parent','normal','detached']){const p=r.shutdown.active[role];rec(`shutdown_active_${role}_pid`,p.pid);rec(`shutdown_active_${role}`,p.active);rec(`shutdown_${role}_pgid`,r.shutdown.metadata[role].pgid);rec(`shutdown_${role}_sid`,r.shutdown.metadata[role].sid);}
+          for(const role of ['parent','normal','detached'])rec(`shutdown_after_${role}_active`,r.shutdown.after[role].active);
+          rec('shutdown_ports_closed_after_sigint',r.shutdown.portsClosedAfterSigint);
+          rec('storage_local_after',r.storage.after.local.length);rec('storage_session_after',r.storage.after.session.length);
+          rec('external_mutating_browser_requests',r.externalMutations.length);rec('wallet_deploy_action_clicks',r.walletOrDeployClicks);
+          rec('private_leak_any',r.privateLeakAny);rec('timeout_duplicate_invocations',r.duplicates.timeout.length);rec('shutdown_duplicate_invocations',r.duplicates.shutdown.length);
+          fs.appendFileSync(process.argv[3],out.join('\n')+'\n');
+          NODE
+          evidence S6 "automatic preflight returned bounded wasm-tools timeout diagnostics; UI and API redaction, health and false-success state captured"
 
-          signal_listeners INT $ACTION_LISTENER
-          if wait_ports_closed; then record actions_shutdown sigint_pass; else record actions_shutdown recovery_term; signal_listeners TERM $ACTION_LISTENER; kill -TERM "$ACTION_WRAPPER" 2>/dev/null||true; sleep 2; fi
-          kill -TERM "$ACTION_CHROME" 2>/dev/null||true; kill -TERM "$ACTION_WRAPPER" 2>/dev/null||true; wait_bounded "$ACTION_WRAPPER" 10 || true; rm -rf "$ROOT/browser-actions"
-          if ports_open > "$LOGS/actions-ports-after.log" || pgrep -af dusk-developer-studio > "$LOGS/candidate-processes-after.log"; then record cleanup_surface_status fail; OVERALL=1; else record cleanup_surface_status pass; fi
-          record browser_profiles_removed "$([ ! -e "$ROOT/browser-safe" ]&&[ ! -e "$ROOT/browser-actions" ]&&echo true||echo false)"
+          # Independently re-read every fixture marker and PID outside the browser driver.
+          : > "$LOGS/fixture-lifecycle.log"
+          for phase in timeout shutdown; do
+            for role in self normal detached; do
+              file="$STATE/$phase/$role.env"
+              pid="$(get_meta "$file" pid)"; ppid="$(get_meta "$file" ppid)"; pgid="$(get_meta "$file" pgid)"; sid="$(get_meta "$file" sid)"
+              if pid_active "$pid"; then active=true; else active=false; fi
+              printf 'phase=%s role=%s pid=%s ppid=%s pgid=%s sid=%s shell_active_before_cleanup=%s\n' "$phase" "$role" "$pid" "$ppid" "$pgid" "$sid" "$active" >> "$LOGS/fixture-lifecycle.log"
+              record "${phase}_${role}_marker_present" "$([ -s "$file" ] && echo true || echo false)"
+            done
+            record "${phase}_private_marker_present" "$([ -s "$STATE/$phase/private.txt" ] && echo true || echo false)"
+            record "${phase}_private_marker_sha256" "$(shasum -a 256 "$STATE/$phase/private.txt" | awk '{print $1}')"
+            record "${phase}_emitted_marker_present" "$([ -s "$STATE/$phase/emitted.txt" ] && echo true || echo false)"
+            record "${phase}_emitted_bytes" "$(wc -c < "$STATE/$phase/emitted.txt" | tr -d ' ')"
+            record "${phase}_parent_exit_marker" "$([ -s "$STATE/$phase/parent.exit.env" ] && echo true || echo false)"
+          done
+          cp "$ROOT/known-fixture-pids.txt" "$LOGS/known-fixture-pids.txt" 2>/dev/null || fixture_pids > "$LOGS/known-fixture-pids.txt"
+
+          TIMEOUT_PARENT_ACTIVE="$(get_meta "$RECEIPT" timeout_parent_active)"
+          TIMEOUT_NORMAL_ACTIVE="$(get_meta "$RECEIPT" timeout_normal_active)"
+          TIMEOUT_DETACHED_ACTIVE="$(get_meta "$RECEIPT" timeout_detached_active)"
+          SHUTDOWN_PARENT_ACTIVE="$(get_meta "$RECEIPT" shutdown_after_parent_active)"
+          SHUTDOWN_NORMAL_ACTIVE="$(get_meta "$RECEIPT" shutdown_after_normal_active)"
+          SHUTDOWN_DETACHED_ACTIVE="$(get_meta "$RECEIPT" shutdown_after_detached_active)"
+          SIGINT_PORTS_CLOSED="$(get_meta "$RECEIPT" shutdown_ports_closed_after_sigint)"
+          DETACHED_SESSION_OK=true
+          for phase in timeout shutdown; do
+            dp="$(get_meta "$STATE/$phase/detached.env" pid)"; dg="$(get_meta "$STATE/$phase/detached.env" pgid)"; ds="$(get_meta "$STATE/$phase/detached.env" sid)"
+            [ "$dp" = "$dg" ] && [ "$dp" = "$ds" ] || DETACHED_SESSION_OK=false
+          done
+          record detached_setsid_proved "$DETACHED_SESSION_OK"
+          if [ "$TIMEOUT_DETACHED_ACTIVE" = true ] || [ "$SHUTDOWN_DETACHED_ACTIVE" = true ]; then
+            record containment_boundary "same_user_detached_session_requires_harness_cleanup"
+          else
+            record containment_boundary "product_terminated_detached_descendants"
+          fi
+          if [ "$TIMEOUT_NORMAL_ACTIVE" = true ] || [ "$SHUTDOWN_PARENT_ACTIVE" = true ] || [ "$SHUTDOWN_NORMAL_ACTIVE" = true ]; then
+            PRODUCT_DEFECT=1
+            record product_defect "owned_non_detached_process_survived_timeout_or_shutdown"
+          else
+            record product_defect none
+          fi
+          if [ "$SIGINT_PORTS_CLOSED" = true ]; then
+            record shutdown_sigint_status pass
+          else
+            PRODUCT_DEFECT=1
+            record shutdown_sigint_status failed_required_recovery
+          fi
+          if [ "$TIMEOUT_PARENT_ACTIVE" = true ]; then PRODUCT_DEFECT=1; record timeout_parent_termination fail; else record timeout_parent_termination pass; fi
+          evidence S7 "every timeout PID/marker independently checked; detached session boundary classified"
+          evidence S8 "second fresh invocation observed active, then Studio SIGINT and descendant state recorded"
+
+          if wait_ports_closed; then
+            record shutdown_recovery none
+          else
+            record shutdown_recovery term_kill
+            for pid in $PRODUCT_LISTENERS; do kill -TERM "$pid" 2>/dev/null || true; done
+            kill -TERM "$PRODUCT_WRAPPER" 2>/dev/null || true; sleep 2
+            for pid in $PRODUCT_LISTENERS; do kill -KILL "$pid" 2>/dev/null || true; done
+            kill -KILL "$PRODUCT_WRAPPER" 2>/dev/null || true; sleep 1
+          fi
+          if ports_open > "$LOGS/ports-after-shutdown.log"; then record orphan_listener_status fail; TECHNICAL_FAILURE=1; else record orphan_listener_status pass; fi
+          stop_known_fixtures
+          fixture_pids > "$LOGS/known-fixture-pids.txt"
+          FIXTURE_SURVIVORS=0
+          while IFS= read -r pid; do if pid_active "$pid"; then FIXTURE_SURVIVORS=$((FIXTURE_SURVIVORS + 1)); fi; done < "$LOGS/known-fixture-pids.txt"
+          record fixture_survivors_after_cleanup "$FIXTURE_SURVIVORS"
+          [ "$FIXTURE_SURVIVORS" -eq 0 ] || TECHNICAL_FAILURE=1
+          rm -rf "$ROOT/browser-profile"
+          record browser_profile_removed "$([ ! -e "$ROOT/browser-profile" ] && echo true || echo false)"
+          record work_root_entries "$(find "$ROOT/work/actions" -mindepth 1 -print | wc -l | tr -d ' ')"
+          if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_unchanged true; else record sentinel_unchanged false; TECHNICAL_FAILURE=1; fi
           record ended_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          record safe_surface "$([ "$(grep '^safe_status=' "$RECEIPT"|tail -1|cut -d= -f2)" = pass ]&&echo pass||echo fail)"
-          record local_actions_surface "$([ "$ACTION_UI_HEALTH" = 200 ]&&echo pass||echo fail)"
-          record setup_surface "$([ "$SETUP_VISIBLE" = true ]&&echo pass||echo fail)"
-          record build_surface "$([ "$BUILD_EXERCISED" = true ]&&[ "$GUIDANCE_ACTIONABLE" = true ]&&echo pass||echo fail)"
-          record cleanup_surface "$([ "$OVERALL" -eq 0 ]&&echo pass||echo fail)"
-          record overall_status "$([ "$OVERALL" -eq 0 ]&&echo pass||echo fail)"
-          evidence E11 "final SIGINT, storage/profile cleanup, process/port closure complete"
+          evidence S9 "fixture cleanup, listener closure, cleared browser profile/storage, empty work root and unchanged sentinel verified"
+
           RECEIPT_COMPLETE=true
           for required in \
-            environment_status=pass package_identity_status=pass browser_harness=playwright-core safe_driver_status=pass safe_status=pass \
-            safe_cleanup=pass sentinel_after_safe=pass actions_driver_status=pass local_actions_health=200 \
-            local_actions_status=pass setup_build_status=pass starter_status=pass vm_limitation_truthful=true \
-            build_guidance_actionable=true sentinel_after_actions=pass managed_root_containment=pass \
-            external_mutating_browser_requests=0 wallet_deploy_action_clicks=0 cleanup_surface_status=pass \
-            browser_profiles_removed=true safe_surface=pass local_actions_surface=pass setup_surface=pass \
-            build_surface=pass cleanup_surface=pass overall_status=pass; do
+            environment_status=pass ports_baseline=clean candidate_processes_baseline=0 package_identity_status=pass \
+            browser_harness=playwright-core launch_status=pass ui_driver_status=pass health_before=200 \
+            timeout_ui_cause_timeout=true timeout_ui_blocked=true \
+            timeout_private_leak=false health_after_timeout=200 timeout_parent_termination=pass \
+            detached_setsid_proved=true shutdown_active_parent=true shutdown_active_normal=true shutdown_active_detached=true \
+            storage_local_after=0 storage_session_after=0 \
+            external_mutating_browser_requests=0 wallet_deploy_action_clicks=0 private_leak_any=false \
+            timeout_duplicate_invocations=0 shutdown_duplicate_invocations=0 timeout_self_marker_present=true \
+            timeout_normal_marker_present=true timeout_detached_marker_present=true timeout_private_marker_present=true \
+            timeout_emitted_marker_present=true \
+            shutdown_self_marker_present=true shutdown_normal_marker_present=true shutdown_detached_marker_present=true \
+            shutdown_private_marker_present=true shutdown_emitted_marker_present=true orphan_listener_status=pass fixture_survivors_after_cleanup=0 \
+            browser_profile_removed=true work_root_entries=0 sentinel_unchanged=true; do
             grep -qx "$required" "$RECEIPT" || RECEIPT_COMPLETE=false
           done
+          ELAPSED="$(get_meta "$RECEIPT" timeout_elapsed_ms)"
+          RESPONSE_BYTES="$(get_meta "$RECEIPT" timeout_response_bytes)"
+          UI_CHARS="$(get_meta "$RECEIPT" timeout_ui_chars)"
+          case "$ELAPSED" in ''|*[!0-9]*) RECEIPT_COMPLETE=false;; *) [ "$ELAPSED" -ge 1000 ] && [ "$ELAPSED" -le 30000 ] || RECEIPT_COMPLETE=false;; esac
+          case "$RESPONSE_BYTES" in ''|*[!0-9]*) RECEIPT_COMPLETE=false;; *) [ "$RESPONSE_BYTES" -gt 0 ] && [ "$RESPONSE_BYTES" -le 65536 ] || RECEIPT_COMPLETE=false;; esac
+          case "$UI_CHARS" in ''|*[!0-9]*) RECEIPT_COMPLETE=false;; *) [ "$UI_CHARS" -le 65536 ] || RECEIPT_COMPLETE=false;; esac
+          for phase in timeout shutdown; do
+            EMITTED_BYTES="$(get_meta "$RECEIPT" "${phase}_emitted_bytes")"
+            case "$EMITTED_BYTES" in ''|*[!0-9]*) RECEIPT_COMPLETE=false;; *) [ "$EMITTED_BYTES" -gt 0 ] && [ "$EMITTED_BYTES" -le 256 ] || RECEIPT_COMPLETE=false;; esac
+          done
+          if [ "$TECHNICAL_FAILURE" -ne 0 ]; then RECEIPT_COMPLETE=false; fi
+          if [ "$PRODUCT_DEFECT" -eq 1 ]; then record overall_status fail_product_defect; else record overall_status pass; fi
           record receipt_complete "$RECEIPT_COMPLETE"
+          evidence S10 "receipt completeness and final public-contract/product-defect classification recorded"
           if [ "$RECEIPT_COMPLETE" != true ]; then exit 10; fi
+          if [ "$PRODUCT_DEFECT" -eq 1 ]; then exit 20; fi
 
       - name: Upload compact pilot evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-CORE07-MAC15-20260722T102359Z-N0U6
-          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T102359Z-N0U6-artifact
+          name: CV-X-SEC06-MAC15-20260722T103447Z-P1X7
+          path: ${{ runner.temp }}/CV-X-SEC06-MAC15-20260722T103447Z-P1X7-artifact
           if-no-files-found: error
           retention-days: 3
