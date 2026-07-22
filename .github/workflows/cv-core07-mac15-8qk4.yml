@@ -23,7 +23,7 @@ jobs:
       - name: Run counted source-blind pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-CORE07-MAC15-20260722T101618Z-L9S5
+          EXEC_ID: CV-X-CORE07-MAC15-20260722T102359Z-N0U6
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
@@ -353,7 +353,7 @@ jobs:
               await press(page,/DuskDS|Native Dusk path/i,'select-duskds',actions);
               await press(page,/^Setup$|Setup.*DuskDS|Check prerequisites|Preflight|Tool checks/i,'setup-navigation',actions);
               await press(page,/Run setup|Check prerequisites|Run preflight|Check tools/i,'setup-preflight',actions);
-              await press(page,/^Build(?! & browser data)|Compile|VM test/i,'build-navigation',actions);
+              await press(page,/3\s*Build|Build contract and data-driver WASM|Compile|VM test/i,'build-navigation',actions);
               await press(page,/Create.*starter|Generate.*starter|New starter/i,'starter-open',actions);
               projectInput=await fillName(page);await press(page,/Create.*starter|Generate.*starter|Confirm create|Create project/i,'starter-create',actions);await page.waitForTimeout(3500);
               await press(page,/Run build|Build project|Check build|Build starter/i,'build-exercise',actions);await page.waitForTimeout(3500);
@@ -403,7 +403,7 @@ jobs:
           if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
           evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
 
-          PROJECT_NAME=cv-core07-starter-l9s5
+          PROJECT_NAME=cv-core07-starter-n0u6
           cd "$ROOT/work/actions"
           npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
           ACTION_WRAPPER=$!
@@ -495,7 +495,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-CORE07-MAC15-20260722T101618Z-L9S5
-          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T101618Z-L9S5-artifact
+          name: CV-X-CORE07-MAC15-20260722T102359Z-N0U6
+          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T102359Z-N0U6-artifact
           if-no-files-found: error
           retention-days: 3
