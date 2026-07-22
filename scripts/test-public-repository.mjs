@@ -462,6 +462,8 @@ assert.match(npmAssuranceWorkflow, /package_file_count=\$\{inspected\.inventory_
 assert.match(npmAssuranceWorkflow, /record\.package_file_count[\s\S]*EXPECTED_PACKAGE_FILE_COUNT/);
 assert.match(npmAssuranceWorkflow, /Recheck source cleanliness after restore, build, tests, package, and browser smoke[\s\S]*git diff --exit-code[\s\S]*git diff --cached --exit-code[\s\S]*git status --short --untracked-files=all/);
 assert.match(npmAssuranceWorkflow, /New-LocalUser[\s\S]*Start-Process[\s\S]*-Credential \$credential[\s\S]*create-duskds', 'platform-direct-counter'[\s\S]*'--lifecycle-self-test', '--no-open'[\s\S]*'local-actions', '--lifecycle-self-test', '--no-open'/);
+assert.match(npmAssuranceWorkflow, /stagingEntries = entries\.filter[\s\S]*\.dusk-studio-staging[\s\S]*fs\.readdirSync\(staging\)\.length !== 0[\s\S]*one empty regular staging container/);
+assert.match(npmAssuranceWorkflow, /\$localStageContainers = @\([\s\S]*\.dusk-studio-staging[\s\S]*Get-ChildItem -LiteralPath \$localStageContainers\[0\]\.FullName -Force[\s\S]*one empty regular staging container/);
 assert.match(npmAssuranceWorkflow, /NPM_SAFE_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_PREFLIGHT_VERIFIED=passed[\s\S]*NPM_DIRECT_CLI_SCAFFOLD_SMOKE=passed[\s\S]*NPM_LOCAL_ACTIONS_SCAFFOLD_SMOKE=passed[\s\S]*NPM_SCAFFOLD_PRESERVATION_SMOKE=passed[\s\S]*NPM_SHUTDOWN_SMOKE=passed[\s\S]*NPM_ELEVATED_REFUSAL=passed[\s\S]*all exact-tarball lifecycle and scaffold smokes/);
 assert.match(npmAssuranceWorkflow, /NPM_INSTALL_SMOKE=passed[\s\S]*NPM_CLEANUP_SMOKE=passed/);
 assert.match(npmAssuranceWorkflow, /rm -rf "\$INSTALL_ROOT"[\s\S]*test ! -e "\$removed"/);
