@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { safeJsonExport } from "@dusk/core/safe-export";
 import { JOURNEY_PROGRESS_STORAGE_KEY, type BuilderPath } from "../journeyProgress";
-import { expiryDate, sourceDate, sourceFreshness, sourceIsStale } from "../studioConfig";
+import { expiryDate, sourceDate, sourceIsStale } from "../studioConfig";
 import { invalidatePriorBuilderPathHistory, useJourney, useStudioRuntime } from "../studioState";
+import { createSafeDiagnostics } from "../safeDiagnostics";
 import { AsyncNotice, CommandPair, CopyButton, ExternalLink, PageIntro, StatusPill } from "../StudioUi";
 import type { CompanionStatus } from "../types";
 
@@ -169,19 +170,13 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
     }
   }, [confirmingReset]);
 
-  const diagnostics = {
-    mode: studioRuntime.mode,
+  const diagnostics = createSafeDiagnostics({
+    studioRuntime,
     release,
     builderPath,
-    sourceReceipt: {
-      status: sourceFreshness.status,
-      reviewedAt: sourceFreshness.reviewed_at,
-      expiresAt: sourceFreshness.expires_at,
-      recordCounts: sourceFreshness.provenance.record_counts
-    },
-    localAgentUrl: companionBaseUrl ?? "not-applicable-hosted",
+    companionBaseUrl,
     journey: journey.progress
-  };
+  });
 
   function exportDiagnostics() {
     const blob = new Blob([safeJsonExport(diagnostics)], { type: "application/json" });
