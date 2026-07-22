@@ -23,7 +23,7 @@ jobs:
       - name: Run counted source-blind pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-CORE07-MAC15-20260722T093830Z-V4K1
+          EXEC_ID: CV-X-CORE07-MAC15-20260722T094807Z-M5P8
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
@@ -64,7 +64,9 @@ jobs:
             for pid in "$@"; do [ -z "$pid" ] || kill "-$signal" "$pid" 2>/dev/null || true; done
           }
           wait_bounded() {
-            local pid="$1" limit="$2" deadline=$((SECONDS + limit)) status
+            local pid="$1"
+            local limit="$2"
+            local deadline=$((SECONDS + limit)) status
             while kill -0 "$pid" 2>/dev/null; do
               if [ "$SECONDS" -ge "$deadline" ]; then
                 kill -TERM "$pid" 2>/dev/null || true; sleep 2
@@ -125,12 +127,18 @@ jobs:
           json.dump(data, open(sys.argv[2], "w", encoding="utf-8"), indent=2, sort_keys=True)
           PY
             fi
+            if [ ! -f "$RECEIPT" ] || ! grep -qx 'receipt_complete=true' "$RECEIPT"; then code=98; fi
             rm -rf "$ROOT"
+            local root_absent ports_closed candidate_processes
+            root_absent="$([ ! -e "$ROOT" ] && echo true || echo false)"
+            ports_closed="$(! ports_open >/dev/null 2>&1 && echo true || echo false)"
+            candidate_processes="$(pgrep -af dusk-developer-studio 2>/dev/null | wc -l | tr -d ' ')"
+            if [ "$root_absent" != true ] || [ "$ports_closed" != true ] || [ "$candidate_processes" != 0 ]; then code=99; fi
             {
               printf 'cleanup_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-              printf 'pilot_root_absent=%s\n' "$([ ! -e "$ROOT" ] && echo true || echo false)"
-              printf 'ports_closed=%s\n' "$(! ports_open >/dev/null 2>&1 && echo true || echo false)"
-              printf 'candidate_processes=%s\n' "$(pgrep -af dusk-developer-studio 2>/dev/null | wc -l | tr -d ' ')"
+              printf 'pilot_root_absent=%s\n' "$root_absent"
+              printf 'ports_closed=%s\n' "$ports_closed"
+              printf 'candidate_processes=%s\n' "$candidate_processes"
             } > "$ART/cleanup.txt"
             exit "$code"
           }
@@ -236,11 +244,11 @@ jobs:
           async function evaluate(expression){const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
           const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
           async function snapshot(){
-            const fn=()=>({title:document.title,text:document.body?document.body.innerText:'',interactives:Array.from(document.querySelectorAll('button,[role="button"],a,input')).map((el)=>({tag:el.tagName,text:(el.innerText||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim(),disabled:Boolean(el.disabled)||el.getAttribute('aria-disabled')==='true',type:el.getAttribute('type')||''})).filter((x)=>x.text)});
+            const fn=()=>({title:String(document.title||'').slice(0,300),text:String(document.body?.textContent||'').slice(0,12000),interactives:Array.from(document.querySelectorAll('button,[role="button"],a,input')).slice(0,120).map((el)=>({tag:el.tagName,text:String(el.textContent||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim().slice(0,300),disabled:Boolean(el.disabled)||el.getAttribute('aria-disabled')==='true',type:el.getAttribute('type')||''})).filter((x)=>x.text)});
             return evaluate('('+fn.toString()+')()');
           }
           async function click(source,kind,actions){
-            const fn=(pattern)=>{const re=new RegExp(pattern,'i'),elements=Array.from(document.querySelectorAll('button,[role="button"],a'));const el=elements.find((x)=>re.test((x.innerText||x.getAttribute('aria-label')||'').trim())&&!x.disabled&&x.getAttribute('aria-disabled')!=='true');if(!el)return{clicked:false};const text=(el.innerText||el.getAttribute('aria-label')||'').trim();el.click();return{clicked:true,text};};
+            const fn=(pattern)=>{const re=new RegExp(pattern,'i'),elements=Array.from(document.querySelectorAll('button,[role="button"],a')).slice(0,120);const el=elements.find((x)=>re.test(String(x.textContent||x.getAttribute('aria-label')||'').trim())&&!x.disabled&&x.getAttribute('aria-disabled')!=='true');if(!el)return{clicked:false};const text=String(el.textContent||el.getAttribute('aria-label')||'').trim().slice(0,300);el.click();return{clicked:true,text};};
             const result=await evaluate('('+fn.toString()+')('+JSON.stringify(source)+')');actions.push({kind,source,...result});if(result.clicked)await wait(1800);return result;
           }
           async function fillName(){
@@ -326,7 +334,7 @@ jobs:
           if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
           evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
 
-          PROJECT_NAME=cv-core07-starter-v4k1
+          PROJECT_NAME=cv-core07-starter-m5p8
           cd "$ROOT/work/actions"
           npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
           ACTION_WRAPPER=$!
@@ -400,13 +408,25 @@ jobs:
           record cleanup_surface "$([ "$OVERALL" -eq 0 ]&&echo pass||echo fail)"
           record overall_status "$([ "$OVERALL" -eq 0 ]&&echo pass||echo fail)"
           evidence E11 "final SIGINT, storage/profile cleanup, process/port closure complete"
-          if [ "$OVERALL" -ne 0 ]; then exit 10; fi
+          RECEIPT_COMPLETE=true
+          for required in \
+            environment_status=pass package_identity_status=pass safe_driver_status=pass safe_status=pass \
+            safe_cleanup=pass sentinel_after_safe=pass actions_driver_status=pass local_actions_health=200 \
+            local_actions_status=pass setup_build_status=pass starter_status=pass vm_limitation_truthful=true \
+            build_guidance_actionable=true sentinel_after_actions=pass managed_root_containment=pass \
+            external_mutating_browser_requests=0 wallet_deploy_action_clicks=0 cleanup_surface_status=pass \
+            browser_profiles_removed=true safe_surface=pass local_actions_surface=pass setup_surface=pass \
+            build_surface=pass cleanup_surface=pass overall_status=pass; do
+            grep -qx "$required" "$RECEIPT" || RECEIPT_COMPLETE=false
+          done
+          record receipt_complete "$RECEIPT_COMPLETE"
+          if [ "$RECEIPT_COMPLETE" != true ]; then exit 10; fi
 
       - name: Upload compact pilot evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-CORE07-MAC15-20260722T093830Z-V4K1
-          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T093830Z-V4K1-artifact
+          name: CV-X-CORE07-MAC15-20260722T094807Z-M5P8
+          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T094807Z-M5P8-artifact
           if-no-files-found: error
           retention-days: 3
