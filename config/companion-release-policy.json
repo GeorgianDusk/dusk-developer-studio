@@ -4,13 +4,13 @@
   "distribution": "npm",
   "package": {
     "name": "dusk-developer-studio",
-    "version": "1.0.8",
-    "tag": "v1.0.8",
+    "version": "1.0.9",
+    "tag": "v1.0.9",
     "registry": "https://registry.npmjs.org",
     "access": "public",
     "node_engine": ">=24.18.0 <25",
     "package_root": "packages/cli",
-    "tarball_path": "output/npm/dusk-developer-studio-1.0.8.tgz",
+    "tarball_path": "output/npm/dusk-developer-studio-1.0.9.tgz",
     "primary_entrypoint": "bin/dusk-developer-studio.mjs",
     "safe_smoke_arguments": [
       "--lifecycle-self-test",

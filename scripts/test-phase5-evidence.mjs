@@ -21,8 +21,8 @@ const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "phase5-poli
 const now = new Date("2026-07-15T12:00:00Z");
 policy.monitoring_evidence.accepted_risk.accepted_at = "2026-07-15T00:30:00Z";
 policy.npm_distribution.expected_npm_maintainer = "phase5-test-maintainer";
-assert.equal(policy.npm_distribution.package_version, "1.0.8");
-assert.equal(policy.npm_distribution.tag, "v1.0.8");
+assert.equal(policy.npm_distribution.package_version, "1.0.9");
+assert.equal(policy.npm_distribution.tag, "v1.0.9");
 assert.equal(policy.npm_distribution.publication_workflow, ".github/workflows/studio-npm-oidc-publish.yml");
 assert.equal(policy.npm_distribution.publication_environment, "npm-trusted-publication");
 assert.equal(policy.npm_distribution.initial_package_version, "1.0.0");

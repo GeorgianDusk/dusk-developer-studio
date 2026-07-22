@@ -4,6 +4,12 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.9 - 2026-07-22
+
+### Fixed
+
+- Clarify in safe diagnostics that a `ready` browser-journey step is not proof that a network or service is live, and mark DuskEVM explicitly as pre-launch and not Studio-activated.
+
 ## 1.0.8 - 2026-07-22
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
   "name": "dusk-developer-testnet-studio",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "Developer cockpit for DuskEVM reference and DuskDS workflows.",
   "license": "Apache-2.0",
