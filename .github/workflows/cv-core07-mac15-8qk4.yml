@@ -23,7 +23,7 @@ jobs:
       - name: Run counted source-blind pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-CORE07-MAC15-20260722T092340Z-R7M2
+          EXEC_ID: CV-X-CORE07-MAC15-20260722T093428Z-Q3N6
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
@@ -39,7 +39,7 @@ jobs:
           RECEIPT="$ROOT/receipt.env"
           TIMELINE="$ROOT/timeline.log"
           SAFE_WRAPPER=""; ACTION_WRAPPER=""; SAFE_LISTENER=""; ACTION_LISTENER=""
-          SAFE_CHROME=""; ACTION_CHROME=""; OVERALL=0
+          SAFE_CHROME=""; ACTION_CHROME=""; WATCHDOG_PID=""; OVERALL=0
           rm -rf "$ROOT" "$ART"
           mkdir -p "$ROOT" "$ART" "$LOGS" "$ROOT/home" "$ROOT/cache" "$ROOT/temp" \
             "$ROOT/npm-cache" "$ROOT/npm-prefix" "$ROOT/package" "$ROOT/browser-safe" \
@@ -62,6 +62,18 @@ jobs:
             local signal="$1" pid
             shift
             for pid in "$@"; do [ -z "$pid" ] || kill "-$signal" "$pid" 2>/dev/null || true; done
+          }
+          wait_bounded() {
+            local pid="$1" limit="$2" deadline=$((SECONDS + limit)) status
+            while kill -0 "$pid" 2>/dev/null; do
+              if [ "$SECONDS" -ge "$deadline" ]; then
+                kill -TERM "$pid" 2>/dev/null || true; sleep 2
+                kill -KILL "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+                return 124
+              fi
+              sleep 1
+            done
+            wait "$pid" 2>/dev/null; status=$?; return "$status"
           }
           wait_ports() {
             local deadline=$((SECONDS + 60))
@@ -94,6 +106,7 @@ jobs:
             local code=$?
             trap - EXIT
             set +e
+            [ -z "$WATCHDOG_PID" ] || kill -TERM "$WATCHDOG_PID" 2>/dev/null || true
             signal_listeners INT $SAFE_LISTENER $ACTION_LISTENER
             for pid in "$SAFE_CHROME" "$ACTION_CHROME" "$SAFE_WRAPPER" "$ACTION_WRAPPER"; do [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null; done
             sleep 1
@@ -122,6 +135,10 @@ jobs:
             exit "$code"
           }
           trap finalize EXIT
+          trap 'record harness_signal_received TERM; exit 124' TERM
+          PILOT_SHELL_PID="$BASHPID"
+          (sleep 600; kill -TERM "$PILOT_SHELL_PID" 2>/dev/null || true) &
+          WATCHDOG_PID=$!
 
           export HOME="$ROOT/home"
           export USERPROFILE="$ROOT/home"
@@ -201,14 +218,21 @@ jobs:
 
           cat > "$ROOT/ui-driver.mjs" <<'JS'
           const wsUrl=process.env.CDP_WS, mode=process.env.PILOT_MODE, projectName=process.env.PROJECT_NAME||'';
+          const trace=(stage)=>console.error(new Date().toISOString(),stage);
+          const watchdog=setTimeout(()=>{trace('driver-watchdog-timeout');process.exit(124);},60000);
           const socket=new WebSocket(wsUrl), pending=new Map(), requests=[]; let seq=0;
+          trace('socket-connect');
           await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
+          trace('socket-open');
           socket.addEventListener('message',(event)=>{
             const message=JSON.parse(event.data);
-            if(message.id&&pending.has(message.id)){const item=pending.get(message.id);pending.delete(message.id);message.error?item.reject(new Error(JSON.stringify(message.error))):item.resolve(message.result);return;}
+            if(message.id&&pending.has(message.id)){const item=pending.get(message.id);clearTimeout(item.timer);pending.delete(message.id);message.error?item.reject(new Error(JSON.stringify(message.error))):item.resolve(message.result);return;}
             if(message.method==='Network.requestWillBeSent')requests.push({method:message.params.request.method,url:message.params.request.url});
           });
-          function send(method,params={}){return new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});socket.send(JSON.stringify({id,method,params}));});}
+          const rejectPending=(why)=>{for(const [id,item] of pending){clearTimeout(item.timer);item.reject(new Error(why));pending.delete(id);}};
+          socket.addEventListener('close',()=>rejectPending('CDP socket closed'));
+          socket.addEventListener('error',()=>rejectPending('CDP socket error'));
+          function send(method,params={}){return new Promise((resolve,reject)=>{const id=++seq,timer=setTimeout(()=>{pending.delete(id);reject(new Error('CDP timeout: '+method));},10000);pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params}));});}
           async function evaluate(expression){const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
           const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
           async function snapshot(){
@@ -223,17 +247,22 @@ jobs:
             const fn=(value)=>{const xs=Array.from(document.querySelectorAll('input,textarea'));const el=xs.find((x)=>/project|starter|name|folder/i.test([x.name,x.id,x.placeholder,x.getAttribute('aria-label')].filter(Boolean).join(' ')))||xs.find((x)=>!x.disabled);if(!el)return{filled:false};const p=el instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return{filled:true,label:el.getAttribute('aria-label')||el.placeholder||el.name||el.id||el.tagName};};
             return evaluate('('+fn.toString()+')('+JSON.stringify(projectName)+')');
           }
+          trace('domains-enable');
           await send('Page.enable');await send('Runtime.enable');await send('Network.enable');await send('Page.reload',{ignoreCache:true});await wait(5000);
+          trace('initial-snapshot');
           const actions=[], first=await snapshot();
           await click('Start DuskDS|Open DuskDS|Native Dusk path','select-duskds',actions);await wait(1500);
-          const healthFn=async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{credentials:'include'});return{status:r.status,text:await r.text()};}catch(e){return{status:0,error:String(e)};}};
+          trace('health');
+          const healthFn=async()=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),8000);try{const r=await fetch('http://127.0.0.1:8788/health',{credentials:'include',signal:c.signal});return{status:r.status,text:await r.text()};}catch(e){return{status:0,error:String(e)};}finally{clearTimeout(t);}};
           const health=await evaluate('('+healthFn.toString()+')()');
           let safeDenied=null,projectInput=null;
           if(mode==='safe'){
+            trace('safe-action-denial');
             const before=await snapshot(),attempt=await click('Run setup|Check prerequisites|Run preflight|Create.*starter|Generate.*starter|Run build|Build project','safe-machine-action-attempt',actions),after=await snapshot();
             const disabled=before.interactives.filter((x)=>x.disabled&&/setup|prerequisite|preflight|create|starter|build/i.test(x.text));
             safeDenied=(!attempt.clicked&&disabled.length>0)||/machine actions disabled|restart.*local actions|safe mode[^]*disabled|actions mode required/i.test(after.text);
           }else{
+            trace('local-actions-interactions');
             await click('^Setup$|Check prerequisites|Preflight','setup-navigation',actions);
             await click('Run setup|Check prerequisites|Run preflight|Check tools','setup-preflight',actions);
             await click('^Build$|Build / Check|Build & browser data','build-navigation',actions);
@@ -243,13 +272,14 @@ jobs:
             await click('Run build|Build project|Check build|Build starter','build-exercise',actions);await wait(5000);
           }
           const final=await snapshot();
+          trace('storage-and-network-audit');
           const storageFn=async()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage),indexed:indexedDB.databases?(await indexedDB.databases()).map((x)=>x.name):[],caches:globalThis.caches?await caches.keys():[]});
           const clearFn=async()=>{localStorage.clear();sessionStorage.clear();if(globalThis.caches)for(const k of await caches.keys())await caches.delete(k);if(indexedDB.databases)for(const x of await indexedDB.databases())if(x.name)indexedDB.deleteDatabase(x.name);return{local:Object.keys(localStorage),session:Object.keys(sessionStorage)};};
           const storageBefore=await evaluate('('+storageFn.toString()+')()'),storageAfter=await evaluate('('+clearFn.toString()+')()');
           await send('Network.clearBrowserCookies');await send('Network.clearBrowserCache');
           const externalMutations=requests.filter((r)=>!/^(GET|HEAD|OPTIONS)$/i.test(r.method)&&!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(r.url));
           process.stdout.write(JSON.stringify({mode,first,health,actions,safeDenied,projectInput,final,storageBefore,storageAfter,requests,externalMutations,walletOrDeployClicks:actions.filter((x)=>/wallet|deploy|fund|sign|transaction/i.test(x.text||'')).length},null,2));
-          socket.close();
+          trace('driver-complete');socket.close();await wait(200);clearTimeout(watchdog);process.exit(0);
           JS
 
           run_browser() {
@@ -266,8 +296,9 @@ jobs:
             local ws
             ws="$(node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync(process.argv[1])).find(x=>x.type==='page');if(p)process.stdout.write(p.webSocketDebuggerUrl)" "$ROOT/cdp-$mode.json")"
             [ -n "$ws" ] || return 31
+            printf '%s' "$chrome_pid" > "$ROOT/chrome-$mode.pid"
             CDP_WS="$ws" PILOT_MODE="$mode" PROJECT_NAME="$project" node "$ROOT/ui-driver.mjs" > "$output" 2> "$output.stderr"
-            printf '%s' "$chrome_pid"
+            return $?
           }
 
           cd "$ROOT/work/safe"
@@ -278,7 +309,8 @@ jobs:
           ports_open > "$LOGS/safe-ports.log" || true
           if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/safe-stdout.log" ||
              ! grep -q 'Mode: safe mode; machine actions disabled' "$LOGS/safe-stdout.log"; then record safe_status fail; exit 7; fi
-          SAFE_CHROME="$(run_browser safe "$ROOT/browser-safe" 9222 "$LOGS/safe-ui.json" "$LOGS/safe-chrome.log" "")"
+          if run_browser safe "$ROOT/browser-safe" 9222 "$LOGS/safe-ui.json" "$LOGS/safe-chrome.log" ""; then record safe_driver_status pass; else record safe_driver_status fail; OVERALL=1; fi
+          SAFE_CHROME="$(cat "$ROOT/chrome-safe.pid" 2>/dev/null)"
           SAFE_UI_OK=false
           if node - "$LOGS/safe-ui.json" <<'NODE'
           const fs=require('node:fs'),r=JSON.parse(fs.readFileSync(process.argv[2]));
@@ -289,12 +321,12 @@ jobs:
           if [ "$SAFE_UI_OK" = true ]; then record safe_status pass; evidence E5 "Safe paired; action denied; no work/network mutation"; else record safe_status fail; OVERALL=1; fi
           signal_listeners INT $SAFE_LISTENER
           if wait_ports_closed; then record safe_shutdown sigint_pass; else record safe_shutdown recovery_term; signal_listeners TERM $SAFE_LISTENER; kill -TERM "$SAFE_WRAPPER" 2>/dev/null||true; sleep 2; fi
-          kill -TERM "$SAFE_CHROME" 2>/dev/null||true; wait "$SAFE_WRAPPER" 2>/dev/null||true; rm -rf "$ROOT/browser-safe"
+          kill -TERM "$SAFE_CHROME" 2>/dev/null||true; kill -TERM "$SAFE_WRAPPER" 2>/dev/null||true; wait_bounded "$SAFE_WRAPPER" 10 || true; rm -rf "$ROOT/browser-safe"
           if ports_open > "$LOGS/safe-ports-after.log"; then record safe_cleanup fail; OVERALL=1; else record safe_cleanup pass; fi
           if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
           evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
 
-          PROJECT_NAME=cv-core07-starter-r7m2
+          PROJECT_NAME=cv-core07-starter-q3n6
           cd "$ROOT/work/actions"
           npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
           ACTION_WRAPPER=$!
@@ -303,7 +335,8 @@ jobs:
           ports_open > "$LOGS/actions-ports.log" || true
           if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/actions-stdout.log" ||
              ! grep -q 'Mode: local actions enabled' "$LOGS/actions-stdout.log"; then record local_actions_status fail; exit 9; fi
-          ACTION_CHROME="$(run_browser actions "$ROOT/browser-actions" 9223 "$LOGS/actions-ui.json" "$LOGS/actions-chrome.log" "$PROJECT_NAME")"
+          if run_browser actions "$ROOT/browser-actions" 9223 "$LOGS/actions-ui.json" "$LOGS/actions-chrome.log" "$PROJECT_NAME"; then record actions_driver_status pass; else record actions_driver_status fail; OVERALL=1; fi
+          ACTION_CHROME="$(cat "$ROOT/chrome-actions.pid" 2>/dev/null)"
           ACTION_UI_HEALTH="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.health.status))" "$LOGS/actions-ui.json")"
           ACTION_FLAGS="$(node -e "const r=require(process.argv[1]);for(const a of r.actions)if(a.clicked)process.stdout.write(a.kind+' ')" "$LOGS/actions-ui.json")"
           FINAL_TEXT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.final.text||'')" "$LOGS/actions-ui.json")"
@@ -323,7 +356,9 @@ jobs:
           STARTER_RECOVERY=none
           if [ -z "$PROJECT_DIR" ]; then
             mkdir -p "$ROOT/work/starter-cli"; cd "$ROOT/work/starter-cli"
-            if npx --yes "$PACKAGE_SPEC" create-duskds "$PROJECT_NAME" > "$LOGS/starter-cli.log" 2> "$LOGS/starter-cli.stderr"; then PROJECT_DIR="$ROOT/work/starter-cli/$PROJECT_NAME"; STARTER_RECOVERY=documented_cli; else STARTER_RECOVERY=failed; fi
+            npx --yes "$PACKAGE_SPEC" create-duskds "$PROJECT_NAME" > "$LOGS/starter-cli.log" 2> "$LOGS/starter-cli.stderr" &
+            STARTER_PID=$!
+            if wait_bounded "$STARTER_PID" 90; then PROJECT_DIR="$ROOT/work/starter-cli/$PROJECT_NAME"; STARTER_RECOVERY=documented_cli; else STARTER_RECOVERY=failed_or_timeout; fi
           fi
           record starter_recovery "$STARTER_RECOVERY"; record project_dir "$PROJECT_DIR"
           if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
@@ -354,7 +389,7 @@ jobs:
 
           signal_listeners INT $ACTION_LISTENER
           if wait_ports_closed; then record actions_shutdown sigint_pass; else record actions_shutdown recovery_term; signal_listeners TERM $ACTION_LISTENER; kill -TERM "$ACTION_WRAPPER" 2>/dev/null||true; sleep 2; fi
-          kill -TERM "$ACTION_CHROME" 2>/dev/null||true; wait "$ACTION_WRAPPER" 2>/dev/null||true; rm -rf "$ROOT/browser-actions"
+          kill -TERM "$ACTION_CHROME" 2>/dev/null||true; kill -TERM "$ACTION_WRAPPER" 2>/dev/null||true; wait_bounded "$ACTION_WRAPPER" 10 || true; rm -rf "$ROOT/browser-actions"
           if ports_open > "$LOGS/actions-ports-after.log" || pgrep -af dusk-developer-studio > "$LOGS/candidate-processes-after.log"; then record cleanup_surface_status fail; OVERALL=1; else record cleanup_surface_status pass; fi
           record browser_profiles_removed "$([ ! -e "$ROOT/browser-safe" ]&&[ ! -e "$ROOT/browser-actions" ]&&echo true||echo false)"
           record ended_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -371,7 +406,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-CORE07-MAC15-20260722T092340Z-R7M2
-          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T092340Z-R7M2-artifact
+          name: CV-X-CORE07-MAC15-20260722T093428Z-Q3N6
+          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T093428Z-Q3N6-artifact
           if-no-files-found: error
           retention-days: 3
