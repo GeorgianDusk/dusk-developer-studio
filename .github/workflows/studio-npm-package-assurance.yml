@@ -407,10 +407,21 @@ jobs:
           }
           const root = fs.realpathSync(process.env.LOCAL_ACTIONS_ROOT);
           const entries = fs.readdirSync(root, { withFileTypes: true });
-          if (entries.length !== 1 || !entries[0].isDirectory() || entries[0].isSymbolicLink()) {
+          const stagingEntries = entries.filter((entry) => entry.name === ".dusk-studio-staging");
+          const projectEntries = entries.filter((entry) => entry.name !== ".dusk-studio-staging");
+          if (entries.length !== 2 || stagingEntries.length !== 1 || projectEntries.length !== 1) {
+            throw new Error("Local Actions lifecycle did not retain one project and one reserved staging container.");
+          }
+          const staging = path.join(root, stagingEntries[0].name);
+          const stagingStat = fs.lstatSync(staging);
+          if (!stagingStat.isDirectory() || stagingStat.isSymbolicLink()
+              || fs.readdirSync(staging).length !== 0) {
+            throw new Error("Local Actions lifecycle did not leave one empty regular staging container.");
+          }
+          if (!projectEntries[0].isDirectory() || projectEntries[0].isSymbolicLink()) {
             throw new Error("Local Actions lifecycle did not retain exactly one regular project.");
           }
-          const project = path.join(root, entries[0].name);
+          const project = path.join(root, projectEntries[0].name);
           for (const required of [
             "Cargo.lock", "Cargo.toml", "PROVENANCE.md", "rust-toolchain.toml",
             "src/lib.rs", "tests/contract.rs"
@@ -604,7 +615,18 @@ jobs:
             ) {
               throw 'Local Actions lifecycle did not prove scaffold, preservation, and shutdown.'
             }
-            $localProjects = @(Get-ChildItem -LiteralPath $localActionsRoot -Force)
+            $localEntries = @(Get-ChildItem -LiteralPath $localActionsRoot -Force)
+            $localStageContainers = @($localEntries | Where-Object { $_.Name -eq '.dusk-studio-staging' })
+            $localProjects = @($localEntries | Where-Object { $_.Name -ne '.dusk-studio-staging' })
+            if (
+              $localEntries.Count -ne 2 -or
+              $localStageContainers.Count -ne 1 -or
+              -not $localStageContainers[0].PSIsContainer -or
+              ($localStageContainers[0].Attributes -band [IO.FileAttributes]::ReparsePoint) -or
+              @(Get-ChildItem -LiteralPath $localStageContainers[0].FullName -Force).Count -ne 0
+            ) {
+              throw 'Local Actions lifecycle did not leave one empty regular staging container.'
+            }
             if (
               $localProjects.Count -ne 1 -or
               -not $localProjects[0].PSIsContainer -or

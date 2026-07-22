@@ -347,6 +347,50 @@ describe("App", () => {
     expect(writeText).toHaveBeenCalledOnce();
   });
 
+  it("shows a visible retry state when clipboard access fails", async () => {
+    const writeText = vi.fn()
+      .mockRejectedValueOnce(new Error("clipboard blocked"))
+      .mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#setup";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy pre-launch RPC URL" }));
+
+    const retry = await screen.findByRole("button", { name: /Clipboard access failed; retry copy/i });
+    expect(retry).toHaveTextContent("Copy failed - retry");
+    expect(screen.getByRole("alert")).toHaveTextContent(/Select and copy the text manually, or retry/i);
+    expect(writeText).toHaveBeenCalledOnce();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByText("Copy pre-launch RPC URL copied to clipboard.")).toBeInTheDocument());
+    expect(writeText).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores stale clipboard completions from an earlier click", async () => {
+    let resolveFirst!: () => void;
+    let rejectFirst!: (reason: Error) => void;
+    const first = new Promise<void>((resolve, reject) => {
+      resolveFirst = resolve;
+      rejectFirst = reject;
+    });
+    const writeText = vi.fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#setup";
+    render(<App />);
+    const copy = screen.getByRole("button", { name: "Copy pre-launch RPC URL" });
+    fireEvent.click(copy);
+    fireEvent.click(copy);
+    await waitFor(() => expect(screen.getByText("Copied")).toBeInTheDocument());
+    rejectFirst(new Error("stale clipboard failure"));
+    await Promise.resolve();
+    expect(screen.getByText("Copied")).toBeInTheDocument();
+    expect(screen.queryByText("Copy failed - retry")).not.toBeInTheDocument();
+    resolveFirst();
+  });
+
   it("keeps source-development builds in hosted-guide mode without a manual token path", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -690,6 +734,9 @@ describe("App", () => {
         /Use 1–80 lowercase letters, numbers, or single hyphens/.test(alert.textContent ?? "")
       )).toBe(true);
       expect(screen.queryByRole("button", { name: "Copy Prepare project" })).not.toBeInTheDocument();
+      expect(projectName).toHaveAttribute("aria-invalid", "true");
+      expect(projectName).toHaveAttribute("aria-describedby", "duskds-build-project-name-error");
+      expect(screen.getByRole("alert")).toHaveAttribute("id", "duskds-build-project-name-error");
     }
     for (const keyword of ["type", "mod", "self", "crate", "super", "async", "await", "gen", "macro-rules"]) {
       fireEvent.change(projectName, { target: { value: keyword } });
@@ -700,6 +747,17 @@ describe("App", () => {
     }
 
     fireEvent.change(projectName, { target: { value: "safe-demo" } });
+    expect(projectName).toHaveAttribute("aria-invalid", "false");
+    expect(projectName).not.toHaveAttribute("aria-describedby");
+    fireEvent.change(projectName, { target: { value: "../unsafe" } });
+    const parent = screen.getByLabelText(/Parent folder, optional/);
+    fireEvent.change(parent, { target: { value: "bad\0path" } });
+    expect(projectName).toHaveAttribute("aria-describedby", "duskds-build-project-name-error");
+    expect(parent).toHaveAttribute("aria-describedby", "duskds-build-parent-dir-error");
+    expect(screen.getByText(/single hyphens/)).toHaveAttribute("id", "duskds-build-project-name-error");
+    expect(screen.getByText(/cannot contain NUL/)).toHaveAttribute("id", "duskds-build-parent-dir-error");
+    fireEvent.change(projectName, { target: { value: "safe-demo" } });
+    fireEvent.change(parent, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: /Existing repository/ }));
     fireEvent.click(screen.getByRole("button", { name: "Windows PowerShell" }));
     const root = screen.getByLabelText("Existing project root");
@@ -739,7 +797,7 @@ describe("App", () => {
       /cannot be a filesystem root/.test(alert.textContent ?? "")
     )).toBe(true);
     expect(container.textContent).not.toContain("\nWrite-Host bad");
-  }, 10_000);
+  }, 30_000);
 
   it("locks scaffold context during an in-flight request and restores the exact receipt after SPA navigation", async () => {
     const projectPath = "C:\\Users\\tester\\AppData\\Local\\Dusk\\DeveloperStudio\\projects\\duskds\\duskds-forge-starter";

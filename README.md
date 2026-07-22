@@ -24,7 +24,7 @@ The package is self-contained, installs no additional runtime dependencies, and 
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.9
+npx dusk-developer-studio@1.0.10
 ```
 
 Safe mode starts the local Studio, pairs the browser, and provides the guided experience without running developer tools or creating projects.
@@ -32,7 +32,7 @@ Safe mode starts the local Studio, pairs the browser, and provides the guided ex
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.9 local-actions
+npx dusk-developer-studio@1.0.10 local-actions
 ```
 
 Local Actions adds allowlisted prerequisite checks and constrained starter creation. It uses developer tools already installed on your machine; it does not install or update them.
@@ -42,7 +42,7 @@ The browser opens automatically and each launch pairs one browser profile. To ch
 To create a DuskDS counter starter directly from the same reviewed package template:
 
 ```bash
-npx --yes dusk-developer-studio@1.0.9 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.10 create-duskds my-counter
 ```
 
 The command writes one new child of your current working directory, refuses an existing target, and preserves the packaged Rust `1.94.0` toolchain, dependency lock, and template provenance. Dusk Forge remains a separate prerequisite for the subsequent check, build, test, and verification commands. Local Actions uses the separate managed DuskDS project root described below.

@@ -1,5 +1,5 @@
 import { ArrowUpRight, CheckCircle2, Clipboard, Search } from "lucide-react";
-import { useState, type ReactNode, type Ref } from "react";
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import type { JourneyStatus } from "./journeyProgress";
 import type { Tone } from "./types";
 
@@ -22,18 +22,35 @@ export function StatusPill({ tone, children }: { tone: Tone; children: ReactNode
 export function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
+  const latestAttemptRef = useRef(0);
+  const resetTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => {
+    latestAttemptRef.current += 1;
+    if (resetTimerRef.current !== undefined) window.clearTimeout(resetTimerRef.current);
+  }, []);
   async function copy() {
+    const attempt = ++latestAttemptRef.current;
+    if (resetTimerRef.current !== undefined) window.clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = undefined;
+    setFailed(false);
+    setCopied(false);
     try {
       await navigator.clipboard.writeText(value);
+      if (attempt !== latestAttemptRef.current) return;
       setFailed(false);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1_400);
+      resetTimerRef.current = window.setTimeout(() => {
+        if (attempt === latestAttemptRef.current) setCopied(false);
+        resetTimerRef.current = undefined;
+      }, 1_400);
     } catch {
+      if (attempt !== latestAttemptRef.current) return;
       setFailed(true);
       setCopied(false);
     }
   }
-  return <span className="copy-control"><button className="copy-button" type="button" onClick={copy} aria-label={label}>{copied ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}<span>{copied ? "Copied" : "Copy"}</span></button><span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{copied ? `${label} copied to clipboard.` : ""}</span>{failed ? <span className="sr-only" role="alert">Clipboard access failed. Select and copy the text manually.</span> : null}</span>;
+  const buttonLabel = failed ? `${label}. Clipboard access failed; retry copy.` : label;
+  return <span className="copy-control"><button className="copy-button" type="button" onClick={copy} aria-label={buttonLabel}>{copied ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}<span>{copied ? "Copied" : failed ? "Copy failed - retry" : "Copy"}</span></button><span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{copied ? `${label} copied to clipboard.` : ""}</span>{failed ? <span className="sr-only" role="alert">Clipboard access failed. Select and copy the text manually, or retry this button.</span> : null}</span>;
 }
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {

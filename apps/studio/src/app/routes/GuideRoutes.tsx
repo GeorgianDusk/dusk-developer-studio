@@ -1163,7 +1163,8 @@ function DuskDsBuild({
         rejectFilesystemRoot: method === "manual"
       });
   const commandInputError = projectInputError || commandPathError;
-  const commandInputErrorVisible = Boolean(commandInputError)
+  const projectInputErrorVisible = projectMode === "new" && Boolean(projectInputError);
+  const commandPathErrorVisible = Boolean(commandPathError)
     && (projectMode !== "existing" || existingRootTouched);
   const commandContextPrompt = projectMode === "existing"
     ? "Enter a valid absolute existing project root above to generate these commands."
@@ -1599,14 +1600,24 @@ function DuskDsBuild({
         <div className="form-grid">
           {projectMode === "new" ? (
             <>
-              <label>Project name<input disabled={scaffoldContextLocked} value={projectName} onChange={(event) => {
+              <label>Project name<input
+                disabled={scaffoldContextLocked}
+                value={projectName}
+                aria-invalid={projectInputErrorVisible}
+                aria-describedby={projectInputErrorVisible ? "duskds-build-project-name-error" : undefined}
+                onChange={(event) => {
                 if (event.target.value !== projectName) {
                   invalidateRecordedBuildContext();
                   clearDependentBuildInputs();
                   setProjectName(event.target.value);
                 }
               }} /></label>
-              <label>{method === "automatic" && automaticAvailable ? "Subfolder inside managed DuskDS root, optional" : "Parent folder, optional"}<input disabled={scaffoldContextLocked} value={parentDir} onChange={(event) => {
+              <label>{method === "automatic" && automaticAvailable ? "Subfolder inside managed DuskDS root, optional" : "Parent folder, optional"}<input
+                disabled={scaffoldContextLocked}
+                value={parentDir}
+                aria-invalid={commandPathErrorVisible}
+                aria-describedby={commandPathErrorVisible ? "duskds-build-parent-dir-error" : undefined}
+                onChange={(event) => {
                 if (event.target.value !== parentDir) {
                   invalidateRecordedBuildContext();
                   clearDependentBuildInputs();
@@ -1618,8 +1629,8 @@ function DuskDsBuild({
             <label>Existing project root<input
               disabled={scaffoldContextLocked}
               value={existingRoot}
-              aria-invalid={commandInputErrorVisible && Boolean(commandPathError)}
-              aria-describedby={commandInputErrorVisible ? "existing-project-root-error" : undefined}
+              aria-invalid={commandPathErrorVisible}
+              aria-describedby={commandPathErrorVisible ? "existing-project-root-error" : undefined}
               onBlur={() => setExistingRootTouched(true)}
               onChange={(event) => {
               setExistingRootTouched(true);
@@ -1631,7 +1642,8 @@ function DuskDsBuild({
             }} placeholder={platform === "windows" ? "C:\\absolute\\path\\to\\project" : "/absolute/path/to/project"} /></label>
           )}
         </div>
-        {commandInputErrorVisible ? <p id={projectMode === "existing" ? "existing-project-root-error" : undefined} className="validation-message" role="alert">{commandInputError}</p> : null}
+        {projectInputErrorVisible ? <p id="duskds-build-project-name-error" className="validation-message" role="alert">{projectInputError}</p> : null}
+        {commandPathErrorVisible ? <p id={projectMode === "existing" ? "existing-project-root-error" : "duskds-build-parent-dir-error"} className="validation-message" role="alert">{commandPathError}</p> : null}
         <p className="quiet-note">Paths stay only in this tab's active memory and are never written to browser storage, journey evidence, or diagnostics.</p>
       </div>
       {method === "automatic" ? (
