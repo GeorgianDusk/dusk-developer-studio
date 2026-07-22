@@ -41,8 +41,8 @@ body {
 }
 button, input, select { font: inherit; }
 button { cursor: pointer; }
-button:disabled { cursor: not-allowed; color: var(--disabled); border-color: var(--border); opacity: 0.58; }
-button:disabled:hover { background: transparent; border-color: var(--border); transform: none; }
+button:disabled, button[aria-disabled="true"] { cursor: not-allowed; color: var(--disabled); border-color: var(--border); opacity: 0.58; }
+button:disabled:hover, button[aria-disabled="true"]:hover { background: transparent; border-color: var(--border); transform: none; }
 code, pre { font-family: "JetBrains Mono", "Cascadia Code", Consolas, monospace; }
 code { color: var(--success); overflow-wrap: anywhere; }
 pre {
