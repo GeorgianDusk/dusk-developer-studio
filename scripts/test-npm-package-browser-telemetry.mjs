@@ -374,7 +374,7 @@ for (const mutation of [
 {
   const input = fixture();
   input.pairingValidated = false;
-  assert.throws(() => validate(input), /only after the application validates/u);
+  assert.throws(() => validate(input), /only after the application renders/u);
 }
 for (const property of ["probeRequest", "bootstrapRequest", "healthRequest"]) {
   const input = fixture();
