@@ -1,5 +1,6 @@
 import { delimiter } from "node:path";
 import { homedir } from "node:os";
+import { realpathSync } from "node:fs";
 import {
   getLaunchPathExclusions,
   sanitizeExecutablePathEntries
@@ -59,7 +60,7 @@ export function createChildEnvironment(source: NodeJS.ProcessEnv = process.env, 
   );
   const inheritedPath = sanitizeExecutablePathEntries(
     currentPath(source).split(delimiter),
-    launchExclusions
+    { ...launchExclusions, realpath: options.realpath ?? realpathSync.native }
   );
   const pathValue = sanitizeExecutablePathEntries(
     [...trustedPathAdditions, ...inheritedPath],

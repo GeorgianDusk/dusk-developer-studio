@@ -290,7 +290,7 @@ async function materializeStageContainer(parent: string, identity: DirectoryIden
   if (stat.isSymbolicLink() || !stat.isDirectory()) throw new Error("The reserved Studio staging path is not a regular directory.");
   const realPath = await fs.realpath(stageContainer);
   if (!isPathInside(identity.realPath, realPath)) throw new Error("The reserved Studio staging path escaped its parent.");
-  return { path: stageContainer, identity: { realPath, dev: stat.dev, ino: stat.ino } };
+  return { path: realPath, identity: { realPath, dev: stat.dev, ino: stat.ino } };
 }
 
 async function cleanupOwnedStages(
