@@ -25,19 +25,19 @@ Use a current browser supported by its vendor. The Studio attempts to open the d
 Safe mode:
 
 ```bash
-npx dusk-developer-studio@1.0.9
+npx dusk-developer-studio@1.0.10
 ```
 
 Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.9 local-actions
+npx dusk-developer-studio@1.0.10 local-actions
 ```
 
 Direct DuskDS starter creation:
 
 ```bash
-npx --yes dusk-developer-studio@1.0.9 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.10 create-duskds my-counter
 ```
 
 The direct command creates one new child of the current working directory.

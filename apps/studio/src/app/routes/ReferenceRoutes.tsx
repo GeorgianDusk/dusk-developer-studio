@@ -133,9 +133,9 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
   }
 
   function clearSearch() {
+    searchInputRef.current?.focus();
     updateQuery("");
     setResultAnnouncement("Search cleared. References in the current scope restored.");
-    window.requestAnimationFrame(() => searchInputRef.current?.focus());
   }
 
   return (
@@ -300,9 +300,9 @@ export function TroubleshootingPage({
     : undefined;
 
   function clearSearch() {
+    searchInputRef.current?.focus();
     setQuery("");
     setFocusedTroubleId(null);
-    window.requestAnimationFrame(() => searchInputRef.current?.focus());
   }
 
   function chooseTroubleshootingScope(nextScope: "path" | "all") {

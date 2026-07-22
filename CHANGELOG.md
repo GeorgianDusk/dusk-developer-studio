@@ -4,6 +4,15 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.10 - 2026-07-22
+
+### Fixed
+
+- Recover safely from interrupted starter creation by removing verified orphan staging state while preserving active, ambiguous, oversized, and reparse-containing directories.
+- Keep keyboard focus on the search field after clearing a dynamic Reference or Troubleshooting empty state.
+- Associate each invalid Build path or project-name field with its own persistent inline error.
+- Show a visible retry state when browser clipboard access fails, and ignore stale copy completions.
+
 ## 1.0.9 - 2026-07-22
 
 ### Fixed
