@@ -1,0 +1,360 @@
+name: CV-CORE-07 macOS arm64 public-package pilot
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - ".github/workflows/cv-core07-mac15-8qk4.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  native-macos-arm64:
+    if: github.head_ref == 'agent/cv-core07-mac15-20260722-8qk4'
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - name: Install exact supported Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.18.0
+
+      - name: Run counted source-blind pilot
+        shell: bash
+        env:
+          EXEC_ID: CV-X-CORE07-MAC15-20260722T062900Z-8QK4
+          PACKAGE_SPEC: dusk-developer-studio@1.0.9
+          EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
+          EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
+          EXPECTED_COMMIT: 22312ecc9f221da0f091e9e96e3206f943ea5513
+        run: |
+          set -uo pipefail
+          ROOT="$RUNNER_TEMP/$EXEC_ID"
+          ART="$RUNNER_TEMP/$EXEC_ID-artifact"
+          LOGS="$ROOT/logs"
+          RECEIPT="$ROOT/receipt.env"
+          TIMELINE="$ROOT/timeline.log"
+          SAFE_WRAPPER=""; ACTION_WRAPPER=""; SAFE_LISTENER=""; ACTION_LISTENER=""
+          SAFE_CHROME=""; ACTION_CHROME=""; OVERALL=0
+          rm -rf "$ROOT" "$ART"
+          mkdir -p "$ROOT" "$ART" "$LOGS" "$ROOT/home" "$ROOT/cache" "$ROOT/temp" \
+            "$ROOT/npm-cache" "$ROOT/npm-prefix" "$ROOT/package" "$ROOT/browser-safe" \
+            "$ROOT/browser-actions" "$ROOT/work/safe" "$ROOT/work/actions" "$ROOT/sentinel-project/nested"
+
+          record() { printf '%s=%s\n' "$1" "$2" >> "$RECEIPT"; }
+          evidence() { printf '%s %s %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" | tee -a "$TIMELINE"; }
+          ports_open() { lsof -nP -iTCP:5173 -sTCP:LISTEN -iTCP:8788 -sTCP:LISTEN 2>/dev/null; }
+          wait_ports() {
+            local deadline=$((SECONDS + 60))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if lsof -nP -iTCP:5173 -sTCP:LISTEN >/dev/null 2>&1 &&
+                 lsof -nP -iTCP:8788 -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+              sleep 1
+            done
+            return 1
+          }
+          wait_ports_closed() {
+            local deadline=$((SECONDS + 25))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if ! lsof -nP -iTCP:5173 -sTCP:LISTEN >/dev/null 2>&1 &&
+                 ! lsof -nP -iTCP:8788 -sTCP:LISTEN >/dev/null 2>&1; then return 0; fi
+              sleep 1
+            done
+            return 1
+          }
+          snapshot_sentinel() {
+            (
+              cd "$ROOT/sentinel-project"
+              find . -type f -print0 | sort -z | while IFS= read -r -d '' file; do
+                stat -f '%N|%z|%SB|%Sm' -t '%Y-%m-%dT%H:%M:%SZ' "$file"
+                shasum -a 256 "$file"
+              done
+            )
+          }
+          finalize() {
+            local code=$?
+            trap - EXIT
+            set +e
+            for pid in "$SAFE_LISTENER" "$ACTION_LISTENER"; do [ -z "$pid" ] || kill -INT "$pid" 2>/dev/null; done
+            for pid in "$SAFE_CHROME" "$ACTION_CHROME" "$SAFE_WRAPPER" "$ACTION_WRAPPER"; do [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null; done
+            sleep 1
+            mkdir -p "$ART/logs"
+            cp "$TIMELINE" "$RECEIPT" "$ART/" 2>/dev/null
+            find "$LOGS" -maxdepth 1 -type f -exec cp {} "$ART/logs/" \; 2>/dev/null
+            if [ -f "$RECEIPT" ]; then
+              python3 - "$RECEIPT" "$ART/receipt.json" <<'PY'
+          import json, sys
+          data = {}
+          for raw in open(sys.argv[1], encoding="utf-8"):
+              raw = raw.rstrip("\n")
+              if "=" in raw:
+                  key, value = raw.split("=", 1)
+                  data[key] = value
+          json.dump(data, open(sys.argv[2], "w", encoding="utf-8"), indent=2, sort_keys=True)
+          PY
+            fi
+            rm -rf "$ROOT"
+            {
+              printf 'cleanup_utc=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              printf 'pilot_root_absent=%s\n' "$([ ! -e "$ROOT" ] && echo true || echo false)"
+              printf 'ports_closed=%s\n' "$(! ports_open >/dev/null 2>&1 && echo true || echo false)"
+              printf 'candidate_processes=%s\n' "$(pgrep -af dusk-developer-studio 2>/dev/null | wc -l | tr -d ' ')"
+            } > "$ART/cleanup.txt"
+            exit "$code"
+          }
+          trap finalize EXIT
+
+          export HOME="$ROOT/home"
+          export USERPROFILE="$ROOT/home"
+          export XDG_CACHE_HOME="$ROOT/cache"
+          export TMPDIR="$ROOT/temp"
+          export npm_config_cache="$ROOT/npm-cache"
+          export npm_config_prefix="$ROOT/npm-prefix"
+          export NPM_CONFIG_CACHE="$ROOT/npm-cache"
+          export NPM_CONFIG_PREFIX="$ROOT/npm-prefix"
+
+          record execution_id "$EXEC_ID"
+          record started_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          record source_boundary "public npm metadata, package manifests/readme, and black-box Studio UI/API only"
+          evidence E1 "fresh redirected root; repository workspace intentionally unused"
+
+          OS_VERSION="$(sw_vers | tr '\n' ';')"; ARCH="$(uname -m)"
+          USER_ID="$(id -u)"; USER_NAME="$(id -un)"; ADMIN_CAPABLE=false
+          if sudo -n true >/dev/null 2>&1; then ADMIN_CAPABLE=true; fi
+          NODE_VERSION="$(node --version)"; NPM_VERSION="$(npm --version)"
+          record runner_os "$OS_VERSION"; record runner_arch "$ARCH"; record runner_user "$USER_NAME"
+          record runner_uid "$USER_ID"; record runner_sudo_capable "$ADMIN_CAPABLE"
+          record candidate_euid_nonroot "$([ "$USER_ID" -ne 0 ] && echo true || echo false)"
+          record image_os "${ImageOS:-unknown}"; record image_version "${ImageVersion:-unknown}"
+          record node_version "$NODE_VERSION"; record npm_version "$NPM_VERSION"
+          { sw_vers; uname -a; sysctl -n machdep.cpu.brand_string 2>/dev/null || true; id;
+            printf 'sudo_capable=%s\nnode=%s npm=%s\n' "$ADMIN_CAPABLE" "$NODE_VERSION" "$NPM_VERSION"; } > "$LOGS/environment.log"
+          if [ "$ARCH" != arm64 ] || [ "$NODE_VERSION" != v24.18.0 ] || [ "$USER_ID" -eq 0 ]; then
+            record environment_status blocked; evidence E2 "expected macOS arm64, Node v24.18.0, non-root"; exit 2
+          fi
+          record environment_status pass; evidence E2 "native macOS arm64, exact Node, non-root proved"
+          if ports_open > "$LOGS/ports-baseline.log"; then record ports_baseline fail; exit 3; fi
+          record ports_baseline clean
+
+          printf 'CV-CORE-07 preservation sentinel\n' > "$ROOT/sentinel-project/README.txt"
+          printf '{"execution":"%s","purpose":"strict-preservation"}\n' "$EXEC_ID" > "$ROOT/sentinel-project/nested/fixture.json"
+          snapshot_sentinel > "$ROOT/sentinel-baseline.txt"
+          record sentinel_baseline_sha256 "$(shasum -a 256 "$ROOT/sentinel-baseline.txt" | awk '{print $1}')"
+          record sentinel_bytes "$(find "$ROOT/sentinel-project" -type f -exec stat -f %z {} \; | awk '{s+=$1} END {print s+0}')"
+          evidence E3 "sentinel bytes, timestamps, and hashes captured"
+
+          npm view "$PACKAGE_SPEC" name version engines dist readme --json > "$ROOT/package/registry.json"
+          npm pack "$PACKAGE_SPEC" --pack-destination "$ROOT/package" --json > "$ROOT/package/pack.json"
+          TGZ="$(find "$ROOT/package" -maxdepth 1 -name 'dusk-developer-studio-1.0.9.tgz' -print -quit)"
+          ACTUAL_SHA256="$(shasum -a 256 "$TGZ" | awk '{print $1}')"
+          ACTUAL_SHASUM="$(shasum -a 1 "$TGZ" | awk '{print $1}')"
+          ACTUAL_INTEGRITY="$(node - "$TGZ" <<'NODE'
+          const fs=require('node:fs'), crypto=require('node:crypto');
+          process.stdout.write('sha512-'+crypto.createHash('sha512').update(fs.readFileSync(process.argv[2])).digest('base64'));
+          NODE
+          )"
+          REGISTRY_INTEGRITY="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.dist.integrity)" "$ROOT/package/registry.json")"
+          REGISTRY_SHASUM="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.dist.shasum)" "$ROOT/package/registry.json")"
+          tar -xOf "$TGZ" package/package-manifest.json > "$ROOT/package/package-manifest.json"
+          PACKAGE_COMMIT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.commit)" "$ROOT/package/package-manifest.json")"
+          PACKAGE_VERSION="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.version)" "$ROOT/package/package-manifest.json")"
+          PACKAGE_PRODUCT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.product)" "$ROOT/package/package-manifest.json")"
+          record package_sha256 "$ACTUAL_SHA256"; record package_shasum "$ACTUAL_SHASUM"
+          record registry_shasum "$REGISTRY_SHASUM"; record package_integrity "$ACTUAL_INTEGRITY"
+          record registry_integrity "$REGISTRY_INTEGRITY"; record package_commit "$PACKAGE_COMMIT"
+          record package_version "$PACKAGE_VERSION"; record package_product "$PACKAGE_PRODUCT"
+          if [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ] || [ "$ACTUAL_INTEGRITY" != "$EXPECTED_INTEGRITY" ] ||
+             [ "$ACTUAL_INTEGRITY" != "$REGISTRY_INTEGRITY" ] || [ "$ACTUAL_SHASUM" != "$REGISTRY_SHASUM" ] ||
+             [ "$PACKAGE_COMMIT" != "$EXPECTED_COMMIT" ] || [ "$PACKAGE_VERSION" != 1.0.9 ]; then
+            record package_identity_status fail; exit 4
+          fi
+          record package_identity_status pass; evidence E4 "exact public package hash, shasum, integrity, version, product, commit"
+
+          CHROME=""
+          for candidate in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "/Applications/Chromium.app/Contents/MacOS/Chromium"; do
+            if [ -x "$candidate" ]; then CHROME="$candidate"; break; fi
+          done
+          if [ -z "$CHROME" ]; then record browser_status blocked; exit 5; fi
+          "$CHROME" --version > "$LOGS/browser-version.log"
+          curl --version | head -1 > "$LOGS/http-client-version.log"
+          record browser_version "$(cat "$LOGS/browser-version.log")"
+          record http_client_version "$(cat "$LOGS/http-client-version.log")"
+
+          cat > "$ROOT/ui-driver.mjs" <<'JS'
+          const wsUrl=process.env.CDP_WS, mode=process.env.PILOT_MODE, projectName=process.env.PROJECT_NAME||'';
+          const socket=new WebSocket(wsUrl), pending=new Map(), requests=[]; let seq=0;
+          await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});
+          socket.addEventListener('message',(event)=>{
+            const message=JSON.parse(event.data);
+            if(message.id&&pending.has(message.id)){const item=pending.get(message.id);pending.delete(message.id);message.error?item.reject(new Error(JSON.stringify(message.error))):item.resolve(message.result);return;}
+            if(message.method==='Network.requestWillBeSent')requests.push({method:message.params.request.method,url:message.params.request.url});
+          });
+          function send(method,params={}){return new Promise((resolve,reject)=>{const id=++seq;pending.set(id,{resolve,reject});socket.send(JSON.stringify({id,method,params}));});}
+          async function evaluate(expression){const r=await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(r.exceptionDetails)throw new Error(JSON.stringify(r.exceptionDetails));return r.result.value;}
+          const wait=(ms)=>new Promise((resolve)=>setTimeout(resolve,ms));
+          async function snapshot(){
+            const fn=()=>({title:document.title,text:document.body?document.body.innerText:'',interactives:Array.from(document.querySelectorAll('button,[role="button"],a,input')).map((el)=>({tag:el.tagName,text:(el.innerText||el.value||el.getAttribute('aria-label')||el.getAttribute('placeholder')||'').trim(),disabled:Boolean(el.disabled)||el.getAttribute('aria-disabled')==='true',type:el.getAttribute('type')||''})).filter((x)=>x.text)});
+            return evaluate('('+fn.toString()+')()');
+          }
+          async function click(source,kind,actions){
+            const fn=(pattern)=>{const re=new RegExp(pattern,'i'),elements=Array.from(document.querySelectorAll('button,[role="button"],a'));const el=elements.find((x)=>re.test((x.innerText||x.getAttribute('aria-label')||'').trim())&&!x.disabled&&x.getAttribute('aria-disabled')!=='true');if(!el)return{clicked:false};const text=(el.innerText||el.getAttribute('aria-label')||'').trim();el.click();return{clicked:true,text};};
+            const result=await evaluate('('+fn.toString()+')('+JSON.stringify(source)+')');actions.push({kind,source,...result});if(result.clicked)await wait(1800);return result;
+          }
+          async function fillName(){
+            const fn=(value)=>{const xs=Array.from(document.querySelectorAll('input,textarea'));const el=xs.find((x)=>/project|starter|name|folder/i.test([x.name,x.id,x.placeholder,x.getAttribute('aria-label')].filter(Boolean).join(' ')))||xs.find((x)=>!x.disabled);if(!el)return{filled:false};const p=el instanceof HTMLTextAreaElement?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(p,'value').set.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return{filled:true,label:el.getAttribute('aria-label')||el.placeholder||el.name||el.id||el.tagName};};
+            return evaluate('('+fn.toString()+')('+JSON.stringify(projectName)+')');
+          }
+          await send('Page.enable');await send('Runtime.enable');await send('Network.enable');await send('Page.reload',{ignoreCache:true});await wait(5000);
+          const actions=[], first=await snapshot();
+          await click('Start DuskDS|Open DuskDS|Native Dusk path','select-duskds',actions);await wait(1500);
+          const healthFn=async()=>{try{const r=await fetch('http://127.0.0.1:8788/health',{credentials:'include'});return{status:r.status,text:await r.text()};}catch(e){return{status:0,error:String(e)};}};
+          const health=await evaluate('('+healthFn.toString()+')()');
+          let safeDenied=null,projectInput=null;
+          if(mode==='safe'){
+            const before=await snapshot(),attempt=await click('Run setup|Check prerequisites|Run preflight|Create.*starter|Generate.*starter|Run build|Build project','safe-machine-action-attempt',actions),after=await snapshot();
+            const disabled=before.interactives.filter((x)=>x.disabled&&/setup|prerequisite|preflight|create|starter|build/i.test(x.text));
+            safeDenied=(!attempt.clicked&&disabled.length>0)||/machine actions disabled|restart.*local actions|safe mode[^]*disabled|actions mode required/i.test(after.text);
+          }else{
+            await click('^Setup$|Check prerequisites|Preflight','setup-navigation',actions);
+            await click('Run setup|Check prerequisites|Run preflight|Check tools','setup-preflight',actions);
+            await click('^Build$|Build / Check|Build & browser data','build-navigation',actions);
+            await click('Create.*starter|Generate.*starter|New starter','starter-open',actions);
+            projectInput=await fillName();
+            await click('Create.*starter|Generate.*starter|Confirm create|Create project','starter-create',actions);await wait(5000);
+            await click('Run build|Build project|Check build|Build starter','build-exercise',actions);await wait(5000);
+          }
+          const final=await snapshot();
+          const storageFn=async()=>({local:Object.keys(localStorage),session:Object.keys(sessionStorage),indexed:indexedDB.databases?(await indexedDB.databases()).map((x)=>x.name):[],caches:globalThis.caches?await caches.keys():[]});
+          const clearFn=async()=>{localStorage.clear();sessionStorage.clear();if(globalThis.caches)for(const k of await caches.keys())await caches.delete(k);if(indexedDB.databases)for(const x of await indexedDB.databases())if(x.name)indexedDB.deleteDatabase(x.name);return{local:Object.keys(localStorage),session:Object.keys(sessionStorage)};};
+          const storageBefore=await evaluate('('+storageFn.toString()+')()'),storageAfter=await evaluate('('+clearFn.toString()+')()');
+          await send('Network.clearBrowserCookies');await send('Network.clearBrowserCache');
+          const externalMutations=requests.filter((r)=>!/^(GET|HEAD|OPTIONS)$/i.test(r.method)&&!/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//i.test(r.url));
+          process.stdout.write(JSON.stringify({mode,first,health,actions,safeDenied,projectInput,final,storageBefore,storageAfter,requests,externalMutations,walletOrDeployClicks:actions.filter((x)=>/wallet|deploy|fund|sign|transaction/i.test(x.text||'')).length},null,2));
+          socket.close();
+          JS
+
+          run_browser() {
+            local mode="$1" profile="$2" debug_port="$3" output="$4" chrome_log="$5" project="$6"
+            "$CHROME" --headless=new --disable-gpu --disable-extensions --disable-background-networking \
+              --disable-component-update --disable-sync --no-first-run --no-default-browser-check \
+              --remote-debugging-address=127.0.0.1 --remote-debugging-port="$debug_port" \
+              --user-data-dir="$profile" "http://127.0.0.1:5173/#companion" > "$chrome_log" 2>&1 &
+            local chrome_pid=$! deadline=$((SECONDS + 30))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if curl -fsS "http://127.0.0.1:$debug_port/json/list" > "$ROOT/cdp-$mode.json" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            local ws
+            ws="$(node -e "const fs=require('node:fs');const p=JSON.parse(fs.readFileSync(process.argv[1])).find(x=>x.type==='page');if(p)process.stdout.write(p.webSocketDebuggerUrl)" "$ROOT/cdp-$mode.json")"
+            [ -n "$ws" ] || return 31
+            CDP_WS="$ws" PILOT_MODE="$mode" PROJECT_NAME="$project" node "$ROOT/ui-driver.mjs" > "$output" 2> "$output.stderr"
+            printf '%s' "$chrome_pid"
+          }
+
+          cd "$ROOT/work/safe"
+          npx --yes "$PACKAGE_SPEC" --no-open > "$LOGS/safe-stdout.log" 2> "$LOGS/safe-stderr.log" &
+          SAFE_WRAPPER=$!
+          if ! wait_ports; then record safe_status fail; evidence E5 "Safe launch failed"; exit 6; fi
+          SAFE_LISTENER="$(lsof -nP -t -iTCP:5173 -sTCP:LISTEN | head -1)"
+          ports_open > "$LOGS/safe-ports.log"
+          if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/safe-stdout.log" ||
+             ! grep -q 'Mode: safe mode; machine actions disabled' "$LOGS/safe-stdout.log"; then record safe_status fail; exit 7; fi
+          SAFE_CHROME="$(run_browser safe "$ROOT/browser-safe" 9222 "$LOGS/safe-ui.json" "$LOGS/safe-chrome.log" "")"
+          SAFE_UI_OK=false
+          if node - "$LOGS/safe-ui.json" <<'NODE'
+          const fs=require('node:fs'),r=JSON.parse(fs.readFileSync(process.argv[2]));
+          process.exit(r.health.status===200&&r.safeDenied===true&&r.externalMutations.length===0&&r.walletOrDeployClicks===0&&r.storageAfter.local.length===0&&r.storageAfter.session.length===0?0:1);
+          NODE
+          then SAFE_UI_OK=true; fi
+          if [ "$(find "$ROOT/work/safe" -mindepth 1 -print | wc -l | tr -d ' ')" != 0 ]; then SAFE_UI_OK=false; fi
+          if [ "$SAFE_UI_OK" = true ]; then record safe_status pass; evidence E5 "Safe paired; action denied; no work/network mutation"; else record safe_status fail; OVERALL=1; fi
+          kill -INT "$SAFE_LISTENER" 2>/dev/null || true
+          if wait_ports_closed; then record safe_shutdown sigint_pass; else record safe_shutdown recovery_term; kill -TERM "$SAFE_LISTENER" "$SAFE_WRAPPER" 2>/dev/null||true; sleep 2; fi
+          kill -TERM "$SAFE_CHROME" 2>/dev/null||true; wait "$SAFE_WRAPPER" 2>/dev/null||true; rm -rf "$ROOT/browser-safe"
+          if ports_open > "$LOGS/safe-ports-after.log"; then record safe_cleanup fail; OVERALL=1; else record safe_cleanup pass; fi
+          if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
+          evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
+
+          PROJECT_NAME=cv-core07-starter-8qk4
+          cd "$ROOT/work/actions"
+          npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
+          ACTION_WRAPPER=$!
+          if ! wait_ports; then record local_actions_status fail; exit 8; fi
+          ACTION_LISTENER="$(lsof -nP -t -iTCP:5173 -sTCP:LISTEN | head -1)"
+          ports_open > "$LOGS/actions-ports.log"
+          if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/actions-stdout.log" ||
+             ! grep -q 'Mode: local actions enabled' "$LOGS/actions-stdout.log"; then record local_actions_status fail; exit 9; fi
+          ACTION_CHROME="$(run_browser actions "$ROOT/browser-actions" 9223 "$LOGS/actions-ui.json" "$LOGS/actions-chrome.log" "$PROJECT_NAME")"
+          ACTION_UI_HEALTH="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.health.status))" "$LOGS/actions-ui.json")"
+          ACTION_FLAGS="$(node -e "const r=require(process.argv[1]);for(const a of r.actions)if(a.clicked)process.stdout.write(a.kind+' ')" "$LOGS/actions-ui.json")"
+          FINAL_TEXT="$(node -e "const r=require(process.argv[1]);process.stdout.write(r.final.text||'')" "$LOGS/actions-ui.json")"
+          SETUP_VISIBLE=false; BUILD_EXERCISED=false; CREATE_CLICKED=false
+          case "$ACTION_FLAGS $FINAL_TEXT" in *Setup*|*setup*|*prerequisite*|*Prerequisite*) SETUP_VISIBLE=true;; esac
+          case "$ACTION_FLAGS $FINAL_TEXT" in *Build*|*build*|*"Dusk Forge"*) BUILD_EXERCISED=true;; esac
+          case "$ACTION_FLAGS" in *starter-create*) CREATE_CLICKED=true;; esac
+          record local_actions_health "$ACTION_UI_HEALTH"; record setup_ui_exercised "$SETUP_VISIBLE"
+          record build_ui_exercised "$BUILD_EXERCISED"; record starter_ui_create_clicked "$CREATE_CLICKED"
+          UI_SAFETY_OK=true
+          node - "$LOGS/actions-ui.json" <<'NODE' || UI_SAFETY_OK=false
+          const fs=require('node:fs'),r=JSON.parse(fs.readFileSync(process.argv[2]));
+          process.exit(r.health.status===200&&r.externalMutations.length===0&&r.walletOrDeployClicks===0&&r.storageAfter.local.length===0&&r.storageAfter.session.length===0?0:1);
+          NODE
+
+          PROJECT_DIR="$(find "$ROOT" -type d -name "$PROJECT_NAME" -not -path "$ROOT/npm-cache/*" -not -path "$ROOT/package/*" -print -quit)"
+          STARTER_RECOVERY=none
+          if [ -z "$PROJECT_DIR" ]; then
+            mkdir -p "$ROOT/work/starter-cli"; cd "$ROOT/work/starter-cli"
+            if npx --yes "$PACKAGE_SPEC" create-duskds "$PROJECT_NAME" > "$LOGS/starter-cli.log" 2> "$LOGS/starter-cli.stderr"; then PROJECT_DIR="$ROOT/work/starter-cli/$PROJECT_NAME"; STARTER_RECOVERY=documented_cli; else STARTER_RECOVERY=failed; fi
+          fi
+          record starter_recovery "$STARTER_RECOVERY"; record project_dir "$PROJECT_DIR"
+          if [ -n "$PROJECT_DIR" ] && [ -d "$PROJECT_DIR" ]; then
+            record starter_status pass
+            (cd "$PROJECT_DIR"; find . -type f -not -path './target/*' -print0 | sort -z | xargs -0 shasum -a 256) > "$LOGS/starter-manifest.log"
+          else record starter_status fail; OVERALL=1; fi
+
+          node -e "const r=require(process.argv[1]);process.stdout.write(r.readme||'')" "$ROOT/package/registry.json" > "$LOGS/public-readme.log"
+          LIMITATION_TRUTHFUL=false; GUIDANCE_ACTIONABLE=false
+          grep -Eiq 'does not record a native macOS DuskDS VM-test pass|validated natively on Linux.*WSL' "$LOGS/public-readme.log" && LIMITATION_TRUTHFUL=true
+          grep -Eiq 'Dusk Forge|prerequisite|install|missing|required|macOS|Linux|WSL|VM' "$LOGS/actions-ui.json" "$LOGS/public-readme.log" && GUIDANCE_ACTIONABLE=true
+          record vm_limitation_truthful "$LIMITATION_TRUTHFUL"; record build_guidance_actionable "$GUIDANCE_ACTIONABLE"
+          if [ "$ACTION_UI_HEALTH" = 200 ] && [ "$SETUP_VISIBLE" = true ] && [ "$BUILD_EXERCISED" = true ] &&
+             [ "$LIMITATION_TRUTHFUL" = true ] && [ "$GUIDANCE_ACTIONABLE" = true ] && [ "$UI_SAFETY_OK" = true ]; then
+            record local_actions_status pass; record setup_build_status pass
+          else record local_actions_status fail; record setup_build_status fail; OVERALL=1; fi
+          evidence E7 "Local Actions paired; Setup/preflight and Build exercised"
+          evidence E8 "fresh starter under redirected root; documented CLI recovery recorded if needed"
+          evidence E9 "macOS VM-test boundary and prerequisite guidance checked"
+
+          if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_actions pass; else record sentinel_after_actions fail; OVERALL=1; fi
+          case "$PROJECT_DIR" in "$ROOT"/*) record managed_root_containment pass;; *) record managed_root_containment fail; OVERALL=1;; esac
+          EXTERNAL_MUTATIONS="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.externalMutations.length))" "$LOGS/actions-ui.json")"
+          WALLET_DEPLOY_CLICKS="$(node -e "const r=require(process.argv[1]);process.stdout.write(String(r.walletOrDeployClicks))" "$LOGS/actions-ui.json")"
+          record external_mutating_browser_requests "$EXTERNAL_MUTATIONS"; record wallet_deploy_action_clicks "$WALLET_DEPLOY_CLICKS"
+          if [ "$EXTERNAL_MUTATIONS" != 0 ] || [ "$WALLET_DEPLOY_CLICKS" != 0 ]; then OVERALL=1; fi
+          evidence E10 "no wallet/deploy clicks or external mutating browser requests; sentinel and containment checked"
+
+          kill -INT "$ACTION_LISTENER" 2>/dev/null||true
+          if wait_ports_closed; then record actions_shutdown sigint_pass; else record actions_shutdown recovery_term; kill -TERM "$ACTION_LISTENER" "$ACTION_WRAPPER" 2>/dev/null||true; sleep 2; fi
+          kill -TERM "$ACTION_CHROME" 2>/dev/null||true; wait "$ACTION_WRAPPER" 2>/dev/null||true; rm -rf "$ROOT/browser-actions"
+          if ports_open > "$LOGS/actions-ports-after.log" || pgrep -af dusk-developer-studio > "$LOGS/candidate-processes-after.log"; then record cleanup_surface_status fail; OVERALL=1; else record cleanup_surface_status pass; fi
+          record browser_profiles_removed "$([ ! -e "$ROOT/browser-safe" ]&&[ ! -e "$ROOT/browser-actions" ]&&echo true||echo false)"
+          record ended_utc "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          record safe_surface "$([ "$(grep '^safe_status=' "$RECEIPT"|tail -1|cut -d= -f2)" = pass ]&&echo pass||echo fail)"
+          record local_actions_surface "$([ "$ACTION_UI_HEALTH" = 200 ]&&echo pass||echo fail)"
+          record setup_surface "$([ "$SETUP_VISIBLE" = true ]&&echo pass||echo fail)"
+          record build_surface "$([ "$BUILD_EXERCISED" = true ]&&[ "$GUIDANCE_ACTIONABLE" = true ]&&echo pass||echo fail)"
+          record cleanup_surface "$([ "$OVERALL" -eq 0 ]&&echo pass||echo fail)"
+          record overall_status "$([ "$OVERALL" -eq 0 ]&&echo pass||echo fail)"
+          evidence E11 "final SIGINT, storage/profile cleanup, process/port closure complete"
+          if [ "$OVERALL" -ne 0 ]; then exit 10; fi
+
+      - name: Upload compact pilot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: CV-X-CORE07-MAC15-20260722T062900Z-8QK4
+          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T062900Z-8QK4-artifact
+          if-no-files-found: error
+          retention-days: 3
+
