@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { safeJsonExport } from "@dusk/core/safe-export";
 import { JOURNEY_PROGRESS_STORAGE_KEY, type BuilderPath } from "../journeyProgress";
 import { expiryDate, sourceDate, sourceFreshness, sourceIsStale } from "../studioConfig";
@@ -156,9 +156,17 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
   const [confirmingReset, setConfirmingReset] = useState(false);
   const resetButtonRef = useRef<HTMLButtonElement>(null);
   const confirmResetButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreResetFocusRef = useRef(false);
 
   useEffect(() => {
     if (confirmingReset) confirmResetButtonRef.current?.focus();
+  }, [confirmingReset]);
+
+  useLayoutEffect(() => {
+    if (!confirmingReset && restoreResetFocusRef.current) {
+      restoreResetFocusRef.current = false;
+      resetButtonRef.current?.focus();
+    }
   }, [confirmingReset]);
 
   const diagnostics = {
@@ -192,9 +200,9 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
     journey.reset();
     invalidatePriorBuilderPathHistory();
     setBuilderPath(null);
+    restoreResetFocusRef.current = true;
     setConfirmingReset(false);
     setMessage("Selected path and saved DuskDS journey progress reset. Studio never stored wallet secrets, terminal output, or file contents.");
-    window.requestAnimationFrame(() => resetButtonRef.current?.focus());
   }
 
   function beginReset() {
@@ -203,9 +211,9 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
   }
 
   function cancelReset() {
+    restoreResetFocusRef.current = true;
     setConfirmingReset(false);
     setMessage("Reset canceled. Browser progress was not changed.");
-    window.requestAnimationFrame(() => resetButtonRef.current?.focus());
   }
 
   return (

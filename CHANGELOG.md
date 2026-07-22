@@ -4,6 +4,12 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.7 - 2026-07-22
+
+### Fixed
+
+- Restore keyboard focus to the Reset browser progress trigger after activating Cancel, including real Chromium, Firefox, and WebKit behavior.
+
 ## 1.0.6 - 2026-07-22
 
 ### Security
