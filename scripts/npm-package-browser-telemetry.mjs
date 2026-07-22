@@ -211,7 +211,9 @@ function validatePairingTransportEvidence({
   expectedBootstrapUrl,
   expectedProbeUrl,
   finishedRequests,
+  healthRequest,
   pairingValidated,
+  probeRequest,
   requestEvents,
   requestFailures,
   responseByRequest,
@@ -220,7 +222,7 @@ function validatePairingTransportEvidence({
   assert.equal(
     pairingValidated,
     true,
-    "Pairing transport telemetry is acceptable only after the application validates the health body and renders the expected release mode."
+    "Pairing transport telemetry is acceptable only after the application validates both session-status bodies and renders the expected release mode."
   );
 
   const probeEndpointEvents = matchingEndpointEvents(responseEvents, expectedProbeUrl);
@@ -230,7 +232,7 @@ function validatePairingTransportEvidence({
   assert.equal(
     probeEndpointEvents.length,
     2,
-    "Local pairing must observe exactly two health responses and no alternate-status duplicates."
+    "Local pairing must observe exactly two session-status responses and no alternate-status duplicates."
   );
   assert.equal(
     bootstrapEndpointEvents.length,
@@ -240,20 +242,31 @@ function validatePairingTransportEvidence({
   assert.equal(
     probeRequestEvents.length,
     2,
-    "Local pairing must issue exactly two page health requests."
+    "Local pairing must issue exactly two page session-status requests."
   );
   assert.equal(
     bootstrapRequestEvents.length,
     1,
     "Local pairing must issue exactly one page bootstrap request."
   );
-  const probeEvents = matchingResponseEvents(probeEndpointEvents, expectedProbeUrl, 401);
+  validateEndpointEventBijection(
+    probeRequestEvents,
+    probeEndpointEvents,
+    "Local pairing session status"
+  );
+  validateEndpointEventBijection(
+    bootstrapRequestEvents,
+    bootstrapEndpointEvents,
+    "Local pairing bootstrap"
+  );
   const bootstrapEvents = matchingResponseEvents(bootstrapEndpointEvents, expectedBootstrapUrl, 200);
-  const authenticatedHealthEvents = matchingResponseEvents(probeEndpointEvents, expectedProbeUrl, 200);
+  const probeEvents = probeEndpointEvents.filter((event) => event.request === probeRequest);
+  const authenticatedHealthEvents =
+    probeEndpointEvents.filter((event) => event.request === healthRequest);
   assert.equal(
     probeEvents.length,
     1,
-    "Local pairing must observe exactly one unauthenticated health response."
+    "Local pairing must observe exactly one validated unpaired session response."
   );
   assert.equal(
     bootstrapEvents.length,
@@ -263,22 +276,12 @@ function validatePairingTransportEvidence({
   assert.equal(
     authenticatedHealthEvents.length,
     1,
-    "Local pairing must observe exactly one successful authenticated health response."
+    "Local pairing must observe exactly one validated paired session response."
   );
 
   const [probeEvent] = probeEvents;
   const [bootstrapEvent] = bootstrapEvents;
   const [authenticatedHealthEvent] = authenticatedHealthEvents;
-  validateEndpointEventBijection(
-    probeRequestEvents,
-    probeEndpointEvents,
-    "Local pairing health"
-  );
-  validateEndpointEventBijection(
-    bootstrapRequestEvents,
-    bootstrapEndpointEvents,
-    "Local pairing bootstrap"
-  );
   assert.equal(
     bootstrapEvent.request,
     bootstrapRequest,
@@ -289,7 +292,7 @@ function validatePairingTransportEvidence({
     "GET",
     expectedProbeUrl,
     responseByRequest,
-    "Unauthenticated health"
+    "Unpaired session status"
   );
   validateResponseBinding(
     bootstrapEvent,
@@ -303,18 +306,20 @@ function validatePairingTransportEvidence({
     "GET",
     expectedProbeUrl,
     responseByRequest,
-    "Authenticated health"
+    "Paired session status"
   );
+  assert.equal(probeEvent.status, 200, "The unpaired session status must be a successful bounded response.");
+  assert.equal(authenticatedHealthEvent.status, 200, "The paired session status must be a successful bounded response.");
   assert.ok(
     probeEvent.sequence < bootstrapEvent.sequence
       && bootstrapEvent.sequence < authenticatedHealthEvent.sequence,
-    "Local pairing must observe unauthenticated health, successful bootstrap, then authenticated health in order."
+    "Local pairing must observe unpaired status, successful bootstrap, then paired status in order."
   );
 
   const probeAborts = validateTerminalState({
     event: probeEvent,
     finishedRequests,
-    label: "The expected unauthenticated health request",
+    label: "The expected unpaired session-status request",
     requestFailures,
     responseByRequest
   });
@@ -328,15 +333,15 @@ function validatePairingTransportEvidence({
   const authenticatedHealthAborts = validateTerminalState({
     event: authenticatedHealthEvent,
     finishedRequests,
-    label: "The successful authenticated health request",
+    label: "The successful paired session-status request",
     requestFailures,
     responseByRequest
   });
   return {
-    authenticatedHealthSequence: authenticatedHealthEvent.sequence,
+    pairedSessionSequence: authenticatedHealthEvent.sequence,
     lateAbortTelemetry: {
-      unauthenticated_health: probeAborts.length,
-      authenticated_health: authenticatedHealthAborts.length,
+      unpaired_session: probeAborts.length,
+      paired_session: authenticatedHealthAborts.length,
       bootstrap: bootstrapAborts.length
     },
     toleratedFailures: [
@@ -479,7 +484,7 @@ export function validateBrowserTransportEvidence(input) {
   const pairing = validatePairingTransportEvidence(input);
   const preflight = validatePreflightTransportEvidence({
     ...input,
-    afterSequence: pairing.authenticatedHealthSequence
+    afterSequence: pairing.pairedSessionSequence
   });
   const toleratedFailures = new Set([
     ...pairing.toleratedFailures,
