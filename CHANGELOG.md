@@ -4,6 +4,18 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.13 - 2026-07-23
+
+### Fixed
+
+- Preserve the validated `localhost` spelling when the local Studio proxies pairing and session checks to the companion, so the documented exact `localhost` Host/Origin pair works without weakening mismatched-origin rejection.
+- Replace raw operating-system failures from direct `create-duskds` starter creation with bounded recovery guidance that contains no local path or staging detail.
+
+### Verification
+
+- Exercise an exact `localhost` bootstrap and authenticated session-status round trip against a companion that rejects every Host/Origin mismatch, alongside the existing loopback security suite.
+- Assert that direct starter-creation diagnostics remove raw error codes, absolute paths, and internal staging names while preserving actionable retry guidance.
+
 ## 1.0.12 - 2026-07-22
 
 ### Fixed

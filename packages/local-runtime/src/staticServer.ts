@@ -58,12 +58,21 @@ function validBootstrapOrigin(origin: string | undefined, host: string | undefin
   );
 }
 
+function loopbackHostnameForOrigin(origin: string): "127.0.0.1" | "localhost" {
+  const hostname = new URL(origin).hostname.toLowerCase();
+  if (hostname !== HOST && hostname !== "localhost") {
+    throw new Error("Local Studio origin must use an approved loopback hostname.");
+  }
+  return hostname;
+}
+
 async function proxyPair(
   companionPort: number,
   origin: string,
   pairingToken: string,
   signal?: AbortSignal
 ): Promise<{ status: number; headers: http.IncomingHttpHeaders; body: Buffer }> {
+  const companionHost = loopbackHostnameForOrigin(origin);
   return new Promise((resolve, reject) => {
     const request = http.request({
       hostname: HOST,
@@ -71,7 +80,7 @@ async function proxyPair(
       path: "/pair",
       method: "POST",
       headers: {
-        host: `${HOST}:${companionPort}`,
+        host: `${companionHost}:${companionPort}`,
         origin,
         "content-type": "text/plain",
         "content-length": Buffer.byteLength(pairingToken)
@@ -105,6 +114,7 @@ async function proxySessionStatus(
   cookie: string | undefined,
   signal?: AbortSignal
 ): Promise<{ status: number; body: Buffer }> {
+  const companionHost = loopbackHostnameForOrigin(origin);
   return new Promise((resolve, reject) => {
     const request = http.request({
       hostname: HOST,
@@ -112,7 +122,7 @@ async function proxySessionStatus(
       path: "/health",
       method: "GET",
       headers: {
-        host: `${HOST}:${companionPort}`,
+        host: `${companionHost}:${companionPort}`,
         origin,
         ...(cookie ? { cookie } : {})
       }
