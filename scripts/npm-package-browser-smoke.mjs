@@ -12,7 +12,10 @@ import {
   createRequestTerminalTracker,
   validateBrowserTransportEvidence
 } from "./npm-package-browser-telemetry.mjs";
-import { readPreflightResponseJson } from "./npm-package-browser-response.mjs";
+import {
+  captureResponseJson,
+  readPreflightResponseJson
+} from "./npm-package-browser-response.mjs";
 import {
   npmPackageName,
   npmPackageVersion,
@@ -272,9 +275,13 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       const url = response.url();
       if (/^https?:\/\//u.test(url)) {
         const request = response.request();
+        const readJson = new URL(url).pathname === "/__dusk/session"
+          ? captureResponseJson(response)
+          : undefined;
         responseEvents.push({
           request,
           response,
+          readJson,
           sequence: ++networkEventSequence,
           url,
           status: response.status()
@@ -439,8 +446,10 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       "Local pairing must observe exactly one unpaired and one paired same-origin session response."
     );
     const [unauthenticatedHealthEvent, authenticatedHealthEvent] = sessionEvents;
-    const unauthenticatedSession = await unauthenticatedHealthEvent.response.json();
-    const authenticatedSession = await authenticatedHealthEvent.response.json();
+    assert.equal(typeof unauthenticatedHealthEvent.readJson, "function");
+    assert.equal(typeof authenticatedHealthEvent.readJson, "function");
+    const unauthenticatedSession = await unauthenticatedHealthEvent.readJson();
+    const authenticatedSession = await authenticatedHealthEvent.readJson();
     assert.deepEqual(
       unauthenticatedSession,
       { ok: true, paired: false },
