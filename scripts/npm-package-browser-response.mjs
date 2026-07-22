@@ -5,18 +5,6 @@ const EXPECTED_STUDIO_ORIGIN = "http://127.0.0.1:5173";
 const RESPONSE_BODY_EVICTION =
   /Network[.]getResponseBody.*No data found for resource with given identifier/u;
 
-export function captureResponseJson(response) {
-  const settled = response.json().then(
-    (value) => ({ ok: true, value }),
-    (error) => ({ ok: false, error })
-  );
-  return async () => {
-    const result = await settled;
-    if (!result.ok) throw result.error;
-    return result.value;
-  };
-}
-
 export async function readPreflightResponseJson({
   context,
   expectedOrigin,

@@ -222,7 +222,7 @@ function validatePairingTransportEvidence({
   assert.equal(
     pairingValidated,
     true,
-    "Pairing transport telemetry is acceptable only after the application validates both session-status bodies and renders the expected release mode."
+    "Pairing transport telemetry is acceptable only after the application renders the expected paired mode and exact release identity."
   );
 
   const probeEndpointEvents = matchingEndpointEvents(responseEvents, expectedProbeUrl);
