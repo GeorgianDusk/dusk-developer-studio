@@ -23,12 +23,15 @@ jobs:
       - name: Run counted source-blind pilot
         shell: bash
         env:
-          EXEC_ID: CV-X-CORE07-MAC15-20260722T062900Z-8QK4
+          EXEC_ID: CV-X-CORE07-MAC15-20260722T092340Z-R7M2
           PACKAGE_SPEC: dusk-developer-studio@1.0.9
           EXPECTED_SHA256: 0bdb30406229c59b9753c73caadd29dde6d34874b6d05b4cd25e5e9c4c07ff67
           EXPECTED_INTEGRITY: sha512-D4PwA16hD4sRQU+kxU642x7Q+npDZKJhx5hLHkobLOPqOMhL1YE25oQ6WqQlpEc98sXCyRk0LkG316AB/O3DKw==
           EXPECTED_COMMIT: 22312ecc9f221da0f091e9e96e3206f943ea5513
         run: |
+          # GitHub's bash wrapper injects -e. This pilot uses explicit receipt/status
+          # checks so expected non-zero probes and SIGINT waits must not abort it.
+          set +e
           set -uo pipefail
           ROOT="$RUNNER_TEMP/$EXEC_ID"
           ART="$RUNNER_TEMP/$EXEC_ID-artifact"
@@ -44,7 +47,22 @@ jobs:
 
           record() { printf '%s=%s\n' "$1" "$2" >> "$RECEIPT"; }
           evidence() { printf '%s %s %s\n' "$1" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$2" | tee -a "$TIMELINE"; }
-          ports_open() { lsof -nP -iTCP:5173 -sTCP:LISTEN -iTCP:8788 -sTCP:LISTEN 2>/dev/null; }
+          ports_open() {
+            local found=1
+            lsof -nP -iTCP:5173 -sTCP:LISTEN 2>/dev/null && found=0
+            lsof -nP -iTCP:8788 -sTCP:LISTEN 2>/dev/null && found=0
+            return "$found"
+          }
+          listener_pids() {
+            { lsof -nP -t -iTCP:5173 -sTCP:LISTEN 2>/dev/null
+              lsof -nP -t -iTCP:8788 -sTCP:LISTEN 2>/dev/null
+            } | sort -u
+          }
+          signal_listeners() {
+            local signal="$1" pid
+            shift
+            for pid in "$@"; do [ -z "$pid" ] || kill "-$signal" "$pid" 2>/dev/null || true; done
+          }
           wait_ports() {
             local deadline=$((SECONDS + 60))
             while [ "$SECONDS" -lt "$deadline" ]; do
@@ -76,7 +94,7 @@ jobs:
             local code=$?
             trap - EXIT
             set +e
-            for pid in "$SAFE_LISTENER" "$ACTION_LISTENER"; do [ -z "$pid" ] || kill -INT "$pid" 2>/dev/null; done
+            signal_listeners INT $SAFE_LISTENER $ACTION_LISTENER
             for pid in "$SAFE_CHROME" "$ACTION_CHROME" "$SAFE_WRAPPER" "$ACTION_WRAPPER"; do [ -z "$pid" ] || kill -TERM "$pid" 2>/dev/null; done
             sleep 1
             mkdir -p "$ART/logs"
@@ -256,8 +274,8 @@ jobs:
           npx --yes "$PACKAGE_SPEC" --no-open > "$LOGS/safe-stdout.log" 2> "$LOGS/safe-stderr.log" &
           SAFE_WRAPPER=$!
           if ! wait_ports; then record safe_status fail; evidence E5 "Safe launch failed"; exit 6; fi
-          SAFE_LISTENER="$(lsof -nP -t -iTCP:5173 -sTCP:LISTEN | head -1)"
-          ports_open > "$LOGS/safe-ports.log"
+          SAFE_LISTENER="$(listener_pids)"
+          ports_open > "$LOGS/safe-ports.log" || true
           if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/safe-stdout.log" ||
              ! grep -q 'Mode: safe mode; machine actions disabled' "$LOGS/safe-stdout.log"; then record safe_status fail; exit 7; fi
           SAFE_CHROME="$(run_browser safe "$ROOT/browser-safe" 9222 "$LOGS/safe-ui.json" "$LOGS/safe-chrome.log" "")"
@@ -269,20 +287,20 @@ jobs:
           then SAFE_UI_OK=true; fi
           if [ "$(find "$ROOT/work/safe" -mindepth 1 -print | wc -l | tr -d ' ')" != 0 ]; then SAFE_UI_OK=false; fi
           if [ "$SAFE_UI_OK" = true ]; then record safe_status pass; evidence E5 "Safe paired; action denied; no work/network mutation"; else record safe_status fail; OVERALL=1; fi
-          kill -INT "$SAFE_LISTENER" 2>/dev/null || true
-          if wait_ports_closed; then record safe_shutdown sigint_pass; else record safe_shutdown recovery_term; kill -TERM "$SAFE_LISTENER" "$SAFE_WRAPPER" 2>/dev/null||true; sleep 2; fi
+          signal_listeners INT $SAFE_LISTENER
+          if wait_ports_closed; then record safe_shutdown sigint_pass; else record safe_shutdown recovery_term; signal_listeners TERM $SAFE_LISTENER; kill -TERM "$SAFE_WRAPPER" 2>/dev/null||true; sleep 2; fi
           kill -TERM "$SAFE_CHROME" 2>/dev/null||true; wait "$SAFE_WRAPPER" 2>/dev/null||true; rm -rf "$ROOT/browser-safe"
           if ports_open > "$LOGS/safe-ports-after.log"; then record safe_cleanup fail; OVERALL=1; else record safe_cleanup pass; fi
           if snapshot_sentinel | cmp -s "$ROOT/sentinel-baseline.txt" -; then record sentinel_after_safe pass; else record sentinel_after_safe fail; OVERALL=1; fi
           evidence E6 "Safe SIGINT shutdown, closed ports, removed profile, preserved sentinel"
 
-          PROJECT_NAME=cv-core07-starter-8qk4
+          PROJECT_NAME=cv-core07-starter-r7m2
           cd "$ROOT/work/actions"
           npx --yes "$PACKAGE_SPEC" local-actions --no-open > "$LOGS/actions-stdout.log" 2> "$LOGS/actions-stderr.log" &
           ACTION_WRAPPER=$!
           if ! wait_ports; then record local_actions_status fail; exit 8; fi
-          ACTION_LISTENER="$(lsof -nP -t -iTCP:5173 -sTCP:LISTEN | head -1)"
-          ports_open > "$LOGS/actions-ports.log"
+          ACTION_LISTENER="$(listener_pids)"
+          ports_open > "$LOGS/actions-ports.log" || true
           if ! grep -q 'Dusk Developer Studio 1.0.9 (22312ecc)' "$LOGS/actions-stdout.log" ||
              ! grep -q 'Mode: local actions enabled' "$LOGS/actions-stdout.log"; then record local_actions_status fail; exit 9; fi
           ACTION_CHROME="$(run_browser actions "$ROOT/browser-actions" 9223 "$LOGS/actions-ui.json" "$LOGS/actions-chrome.log" "$PROJECT_NAME")"
@@ -334,8 +352,8 @@ jobs:
           if [ "$EXTERNAL_MUTATIONS" != 0 ] || [ "$WALLET_DEPLOY_CLICKS" != 0 ]; then OVERALL=1; fi
           evidence E10 "no wallet/deploy clicks or external mutating browser requests; sentinel and containment checked"
 
-          kill -INT "$ACTION_LISTENER" 2>/dev/null||true
-          if wait_ports_closed; then record actions_shutdown sigint_pass; else record actions_shutdown recovery_term; kill -TERM "$ACTION_LISTENER" "$ACTION_WRAPPER" 2>/dev/null||true; sleep 2; fi
+          signal_listeners INT $ACTION_LISTENER
+          if wait_ports_closed; then record actions_shutdown sigint_pass; else record actions_shutdown recovery_term; signal_listeners TERM $ACTION_LISTENER; kill -TERM "$ACTION_WRAPPER" 2>/dev/null||true; sleep 2; fi
           kill -TERM "$ACTION_CHROME" 2>/dev/null||true; wait "$ACTION_WRAPPER" 2>/dev/null||true; rm -rf "$ROOT/browser-actions"
           if ports_open > "$LOGS/actions-ports-after.log" || pgrep -af dusk-developer-studio > "$LOGS/candidate-processes-after.log"; then record cleanup_surface_status fail; OVERALL=1; else record cleanup_surface_status pass; fi
           record browser_profiles_removed "$([ ! -e "$ROOT/browser-safe" ]&&[ ! -e "$ROOT/browser-actions" ]&&echo true||echo false)"
@@ -353,8 +371,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: CV-X-CORE07-MAC15-20260722T062900Z-8QK4
-          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T062900Z-8QK4-artifact
+          name: CV-X-CORE07-MAC15-20260722T092340Z-R7M2
+          path: ${{ runner.temp }}/CV-X-CORE07-MAC15-20260722T092340Z-R7M2-artifact
           if-no-files-found: error
           retention-days: 3
-
