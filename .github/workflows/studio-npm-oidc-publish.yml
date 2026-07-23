@@ -218,11 +218,20 @@ jobs:
             throw new Error("Signature verification lockfile is not bound to the exact published tarball.");
           }
           NODE
-          npm audit signatures --registry=https://registry.npmjs.org
-          node "$GITHUB_WORKSPACE/scripts/verify-npm-provenance.mjs" \
-            "--metadata=$RUNNER_TEMP/npm-view.json" \
-            "--output=$RUNNER_TEMP/npm-provenance-binding.json" \
-            --publication=subsequent
+          signature_verified=false
+          for attempt in $(seq 1 40); do
+            if npm audit signatures --registry=https://registry.npmjs.org \
+              && node "$GITHUB_WORKSPACE/scripts/verify-npm-provenance.mjs" \
+                "--metadata=$RUNNER_TEMP/npm-view.json" \
+                "--output=$RUNNER_TEMP/npm-provenance-binding.json" \
+                --publication=subsequent
+            then
+              signature_verified=true
+              break
+            fi
+            sleep 3
+          done
+          test "$signature_verified" = true
       - name: Write and upload the direct OIDC receipt
         run: |
           node --input-type=module <<'NODE'

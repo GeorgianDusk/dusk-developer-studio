@@ -4,6 +4,16 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.14 - 2026-07-23
+
+### Fixed
+
+- Retry the bounded npm signature and source-provenance verification while a newly published attestation propagates, without republishing or accepting different package bytes.
+
+### Verification
+
+- Require both initial and subsequent publication workflows to keep the exact package-integrity lock, retry `npm audit signatures` and the source-bound provenance verifier together, and fail closed after the bounded propagation window.
+
 ## 1.0.13 - 2026-07-23
 
 ### Fixed
