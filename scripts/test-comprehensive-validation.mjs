@@ -62,7 +62,7 @@ function tarFileEntry(name, bytes) {
 function buildTarballFixture({ corruptManifest = false, trailingNonzero = false } = {}) {
   const packageJsonBytes = Buffer.from(JSON.stringify({
     name: "dusk-developer-studio",
-    version: "1.0.14",
+    version: "1.0.15",
     repository: { url: "git+https://github.com/GeorgianDusk/dusk-developer-studio.git" },
     engines: { node: ">=24.18.0 <25" }
   }), "utf8");
@@ -75,7 +75,7 @@ function buildTarballFixture({ corruptManifest = false, trailingNonzero = false 
   const manifestBytes = Buffer.from(JSON.stringify({
     schema_version: 1,
     package: "dusk-developer-studio",
-    version: "1.0.14",
+    version: "1.0.15",
     commit: "1".repeat(40),
     channel: "npm",
     node: { required_range: ">=24.18.0 <25" },
@@ -1322,7 +1322,7 @@ assert.match(
 
 const tarballInspection = inspectNpmTarballBytes(buildTarballFixture());
 assert.equal(tarballInspection.package_name, "dusk-developer-studio");
-assert.equal(tarballInspection.package_version, "1.0.14");
+assert.equal(tarballInspection.package_version, "1.0.15");
 assert.equal(tarballInspection.manifest_commit, "1".repeat(40));
 assert.equal(tarballInspection.inventory_file_count, 2);
 assert.equal(tarballInspection.inventory_verified, true);

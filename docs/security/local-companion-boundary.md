@@ -7,8 +7,8 @@ The Hosted guide is a static website. It never calls loopback services, enables 
 The functional local Studio is started through the self-contained `dusk-developer-studio` npm package with Node.js `>=24.18.0 <25`. The package installs no additional runtime dependencies:
 
 ```bash
-npx dusk-developer-studio@1.0.14
-npx dusk-developer-studio@1.0.14 local-actions
+npx dusk-developer-studio@1.0.15
+npx dusk-developer-studio@1.0.15 local-actions
 ```
 
 The foreground process serves:
@@ -68,13 +68,13 @@ Unsafe decoded paths, traversal, dotfiles, backslashes, symbolic links, and repa
 
 ### Safe mode
 
-`npx dusk-developer-studio@1.0.14` permits startup, pairing, identity parity, health, guidance, and evidence viewing. It does not enable tool execution or starter creation.
+`npx dusk-developer-studio@1.0.15` permits startup, pairing, identity parity, health, guidance, and evidence viewing. It does not enable tool execution or starter creation.
 
 Safe mode cannot be escalated by a hidden flag or request field.
 
 ### Local Actions
 
-`npx dusk-developer-studio@1.0.14 local-actions` enables only the reviewed prerequisite and starter-creation routes.
+`npx dusk-developer-studio@1.0.15 local-actions` enables only the reviewed prerequisite and starter-creation routes.
 
 - Health, preflight, and scaffold routes require an origin-bound session before body parsing.
 - The companion accepts only exact `127.0.0.1` or `localhost` origins for the fixed Studio port, and the Origin hostname must use the same loopback spelling as the request Host.

@@ -5,13 +5,13 @@
 Safe mode:
 
 ```bash
-npx dusk-developer-studio@1.0.14
+npx dusk-developer-studio@1.0.15
 ```
 
 Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.14 local-actions
+npx dusk-developer-studio@1.0.15 local-actions
 ```
 
 Keep the terminal open while using the Studio. Press `Ctrl+C` before changing modes or restarting.
@@ -75,7 +75,7 @@ The Hosted guide provides browser guidance and public read-only checks but never
 That is expected. Stop Safe mode and deliberately start Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.14 local-actions
+npx dusk-developer-studio@1.0.15 local-actions
 ```
 
 ### A required tool is missing

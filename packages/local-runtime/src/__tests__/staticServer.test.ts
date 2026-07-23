@@ -2,6 +2,7 @@
 
 import fs from "node:fs/promises";
 import http from "node:http";
+import net from "node:net";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -28,6 +29,38 @@ function request(port: number, options: { method?: string; path?: string; origin
       ...(options.cookie ? { cookie: options.cookie } : {})
     } }, (res) => { const chunks: Buffer[] = []; res.on("data", (chunk) => chunks.push(Buffer.from(chunk))); res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8") })); });
     req.once("error", reject); req.end(options.method === "POST" ? (options.body ?? "{}") : undefined);
+  });
+}
+
+function incompleteBootstrapRequest(port: number): Promise<{ response: string; elapsedMs: number }> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const chunks: Buffer[] = [];
+    const socket = net.createConnection({ host: "127.0.0.1", port }, () => {
+      socket.write([
+        "POST /__dusk/bootstrap HTTP/1.1",
+        `Host: 127.0.0.1:${port}`,
+        `Origin: http://127.0.0.1:${port}`,
+        "Content-Type: application/json",
+        "Content-Length: 100",
+        "Connection: close",
+        "",
+        "{"
+      ].join("\r\n"));
+    });
+    const guard = setTimeout(() => {
+      socket.destroy();
+      reject(new Error("Incomplete bootstrap connection did not close within its bounded test window."));
+    }, 2_000);
+    socket.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    socket.once("error", (error) => {
+      clearTimeout(guard);
+      reject(error);
+    });
+    socket.once("close", () => {
+      clearTimeout(guard);
+      resolve({ response: Buffer.concat(chunks).toString("utf8"), elapsedMs: Date.now() - started });
+    });
   });
 }
 
@@ -101,6 +134,26 @@ describe("npm local static server", () => {
     const origin = `http://127.0.0.1:${port}`;
     expect((await request(port, { method: "POST", path: "/__dusk/bootstrap", origin, contentType: "application/json", body: "x".repeat(1_025) })).status).toBe(413);
     expect((await request(port, { method: "POST", path: "/__dusk/bootstrap", origin, contentType: "application/json", body: "not-json" })).status).toBe(400);
+  });
+
+  it("closes an incomplete bootstrap body after the bounded request deadline", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-incomplete-body-")); roots.push(root);
+    await fs.writeFile(path.join(root, "index.html"), "ok");
+    const server = await createLocalStudioServer({
+      studioRoot: root,
+      port: 5173,
+      companionPort: 8788,
+      pairingToken: "p".repeat(43),
+      bootstrapBodyTimeoutMs: 50
+    });
+    const port = await listen(server);
+
+    const incomplete = await incompleteBootstrapRequest(port);
+    expect(incomplete.elapsedMs).toBeLessThan(1_000);
+    expect(incomplete.response).toContain("HTTP/1.1 408");
+    expect(incomplete.response).toContain('"code":"body_timeout"');
+    expect(incomplete.response.toLowerCase()).toContain("connection: close");
+    expect((await request(port, { path: "/healthz" })).status).toBe(200);
   });
 
   it("supports the localhost browser origin consistently with its CSP", async () => {
