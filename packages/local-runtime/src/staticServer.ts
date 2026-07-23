@@ -7,6 +7,7 @@ const HOST = "127.0.0.1";
 const DUSKDS_TESTNET_ORIGIN = "https://testnet.nodes.dusk.network";
 const MAX_BOOTSTRAP_RESPONSE_BYTES = 8 * 1024;
 const MAX_BOOTSTRAP_REQUEST_BYTES = 1024;
+const DEFAULT_BOOTSTRAP_BODY_TIMEOUT_MS = 5_000;
 const MAX_SESSION_STATUS_BYTES = 8 * 1024;
 const MIME = new Map([
   [".css", "text/css; charset=utf-8"],
@@ -23,6 +24,7 @@ export interface LocalStaticServerOptions {
   companionPort: number;
   pairingToken: string;
   bootstrapTtlMs?: number;
+  bootstrapBodyTimeoutMs?: number;
   now?: () => number;
 }
 
@@ -181,20 +183,61 @@ class LocalRequestError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) { super(message); }
 }
 
-async function readBootstrapBody(request: http.IncomingMessage): Promise<void> {
+function readBootstrapBody(request: http.IncomingMessage, bodyTimeoutMs: number): Promise<void> {
   const declaredLength = Number(request.headers["content-length"] ?? 0);
   if (!Number.isFinite(declaredLength) || declaredLength < 0 || declaredLength > MAX_BOOTSTRAP_REQUEST_BYTES) throw new LocalRequestError(413, "body_too_large", "Local bootstrap request exceeded its bound.");
-  const chunks: Buffer[] = [];
-  let bytes = 0;
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    bytes += buffer.byteLength;
-    if (bytes > MAX_BOOTSTRAP_REQUEST_BYTES) throw new LocalRequestError(413, "body_too_large", "Local bootstrap request exceeded its bound.");
-    chunks.push(buffer);
-  }
-  let parsed: unknown;
-  try { parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new LocalRequestError(400, "invalid_json", "Local bootstrap request was not valid JSON."); }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length !== 0) throw new LocalRequestError(400, "invalid_request", "Local bootstrap request must be an empty JSON object.");
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let bytes = 0;
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timeout);
+      request.off("data", onData);
+      request.off("end", onEnd);
+      request.off("error", onError);
+      request.off("aborted", onAborted);
+    };
+    const finish = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      callback();
+    };
+    const onData = (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bytes += buffer.byteLength;
+      if (bytes > MAX_BOOTSTRAP_REQUEST_BYTES) {
+        request.pause();
+        finish(() => reject(new LocalRequestError(413, "body_too_large", "Local bootstrap request exceeded its bound.")));
+        return;
+      }
+      chunks.push(buffer);
+    };
+    const onEnd = () => finish(() => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      } catch {
+        reject(new LocalRequestError(400, "invalid_json", "Local bootstrap request was not valid JSON."));
+        return;
+      }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.keys(parsed).length !== 0) {
+        reject(new LocalRequestError(400, "invalid_request", "Local bootstrap request must be an empty JSON object."));
+        return;
+      }
+      resolve();
+    });
+    const onError = () => finish(() => reject(new LocalRequestError(400, "body_read_failed", "Could not read the local bootstrap request.")));
+    const onAborted = () => finish(() => reject(new LocalRequestError(400, "request_aborted", "Local bootstrap request was aborted.")));
+    const timeout = setTimeout(() => {
+      request.pause();
+      finish(() => reject(new LocalRequestError(408, "body_timeout", "Local bootstrap request body timed out.")));
+    }, bodyTimeoutMs);
+    request.on("data", onData);
+    request.on("end", onEnd);
+    request.on("error", onError);
+    request.on("aborted", onAborted);
+  });
 }
 
 export async function createLocalStudioServer(options: LocalStaticServerOptions): Promise<http.Server> {
@@ -202,6 +245,7 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
   const indexPath = await safeStaticPath(realRoot, "/");
   if (!indexPath) throw new Error("Local Studio index is missing or unsafe.");
   const now = options.now ?? Date.now;
+  const bootstrapBodyTimeoutMs = options.bootstrapBodyTimeoutMs ?? DEFAULT_BOOTSTRAP_BODY_TIMEOUT_MS;
   const bootstrapExpiresAt = now() + (options.bootstrapTtlMs ?? 5 * 60 * 1000);
   let bootstrapState: "available" | "in-flight" | "burned" = "available";
 
@@ -267,7 +311,7 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
         request.once("aborted", abortOnDisconnect);
         response.once("close", abortOnDisconnect);
         try {
-          await readBootstrapBody(request);
+          await readBootstrapBody(request, bootstrapBodyTimeoutMs);
           const paired = await proxyPair(options.companionPort, origin!, options.pairingToken, clientAbort.signal);
           bootstrapState = paired.status === 200 || now() > bootstrapExpiresAt ? "burned" : "available";
           const setCookie = paired.headers["set-cookie"];
@@ -302,7 +346,15 @@ export async function createLocalStudioServer(options: LocalStaticServerOptions)
       response.writeHead(200, { ...securityHeaders(options.companionPort), "content-type": MIME.get(path.extname(file).toLowerCase()) ?? "application/octet-stream" });
       response.end(body);
     } catch (error) {
-      if (error instanceof LocalRequestError) sendJson(response, error.status, { ok: false, code: error.code }, options.companionPort);
+      if (error instanceof LocalRequestError) {
+        sendJson(
+          response,
+          error.status,
+          { ok: false, code: error.code },
+          options.companionPort,
+          error.status === 408 || error.status === 413 ? { connection: "close" } : {}
+        );
+      }
       else sendJson(response, 503, { ok: false, code: "local_runtime_unavailable" }, options.companionPort);
     }
   });

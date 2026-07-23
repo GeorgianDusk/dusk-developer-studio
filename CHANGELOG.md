@@ -4,6 +4,16 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.15 - 2026-07-23
+
+### Security
+
+- Close incomplete local Studio bootstrap request bodies after the same bounded five-second deadline already used by companion request bodies, returning a path-free `408 body_timeout` response and closing the loopback connection.
+
+### Verification
+
+- Reproduce a partial `Content-Length` bootstrap over a raw loopback socket, require bounded closure with `Connection: close`, and confirm `/healthz` remains available afterward.
+
 ## 1.0.14 - 2026-07-23
 
 ### Fixed
