@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { ScaffoldRecoveryError } from "@dusk/local-agent/server";
 import {
   describeLocalRuntimeListenFailure,
   localBrowserPairingInstruction,
@@ -26,6 +27,14 @@ describe("local npm runtime CLI mode", () => {
     expect(safe.message).not.toContain("EACCES");
     expect(safe.message).not.toContain("/home/developer");
     expect(safe.message).not.toContain(".dusk-studio-staging");
+  });
+
+  it("preserves reviewed recovery guidance while sanitizing unknown failures", () => {
+    const reviewed = new ScaffoldRecoveryError(
+      "The target already exists, so Dusk Developer Studio will not overwrite or merge it."
+    );
+
+    expect(sanitizeDuskDsTemplateCliFailure(reviewed).message).toBe(reviewed.message);
   });
 
   it("defaults to interactive mode", () => {

@@ -10,6 +10,9 @@ import {
   createLocalAgentServer,
   assertWindowsForgeManagedRoot,
   MAX_SCAFFOLD_PATH_LENGTH,
+  ScaffoldPathError,
+  ScaffoldProjectNameError,
+  ScaffoldRecoveryError,
   scaffoldDuskDsForge
 } from "@dusk/local-agent/server";
 import { terminateAllBoundedProcesses } from "@dusk/local-agent/process";
@@ -64,7 +67,14 @@ export interface DuskDsTemplateCliOptions {
 
 const DUSKDS_TEMPLATE_CLI_FAILURE = "DuskDS starter creation could not complete safely. Confirm the current folder is writable, confirm no project with that name already exists, and retry. No existing project files were changed.";
 
-export function sanitizeDuskDsTemplateCliFailure(_error: unknown): Error {
+export function sanitizeDuskDsTemplateCliFailure(error: unknown): Error {
+  if (
+    error instanceof ScaffoldPathError
+    || error instanceof ScaffoldProjectNameError
+    || error instanceof ScaffoldRecoveryError
+  ) {
+    return new Error(error.message);
+  }
   return new Error(DUSKDS_TEMPLATE_CLI_FAILURE);
 }
 

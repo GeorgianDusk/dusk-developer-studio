@@ -21,8 +21,13 @@ import {
   ScaffoldProjectNameError
 } from "./commands/safePaths";
 
-export { assertWindowsForgeManagedRoot, MAX_SCAFFOLD_PATH_LENGTH };
-export { scaffoldDuskDsForge };
+export {
+  assertWindowsForgeManagedRoot,
+  MAX_SCAFFOLD_PATH_LENGTH,
+  ScaffoldPathError,
+  ScaffoldProjectNameError
+};
+export { ScaffoldRecoveryError, scaffoldDuskDsForge };
 
 const HOST = "127.0.0.1";
 const DEFAULT_PORT = 8788;
