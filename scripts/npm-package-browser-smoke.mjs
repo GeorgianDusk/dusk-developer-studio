@@ -607,6 +607,7 @@ try {
       const message = error instanceof Error ? error.message : String(error);
       assert.match(message, /will not overwrite or merge it/iu);
       assert.match(message, /new project name or a different empty parent directory/iu);
+      assert.doesNotMatch(message, /EACCES|EPERM|\.dusk-studio-staging/iu);
       assert.doesNotMatch(message, /running Local Studio/iu);
       return true;
     }

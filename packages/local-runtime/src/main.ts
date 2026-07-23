@@ -10,6 +10,9 @@ import {
   createLocalAgentServer,
   assertWindowsForgeManagedRoot,
   MAX_SCAFFOLD_PATH_LENGTH,
+  ScaffoldPathError,
+  ScaffoldProjectNameError,
+  ScaffoldRecoveryError,
   scaffoldDuskDsForge
 } from "@dusk/local-agent/server";
 import { terminateAllBoundedProcesses } from "@dusk/local-agent/process";
@@ -60,6 +63,19 @@ export interface DuskDsTemplateCliOptions {
   projectName: string;
   cwd?: string;
   verification?: NpmPackageVerificationOptions;
+}
+
+const DUSKDS_TEMPLATE_CLI_FAILURE = "DuskDS starter creation could not complete safely. Confirm the current folder is writable, confirm no project with that name already exists, and retry. No existing project files were changed.";
+
+export function sanitizeDuskDsTemplateCliFailure(error: unknown): Error {
+  if (
+    error instanceof ScaffoldPathError
+    || error instanceof ScaffoldProjectNameError
+    || error instanceof ScaffoldRecoveryError
+  ) {
+    return new Error(error.message);
+  }
+  return new Error(DUSKDS_TEMPLATE_CLI_FAILURE);
 }
 
 const LOCAL_RUNTIME_FLAGS = new Set(["--no-open", "--lifecycle-self-test"]);
@@ -842,32 +858,36 @@ export async function runLocalRuntimeCli(options: LocalRuntimeCliOptions): Promi
 export async function runDuskDsTemplateCli(options: DuskDsTemplateCliOptions): Promise<void> {
   assertSupportedNodeVersion(options.verification?.nodeVersion ?? process.versions.node);
   assertNonElevatedLaunch();
-  const packageRoot = await resolveCanonicalNpmPackageRoot(
-    options.packageRoot ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-  );
-  const manifest = await verifyNpmPackage(packageRoot, options.verification);
   const requestedCwd = path.resolve(options.cwd ?? process.cwd());
   if (requestedCwd === path.parse(requestedCwd).root || requestedCwd.length > MAX_SCAFFOLD_PATH_LENGTH) {
     throw new Error("create-duskds must run from a bounded project parent, not a filesystem root.");
   }
-  const cwdStat = await fs.lstat(requestedCwd);
-  if (!cwdStat.isDirectory() || cwdStat.isSymbolicLink()) {
-    throw new Error("create-duskds must run from a real local directory.");
-  }
-  const canonicalCwd = await fs.realpath(requestedCwd);
-  const result = await scaffoldDuskDsForge(
-    { cwd: canonicalCwd, projectName: options.projectName },
-    {
-      projectRoot: canonicalCwd,
-      templateRoot: path.join(packageRoot, "templates", "duskds-counter-forge")
+  try {
+    const packageRoot = await resolveCanonicalNpmPackageRoot(
+      options.packageRoot ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
+    );
+    const manifest = await verifyNpmPackage(packageRoot, options.verification);
+    const cwdStat = await fs.lstat(requestedCwd);
+    if (!cwdStat.isDirectory() || cwdStat.isSymbolicLink()) {
+      throw new Error("create-duskds must run from a real local directory.");
     }
-  );
-  if (path.dirname(result.path) !== canonicalCwd || result.projectRoot !== canonicalCwd) {
-    throw new Error("create-duskds returned a project outside the selected parent directory.");
+    const canonicalCwd = await fs.realpath(requestedCwd);
+    const result = await scaffoldDuskDsForge(
+      { cwd: canonicalCwd, projectName: options.projectName },
+      {
+        projectRoot: canonicalCwd,
+        templateRoot: path.join(packageRoot, "templates", "duskds-counter-forge")
+      }
+    );
+    if (path.dirname(result.path) !== canonicalCwd || result.projectRoot !== canonicalCwd) {
+      throw new Error("create-duskds returned a project outside the selected parent directory.");
+    }
+    console.log(`Dusk Developer Studio ${manifest.version} (${manifest.commit.slice(0, 8)})`);
+    console.log(`Created ${result.template} at ${result.path}`);
+    console.log(`Rust ${result.rustToolchain}; template source ${result.templateRevision.slice(0, 12)}; packaged Cargo.lock verified.`);
+  } catch (error) {
+    throw sanitizeDuskDsTemplateCliFailure(error);
   }
-  console.log(`Dusk Developer Studio ${manifest.version} (${manifest.commit.slice(0, 8)})`);
-  console.log(`Created ${result.template} at ${result.path}`);
-  console.log(`Rust ${result.rustToolchain}; template source ${result.templateRevision.slice(0, 12)}; packaged Cargo.lock verified.`);
 }
 
 const isMainModule = process.argv[1]

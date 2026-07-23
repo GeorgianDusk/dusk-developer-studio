@@ -106,13 +106,31 @@ describe("npm local static server", () => {
   it("supports the localhost browser origin consistently with its CSP", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-static-localhost-")); roots.push(root);
     await fs.writeFile(path.join(root, "index.html"), "ok");
-    const companion = http.createServer((_req, res) => {
-      res.writeHead(200, { "content-type": "application/json", "set-cookie": "dusk_studio_session=test; HttpOnly; SameSite=Strict; Path=/" });
-      res.end('{"ok":true,"paired":true,"expiresInSeconds":1800}');
+    let studioPort = 0;
+    let companionPort = 0;
+    const companion = http.createServer((req, res) => {
+      const expectedOrigin = `http://localhost:${studioPort}`;
+      if (req.headers.host !== `localhost:${companionPort}` || req.headers.origin !== expectedOrigin) {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end('{"ok":false,"code":"origin_denied"}'); return;
+      }
+      if (req.url === "/pair" && req.method === "POST") {
+        req.resume();
+        req.on("end", () => {
+          res.writeHead(200, { "content-type": "application/json", "set-cookie": "dusk_studio_session=test; HttpOnly; SameSite=Strict; Path=/" });
+          res.end('{"ok":true,"paired":true,"expiresInSeconds":1800}');
+        });
+        return;
+      }
+      if (req.url === "/health" && req.method === "GET" && req.headers.cookie === "dusk_studio_session=test") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end('{"ok":true,"service":"dusk-studio-local-agent","paired":true,"capabilitiesEnabled":true}'); return;
+      }
+      res.writeHead(404).end();
     });
-    const companionPort = await listen(companion);
+    companionPort = await listen(companion);
     const server = await createLocalStudioServer({ studioRoot: root, port: 5173, companionPort, pairingToken: "p".repeat(43) });
-    const port = await listen(server);
+    const port = await listen(server); studioPort = port;
     const host = `localhost:${port}`;
     const origin = `http://${host}`;
 
@@ -136,6 +154,9 @@ describe("npm local static server", () => {
     const paired = await request(port, { method: "POST", path: "/__dusk/bootstrap", host, origin, contentType: "application/json" });
     expect(paired.status).toBe(200);
     expect(paired.headers["set-cookie"]?.[0]).toContain("HttpOnly");
+    const session = await request(port, { path: "/__dusk/session", host, cookie: "dusk_studio_session=test" });
+    expect(session.status).toBe(200);
+    expect(JSON.parse(session.body)).toMatchObject({ paired: true, capabilitiesEnabled: true });
   });
 
   it("allows only one bootstrap request to pair at a time", async () => {

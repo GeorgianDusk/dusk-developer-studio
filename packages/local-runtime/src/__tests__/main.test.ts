@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { ScaffoldRecoveryError } from "@dusk/local-agent/server";
 import {
   describeLocalRuntimeListenFailure,
   localBrowserPairingInstruction,
@@ -12,10 +13,30 @@ import {
   resolveDuskDsProjectRoot,
   resolveLocalRuntimeProjectRoots,
   resolveLocalBrowserLaunch,
-  resolveLocalRuntimeCliMode
+  resolveLocalRuntimeCliMode,
+  sanitizeDuskDsTemplateCliFailure
 } from "../main";
 
 describe("local npm runtime CLI mode", () => {
+  it("removes raw OS failures and local paths from direct starter-creation diagnostics", () => {
+    const raw = new Error("EACCES: permission denied, mkdir '/home/developer/private-work/.dusk-studio-staging'");
+    const safe = sanitizeDuskDsTemplateCliFailure(raw);
+
+    expect(safe.message).toContain("current folder is writable");
+    expect(safe.message).toContain("No existing project files were changed");
+    expect(safe.message).not.toContain("EACCES");
+    expect(safe.message).not.toContain("/home/developer");
+    expect(safe.message).not.toContain(".dusk-studio-staging");
+  });
+
+  it("preserves reviewed recovery guidance while sanitizing unknown failures", () => {
+    const reviewed = new ScaffoldRecoveryError(
+      "The target already exists, so Dusk Developer Studio will not overwrite or merge it."
+    );
+
+    expect(sanitizeDuskDsTemplateCliFailure(reviewed).message).toBe(reviewed.message);
+  });
+
   it("defaults to interactive mode", () => {
     expect(resolveLocalRuntimeCliMode([])).toEqual({
       openBrowser: true,
