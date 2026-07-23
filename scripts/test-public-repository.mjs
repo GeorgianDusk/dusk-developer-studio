@@ -194,13 +194,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.13",
-  tag: "v1.0.13",
+  version: "1.0.14",
+  tag: "v1.0.14",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.13.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.14.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -540,6 +540,11 @@ assert.match(npmPublishWorkflow, /npm install --ignore-scripts --no-audit --no-f
 assert.doesNotMatch(npmPublishWorkflow, /--package-lock-only/);
 assert.match(npmPublishWorkflow, /npm audit signatures --registry=https:\/\/registry\.npmjs\.org/);
 assert.match(npmPublishWorkflow, /verify-npm-provenance\.mjs[\s\S]*--publication=initial/);
+assert.match(
+  npmPublishWorkflow,
+  /signature_verified=false[\s\S]*for attempt in \$\(seq 1 40\)[\s\S]*npm audit signatures --registry=https:\/\/registry\.npmjs\.org[\s\S]*verify-npm-provenance\.mjs[\s\S]*--publication=initial[\s\S]*signature_verified=true[\s\S]*sleep 3[\s\S]*test "\$signature_verified" = true/,
+  "Initial publication must retry the exact cryptographic and provenance checks while npm propagates a newly published attestation."
+);
 assert.match(npmPublishWorkflow, /provenance_verification: "npm-audit-signatures-and-slsa-source-bound"/);
 assert.match(npmPublishWorkflow, /name: studio-npm-publication-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*path: output\/npm\/studio-npm-publication-receipt-\$\{\{ github\.run_id \}\}\.json[\s\S]*archive: false/);
 assert.doesNotMatch(npmPublishWorkflow, /\bbeta\b|\bfinal\b|release candidate|internal-rc|prototype/i);
@@ -553,6 +558,11 @@ assert.match(npmOidcWorkflow, /npm install --ignore-scripts --no-audit --no-fund
 assert.doesNotMatch(npmOidcWorkflow, /--package-lock-only/);
 assert.match(npmOidcWorkflow, /npm audit signatures --registry=https:\/\/registry\.npmjs\.org/);
 assert.match(npmOidcWorkflow, /verify-npm-provenance\.mjs[\s\S]*--publication=subsequent/);
+assert.match(
+  npmOidcWorkflow,
+  /signature_verified=false[\s\S]*for attempt in \$\(seq 1 40\)[\s\S]*npm audit signatures --registry=https:\/\/registry\.npmjs\.org[\s\S]*verify-npm-provenance\.mjs[\s\S]*--publication=subsequent[\s\S]*signature_verified=true[\s\S]*sleep 3[\s\S]*test "\$signature_verified" = true/,
+  "Subsequent publication must retry the exact cryptographic and provenance checks while npm propagates a newly published attestation."
+);
 assert.match(
   npmOidcWorkflow,
   /fs\.mkdirSync\("output\/npm", \{ recursive: true \}\);[\s\S]*fs\.writeFileSync\(`output\/npm\/studio-npm-oidc-publication-receipt-/,
@@ -945,8 +955,8 @@ assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total
 assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
 assert.deepEqual(phase5Policy.npm_distribution, {
   package_name: "dusk-developer-studio",
-  package_version: "1.0.13",
-  tag: "v1.0.13",
+  package_version: "1.0.14",
+  tag: "v1.0.14",
   registry_url: "https://registry.npmjs.org/dusk-developer-studio",
   node_engine: ">=24.18.0 <25",
   assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",

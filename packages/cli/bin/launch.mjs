@@ -1,4 +1,4 @@
-const CLI_VERSION = "1.0.13";
+const CLI_VERSION = "1.0.14";
 const REQUIRED_NODE = ">=24.18.0 <25";
 const NODE_RECOVERY = "Install Node.js 24.18.0 from https://nodejs.org/en/download/archive/v24.18.0, open a new terminal, confirm `node --version`, then rerun your Dusk Developer Studio command.";
 const INFORMATIONAL_FLAGS = new Map([
