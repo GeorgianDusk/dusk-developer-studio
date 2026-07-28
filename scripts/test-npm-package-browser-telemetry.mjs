@@ -135,12 +135,12 @@ function fixture({
     if (preflightAbort) {
       requestFailures.push({
         request: preflightRequest,
-        sequence: sequence++,
+        sequence,
         text: "net::ERR_ABORTED",
         url: expectedPreflightUrl
       });
     } else {
-      finishedRequests.set(preflightRequest, sequence++);
+      finishedRequests.set(preflightRequest, sequence);
     }
   }
   return {

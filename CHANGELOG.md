@@ -9,10 +9,12 @@ Notable Dusk Developer Studio changes are recorded here.
 ### Fixed
 
 - Keep the package-assurance workflow timestamp immutable while evaluating final-gate freshness from a new authenticated download of the exact GitHub Actions artifact.
+- Upgrade ESLint to its supported v10 line and pin transitive `postcss` and `brace-expansion` tooling to patched releases after the dependency severity gate identified new high-severity advisories.
 
 ### Verification
 
 - Prove that old immutable workflow evidence remains valid after a fresh artifact re-verification, while stale, future, pre-run, missing, or mismatched re-verification evidence still fails closed.
+- Reinstall the frozen graph, require a clean moderate-or-higher dependency audit, and rerun the complete product, package, browser, and cross-platform release gates.
 
 ## 1.0.15 - 2026-07-23
 

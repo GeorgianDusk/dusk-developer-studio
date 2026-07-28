@@ -951,14 +951,15 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
         && result.status === "passed"
         && JSON.stringify(result.evidence_refs) === JSON.stringify(expectedRefs);
     });
-  let evidencePayloadJsonValid = false;
-  try {
-    evidencePayloadJsonValid = JSON.stringify(JSON.parse(assuranceReceipt.evidence_payload_json))
-      === JSON.stringify(assurancePayload)
-      && assuranceReceipt.evidence_payload_json === JSON.stringify(assurancePayload);
-  } catch {
-    evidencePayloadJsonValid = false;
-  }
+  const evidencePayloadJsonValid = (() => {
+    try {
+      return JSON.stringify(JSON.parse(assuranceReceipt.evidence_payload_json))
+        === JSON.stringify(assurancePayload)
+        && assuranceReceipt.evidence_payload_json === JSON.stringify(assurancePayload);
+    } catch {
+      return false;
+    }
+  })();
   const computedEvidencePayloadSha256 = typeof assuranceReceipt.evidence_payload_json === "string"
     ? createHash("sha256").update(assuranceReceipt.evidence_payload_json, "utf8").digest("hex")
     : "";
@@ -1912,12 +1913,13 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const publicReceipt = parseBoundReceipt(blockers, "Public assurance", publicAssurance);
   checkPublicReceiptShape(blockers, publicReceipt, policy, previewPaths);
   const publicReleaseParity = publicReceipt.checks?.release_parity ?? {};
-  let expectedPublicOrigin = "";
-  try {
-    expectedPublicOrigin = new URL(candidate.manifest_url).origin;
-  } catch {
-    expectedPublicOrigin = "";
-  }
+  const expectedPublicOrigin = (() => {
+    try {
+      return new URL(candidate.manifest_url).origin;
+    } catch {
+      return "";
+    }
+  })();
   if (publicReceipt.schema_version !== 1
       || publicReceipt.status !== "passed"
       || publicReceipt.expected_environment !== "production"

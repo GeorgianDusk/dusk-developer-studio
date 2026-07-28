@@ -434,7 +434,7 @@ export function parseWindowsNetstatListeningEndpoints(output: string, ownerPid: 
 }
 
 function ownedListeningEndpoints(cwd: string): string[] {
-  let values: string[] = [];
+  let values: string[];
   const environment = createChildEnvironment(process.env, {
     inheritedCwd: process.cwd()
   });

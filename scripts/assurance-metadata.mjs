@@ -73,7 +73,7 @@ function validateHeaders(root, policy) {
     }
     if (!content.includes("frame-ancestors 'none'") || !content.includes("form-action 'none'")) throw new Error(`${relative} has an incomplete CSP boundary.`);
     if (/reverse_proxy|proxy_pass/i.test(content)) throw new Error(`${relative} must not proxy the local companion.`);
-    let receiptCacheValid = false;
+    let receiptCacheValid;
     if (relative.endsWith(".caddy")) receiptCacheValid = content.includes('@receipts path /release-manifest.json /assurance-receipt.json') && content.includes('header @receipts Cache-Control "no-store"');
     else {
       const receiptStart = content.indexOf("location ~ ^/(release-manifest|assurance-receipt)\\.json$");
