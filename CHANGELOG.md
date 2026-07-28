@@ -9,11 +9,13 @@ Notable Dusk Developer Studio changes are recorded here.
 ### Fixed
 
 - Give every journey evidence rail an accessible name and semantic **Evidence** and **Done when** headings so assistive-technology users can navigate the completion requirements directly.
+- Let a fast-ending Windows child report its tracked exit before starting `taskkill /T`, preventing PID reuse from targeting an unrelated same-user process.
 
 ### Verification
 
 - Add the mobile Safari/WebKit project to the public-release browser command and require its touch, responsive-layout, and prelaunch-boundary coverage alongside desktop Chromium and mobile Chrome.
 - Bind final package evidence to the exact bytes downloaded from the public npm registry, including size, SHA-256, SHA-512 integrity, and tar inventory count.
+- Stress concurrent fast-output Windows children, the delayed tree-kill window, and a follow-on child to prove the test worker remains alive.
 
 ## 1.0.18 - 2026-07-28
 

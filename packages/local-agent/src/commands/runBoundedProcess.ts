@@ -111,6 +111,26 @@ function killChildIfStillRunning(child: ChildProcess): void {
   }
 }
 
+async function waitForTrackedChildExit(child: ChildProcess, graceMs: number): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (exited: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off("exit", onExit);
+      resolve(exited);
+    };
+    const onExit = () => finish(true);
+    const timer = setTimeout(() => finish(
+      child.exitCode !== null || child.signalCode !== null
+    ), graceMs);
+    timer.unref();
+    child.once("exit", onExit);
+  });
+}
+
 async function terminateProcessTree(child: ChildProcess): Promise<void> {
   if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
   if (process.platform !== "win32") {
@@ -132,6 +152,11 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
     }
   }
 
+  // A short-lived child can finish between the output/timeout signal and the
+  // taskkill spawn. Waiting for its tracked exit avoids targeting a PID that
+  // Windows has already recycled to an unrelated same-user process.
+  if (await waitForTrackedChildExit(child, 75)) return;
+
   await new Promise<void>((resolve) => {
     const environment = createChildEnvironment();
     let taskkill: string;
@@ -141,6 +166,10 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
       taskkillCwd = resolveWindowsSystemDirectory(environment);
     } catch {
       killChildIfStillRunning(child);
+      resolve();
+      return;
+    }
+    if (child.exitCode !== null || child.signalCode !== null) {
       resolve();
       return;
     }
