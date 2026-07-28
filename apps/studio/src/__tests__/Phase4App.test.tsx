@@ -32,6 +32,7 @@ describe("Phase 4 controlled failures", () => {
     vi.stubGlobal("fetch", fetchMock);
     window.location.hash = "#companion";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
     await waitFor(() => expect(screen.getByText("Paired. Local capabilities are disabled until explicitly enabled.")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
     fireEvent.click(screen.getByRole("button", { name: /Start DuskDS/i }));

@@ -101,8 +101,8 @@ export function localRuntimeStopInstruction(platform = process.platform): string
 export function localBrowserPairingInstruction(openBrowser: boolean): string {
   const url = `http://${HOST}:${STUDIO_PORT}/#companion`;
   return openBrowser
-    ? `Use the browser tab opened at ${url}; this launch pairs one browser profile. To use a different profile, stop this run, rerun with --no-open, then open that URL in the intended profile within five minutes.`
-    : `Open ${url} in the one browser profile you want to pair within five minutes. Do not open another Local Studio page first.`;
+    ? `Use the browser tab opened at ${url}, review the selected mode, then select Pair this browser. To use a different profile, stop this run, rerun with --no-open, then open that URL in the intended profile within five minutes and select Pair this browser.`
+    : `Open ${url} in the one browser profile you want to authorize within five minutes, then select Pair this browser. Ordinary Local Studio page loads do not pair a profile.`;
 }
 
 export function describeLocalRuntimeListenFailure(error: unknown, port: number): Error {

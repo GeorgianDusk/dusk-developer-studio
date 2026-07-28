@@ -17,7 +17,7 @@ The `dusk-developer-studio` package is self-contained, installs no additional ru
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.16
+npx dusk-developer-studio@1.0.17
 ```
 
 Safe mode starts the Studio and pairing flow without running developer tools or creating projects.
@@ -25,7 +25,7 @@ Safe mode starts the Studio and pairing flow without running developer tools or 
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.16 local-actions
+npx dusk-developer-studio@1.0.17 local-actions
 ```
 
 Local Actions enables the reviewed prerequisite checks and starter-creation routes. It uses developer tools already installed on your machine and never installs or updates them.
@@ -39,7 +39,7 @@ The command starts:
 - the Studio at `http://127.0.0.1:5173`; and
 - its companion at `http://127.0.0.1:8788`.
 
-The browser normally opens automatically and each launch pairs one browser profile. If it does not open, keep the terminal running and open `http://127.0.0.1:5173/#companion` yourself within five minutes. To choose a specific browser or profile, add `--no-open` to the Safe mode or Local Actions command, then open that URL in the intended profile before any other Local Studio page. If another profile already paired, stop the command and rerun it with `--no-open`.
+The browser normally opens the Local Studio pairing page automatically, but the page does not authorize itself. Review the selected mode, then choose **Pair this browser**. If the browser does not open, keep the terminal running, open `http://127.0.0.1:5173/#companion` yourself within five minutes, and choose **Pair this browser**. To choose a specific browser or profile, add `--no-open` to the Safe mode or Local Actions command, then open that URL in the intended profile and choose **Pair this browser**. If another profile already paired, stop the command and rerun it with `--no-open`.
 
 Both services bind only to IPv4 loopback. The process installs no service, scheduled task, registry entry, or background daemon. Press `Ctrl+C` to stop it.
 
@@ -58,11 +58,11 @@ Do not run copied package files, issue attachments, direct-message downloads, or
 To reproduce behavior from a specific package version:
 
 ```bash
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.16 -- dusk-developer-studio
-npm exec --ignore-scripts --package=dusk-developer-studio@1.0.16 -- dusk-developer-studio local-actions
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.17 -- dusk-developer-studio
+npm exec --ignore-scripts --package=dusk-developer-studio@1.0.17 -- dusk-developer-studio local-actions
 ```
 
-Replace `1.0.16` with another reviewed version when needed. Never combine files from different package versions.
+Replace `1.0.17` with another reviewed version when needed. Never combine files from different package versions.
 
 ## Project preservation
 
@@ -76,7 +76,7 @@ Stopping, updating, or removing cached package data does not remove these projec
 
 ## Security boundary
 
-The Studio keeps pairing material in memory, validates exact loopback Host and Origin values, requires an origin-bound session before capabilities, and checks exact frontend/runtime identity before enabling local actions.
+The Studio keeps pairing material in memory, requires an explicit browser action before spending the one-use bootstrap, validates exact loopback Host and Origin values, requires an origin-bound session before capabilities, and checks exact frontend/runtime identity before enabling local actions.
 
 Child tool commands, arguments, time, output, environment, concurrency, and filesystem scope are bounded. Wallet secrets, browser signing, funded actions, arbitrary commands, and developer-tool installation are outside the product.
 

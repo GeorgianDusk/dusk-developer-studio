@@ -61,9 +61,14 @@ for (const file of [
   assert.equal(result.status, 0, `${file} must be valid JavaScript:\n${result.stderr}`);
 }
 
-const { resolveCliInvocation } = await import(
+const { assertSupportedNode, resolveCliInvocation } = await import(
   `${pathToFileURL(path.join(binDirectory, "launch.mjs")).href}?test=${Date.now()}`
 );
+assert.doesNotThrow(() => assertSupportedNode("24.18.0"));
+assert.doesNotThrow(() => assertSupportedNode("24.99.0"));
+assert.throws(() => assertSupportedNode("24.17.9"), /requires Node\.js >=24\.18\.0 <25/);
+assert.throws(() => assertSupportedNode("25.0.0"), /requires Node\.js >=24\.18\.0 <25/);
+assert.throws(() => assertSupportedNode("not-a-version"), /requires Node\.js >=24\.18\.0 <25/);
 assert.deepEqual(resolveCliInvocation([]), {
   kind: "run",
   capabilitiesEnabled: false,

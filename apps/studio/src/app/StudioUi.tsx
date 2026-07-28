@@ -20,6 +20,7 @@ export function StatusPill({ tone, children }: { tone: Tone; children: ReactNode
 }
 
 export function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+  const [copying, setCopying] = useState(false);
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
   const latestAttemptRef = useRef(0);
@@ -34,23 +35,35 @@ export function CopyButton({ value, label = "Copy" }: { value: string; label?: s
     resetTimerRef.current = undefined;
     setFailed(false);
     setCopied(false);
+    setCopying(true);
+    let attemptTimeout: number | undefined;
     try {
-      await navigator.clipboard.writeText(value);
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+      await Promise.race([
+        navigator.clipboard.writeText(value),
+        new Promise<void>((_resolve, reject) => {
+          attemptTimeout = window.setTimeout(() => reject(new Error("Clipboard request timed out")), 3_000);
+        })
+      ]);
       if (attempt !== latestAttemptRef.current) return;
+      setCopying(false);
       setFailed(false);
       setCopied(true);
       resetTimerRef.current = window.setTimeout(() => {
         if (attempt === latestAttemptRef.current) setCopied(false);
         resetTimerRef.current = undefined;
-      }, 1_400);
+      }, 4_000);
     } catch {
       if (attempt !== latestAttemptRef.current) return;
+      setCopying(false);
       setFailed(true);
       setCopied(false);
+    } finally {
+      if (attemptTimeout !== undefined) window.clearTimeout(attemptTimeout);
     }
   }
-  const buttonLabel = failed ? `${label}. Clipboard access failed; retry copy.` : label;
-  return <span className="copy-control"><button className="copy-button" type="button" onClick={copy} aria-label={buttonLabel}>{copied ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}<span>{copied ? "Copied" : failed ? "Copy failed - retry" : "Copy"}</span></button><span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{copied ? `${label} copied to clipboard.` : ""}</span>{failed ? <span className="sr-only" role="alert">Clipboard access failed. Select and copy the text manually, or retry this button.</span> : null}</span>;
+  const buttonLabel = failed ? `${label}. Clipboard access failed; retry copy.` : copying ? `${label}. Copying.` : label;
+  return <span className="copy-control"><button className="copy-button" type="button" onClick={copy} aria-label={buttonLabel}>{copied ? <CheckCircle2 size={16} /> : <Clipboard size={16} />}<span>{copied ? "Copied" : failed ? "Copy failed - retry" : copying ? "Copying…" : "Copy"}</span></button><span className="sr-only" role="status" aria-live="polite" aria-atomic="true">{copied ? `${label} copied to clipboard.` : copying ? `${label} copy in progress.` : ""}</span>{failed ? <span className="sr-only" role="alert">Clipboard access failed. Select and copy the text manually, or retry this button.</span> : null}</span>;
 }
 
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {

@@ -349,13 +349,28 @@ test("keyboard reset cancellation restores focus to its trigger", async ({ page 
     name: "Reset saved DuskDS journey progress in this browser?"
   });
   await expect(confirmation).toBeVisible();
-  await expect(confirmation.getByRole("button", { name: "Reset browser progress" })).toBeFocused();
-  await page.keyboard.press("Tab");
   await expect(confirmation.getByRole("button", { name: "Cancel" })).toBeFocused();
   await page.keyboard.press("Enter");
 
   await expect(page.getByText("Reset canceled. Browser progress was not changed.")).toBeVisible();
   await expect(resetTrigger).toBeFocused();
+});
+
+test("copy controls expose immediate and perceivable outcome feedback", async ({ page }) => {
+  await page.goto("/#evm/setup");
+
+  const copyButton = page.getByRole("button", { name: "Copy pre-launch RPC URL" });
+  await copyButton.click();
+  await expect(copyButton).toContainText(/Copying…|Copied|Copy failed - retry/);
+  await expect(copyButton).toContainText(/Copied|Copy failed - retry/, { timeout: 5_000 });
+
+  if (await copyButton.getByText("Copied", { exact: true }).count()) {
+    await page.waitForTimeout(1_600);
+    await expect(copyButton).toContainText("Copied");
+    await expect(copyButton.locator("..").getByRole("status")).toContainText("Copy pre-launch RPC URL copied to clipboard.");
+  } else {
+    await expect(page.getByRole("alert")).toContainText("Select and copy the text manually, or retry this button.");
+  }
 });
 
 test("keyboard focus survives hosted node reads", async ({ page }) => {

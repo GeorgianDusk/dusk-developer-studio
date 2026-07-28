@@ -359,13 +359,13 @@ export function useBuilderPath(): [BuilderPath | null, (path: BuilderPath | null
   return [path, setBuilderPath];
 }
 
-export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
+export function useCompanionStatus(): [CompanionStatus, () => Promise<void>, () => Promise<void>] {
   const { runtime, release, companionBaseUrl } = useStudioRuntime();
-  const localBootstrapStarted = useRef(false);
+  const localSessionCheckStarted = useRef(false);
   const [status, setStatus] = useState<CompanionStatus>({
-    state: "unavailable",
+    state: runtime.companionAvailable ? "checking" : "unavailable",
     message: runtime.companionAvailable
-      ? "Local companion has not been checked."
+      ? "Checking the local companion and this browser session..."
       : "Hosted preview is read-only. Run the local companion for preflights or starter files."
   });
   const readSession = useCallback(async (): Promise<CompanionSessionStatus> => {
@@ -399,62 +399,57 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
     try {
       const session = await readSession();
       if (session.paired) applyHealth(session);
-      else setStatus({ state: "unavailable", message: "This browser session is not paired with the current Local Studio run. Reload this page once to use the new run's pairing window; if it remains unpaired, stop the npm command and start it again." });
+      else setStatus({ state: "unavailable", canPair: true, message: "This browser is not paired with the current Local Studio run. Select Pair this browser to authorize this profile for the current run." });
     } catch (error) {
       setStatus({ state: "unavailable", message: safeRequestMessage(error) });
     }
   }, [applyHealth, companionBaseUrl, readSession, runtime.companionAvailable]);
-  useEffect(() => {
-    if (runtime.channel !== "npm" || !runtime.companionAvailable || !companionBaseUrl || localBootstrapStarted.current) return;
-    localBootstrapStarted.current = true;
-    const bootstrap = async () => {
-      setStatus({ state: "checking", message: "Starting the local session..." });
-      try {
+  const pair = useCallback(async () => {
+    if (runtime.channel !== "npm" || !runtime.companionAvailable || !companionBaseUrl) {
+      setStatus({ state: "unavailable", message: "Open the Studio locally to pair a browser. The hosted site never connects to localhost." });
+      return;
+    }
+    setStatus({ state: "checking", message: "Pairing this browser with the current Local Studio run..." });
+    try {
+      await requestJson(window.location.origin + "/__dusk/bootstrap", {
+        init: { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}" },
+        timeoutMs: 6_500,
+        maxBytes: 4 * 1024,
+        validate: isPairingResult
+      });
+      await refresh();
+    } catch (error) {
+      if (error instanceof SafeRequestError && (error.status === 409 || error.status === 410)) {
         try {
           const session = await readSession();
           if (session.paired) {
             applyHealth(session);
             return;
           }
-        } catch (error) {
-          setStatus({ state: "unavailable", message: safeRequestMessage(error) });
-          return;
+        } catch {
+          // The bounded instruction below covers both an unavailable probe
+          // and an explicitly unpaired probe after a concurrent bootstrap.
         }
-        await requestJson(window.location.origin + "/__dusk/bootstrap", {
-          init: { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}" },
-          timeoutMs: 6_500,
-          maxBytes: 4 * 1024,
-          validate: isPairingResult
+        setStatus({
+          state: "unavailable",
+          message: "This Local Studio launch is already paired in another browser profile or its five-minute pairing window expired. Close local Studio pages, stop the npm command with Ctrl+C, and rerun it. To choose a specific profile, add --no-open, open http://127.0.0.1:5173/#companion in that profile, then select Pair this browser."
         });
-        await refresh();
-      } catch (error) {
-        if (error instanceof SafeRequestError && (error.status === 409 || error.status === 410)) {
-          try {
-            const session = await readSession();
-            if (session.paired) {
-              applyHealth(session);
-              return;
-            }
-          } catch {
-            // The bounded instruction below covers both an unavailable probe
-            // and an explicitly unpaired probe after a concurrent bootstrap.
-          }
-          setStatus({
-            state: "unavailable",
-            message: "This Local Studio launch is already paired in another browser profile or its five-minute pairing window expired. Close local Studio pages, stop the npm command with Ctrl+C, and rerun it. To choose a specific profile, add --no-open and open http://127.0.0.1:5173/#companion in that profile before any other local page."
-          });
-          return;
-        }
-        setStatus({ state: "unavailable", message: safeRequestMessage(error) });
+        return;
       }
-    };
-    void bootstrap();
+      setStatus({ state: "unavailable", message: safeRequestMessage(error) });
+    }
   }, [applyHealth, companionBaseUrl, readSession, refresh, runtime.channel, runtime.companionAvailable]);
+  useEffect(() => {
+    if (runtime.channel !== "npm" || !runtime.companionAvailable || !companionBaseUrl || localSessionCheckStarted.current) return;
+    localSessionCheckStarted.current = true;
+    void refresh();
+  }, [companionBaseUrl, refresh, runtime.channel, runtime.companionAvailable]);
   useEffect(() => {
     if (!runtime.companionAvailable) return;
     const markSessionLost = () => setStatus({
       state: "unavailable",
-      message: "The current Local Studio session ended or changed. Reload this page once to pair with the current run; if it remains unpaired, stop the npm command and start it again."
+      canPair: true,
+      message: "The previous Local Studio session ended or changed. Select Pair this browser to authorize this profile for the current run."
     });
     const recheck = () => {
       if (document.visibilityState === "visible") void refresh();
@@ -470,7 +465,7 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>] {
       window.clearInterval(interval);
     };
   }, [refresh, runtime.companionAvailable]);
-  return [status, refresh];
+  return [status, refresh, pair];
 }
 
 type JourneyAction =

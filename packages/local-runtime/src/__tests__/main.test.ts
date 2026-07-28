@@ -71,10 +71,11 @@ describe("local npm runtime CLI mode", () => {
   });
 
   it("explains how to pair the intended browser profile", () => {
-    expect(localBrowserPairingInstruction(true)).toContain("this launch pairs one browser profile");
+    expect(localBrowserPairingInstruction(true)).toContain("select Pair this browser");
     expect(localBrowserPairingInstruction(true)).toContain("rerun with --no-open");
-    expect(localBrowserPairingInstruction(false)).toContain("one browser profile you want to pair");
+    expect(localBrowserPairingInstruction(false)).toContain("one browser profile you want to authorize");
     expect(localBrowserPairingInstruction(false)).toContain("within five minutes");
+    expect(localBrowserPairingInstruction(false)).toContain("Ordinary Local Studio page loads do not pair");
     expect(localBrowserPairingInstruction(false)).toContain("http://127.0.0.1:5173/#companion");
   });
 
