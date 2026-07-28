@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "campaign_id": "developer-studio-comprehensive-2026-07-20",
   "status": "active",
   "minimum_counted_pilots": 32,
@@ -14,7 +14,7 @@
     "pilot_execution": 168,
     "defect_retest": 72,
     "automated_regression": 24,
-    "package_assurance": 24,
+    "package_assurance_reverification": 24,
     "registry_verification": 6,
     "production_verification": 6,
     "duskds_public_node": 15,
@@ -71,7 +71,7 @@
     "CV-D-081", "CV-D-082", "CV-D-083", "CV-D-084", "CV-D-085", "CV-D-086", "CV-D-087", "CV-D-088",
     "CV-D-089", "CV-D-090", "CV-D-091", "CV-D-092", "CV-D-093", "CV-D-094", "CV-D-095", "CV-D-096",
     "CV-D-097", "CV-D-098", "CV-D-099", "CV-D-100", "CV-D-101", "CV-D-102", "CV-D-103", "CV-D-104",
-    "CV-D-105"
+    "CV-D-105", "CV-D-106"
   ],
   "required_final_challenge_scopes": [
     "product-ui-developer-experience",
@@ -90,8 +90,8 @@
   },
   "intended_final_candidate": {
     "package_name": "dusk-developer-studio",
-    "package_version": "1.0.15",
-    "repository_tag": "v1.0.15",
+    "package_version": "1.0.16",
+    "repository_tag": "v1.0.16",
     "assurance_workflow_path": ".github/workflows/studio-npm-package-assurance.yml"
   },
   "historical_evidence": {

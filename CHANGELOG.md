@@ -4,6 +4,16 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.16 - 2026-07-28
+
+### Fixed
+
+- Keep the package-assurance workflow timestamp immutable while evaluating final-gate freshness from a new authenticated download of the exact GitHub Actions artifact.
+
+### Verification
+
+- Prove that old immutable workflow evidence remains valid after a fresh artifact re-verification, while stale, future, pre-run, missing, or mismatched re-verification evidence still fails closed.
+
 ## 1.0.15 - 2026-07-23
 
 ### Security

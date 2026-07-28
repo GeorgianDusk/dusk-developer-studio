@@ -651,8 +651,8 @@ function validateComprehensiveCampaignInternal(
   } = {}
 ) {
   const errors = [];
-  if (!isObject(policy) || policy.schema_version !== 1) {
-    return ["Policy must be a schema_version 1 object."];
+  if (!isObject(policy) || policy.schema_version !== 2) {
+    return ["Policy must be a schema_version 2 object."];
   }
   if (!isObject(evidence) || evidence.schema_version !== 1) {
     return ["Evidence must be a schema_version 1 object."];
@@ -761,7 +761,7 @@ function validateComprehensiveCampaignInternal(
     "pilot_execution",
     "defect_retest",
     "automated_regression",
-    "package_assurance",
+    "package_assurance_reverification",
     "registry_verification",
     "production_verification",
     "duskds_public_node",
@@ -1402,14 +1402,29 @@ function validateComprehensiveCampaignInternal(
         nowMilliseconds,
         futureSkewMilliseconds
       );
+      const packageAssuranceObservedAt = parseTimestamp(packageAssurance.observed_at);
+      const livePackageAssuranceVerifiedAt = validateTimestamp(
+        finalPackageProvenanceVerification?.verified_at,
+        "finalPackageProvenanceVerification.verified_at",
+        errors,
+        nowMilliseconds,
+        futureSkewMilliseconds
+      );
       validateFreshness(
-        packageAssurance.observed_at,
-        "package_assurance",
-        "evidence.final_package_assurance.observed_at",
+        finalPackageProvenanceVerification?.verified_at,
+        "package_assurance_reverification",
+        "finalPackageProvenanceVerification.verified_at",
         policy,
         errors,
         nowMilliseconds
       );
+      if (
+        packageAssuranceObservedAt !== null
+        && livePackageAssuranceVerifiedAt !== null
+        && livePackageAssuranceVerifiedAt < packageAssuranceObservedAt
+      ) {
+        errors.push("Live package assurance re-verification must occur at or after the immutable workflow observation.");
+      }
       const requiredPlatforms = policy.required_package_platforms ?? [];
       const requiredChecks = policy.required_package_checks ?? [];
       if (!valuesMatch(packageAssurance.platforms_verified, requiredPlatforms)) {
