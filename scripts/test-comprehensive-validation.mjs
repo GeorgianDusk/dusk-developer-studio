@@ -62,7 +62,7 @@ function tarFileEntry(name, bytes) {
 function buildTarballFixture({ corruptManifest = false, trailingNonzero = false } = {}) {
   const packageJsonBytes = Buffer.from(JSON.stringify({
     name: "dusk-developer-studio",
-    version: "1.0.15",
+    version: "1.0.16",
     repository: { url: "git+https://github.com/GeorgianDusk/dusk-developer-studio.git" },
     engines: { node: ">=24.18.0 <25" }
   }), "utf8");
@@ -75,7 +75,7 @@ function buildTarballFixture({ corruptManifest = false, trailingNonzero = false 
   const manifestBytes = Buffer.from(JSON.stringify({
     schema_version: 1,
     package: "dusk-developer-studio",
-    version: "1.0.15",
+    version: "1.0.16",
     commit: "1".repeat(40),
     channel: "npm",
     node: { required_range: ">=24.18.0 <25" },
@@ -536,7 +536,8 @@ function buildReceiptBoundFinal() {
       artifact_name: finalPackageProvenance.artifact_name,
       artifact_digest_sha256: finalPackageProvenance.artifact_digest_sha256,
       evidence_payload_sha256: finalPackageReceipt.evidence_payload_sha256,
-      evidence_payload: finalPackageReceipt.evidence_payload
+      evidence_payload: finalPackageReceipt.evidence_payload,
+      verified_at: "2026-07-21T03:59:00Z"
     },
     authoritativeState: {
       clean_worktree: true,
@@ -680,6 +681,82 @@ assert.deepEqual(validateFinalFixture(validFinal.fixture, {
   authoritativeState: validFinal.authoritativeState,
   finalPackageProvenanceVerification: validFinal.finalPackageProvenanceVerification
 }), []);
+
+const packageFreshnessUsesReverificationPolicy = clone(policy);
+packageFreshnessUsesReverificationPolicy.final_evidence_freshness_hours.package_assurance_reverification = 0.1;
+assert.deepEqual(validateComprehensiveCampaign(packageFreshnessUsesReverificationPolicy, validFinal.fixture, {
+  now: fixtureNow,
+  final: true,
+  receiptDigests: validFinal.receiptDigests,
+  receiptContents: validFinal.receiptContents,
+  policySha256: validFinal.policySha256,
+  authoritativeState: validFinal.authoritativeState,
+  finalPackageProvenanceVerification: validFinal.finalPackageProvenanceVerification
+}), []);
+
+const stalePackageReverificationPolicy = clone(policy);
+stalePackageReverificationPolicy.final_evidence_freshness_hours.package_assurance_reverification = 0.1;
+assert.match(
+  validateComprehensiveCampaign(stalePackageReverificationPolicy, validFinal.fixture, {
+    now: fixtureNow,
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState,
+    finalPackageProvenanceVerification: {
+      ...validFinal.finalPackageProvenanceVerification,
+      verified_at: "2026-07-21T03:50:00Z"
+    }
+  }).join("\n"),
+  /finalPackageProvenanceVerification\.verified_at exceeds the 0\.1-hour/u
+);
+
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState,
+    finalPackageProvenanceVerification: {
+      ...validFinal.finalPackageProvenanceVerification,
+      verified_at: "2026-07-21T02:30:00Z"
+    }
+  }).join("\n"),
+  /must occur at or after the immutable workflow observation/u
+);
+
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState,
+    finalPackageProvenanceVerification: {
+      ...validFinal.finalPackageProvenanceVerification,
+      verified_at: "2026-07-21T05:00:00Z"
+    }
+  }).join("\n"),
+  /finalPackageProvenanceVerification\.verified_at must not be in the future/u
+);
+
+const missingPackageReverificationTime = {
+  ...validFinal.finalPackageProvenanceVerification
+};
+delete missingPackageReverificationTime.verified_at;
+assert.match(
+  validateFinalFixture(validFinal.fixture, {
+    final: true,
+    receiptDigests: validFinal.receiptDigests,
+    receiptContents: validFinal.receiptContents,
+    policySha256: validFinal.policySha256,
+    authoritativeState: validFinal.authoritativeState,
+    finalPackageProvenanceVerification: missingPackageReverificationTime
+  }).join("\n"),
+  /finalPackageProvenanceVerification\.verified_at must be an explicit valid ISO-8601 value/u
+);
 
 assert.match(
   validateFinalFixture(validFinal.fixture, {
@@ -1322,7 +1399,7 @@ assert.match(
 
 const tarballInspection = inspectNpmTarballBytes(buildTarballFixture());
 assert.equal(tarballInspection.package_name, "dusk-developer-studio");
-assert.equal(tarballInspection.package_version, "1.0.15");
+assert.equal(tarballInspection.package_version, "1.0.16");
 assert.equal(tarballInspection.manifest_commit, "1".repeat(40));
 assert.equal(tarballInspection.inventory_file_count, 2);
 assert.equal(tarballInspection.inventory_verified, true);

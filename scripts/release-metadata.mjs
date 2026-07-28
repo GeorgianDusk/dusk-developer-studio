@@ -29,7 +29,9 @@ function readCommit(root, environment) {
     return dirty ? `${commit}-dirty` : commit;
   } catch (error) {
     if (error instanceof Error && (error.message.includes("clean committed") || error.message.includes("must match"))) throw error;
-    if (environment === "production") throw new Error("Production release manifests require a verifiable Git commit.");
+    if (environment === "production") {
+      throw new Error("Production release manifests require a verifiable Git commit.", { cause: error });
+    }
     return "unknown";
   }
 }

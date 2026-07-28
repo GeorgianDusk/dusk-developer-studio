@@ -841,7 +841,7 @@ async function runExerciseCli(options) {
     throw new Error("Pilot exercise ownership sentinel is invalid.");
   }
   if (options.phase === "controlled-failure") {
-    let observed = false;
+    let observed;
     try {
       observed = await observeControlledFailure(scenario, packageRoot, workRoot);
     } catch {
