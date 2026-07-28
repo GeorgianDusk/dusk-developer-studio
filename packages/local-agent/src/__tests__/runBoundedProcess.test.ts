@@ -185,6 +185,47 @@ describe("bounded process runner", () => {
     expect(stillRunning).toBe(false);
   });
 
+  it("terminates descendants that detach into their own POSIX process group", async () => {
+    if (process.platform === "win32") return;
+    const parentScript = [
+      "const { spawn } = require('node:child_process');",
+      "const child = spawn(process.execPath, ['-e', 'setInterval(() => undefined, 10000)'], { detached: true, stdio: 'ignore' });",
+      "child.unref();",
+      "process.stdout.write(String(child.pid) + '\\n');",
+      "setInterval(() => undefined, 10000);"
+    ].join(" ");
+    let failure: BoundedProcessError | undefined;
+    try {
+      await runBoundedProcess({ command: process.execPath, args: ["-e", parentScript], timeoutMs: 300, maxOutputBytes: 4_096 });
+    } catch (error) {
+      failure = error as BoundedProcessError;
+    }
+    expect(failure?.reason).toBe("timeout");
+    const detachedPid = Number(failure?.stdout.trim());
+    expect(Number.isInteger(detachedPid)).toBe(true);
+    for (let attempt = 0; attempt < 40 && isRunning(detachedPid); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    const stillRunning = isRunning(detachedPid);
+    if (stillRunning) {
+      try { process.kill(detachedPid, "SIGKILL"); } catch { /* already gone */ }
+    }
+    expect(stillRunning).toBe(false);
+  });
+
+  it("does not signal a completed Windows child from a delayed tree-kill fallback", async () => {
+    if (process.platform !== "win32") return;
+    const operations = Array.from({ length: 8 }, () => runBoundedProcess({
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('x'.repeat(100000))"],
+      timeoutMs: 5_000,
+      maxOutputBytes: 1_024
+    }).catch((error: BoundedProcessError) => error.reason));
+    await expect(Promise.all(operations)).resolves.toEqual(Array(8).fill("output_limit"));
+    await new Promise((resolve) => setTimeout(resolve, 2_250));
+    expect(process.pid).toBeGreaterThan(0);
+  }, 15_000);
+
   it("terminates active tracked process groups through the shutdown helper", async () => {
     const operation = runBoundedProcess({ command: process.execPath, args: ["-e", "setInterval(() => undefined, 10000)"], timeoutMs: 30_000, maxOutputBytes: 4_096 });
     const failure = operation.catch((error: BoundedProcessError) => error);
