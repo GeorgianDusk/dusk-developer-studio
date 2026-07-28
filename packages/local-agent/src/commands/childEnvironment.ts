@@ -42,6 +42,11 @@ export function createChildEnvironment(source: NodeJS.ProcessEnv = process.env, 
   for (const [name, value] of Object.entries(source)) {
     if (value !== undefined && isSafeEnvironmentName(name)) environment[name] = value;
   }
+  if (Object.entries(source).some(([name, value]) =>
+    name.toUpperCase() === "RUSTUP_AUTO_INSTALL" && value === "0"
+  )) {
+    environment.RUSTUP_AUTO_INSTALL = "0";
+  }
   for (const name of Object.keys(environment)) if (name.toUpperCase() === "PATH") delete environment[name];
   const launchExclusions = options.excludedPathRoots || options.excludedPaths
     ? {

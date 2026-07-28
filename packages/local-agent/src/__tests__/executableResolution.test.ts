@@ -214,6 +214,13 @@ describe("trusted executable resolution", () => {
     }).toLowerCase()).toBe(fs.realpathSync.native(path.join(userGitBin, "git.exe")).toLowerCase());
   });
 
+  it("propagates only the fail-closed Rustup auto-install value", () => {
+    expect(createChildEnvironment({ PATH: "", RUSTUP_AUTO_INSTALL: "0" }).RUSTUP_AUTO_INSTALL)
+      .toBe("0");
+    expect(createChildEnvironment({ PATH: "", RUSTUP_AUTO_INSTALL: "1" }).RUSTUP_AUTO_INSTALL)
+      .toBeUndefined();
+  });
+
   it("rejects absolute system-helper lookalikes and inconsistent Windows roots", async () => {
     if (process.platform !== "win32") return;
     const launchRoot = await makeTempRoot("dusk-helper-lookalike-");

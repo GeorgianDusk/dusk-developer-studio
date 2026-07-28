@@ -112,7 +112,39 @@ describe("path preflight", () => {
     });
     expect(readDuskForgeIdentity).toHaveBeenCalledOnce();
     expect(runProcess.mock.calls.some(([options]) => options.command === reviewedDuskForgeExecutable() && options.args[0] === "--version")).toBe(true);
+    for (const [options] of runProcess.mock.calls.filter(([options]) =>
+      ["rustup", "rustc", "cargo"].includes(options.command)
+    )) {
+      expect(options.env?.RUSTUP_AUTO_INSTALL).toBe("0");
+    }
     expect(result.ok).toBe(true);
+  });
+
+  it("does not start Rustup-backed tools when a fresh home has no Rustup state", async () => {
+    const runProcess = vi.fn(async (options: BoundedProcessOptions) => ({
+      stdout: successfulOutput(options),
+      stderr: "",
+      exitCode: 0
+    }));
+    const result = await runPreflightAsync("duskds", {
+      runProcess,
+      readDuskForgeIdentity: async () => {
+        throw Object.assign(new Error("missing receipt"), { code: "ENOENT" });
+      },
+      rustupHomeExists: false
+    });
+    const rustupBacked = result.tools.filter((tool) =>
+      ["rustup", "rustc", "cargo"].includes(tool.command)
+    );
+    expect(rustupBacked).toHaveLength(6);
+    expect(rustupBacked.every((tool) =>
+      tool.ok === false
+      && tool.failureKind === "missing"
+      && tool.error?.includes("read-only check")
+    )).toBe(true);
+    expect(runProcess.mock.calls.some(([options]) =>
+      ["rustup", "rustc", "cargo"].includes(options.command)
+    )).toBe(false);
   });
 
   it("does not fail the whole native preflight for optional tools", async () => {
@@ -169,6 +201,8 @@ describe("path preflight", () => {
     expect(wslCall?.args.join(" ")).toContain("command -v make >/dev/null");
     expect(wslCall?.args.join(" ")).toContain("command -v jq >/dev/null");
     expect(wslCall?.args.join(" ")).toContain("command -v wasm-opt >/dev/null");
+    expect(wslCall?.args.join(" ")).toContain("export RUSTUP_AUTO_INSTALL=0");
+    expect(wslCall?.args.join(" ")).toContain("test -d");
     expect(wslCall?.args.join(" ")).toContain("dusk-forge-cli[[:space:]]+v?0\\.1\\.0");
   });
 
