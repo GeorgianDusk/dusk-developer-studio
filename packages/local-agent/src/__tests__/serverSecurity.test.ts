@@ -413,6 +413,48 @@ describe("local companion containment boundary", () => {
     });
   });
 
+  it.each([
+    ["EACCES", 422, "scaffold_root_unwritable", "not writable by this user"],
+    ["EPERM", 422, "scaffold_root_unwritable", "not writable by this user"],
+    ["EROFS", 422, "scaffold_root_unwritable", "not writable by this user"],
+    ["ENAMETOOLONG", 422, "scaffold_path_too_long", "too long for this system"],
+    ["ENOSPC", 507, "scaffold_storage_unavailable", "enough available storage"],
+    ["EDQUOT", 507, "scaffold_storage_unavailable", "enough available storage"]
+  ])(
+    "returns bounded actionable scaffold recovery for filesystem error %s",
+    async (filesystemCode, expectedStatus, expectedCode, expectedMessage) => {
+      const localPath = "C:\\Users\\person\\private\\duskds";
+      const scaffoldDuskDsForge = vi.fn(async () => {
+        throw Object.assign(new Error(`raw ${filesystemCode} at ${localPath}`), {
+          code: filesystemCode,
+          path: localPath
+        });
+      });
+      const { port } = await startServer({
+        capabilitiesEnabled: true,
+        dependencies: { scaffoldDuskDsForge }
+      });
+      const cookie = await pair(port);
+      const response = await request(port, {
+        method: "POST",
+        path: "/scaffold-duskds-forge",
+        session: cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectName: "native-demo" })
+      });
+      expect(response.status).toBe(expectedStatus);
+      expect(response.body).toMatchObject({
+        ok: false,
+        code: expectedCode
+      });
+      expect(response.body.error).toContain(expectedMessage);
+      expect(response.body.error).toContain("No starter was created.");
+      expect(JSON.stringify(response.body)).not.toContain("person");
+      expect(JSON.stringify(response.body)).not.toContain(localPath);
+      expect(response.body).not.toHaveProperty("incidentId");
+    }
+  );
+
   it.each(["nested\rchild", "nested\nchild"])(
     "rejects scaffold parent controls before invoking Forge for %j",
     async (parentDir) => {

@@ -86,10 +86,12 @@ function getToolAllowlist(path: PreflightPath): ToolCheck[] {
           "-lc",
           [
             "set -e",
+            "export RUSTUP_AUTO_INSTALL=0",
             "command -v make >/dev/null",
             "command -v jq >/dev/null",
             "command -v wasm-opt >/dev/null",
             "test -x \"${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}/bin/dusk-forge\"",
+            "test -d \"${RUSTUP_HOME:-$HOME/.rustup}\"",
             `rustup run ${DUSKDS_RUST_TOOLCHAIN} rustc --version`,
             `rustup target list --installed --toolchain ${DUSKDS_RUST_TOOLCHAIN} | grep -q wasm32-unknown-unknown`,
             `grep -Eq "dusk-forge-cli[[:space:]]+v?${DUSK_FORGE_PACKAGE_VERSION.replaceAll(".", "\\.")}.*${DUSK_FORGE_REVISION}" "\${CARGO_INSTALL_ROOT:-\${CARGO_HOME:-$HOME/.cargo}}/.crates2.json"`,
@@ -150,8 +152,29 @@ export function trustedPathAdditionsForTool(
     });
 }
 
-function envForTool(trustedPathAdditions: string[]): NodeJS.ProcessEnv {
-  return createChildEnvironment(process.env, { trustedPathAdditions });
+function envForTool(tool: ToolCheck, trustedPathAdditions: string[]): NodeJS.ProcessEnv {
+  const environment = createChildEnvironment(process.env, { trustedPathAdditions });
+  if (["rustup", "rustc", "cargo"].includes(tool.command)) {
+    environment.RUSTUP_AUTO_INSTALL = "0";
+  }
+  return environment;
+}
+
+function rustupHomeExists(): boolean {
+  const configured = process.env.RUSTUP_HOME?.trim();
+  return existsSync(resolve(configured || join(homedir(), ".rustup")));
+}
+
+function unavailableRustupState(tool: ToolCheck): ToolResult {
+  return {
+    name: tool.name,
+    command: tool.command,
+    required: tool.required,
+    ok: false,
+    error: "Rustup state is not configured, so this read-only check did not start a Rust tool.",
+    failureKind: "missing",
+    installHint: tool.installHint
+  };
 }
 
 async function checkWasmOptShimAsync(
@@ -209,7 +232,7 @@ async function checkToolAsync(
     const result = await runProcess({
       ...invocation,
       cwd,
-      env: envForTool(trustedPathAdditions),
+      env: envForTool(tool, trustedPathAdditions),
       trustedPathAdditions,
       timeoutMs: tool.windowsDirect ? 10_000 : 5_000,
       maxOutputBytes: 65_536
@@ -289,6 +312,7 @@ export async function runPreflightAsync(
     nodeVersion?: string;
     readDuskForgeIdentity?: () => Promise<DuskForgeInstallIdentity>;
     cwd?: string;
+    rustupHomeExists?: boolean;
   } = {}
 ): Promise<{ ok: boolean; checkedAt: string; path: PreflightPath; tools: ToolResult[] }> {
   const tools: ToolResult[] = [{ name: "Node.js", command: "node", required: true, ok: true, version: runtime.nodeVersion?.trim() || process.version, installHint: "Node.js 24.18 or newer in the Node 24 release line is required to run Local Studio." }];
@@ -296,8 +320,15 @@ export async function runPreflightAsync(
   const readDuskForgeIdentity = runtime.readDuskForgeIdentity ?? (() => readReviewedDuskForgeIdentity());
   let duskForgeIdentityVerified = path !== "duskds";
   let duskForgeIdentityFailureKind: ToolFailureKind = "version-mismatch";
+  const hasRustupHome = runtime.rustupHomeExists ?? rustupHomeExists();
   for (const tool of getToolAllowlist(path)) {
-    if (tool.checkKind === "dusk-forge-identity") {
+    if (
+      path === "duskds"
+      && !hasRustupHome
+      && ["rustup", "rustc", "cargo"].includes(tool.command)
+    ) {
+      tools.push(unavailableRustupState(tool));
+    } else if (tool.checkKind === "dusk-forge-identity") {
       const result = await checkDuskForgeIdentityAsync(tool, readDuskForgeIdentity);
       duskForgeIdentityVerified = result.ok;
       if (!result.ok && result.failureKind) duskForgeIdentityFailureKind = result.failureKind;

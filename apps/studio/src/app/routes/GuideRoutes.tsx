@@ -70,7 +70,11 @@ import {
   type AsyncState
 } from "../StudioUi";
 import { defaultNetwork, initialManualPlatform } from "../studioConfig";
-import { useJourney, useStudioRuntime } from "../studioState";
+import {
+  currentCompanionSessionGeneration,
+  useJourney,
+  useStudioRuntime
+} from "../studioState";
 import type { CompanionStatus, RouteId } from "../types";
 import { isJourneyComplete, type BuilderPath, type EvidenceEntry } from "../journeyProgress";
 
@@ -815,6 +819,7 @@ const DUSKDS_BUILD_PROJECT_MODE_KEY = "dusk-studio-duskds-build-project-mode";
 type ActiveScaffoldContext =
   | {
       schemaVersion: 1;
+      companionSessionGeneration: number;
       status: "pending";
       requestId: number;
       projectName: string;
@@ -822,6 +827,7 @@ type ActiveScaffoldContext =
     }
   | {
       schemaVersion: 1;
+      companionSessionGeneration: number;
       status: "complete";
       requestId: number;
       projectName: string;
@@ -844,6 +850,12 @@ const RUST_2024_RESERVED_PROJECT_NAMES = new Set([
 ]);
 
 function readActiveScaffoldContext(): ActiveScaffoldContext | null {
+  if (
+    activeScaffoldContext
+    && activeScaffoldContext.companionSessionGeneration !== currentCompanionSessionGeneration()
+  ) {
+    activeScaffoldContext = null;
+  }
   return activeScaffoldContext;
 }
 
@@ -906,7 +918,8 @@ function clearActiveScaffoldContext(): void {
 
 function activeScaffoldRequestMatches(requestId: number): boolean {
   return activeScaffoldContext?.status === "pending"
-    && activeScaffoldContext.requestId === requestId;
+    && activeScaffoldContext.requestId === requestId
+    && activeScaffoldContext.companionSessionGeneration === currentCompanionSessionGeneration();
 }
 
 function starterNodeRuntimeGuard(platform: ManualPlatform): string[] {
@@ -1093,7 +1106,10 @@ function DuskDsBuild({
   const journey = useJourney();
   const { runtime, companionBaseUrl } = useStudioRuntime();
   const automaticAvailable = runtime.companionAvailable;
-  const storedScaffold = useMemo(() => readActiveScaffoldContext(), []);
+  const storedScaffold = useMemo(
+    () => companionStatus.state === "available" ? readActiveScaffoldContext() : null,
+    [companionStatus.state]
+  );
   const restoredScaffold = storedScaffold?.status === "complete" ? storedScaffold : null;
   const interruptedScaffold = storedScaffold?.status === "pending" ? storedScaffold : null;
   const retainedAutomaticStructureEvidence = journey.progress.paths.duskds.build.evidenceEntries.some(
@@ -1426,6 +1442,7 @@ function DuskDsBuild({
     setScaffoldMessage("Creating the reviewed, packaged DuskDS template under the managed project root. No external generator runs during this action.");
     writeActiveScaffoldContext({
       schemaVersion: 1,
+      companionSessionGeneration: currentCompanionSessionGeneration(),
       status: "pending",
       requestId,
       projectName: requestedProjectName,
@@ -1454,6 +1471,7 @@ function DuskDsBuild({
       const templateRevision = data.templateRevision;
       writeActiveScaffoldContext({
         schemaVersion: 1,
+        companionSessionGeneration: currentCompanionSessionGeneration(),
         status: "complete",
         requestId,
         projectName: data.projectName,

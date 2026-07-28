@@ -4,6 +4,10 @@ import { STUDIO_PRODUCT, STUDIO_RELEASE, type StudioRelease } from "../release";
 import { App } from "../app/App";
 import { createInitialJourneyProgress, JOURNEY_PROGRESS_STORAGE_KEY, recordJourneyEvidence } from "../app/journeyProgress";
 import { getStudioRuntime } from "../app/runtime";
+import {
+  advanceCompanionSessionGeneration,
+  currentCompanionSessionGeneration
+} from "../app/studioState";
 
 const npmCommit = "a".repeat(40);
 const npmRelease: StudioRelease = { product: STUDIO_PRODUCT, version: "1.2.3", commit: npmCommit, channel: "npm" };
@@ -440,6 +444,7 @@ describe("App", () => {
   });
 
   it("requires an explicit browser action before bootstrapping an npm same-origin session", async () => {
+    const priorGeneration = currentCompanionSessionGeneration();
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
@@ -452,6 +457,7 @@ describe("App", () => {
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/__dusk/bootstrap"))).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Pair this browser" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(currentCompanionSessionGeneration()).toBe(priorGeneration + 1);
     expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByText("Paired. Local capabilities are enabled.")).toBeInTheDocument();
@@ -913,6 +919,50 @@ describe("App", () => {
     expect(screen.getAllByText((content, element) => element?.tagName === "PRE"
       && content.includes(`Set-Location -LiteralPath '${projectPath}' -ErrorAction Stop`)).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /Manual now/ }));
+  });
+
+  it("does not restore a private scaffold path after a new companion pairing generation", async () => {
+    const projectPath = "C:\\Users\\tester\\AppData\\Local\\Dusk\\DeveloperStudio\\projects\\duskds\\duskds-forge-starter";
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/__dusk/session")) {
+        return new Response(JSON.stringify({
+          ok: true,
+          service: "dusk-studio-local-agent",
+          paired: true,
+          capabilitiesEnabled: true,
+          release: npmRelease
+        }));
+      }
+      if (url.endsWith("/scaffold-duskds-forge")) {
+        return new Response(JSON.stringify(scaffoldReceipt(projectPath)));
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem("dusk-studio-builder-path", "duskds");
+    window.localStorage.setItem(
+      JOURNEY_PROGRESS_STORAGE_KEY,
+      JSON.stringify(progressThroughDuskDsAccess())
+    );
+    window.location.hash = "#build";
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create and verify DuskDS starter" }));
+    await waitFor(() => expect(screen.getByText(projectPath, { selector: "code" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /2 Access/i }));
+    advanceCompanionSessionGeneration();
+    fireEvent.click(screen.getByRole("button", { name: /3 Build/i }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/private project path was intentionally not retained/i)).toBeInTheDocument()
+    );
+    expect(screen.queryByText(projectPath)).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "")
+      .toContain("duskds-starter-structure");
   });
 
   it("forgets the canonical path on refresh without deleting durable Build evidence", async () => {

@@ -32,6 +32,16 @@ const ROUTE_BUILDER_PATH_STATE_KEY = "duskStudioBuilderPath";
 const ROUTE_BUILDER_PATH_GENERATION_STATE_KEY = "duskStudioBuilderPathGeneration";
 const ROUTE_BUILDER_PATH_GENERATION_STORAGE_KEY = "dusk-studio-builder-path-generation";
 let volatileBuilderPathGeneration = 0;
+let volatileCompanionSessionGeneration = 0;
+
+export function currentCompanionSessionGeneration(): number {
+  return volatileCompanionSessionGeneration;
+}
+
+export function advanceCompanionSessionGeneration(): number {
+  volatileCompanionSessionGeneration += 1;
+  return volatileCompanionSessionGeneration;
+}
 
 interface RouteFocusSnapshot {
   path: number[];
@@ -417,12 +427,14 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>, () 
         maxBytes: 4 * 1024,
         validate: isPairingResult
       });
+      advanceCompanionSessionGeneration();
       await refresh();
     } catch (error) {
       if (error instanceof SafeRequestError && (error.status === 409 || error.status === 410)) {
         try {
           const session = await readSession();
           if (session.paired) {
+            advanceCompanionSessionGeneration();
             applyHealth(session);
             return;
           }

@@ -102,6 +102,38 @@ class RequestError extends Error {
   }
 }
 
+function scaffoldFilesystemRequestError(error: unknown): RequestError | undefined {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+    return new RequestError(
+      422,
+      "The managed DuskDS project location is not writable by this user. "
+        + "Set DUSK_STUDIO_DUSKDS_PROJECT_ROOT to a short writable local folder, restart Local Studio, and retry. "
+        + "No starter was created.",
+      "scaffold_root_unwritable"
+    );
+  }
+  if (code === "ENAMETOOLONG") {
+    return new RequestError(
+      422,
+      "The managed DuskDS project path is too long for this system. "
+        + "Set DUSK_STUDIO_DUSKDS_PROJECT_ROOT to a shorter writable local folder, restart Local Studio, and retry. "
+        + "No starter was created.",
+      "scaffold_path_too_long"
+    );
+  }
+  if (code === "ENOSPC" || code === "EDQUOT") {
+    return new RequestError(
+      507,
+      "The managed DuskDS project location does not have enough available storage. "
+        + "Free space or choose another writable DUSK_STUDIO_DUSKDS_PROJECT_ROOT, restart Local Studio, and retry. "
+        + "No starter was created.",
+      "scaffold_storage_unavailable"
+    );
+  }
+  return undefined;
+}
+
 function isLoopbackOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
@@ -543,6 +575,11 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
       }
       if (error instanceof ScaffoldRecoveryError) {
         sendError(response, new RequestError(409, error.message, error.code), origin);
+        return;
+      }
+      const scaffoldFilesystemError = scaffoldFilesystemRequestError(error);
+      if (scaffoldFilesystemError) {
+        sendError(response, scaffoldFilesystemError, origin);
         return;
       }
       if (error instanceof z.ZodError) { sendError(response, new RequestError(400, "Request body is invalid.", "invalid_request"), origin); return; }
