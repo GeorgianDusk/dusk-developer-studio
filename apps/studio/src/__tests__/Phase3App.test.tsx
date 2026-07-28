@@ -39,6 +39,9 @@ describe("Phase 3 interaction semantics", () => {
     const guideNavigation = screen.getByLabelText("DuskDS guide sequence");
     expect(within(guideNavigation).getByRole("button", { name: /1 Setup/i })).toHaveAttribute("aria-current", "step");
     expect(within(guideNavigation).getByRole("button", { name: /2 Access/i })).toBeInTheDocument();
+    const evidenceRail = screen.getByRole("complementary", { name: "Evidence" });
+    expect(within(evidenceRail).getByRole("heading", { name: "Evidence", level: 2 })).toBeInTheDocument();
+    expect(within(evidenceRail).getByRole("heading", { name: "Done when", level: 3 })).toBeInTheDocument();
 
     fireEvent.click(within(globalNavigation).getByRole("button", { name: "Reference" }));
     expect(screen.getByRole("button", { name: "Return to DuskDS at Setup" })).toBeInTheDocument();
@@ -59,6 +62,20 @@ describe("Phase 3 interaction semantics", () => {
     expect(screen.getByRole("button", { name: /Show all \d+ capabilities/i })).toHaveAttribute("aria-controls", "reference-capability-results");
     fireEvent.click(screen.getByRole("button", { name: /Show all \d+ docs/i }));
     expect(screen.getByRole("button", { name: "Show fewer docs" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("names and heads the evidence rail on every DuskDS journey step", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskDS/i }));
+
+    const guideNavigation = screen.getByLabelText("DuskDS guide sequence");
+    for (const stepName of ["1 Setup", "2 Access", "3 Build", "4 Inspect"]) {
+      fireEvent.click(within(guideNavigation).getByRole("button", { name: new RegExp(stepName) }));
+      const evidenceRail = screen.getByRole("complementary", { name: "Evidence" });
+      expect(within(evidenceRail).getByRole("heading", { name: "Evidence", level: 2 })).toBeInTheDocument();
+      expect(within(evidenceRail).getByRole("heading", { name: "Done when", level: 3 })).toBeInTheDocument();
+      expect(within(evidenceRail).getAllByRole("list")).toHaveLength(2);
+    }
   });
 
   it("keeps keyboard focus and announces results after broadening an empty reference search", async () => {

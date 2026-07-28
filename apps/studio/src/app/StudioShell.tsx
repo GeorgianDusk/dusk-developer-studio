@@ -210,6 +210,7 @@ export function StepFrame({ builderPath, route, setRoute, children, helper }: { 
   const next = steps[builderPath][index + 1];
   const progress = journey.progress.paths[builderPath][route];
   const required = getStepRequirements(builderPath, route);
+  const evidencePanelHeadingId = `${builderPath}-${route}-evidence-heading`;
   const completion = getJourneyCompletionCounts(journey.progress, builderPath);
   const deployReadiness = builderPath === "duskds"
     ? getDuskDsDeployReadiness(journey.progress)
@@ -253,9 +254,9 @@ export function StepFrame({ builderPath, route, setRoute, children, helper }: { 
         <span ref={announcement} className="sr-only journey-announcement" role="status" aria-live="polite" aria-atomic="true" />
         {children}
       </article>
-      <aside className="done-panel">
+      <aside className="done-panel" aria-labelledby={evidencePanelHeadingId}>
         <div className="button-row">
-          <span className="section-kicker">Evidence</span>
+          <h2 className="section-kicker" id={evidencePanelHeadingId}>Evidence</h2>
           <StatusPill tone={toneForStatus(progress.status)}>{getJourneyStatusLabel(progress.status)}</StatusPill>
         </div>
         <ul className="evidence-list">
@@ -273,7 +274,7 @@ export function StepFrame({ builderPath, route, setRoute, children, helper }: { 
           })}
         </ul>
         {progress.status === "blocked" && progress.blocker ? <p className="blocker-note">Current blocker: {blockerLabels[progress.blocker]}.</p> : null}
-        <span className="section-kicker">Done when</span>
+        <h3 className="section-kicker">Done when</h3>
         <ul>{current.done.map((item) => <li key={item}>{item}</li>)}</ul>
         {helper ? <div className="helper-slot">{helper}</div> : null}
         {progress.status === "skipped" || progress.status === "skipped-with-reason"

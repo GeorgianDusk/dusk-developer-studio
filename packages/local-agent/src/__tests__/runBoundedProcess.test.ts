@@ -215,14 +215,20 @@ describe("bounded process runner", () => {
 
   it("does not signal a completed Windows child from a delayed tree-kill fallback", async () => {
     if (process.platform !== "win32") return;
-    const operations = Array.from({ length: 8 }, () => runBoundedProcess({
+    const operations = Array.from({ length: 16 }, () => runBoundedProcess({
       command: process.execPath,
       args: ["-e", "process.stdout.write('x'.repeat(100000))"],
       timeoutMs: 5_000,
       maxOutputBytes: 1_024
     }).catch((error: BoundedProcessError) => error.reason));
-    await expect(Promise.all(operations)).resolves.toEqual(Array(8).fill("output_limit"));
+    await expect(Promise.all(operations)).resolves.toEqual(Array(16).fill("output_limit"));
     await new Promise((resolve) => setTimeout(resolve, 2_250));
+    await expect(runBoundedProcess({
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('worker-alive')"],
+      timeoutMs: 5_000,
+      maxOutputBytes: 4_096
+    })).resolves.toEqual({ stdout: "worker-alive", stderr: "", exitCode: 0 });
     expect(process.pid).toBeGreaterThan(0);
   }, 15_000);
 
