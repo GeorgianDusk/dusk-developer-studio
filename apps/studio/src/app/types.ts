@@ -9,7 +9,7 @@ export type CompanionStatus =
   | { state: "checking"; message: string }
   | { state: "available"; message: string; capabilitiesEnabled: boolean; release?: CompanionRelease }
   | { state: "mismatch"; message: string; release?: CompanionRelease }
-  | { state: "unavailable"; message: string };
+  | { state: "unavailable"; message: string; canPair?: boolean };
 
 export interface StepInfo {
   id: StepRoute;

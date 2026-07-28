@@ -1,4 +1,4 @@
-const CLI_VERSION = "1.0.16";
+const CLI_VERSION = "1.0.17";
 const REQUIRED_NODE = ">=24.18.0 <25";
 const NODE_RECOVERY = "Install Node.js 24.18.0 from https://nodejs.org/en/download/archive/v24.18.0, open a new terminal, confirm `node --version`, then rerun your Dusk Developer Studio command.";
 const INFORMATIONAL_FLAGS = new Map([
@@ -8,8 +8,8 @@ const INFORMATIONAL_FLAGS = new Map([
   ["-v", "version"]
 ]);
 
-function assertSupportedNode() {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(process.versions.node);
+export function assertSupportedNode(version = process.versions.node) {
+  const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
   if (!match) throw new Error(`Dusk Developer Studio requires Node.js ${REQUIRED_NODE}.\n${NODE_RECOVERY}`);
   const major = Number(match[1]);
   const minor = Number(match[2]);
@@ -30,7 +30,7 @@ function helpText() {
     "create-duskds writes one new project child and uses a reserved .dusk-studio-staging sibling for crash-safe promotion.",
     "",
     "Options:",
-    "  --no-open        Choose the browser profile yourself; open the printed URL within five minutes",
+    "  --no-open        Choose the browser profile; open the printed URL and select Pair this browser",
     "  -h, --help       Show command help",
     "  -v, --version    Show the installed version"
   ].join("\n");
@@ -59,6 +59,7 @@ export function resolveCliInvocation(args) {
 }
 
 export async function runCli(args) {
+  assertSupportedNode();
   const invocation = resolveCliInvocation(args);
   if (invocation.kind === "help") {
     console.log(helpText());
@@ -68,7 +69,6 @@ export async function runCli(args) {
     console.log(CLI_VERSION);
     return;
   }
-  assertSupportedNode();
   if (invocation.kind === "create-duskds") {
     const { runDuskDsTemplateCli } = await import("../app/runtime.mjs");
     await runDuskDsTemplateCli({ projectName: invocation.projectName });

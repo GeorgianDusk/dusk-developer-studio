@@ -7,8 +7,8 @@ The Hosted guide is a static website. It never calls loopback services, enables 
 The functional local Studio is started through the self-contained `dusk-developer-studio` npm package with Node.js `>=24.18.0 <25`. The package installs no additional runtime dependencies:
 
 ```bash
-npx dusk-developer-studio@1.0.16
-npx dusk-developer-studio@1.0.16 local-actions
+npx dusk-developer-studio@1.0.17
+npx dusk-developer-studio@1.0.17 local-actions
 ```
 
 The foreground process serves:
@@ -45,11 +45,17 @@ An unexpected owner, repository, dependency, script, file, integrity value, or p
 - On POSIX systems, require matching real and effective user and group identities and no active Linux process capabilities.
 - Generate at least 32 random pairing bytes in memory.
 - Never place pairing material in a file, environment variable, command argument, URL, fragment, clipboard, response, or log.
+- Never spend the one-use bootstrap on page mount, focus, reload, or ordinary navigation; require the developer to choose **Pair this browser** for the current launch.
 - Require exact frontend and companion package identity before enabling local actions in the UI.
 
 ## Browser bootstrap
 
 The local static server exposes a one-time `POST /__dusk/bootstrap` route for five minutes.
+
+The local Studio calls that route only after the developer explicitly chooses
+**Pair this browser** on the pairing page. A stale profile, restored tab, bare
+loopback URL, reload, or ordinary navigation can check session status but cannot
+create a new session without that action.
 
 It accepts only:
 
@@ -68,13 +74,13 @@ Unsafe decoded paths, traversal, dotfiles, backslashes, symbolic links, and repa
 
 ### Safe mode
 
-`npx dusk-developer-studio@1.0.16` permits startup, pairing, identity parity, health, guidance, and evidence viewing. It does not enable tool execution or starter creation.
+`npx dusk-developer-studio@1.0.17` permits startup, pairing, identity parity, health, guidance, and evidence viewing. It does not enable tool execution or starter creation.
 
 Safe mode cannot be escalated by a hidden flag or request field.
 
 ### Local Actions
 
-`npx dusk-developer-studio@1.0.16 local-actions` enables only the reviewed prerequisite and starter-creation routes.
+`npx dusk-developer-studio@1.0.17 local-actions` enables only the reviewed prerequisite and starter-creation routes.
 
 - Health, preflight, and scaffold routes require an origin-bound session before body parsing.
 - The companion accepts only exact `127.0.0.1` or `localhost` origins for the fixed Studio port, and the Origin hostname must use the same loopback spelling as the request Host.

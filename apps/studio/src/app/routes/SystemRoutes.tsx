@@ -7,7 +7,15 @@ import { createSafeDiagnostics } from "../safeDiagnostics";
 import { AsyncNotice, CommandPair, CopyButton, ExternalLink, PageIntro, StatusPill } from "../StudioUi";
 import type { CompanionStatus } from "../types";
 
-export function LocalCompanionPage({ companionStatus, refreshCompanion }: { companionStatus: CompanionStatus; refreshCompanion: () => Promise<void> }) {
+export function LocalCompanionPage({
+  companionStatus,
+  refreshCompanion,
+  pairCompanion
+}: {
+  companionStatus: CompanionStatus;
+  refreshCompanion: () => Promise<void>;
+  pairCompanion: () => Promise<void>;
+}) {
   const { runtime: studioRuntime, release } = useStudioRuntime();
   const packageSpecifier = `dusk-developer-studio@${release.version}`;
   const safeCommand = `npx ${packageSpecifier}`;
@@ -34,7 +42,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           />
           <ol>
             <li>Run one command in your terminal. npm downloads the package and starts it in the foreground.</li>
-            <li>Your browser opens <strong>127.0.0.1:5173</strong> and pairs automatically. Keep the terminal open while you use the local Studio.</li>
+            <li>Your browser opens the Local Studio pairing page. Review the selected mode, then choose <strong>Pair this browser</strong> to authorize that profile for this run.</li>
             <li>Press <strong>Ctrl+C</strong> in that terminal to stop both local services. On Windows, if npm asks <strong>Terminate batch job (Y/N)?</strong>, type <strong>Y</strong> and press Enter. Your projects remain in your user data folder.</li>
           </ol>
           <div className="button-row">
@@ -47,7 +55,7 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           <StatusPill tone="neutral">Local boundary</StatusPill>
           <h2>What the npm package does</h2>
           <p>It serves the Studio only on <strong>127.0.0.1:5173</strong> and its companion only on <strong>127.0.0.1:8788</strong>. It installs no service, requests no administrator access, and never asks for wallet secrets.</p>
-          <p>The first local page load uses one in-memory pairing value and a one-use bootstrap. The browser receives only an origin-bound, <strong>HttpOnly</strong>, <strong>SameSite=Strict</strong> session cookie. Other origins, hosts, unpaired requests, oversized requests, and expired sessions are rejected.</p>
+          <p>The local pairing page requires an explicit <strong>Pair this browser</strong> action before it can spend the one-use, in-memory bootstrap. The browser receives only an origin-bound, <strong>HttpOnly</strong>, <strong>SameSite=Strict</strong> session cookie. Ordinary page loads, stale profiles, other origins, other hosts, unpaired requests, oversized requests, and expired sessions cannot authorize local actions.</p>
           <p>Local Actions can run only the allowlisted DuskDS prerequisite checks and create approved DuskDS starter projects. DuskEVM actions, wallet signing, funded transactions, deployment, arbitrary commands, and writes outside the managed project root remain unavailable.</p>
           <details className="local-storage-disclosure">
             <summary>Where created projects are stored</summary>
@@ -92,7 +100,11 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
         <h2>Local session</h2>
         <StatusPill tone={statusTone}>{companionStatus.state === "available" ? companionStatus.capabilitiesEnabled ? "Actions ready" : "Safe mode" : companionStatus.state}</StatusPill>
         <p>{companionStatus.message}</p>
-        <button className="secondary-button" type="button" onClick={refreshCompanion} disabled={companionStatus.state === "checking"}>Refresh status</button>
+        {companionStatus.state === "unavailable" && companionStatus.canPair ? (
+          <button className="primary-button" type="button" onClick={pairCompanion}>Pair this browser</button>
+        ) : (
+          <button className="secondary-button" type="button" onClick={refreshCompanion} disabled={companionStatus.state === "checking"}>Refresh status</button>
+        )}
       </div>
       <div className="release-grid local-release-grid">
         <div><span>Studio</span><strong>v{release.version}</strong><small>{releaseCommit} · npm</small></div>
@@ -124,14 +136,21 @@ export function LocalCompanionPage({ companionStatus, refreshCompanion }: { comp
           </div>
           <p className="quiet-note">Keep the terminal open while you work. Press <strong>Ctrl+C</strong> to stop the local Studio and companion; on Windows, confirm <strong>Y</strong> if npm asks to terminate the batch job.</p>
         </div>
+      ) : companionStatus.state === "unavailable" && companionStatus.canPair ? (
+        <div className="focus-card wide">
+          <StatusPill tone="neutral">Ready to pair</StatusPill>
+          <h2>Authorize only the browser profile you intend to use</h2>
+          <p>Confirm the foreground terminal is running the mode you selected, then use <strong>Pair this browser</strong> above. A page load, reload, restored tab, or ordinary navigation cannot authorize itself.</p>
+          <p className="quiet-note">Pairing is valid only for this running npm process. Press <strong>Ctrl+C</strong> to end the local session and close both loopback services.</p>
+        </div>
       ) : companionStatus.state === "unavailable" ? (
         <div className="focus-card wide">
           <StatusPill tone="warn">Not paired</StatusPill>
           <h2>Pair the browser profile you intend to use</h2>
           <ol>
             <li>Close every Local Studio page and press <strong>Ctrl+C</strong> in the terminal that started this run. On Windows, confirm <strong>Y</strong> if npm asks to terminate the batch job.</li>
-            <li>To use your default browser, rerun the normal Safe mode or Local Actions command and continue in the tab it opens.</li>
-            <li>To choose a specific browser profile, rerun the matching command below and open <strong>http://127.0.0.1:5173/#companion</strong> in that profile within five minutes, before opening another Local Studio page.</li>
+            <li>To use your default browser, rerun the normal Safe mode or Local Actions command, continue in the tab it opens, and select <strong>Pair this browser</strong>.</li>
+            <li>To choose a specific browser profile, rerun the matching command below, open <strong>http://127.0.0.1:5173/#companion</strong> in that profile within five minutes, and select <strong>Pair this browser</strong>.</li>
           </ol>
           <CommandPair
             firstTitle="Safe mode, choose browser"
@@ -156,11 +175,11 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
   const [message, setMessage] = useState("No browser-data action yet.");
   const [confirmingReset, setConfirmingReset] = useState(false);
   const resetButtonRef = useRef<HTMLButtonElement>(null);
-  const confirmResetButtonRef = useRef<HTMLButtonElement>(null);
+  const cancelResetButtonRef = useRef<HTMLButtonElement>(null);
   const restoreResetFocusRef = useRef(false);
 
   useEffect(() => {
-    if (confirmingReset) confirmResetButtonRef.current?.focus();
+    if (confirmingReset) cancelResetButtonRef.current?.focus();
   }, [confirmingReset]);
 
   useLayoutEffect(() => {
@@ -250,8 +269,8 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
               <strong id="reset-confirmation-title">Reset saved DuskDS journey progress in this browser?</strong>
               <span>This permanently clears the selected path, recorded checks, blockers, timestamps, and step status. Session-only page choices end when you close this tab.</span>
               <div className="button-row">
-                <button ref={confirmResetButtonRef} className="danger-button" type="button" onClick={clearData}>Reset browser progress</button>
-                <button className="secondary-button" type="button" onClick={cancelReset}>Cancel</button>
+                <button ref={cancelResetButtonRef} className="secondary-button" type="button" onClick={cancelReset}>Cancel</button>
+                <button className="danger-button" type="button" onClick={clearData}>Reset browser progress</button>
               </div>
             </div>
           ) : <button ref={resetButtonRef} className="secondary-button" type="button" onClick={beginReset}>Reset browser progress</button>}

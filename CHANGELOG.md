@@ -4,6 +4,24 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.17 - 2026-07-28
+
+### Fixed
+
+- Make clipboard actions show an immediate in-progress state, a bounded failure state, and success feedback that remains visible long enough to perceive.
+- Focus the safe **Cancel** action when browser-progress reset confirmation opens, while retaining explicit keyboard access to the destructive action.
+
+### Security
+
+- Require the developer to choose **Pair this browser** before the local Studio spends a launch's one-use bootstrap. Restored tabs, stale profiles, bare loopback URLs, reloads, and ordinary navigation can inspect session status but cannot silently authorize the browser for a new Local Actions run.
+- Enforce the supported Node.js range before every CLI response, including help and version output, so npm's default engine warning cannot be mistaken for a supported execution.
+
+### Verification
+
+- Reproduce the source-blind stale-profile flow that exposed the defect, assert that an ordinary local page load makes only the unauthenticated session-status request, and require an explicit browser action before the exact same-origin bootstrap, release-parity check, or machine action becomes available.
+- Exercise the minimum supported, below-range, malformed, and above-range Node versions directly at the CLI guard; retain the normal npm engine declaration while failing closed even when npm itself is configured to warn.
+- Verify reset focus and copy outcome feedback in Chromium, Firefox, and WebKit, including the original 1.4-second feedback-loss window.
+
 ## 1.0.16 - 2026-07-28
 
 ### Fixed

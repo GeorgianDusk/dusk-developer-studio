@@ -24,25 +24,25 @@ The package is self-contained, installs no additional runtime dependencies, and 
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.16
+npx dusk-developer-studio@1.0.17
 ```
 
-Safe mode starts the local Studio, pairs the browser, and provides the guided experience without running developer tools or creating projects.
+Safe mode starts the local Studio and opens its pairing page. After you review the selected mode, choose **Pair this browser** to authorize that profile for the current run. Safe mode provides the guided experience without running developer tools or creating projects.
 
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.16 local-actions
+npx dusk-developer-studio@1.0.17 local-actions
 ```
 
 Local Actions adds allowlisted prerequisite checks and constrained starter creation. It uses developer tools already installed on your machine; it does not install or update them.
 
-The browser opens automatically and each launch pairs one browser profile. To choose a specific browser or profile, add `--no-open` to either command, then open `http://127.0.0.1:5173/#companion` in that profile within five minutes before opening any other Local Studio page.
+The browser opens the Local Studio pairing page automatically, but the page does not authorize itself. Review the selected mode, then choose **Pair this browser**. To choose a specific browser or profile, add `--no-open` to either command, open `http://127.0.0.1:5173/#companion` in that profile within five minutes, and choose **Pair this browser**.
 
 To create a DuskDS counter starter directly from the same reviewed package template:
 
 ```bash
-npx --yes dusk-developer-studio@1.0.16 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.17 create-duskds my-counter
 ```
 
 The command writes one new project child, refuses an existing target, and preserves the packaged Rust `1.94.0` toolchain, dependency lock, and template provenance. It also keeps a reserved `.dusk-studio-staging` sibling as a crash-recovery workspace. Successful operations and handled failures whose cleanup can be proven safe leave it empty. If the process is forcibly terminated mid-creation, a later starter operation removes only a stale stage whose ownership and bounded tree it can verify; a fresh lease may need to expire first, and ambiguous or unsafe residue is preserved for inspection. Dusk Forge remains a separate prerequisite for the subsequent check, build, test, and verification commands. Local Actions uses the separate managed DuskDS project root described below.

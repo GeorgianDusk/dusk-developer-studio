@@ -267,9 +267,7 @@ describe("App", () => {
     expect(screen.getByText("Reset saved DuskDS journey progress in this browser?")).toBeInTheDocument();
     expect(screen.getByText(/Session-only page choices end when you close this tab/)).toBeInTheDocument();
     expect(screen.queryByText(/Reset all Studio progress/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reset browser progress" })).toHaveFocus();
     const resetCancel = screen.getByRole("button", { name: "Cancel" });
-    resetCancel.focus();
     expect(resetCancel).toHaveFocus();
     fireEvent.keyDown(resetCancel, { key: "Escape" });
     expect(screen.queryByText("Reset saved DuskDS journey progress in this browser?")).not.toBeInTheDocument();
@@ -350,6 +348,23 @@ describe("App", () => {
     expect(writeText).toHaveBeenCalledOnce();
   });
 
+  it("shows an immediate in-progress state while a clipboard request is pending", async () => {
+    let resolveCopy!: () => void;
+    const writeText = vi.fn().mockReturnValue(new Promise<void>((resolve) => {
+      resolveCopy = resolve;
+    }));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#setup";
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Copy pre-launch RPC URL" }));
+
+    expect(screen.getByRole("button", { name: "Copy pre-launch RPC URL. Copying." })).toHaveTextContent("Copying…");
+    expect(screen.getByText("Copy pre-launch RPC URL copy in progress.")).toBeInTheDocument();
+    resolveCopy();
+    await waitFor(() => expect(screen.getByText("Copy pre-launch RPC URL copied to clipboard.")).toBeInTheDocument());
+  });
+
   it("shows a visible retry state when clipboard access fails", async () => {
     const writeText = vi.fn()
       .mockRejectedValueOnce(new Error("clipboard blocked"))
@@ -424,8 +439,9 @@ describe("App", () => {
     await waitFor(() => expect(fetchMock).not.toHaveBeenCalled());
   });
 
-  it("bootstraps an npm same-origin session and requires exact release parity", async () => {
+  it("requires an explicit browser action before bootstrapping an npm same-origin session", async () => {
     const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease })));
@@ -433,7 +449,10 @@ describe("App", () => {
     window.location.hash = "#companion";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/__dusk/bootstrap"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Pair this browser" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByText("Paired. Local capabilities are enabled.")).toBeInTheDocument();
@@ -447,6 +466,11 @@ describe("App", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
+      window.location.origin + "/__dusk/session",
+      expect.objectContaining({ credentials: "include" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
       window.location.origin + "/__dusk/bootstrap",
       expect.objectContaining({
         method: "POST",
@@ -456,22 +480,41 @@ describe("App", () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
+      4,
       window.location.origin + "/__dusk/session",
       expect.objectContaining({ credentials: "include" }),
     );
   });
 
+  it("does not silently authorize a stale browser profile on an ordinary local page load", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ ok: true, paired: false }))
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "";
+    render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(String(fetchMock.mock.calls[0]?.[0]).endsWith("/__dusk/session")).toBe(true);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/__dusk/bootstrap"))).toBe(false);
+    expect(screen.getByRole("button", { name: /Local Studio: Not connected/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
+    expect(screen.getByRole("button", { name: "Pair this browser" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks local actions when the companion release does not match", async () => {
     const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: { ...npmRelease, commit: "b".repeat(40) } })));
     vi.stubGlobal("fetch", fetchMock);
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
-    fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Local Studio/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
     expect(screen.getByText(/release identities do not match/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
     fireEvent.click(screen.getByRole("button", { name: /Start DuskDS/i }));
@@ -522,13 +565,14 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Not connected/i })).toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByRole("heading", { name: "Local Studio is not paired." })).toBeInTheDocument();
-    expect(screen.getByText(/Reload this page once to use the new run's pairing window/)).toBeInTheDocument();
+    expect(screen.getByText(/select Pair this browser to authorize this profile/i)).toBeInTheDocument();
   });
 
   it("waits through a delayed same-origin pair before checking health", async () => {
     let finishPair!: (response: Response) => void;
     const delayedPair = new Promise<Response>((resolve) => { finishPair = resolve; });
     const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockReturnValueOnce(delayedPair)
       .mockResolvedValueOnce(new Response(JSON.stringify({
@@ -539,17 +583,19 @@ describe("App", () => {
         release: npmRelease
       })));
     vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#companion";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
+      3,
       window.location.origin + "/__dusk/bootstrap",
       expect.objectContaining({ method: "POST", credentials: "include" })
     );
     finishPair(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })));
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("recovers a concurrent bootstrap through the session cookie or gives a restart instruction", async () => {
@@ -562,25 +608,29 @@ describe("App", () => {
     };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_in_progress" }), { status: 409 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(health)));
     vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#companion";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("explains how to restart after a genuinely expired npm launch", async () => {
-    const unpaired = new Response(JSON.stringify({ ok: true, paired: false }));
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(unpaired)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_expired" }), { status: 410 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })));
     vi.stubGlobal("fetch", fetchMock);
+    window.location.hash = "#companion";
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Local Studio/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
     expect(await screen.findByRole("heading", { name: "Local Studio is not paired." })).toBeInTheDocument();
     expect(screen.getByText(/already paired in another browser profile or its five-minute pairing window expired/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Pair the browser profile you intend to use" })).toBeInTheDocument();

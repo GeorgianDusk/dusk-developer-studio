@@ -5,13 +5,13 @@
 Safe mode:
 
 ```bash
-npx dusk-developer-studio@1.0.16
+npx dusk-developer-studio@1.0.17
 ```
 
 Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.16 local-actions
+npx dusk-developer-studio@1.0.17 local-actions
 ```
 
 Keep the terminal open while using the Studio. Press `Ctrl+C` before changing modes or restarting.
@@ -39,10 +39,12 @@ Stop the local process that owns the conflicting port, then restart the Studio. 
 Leave the foreground command running and open:
 
 ```text
-http://127.0.0.1:5173
+http://127.0.0.1:5173/#companion
 ```
 
-Do not place pairing values in the URL.
+Review the selected mode, then choose **Pair this browser** within five minutes.
+Ordinary Local Studio page loads do not authorize a browser profile. Do not
+place pairing values in the URL.
 
 ### Administrator or root launch was rejected
 
@@ -52,7 +54,7 @@ Open a normal, non-elevated terminal under your developer account and run the co
 
 ### Session expired or bootstrap was consumed
 
-Stop the foreground process with `Ctrl+C`, then restart it. A new in-memory pairing value and browser session will be created.
+Stop the foreground process with `Ctrl+C`, then restart it. A new in-memory pairing value and pairing window will be created. In the page that opens, choose **Pair this browser** to create the new browser session.
 
 ### Frontend/runtime identity mismatch
 
@@ -75,7 +77,7 @@ The Hosted guide provides browser guidance and public read-only checks but never
 That is expected. Stop Safe mode and deliberately start Local Actions:
 
 ```bash
-npx dusk-developer-studio@1.0.16 local-actions
+npx dusk-developer-studio@1.0.17 local-actions
 ```
 
 ### A required tool is missing

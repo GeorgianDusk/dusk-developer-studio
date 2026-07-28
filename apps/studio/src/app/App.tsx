@@ -12,7 +12,7 @@ import { LocalCompanionPage, SettingsPage } from "./routes/SystemRoutes";
 function StudioRoutes() {
   const [route, setRoute, routeNavigation] = useRoute();
   const [builderPath, setBuilderPath] = useBuilderPath();
-  const [companionStatus, refreshCompanion] = useCompanionStatus();
+  const [companionStatus, refreshCompanion, pairCompanion] = useCompanionStatus();
   const isGuideRoute = STEP_ROUTES.includes(route as StepRoute);
   const pendingGuideRoute = isGuideRoute && builderPath === null ? route as StepRoute : null;
   const evmCanonicalRoute = builderPath === "evm" && isGuideRoute && route !== "setup" ? "setup" : null;
@@ -48,7 +48,7 @@ function StudioRoutes() {
     {!pendingGuideRoute && visibleRoute === "inspect" && <InspectPage builderPath={activeBuilderPath} setRoute={setRoute} />}
     {route === "reference" && <ReferencePage builderPath={builderPath} />}
     {route === "troubleshooting" && <TroubleshootingPage builderPath={builderPath} setBuilderPath={setBuilderPath} setRoute={setRoute} />}
-    {route === "companion" && <LocalCompanionPage companionStatus={companionStatus} refreshCompanion={refreshCompanion} />}
+    {route === "companion" && <LocalCompanionPage companionStatus={companionStatus} refreshCompanion={refreshCompanion} pairCompanion={pairCompanion} />}
     {route === "settings" && <SettingsPage builderPath={builderPath} setBuilderPath={setBuilderPath} />}
   </Shell>;
 }
