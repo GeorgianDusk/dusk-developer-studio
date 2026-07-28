@@ -4,6 +4,17 @@ Notable Dusk Developer Studio changes are recorded here.
 
 ## Unreleased
 
+## 1.0.19 - 2026-07-28
+
+### Fixed
+
+- Give every journey evidence rail an accessible name and semantic **Evidence** and **Done when** headings so assistive-technology users can navigate the completion requirements directly.
+
+### Verification
+
+- Add the mobile Safari/WebKit project to the public-release browser command and require its touch, responsive-layout, and prelaunch-boundary coverage alongside desktop Chromium and mobile Chrome.
+- Bind final package evidence to the exact bytes downloaded from the public npm registry, including size, SHA-256, SHA-512 integrity, and tar inventory count.
+
 ## 1.0.18 - 2026-07-28
 
 ### Fixed

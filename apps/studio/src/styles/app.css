@@ -753,6 +753,7 @@ input::placeholder { color: var(--quiet); opacity: 1; }
 .command-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }
 .command-pair > div { display: grid; gap: 12px; padding: 16px; box-shadow: 3px 3px 0 #000; }
 .done-panel { position: sticky; top: 85px; display: grid; gap: 16px; padding: 18px; box-shadow: 4px 4px 0 #000; }
+.done-panel .section-kicker { margin: 0; }
 .done-panel ul { display: grid; gap: 9px; margin: 0; padding-left: 18px; }
 .evidence-list { padding-left: 0 !important; list-style: none; }
 .evidence-list li { display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start; }
