@@ -11,12 +11,16 @@ Notable Dusk Developer Studio changes are recorded here.
 - Keep automatic DuskDS preflight read-only when Rustup state or the pinned toolchain is absent; version checks now disable Rustup auto-install and never bootstrap a fresh Rustup home.
 - Return bounded, actionable recovery for unwritable, read-only, overlong, or storage-exhausted managed project locations instead of a generic companion failure.
 - Invalidate private starter paths and generated commands whenever a browser pairs with a new Local Studio session, while retaining non-sensitive Build evidence.
+- Terminate POSIX descendants that detach into their own process groups when an allowlisted tool times out or Local Studio shuts down.
+- Never signal a completed Windows child from a delayed `taskkill` fallback, avoiding PID-reuse termination of an unrelated same-user process.
 
 ### Verification
 
 - Reproduce the clean-home Rustup download side effect twice against public 1.0.17, then require zero Rustup-backed process launches when the configured Rustup home is absent.
 - Exercise every mapped scaffold filesystem failure and prove that the response contains no local path, raw exception, or incident identifier.
 - Reproduce a restored tab carrying an old absolute project path across two isolated Local Actions processes, then prove a new pairing generation cannot restore that path.
+- Reproduce detached sleepers and a loopback listener surviving both a Linux preflight timeout and Local Studio interruption, then require the product itself to remove them.
+- Stress Windows output-limit cleanup past the delayed fallback window and require the test worker and unrelated processes to remain alive.
 
 ## 1.0.17 - 2026-07-28
 

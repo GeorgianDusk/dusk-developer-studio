@@ -40,14 +40,94 @@ export interface BoundedProcessResult {
 
 const activeChildren = new Set<ChildProcess>();
 
+async function readPosixDescendantPids(rootPid: number): Promise<number[]> {
+  return new Promise((resolve) => {
+    const environment = createChildEnvironment();
+    const processList = spawn("/bin/ps", ["-axo", "pid=,ppid="], {
+      env: environment,
+      shell: false,
+      stdio: ["ignore", "pipe", "ignore"]
+    });
+    const chunks: Buffer[] = [];
+    let capturedBytes = 0;
+    const maximumBytes = 1024 * 1024;
+    const finish = (pids: number[]) => {
+      clearTimeout(timer);
+      resolve(pids);
+    };
+    processList.stdout?.on("data", (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const remaining = Math.max(0, maximumBytes - capturedBytes);
+      if (remaining > 0) {
+        const captured = buffer.subarray(0, remaining);
+        chunks.push(captured);
+        capturedBytes += captured.length;
+      }
+      if (buffer.length > remaining) processList.kill("SIGKILL");
+    });
+    processList.once("error", () => finish([]));
+    processList.once("close", (code) => {
+      if (code !== 0) {
+        finish([]);
+        return;
+      }
+      const childrenByParent = new Map<number, number[]>();
+      for (const line of Buffer.concat(chunks).toString("utf8").split(/\r?\n/)) {
+        const match = /^\s*(\d+)\s+(\d+)\s*$/u.exec(line);
+        if (!match) continue;
+        const pid = Number(match[1]);
+        const parentPid = Number(match[2]);
+        if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(parentPid)) continue;
+        const children = childrenByParent.get(parentPid) ?? [];
+        children.push(pid);
+        childrenByParent.set(parentPid, children);
+      }
+      const descendants: number[] = [];
+      const pending = [...(childrenByParent.get(rootPid) ?? [])];
+      const seen = new Set<number>();
+      while (pending.length) {
+        const pid = pending.shift();
+        if (!pid || seen.has(pid) || pid === process.pid) continue;
+        seen.add(pid);
+        descendants.push(pid);
+        pending.push(...(childrenByParent.get(pid) ?? []));
+      }
+      finish(descendants);
+    });
+    const timer = setTimeout(() => {
+      processList.kill("SIGKILL");
+      finish([]);
+    }, 1_000);
+    timer.unref();
+  });
+}
+
+function killChildIfStillRunning(child: ChildProcess): void {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+  try {
+    child.kill("SIGKILL");
+  } catch {
+    // The tracked process may have exited between the state check and signal.
+  }
+}
+
 async function terminateProcessTree(child: ChildProcess): Promise<void> {
   if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
   if (process.platform !== "win32") {
+    const descendants = await readPosixDescendantPids(child.pid);
+    for (const pid of descendants.reverse()) {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        // Ordinary descendants share the root group; detached group leaders
+        // are signalled here and the root group is signalled below.
+      }
+    }
     try {
       process.kill(-child.pid, "SIGKILL");
       return;
     } catch {
-      child.kill("SIGKILL");
+      killChildIfStillRunning(child);
       return;
     }
   }
@@ -60,7 +140,7 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
       taskkill = resolveWindowsSystemExecutable("taskkill.exe", environment);
       taskkillCwd = resolveWindowsSystemDirectory(environment);
     } catch {
-      child.kill("SIGKILL");
+      killChildIfStillRunning(child);
       resolve();
       return;
     }
@@ -80,15 +160,15 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
     });
     const timer = setTimeout(() => {
       killer.kill("SIGKILL");
-      child.kill("SIGKILL");
+      killChildIfStillRunning(child);
       finish();
     }, 2_000);
     killer.once("error", () => {
-      child.kill("SIGKILL");
+      killChildIfStillRunning(child);
       finish();
     });
     killer.once("close", (code) => {
-      if (code !== 0) child.kill("SIGKILL");
+      if (code !== 0) killChildIfStillRunning(child);
       finish();
     });
   });
