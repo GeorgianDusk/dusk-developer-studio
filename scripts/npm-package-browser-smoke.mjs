@@ -298,6 +298,22 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       "Local Studio CSP must allow its bounded public DuskDS Testnet check."
     );
     await page.locator(".app-shell").waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
+    const unpairedMode = page.getByRole("button", { name: "Local Studio: Not connected" });
+    await unpairedMode.waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
+    assert.equal(
+      bootstrapRequests.length,
+      0,
+      "An ordinary local page load must not spend the one-use pairing bootstrap."
+    );
+    await unpairedMode.click();
+    const pairButton = page.getByRole("button", { name: "Pair this browser" });
+    await pairButton.waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
+    assert.equal(
+      bootstrapRequests.length,
+      0,
+      "Opening the Local Studio pairing page must not authorize the browser without an explicit action."
+    );
+    await pairButton.click();
     const expectedMode = capabilitiesEnabled ? "Actions ready" : "Safe mode";
     await page.getByRole("button", { name: `Local Studio: ${expectedMode}` })
       .waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
@@ -352,6 +368,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       ? "http://127.0.0.1:8788/preflight?path=duskds"
       : undefined;
     if (capabilitiesEnabled) {
+      await page.getByRole("button", { name: "Paths" }).click();
       await page.getByRole("button", { name: /Start DuskDS/i }).click();
       const preflightButton = page.getByRole("button", { name: "Run automatic preflight" });
       await preflightButton.waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });

@@ -411,11 +411,6 @@ export function useCompanionStatus(): [CompanionStatus, () => Promise<void>, () 
     }
     setStatus({ state: "checking", message: "Pairing this browser with the current Local Studio run..." });
     try {
-      const session = await readSession();
-      if (session.paired) {
-        applyHealth(session);
-        return;
-      }
       await requestJson(window.location.origin + "/__dusk/bootstrap", {
         init: { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: "{}" },
         timeoutMs: 6_500,

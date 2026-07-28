@@ -19,6 +19,7 @@ Notable Dusk Developer Studio changes are recorded here.
 ### Verification
 
 - Reproduce the source-blind stale-profile flow that exposed the defect, assert that an ordinary local page load makes only the unauthenticated session-status request, and require an explicit browser action before the exact same-origin bootstrap, release-parity check, or machine action becomes available.
+- Exercise the exact packed npm artifact in Chrome, prove that page load and opening the pairing screen issue no bootstrap request, then select **Pair this browser** and bind the one allowed bootstrap to the expected paired release.
 - Exercise the minimum supported, below-range, malformed, and above-range Node versions directly at the CLI guard; retain the normal npm engine declaration while failing closed even when npm itself is configured to warn.
 - Verify reset focus and copy outcome feedback in Chromium, Firefox, and WebKit, including the original 1.4-second feedback-loss window.
 

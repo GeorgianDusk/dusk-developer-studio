@@ -380,6 +380,11 @@ assert.match(localRuntime, /shutdown_smoke: "passed"/);
 assert.match(npmAssuranceWorkflow, /runner: \[ubuntu-24\.04, windows-2025, macos-15\]/);
 assert.match(npmAssuranceWorkflow, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*node scripts\/npm-package-pack\.mjs/);
 assert.match(npmBrowserSmoke, /await context\.close\(\);[\s\S]*context = undefined;[\s\S]*validateBrowserTransportEvidence/);
+assert.match(
+  npmBrowserSmoke,
+  /Local Studio: Not connected[\s\S]*ordinary local page load must not spend[\s\S]*Pair this browser[\s\S]*pairing page must not authorize[\s\S]*await pairButton\.click\(\)[\s\S]*name: "Paths"[\s\S]*Start DuskDS/,
+  "The exact-tarball browser smoke must prove that only an explicit pairing action spends the bootstrap."
+);
 assert.doesNotMatch(npmAssuranceWorkflow, /^\s+paths:/m);
 assert.doesNotMatch(npmAssuranceWorkflow, /dusk-developer-studio-\d+\.\d+\.\d+\.tgz/);
 assert.doesNotMatch(requiredWindowsWorkflow, /dusk-developer-studio-\d+\.\d+\.\d+\.tgz/);

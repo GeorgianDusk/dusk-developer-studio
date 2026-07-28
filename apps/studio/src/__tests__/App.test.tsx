@@ -442,7 +442,6 @@ describe("App", () => {
   it("requires an explicit browser action before bootstrapping an npm same-origin session", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: npmRelease })));
     vi.stubGlobal("fetch", fetchMock);
@@ -452,7 +451,7 @@ describe("App", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock.mock.calls.some(([input]) => String(input).endsWith("/__dusk/bootstrap"))).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Pair this browser" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Local Studio/i }));
     expect(screen.getByText("Paired. Local capabilities are enabled.")).toBeInTheDocument();
@@ -466,11 +465,6 @@ describe("App", () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      window.location.origin + "/__dusk/session",
-      expect.objectContaining({ credentials: "include" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
       window.location.origin + "/__dusk/bootstrap",
       expect.objectContaining({
         method: "POST",
@@ -480,7 +474,7 @@ describe("App", () => {
       }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
-      4,
+      3,
       window.location.origin + "/__dusk/session",
       expect.objectContaining({ credentials: "include" }),
     );
@@ -506,7 +500,6 @@ describe("App", () => {
   it("blocks local actions when the companion release does not match", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, service: "dusk-studio-local-agent", paired: true, capabilitiesEnabled: true, release: { ...npmRelease, commit: "b".repeat(40) } })));
     vi.stubGlobal("fetch", fetchMock);
@@ -514,7 +507,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /Local Studio/i }));
     fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
     expect(screen.getByText(/release identities do not match/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Paths" }));
     fireEvent.click(screen.getByRole("button", { name: /Start DuskDS/i }));
@@ -573,7 +566,6 @@ describe("App", () => {
     const delayedPair = new Promise<Response>((resolve) => { finishPair = resolve; });
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockReturnValueOnce(delayedPair)
       .mockResolvedValueOnce(new Response(JSON.stringify({
         ok: true,
@@ -587,15 +579,15 @@ describe("App", () => {
     render(<App runtime={getStudioRuntime(window.location.hostname, "npm")} release={npmRelease} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     expect(fetchMock).toHaveBeenNthCalledWith(
-      3,
+      2,
       window.location.origin + "/__dusk/bootstrap",
       expect.objectContaining({ method: "POST", credentials: "include" })
     );
     finishPair(new Response(JSON.stringify({ ok: true, paired: true, expiresInSeconds: 3600 })));
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("recovers a concurrent bootstrap through the session cookie or gives a restart instruction", async () => {
@@ -608,7 +600,6 @@ describe("App", () => {
     };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_in_progress" }), { status: 409 }))
       .mockResolvedValueOnce(new Response(JSON.stringify(health)));
     vi.stubGlobal("fetch", fetchMock);
@@ -617,12 +608,11 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Pair this browser" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Local Studio: Actions ready/i })).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("explains how to restart after a genuinely expired npm launch", async () => {
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: false, code: "bootstrap_expired" }), { status: 410 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, paired: false })));
