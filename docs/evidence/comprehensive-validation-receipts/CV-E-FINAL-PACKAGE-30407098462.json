@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "kind": "final-package-assurance",
+  "record_id": "CV-E-FINAL-PACKAGE-30407098462",
+  "evidence_class": "package-lifecycle-smoke",
+  "producer": "ci-package-assurance",
+  "capture_mode": "machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "evidence_id": "CV-E-FINAL-PACKAGE-30407098462",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_path": "output/npm/dusk-developer-studio-1.0.19.tgz",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "package_inventory_sha256": "358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2",
+    "package_file_count": 29,
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "observed_at": "2026-07-28T23:16:51.257Z",
+    "platforms_verified": [
+      "windows-x64",
+      "ubuntu-24.04-x64",
+      "macos-15-arm64"
+    ],
+    "checks_verified": [
+      "install",
+      "safe",
+      "local-actions",
+      "create-duskds",
+      "shutdown",
+      "cleanup"
+    ],
+    "platform_results": [
+      {
+        "platform": "windows-x64",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:platform:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c"
+        ]
+      },
+      {
+        "platform": "ubuntu-24.04-x64",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:platform:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3"
+        ]
+      },
+      {
+        "platform": "macos-15-arm64",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:platform:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+        ]
+      }
+    ],
+    "check_results": [
+      {
+        "check": "install",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:check:install:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+          "CV-E-FINAL-PACKAGE-30407098462:check:install:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+          "CV-E-FINAL-PACKAGE-30407098462:check:install:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+        ]
+      },
+      {
+        "check": "safe",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:check:safe:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+          "CV-E-FINAL-PACKAGE-30407098462:check:safe:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+          "CV-E-FINAL-PACKAGE-30407098462:check:safe:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+        ]
+      },
+      {
+        "check": "local-actions",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:check:local-actions:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+          "CV-E-FINAL-PACKAGE-30407098462:check:local-actions:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+          "CV-E-FINAL-PACKAGE-30407098462:check:local-actions:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+        ]
+      },
+      {
+        "check": "create-duskds",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+          "CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+          "CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+        ]
+      },
+      {
+        "check": "shutdown",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:check:shutdown:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+          "CV-E-FINAL-PACKAGE-30407098462:check:shutdown:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+          "CV-E-FINAL-PACKAGE-30407098462:check:shutdown:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+        ]
+      },
+      {
+        "check": "cleanup",
+        "status": "passed",
+        "evidence_refs": [
+          "CV-E-FINAL-PACKAGE-30407098462:check:cleanup:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+          "CV-E-FINAL-PACKAGE-30407098462:check:cleanup:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+          "CV-E-FINAL-PACKAGE-30407098462:check:cleanup:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+        ]
+      }
+    ]
+  },
+  "evidence_payload_json": "{\"schema_version\":1,\"record\":{\"evidence_id\":\"CV-E-FINAL-PACKAGE-30407098462\",\"source_commit\":\"91bb1c923250ccdcd3a79f69c1604a7ab9e2b392\",\"package_name\":\"dusk-developer-studio\",\"package_version\":\"1.0.19\",\"package_path\":\"output/npm/dusk-developer-studio-1.0.19.tgz\",\"package_sha256\":\"9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2\",\"package_inventory_sha256\":\"358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2\",\"package_file_count\":29,\"npm_integrity\":\"sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==\",\"observed_at\":\"2026-07-28T23:16:51.257Z\",\"platforms_verified\":[\"windows-x64\",\"ubuntu-24.04-x64\",\"macos-15-arm64\"],\"checks_verified\":[\"install\",\"safe\",\"local-actions\",\"create-duskds\",\"shutdown\",\"cleanup\"],\"platform_results\":[{\"platform\":\"windows-x64\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:platform:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c\"]},{\"platform\":\"ubuntu-24.04-x64\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:platform:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3\"]},{\"platform\":\"macos-15-arm64\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:platform:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684\"]}],\"check_results\":[{\"check\":\"install\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:check:install:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3\",\"CV-E-FINAL-PACKAGE-30407098462:check:install:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c\",\"CV-E-FINAL-PACKAGE-30407098462:check:install:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684\"]},{\"check\":\"safe\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:check:safe:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3\",\"CV-E-FINAL-PACKAGE-30407098462:check:safe:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c\",\"CV-E-FINAL-PACKAGE-30407098462:check:safe:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684\"]},{\"check\":\"local-actions\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:check:local-actions:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3\",\"CV-E-FINAL-PACKAGE-30407098462:check:local-actions:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c\",\"CV-E-FINAL-PACKAGE-30407098462:check:local-actions:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684\"]},{\"check\":\"create-duskds\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3\",\"CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c\",\"CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684\"]},{\"check\":\"shutdown\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:check:shutdown:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3\",\"CV-E-FINAL-PACKAGE-30407098462:check:shutdown:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c\",\"CV-E-FINAL-PACKAGE-30407098462:check:shutdown:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684\"]},{\"check\":\"cleanup\",\"status\":\"passed\",\"evidence_refs\":[\"CV-E-FINAL-PACKAGE-30407098462:check:cleanup:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3\",\"CV-E-FINAL-PACKAGE-30407098462:check:cleanup:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c\",\"CV-E-FINAL-PACKAGE-30407098462:check:cleanup:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684\"]}]},\"native_ci_evidence\":{\"browser_boot_and_pairing_smoke\":\"passed\",\"local_actions_preflight_verified\":true,\"consumer_contract_source_sha256\":\"89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0\",\"platform_smoke\":{\"ubuntu-24.04\":{\"schema_version\":2,\"status\":\"passed\",\"runner\":\"ubuntu-24.04\",\"node_version\":\"24.18.0\",\"install_smoke\":\"passed\",\"process_containment_smoke\":\"passed\",\"safe_smoke\":\"passed\",\"local_actions_capability_contract_smoke\":\"passed\",\"local_actions_preflight_verified\":true,\"local_actions_preflight_check_id\":\"three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract\",\"local_actions_preflight_loopback_services_stopped\":true,\"local_actions_preflight_consumer_contract_source_sha256\":\"89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0\",\"direct_cli_scaffold_smoke\":\"passed\",\"local_actions_scaffold_smoke\":\"passed\",\"scaffold_preservation_smoke\":\"passed\",\"shutdown_smoke\":\"passed\",\"cleanup_smoke\":\"passed\",\"elevated_refusal\":\"passed\",\"candidate_commit\":\"91bb1c923250ccdcd3a79f69c1604a7ab9e2b392\",\"integrity\":\"sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==\",\"package_inventory_sha256\":\"358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2\",\"package_file_count\":29,\"observed_at\":\"2026-07-28T23:15:42.411Z\"},\"windows-2025\":{\"schema_version\":2,\"status\":\"passed\",\"runner\":\"windows-2025\",\"node_version\":\"24.18.0\",\"install_smoke\":\"passed\",\"process_containment_smoke\":\"passed\",\"safe_smoke\":\"passed\",\"local_actions_capability_contract_smoke\":\"passed\",\"local_actions_preflight_verified\":true,\"local_actions_preflight_check_id\":\"three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract\",\"local_actions_preflight_loopback_services_stopped\":true,\"local_actions_preflight_consumer_contract_source_sha256\":\"89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0\",\"direct_cli_scaffold_smoke\":\"passed\",\"local_actions_scaffold_smoke\":\"passed\",\"scaffold_preservation_smoke\":\"passed\",\"shutdown_smoke\":\"passed\",\"cleanup_smoke\":\"passed\",\"elevated_refusal\":\"passed\",\"candidate_commit\":\"91bb1c923250ccdcd3a79f69c1604a7ab9e2b392\",\"integrity\":\"sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==\",\"package_inventory_sha256\":\"358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2\",\"package_file_count\":29,\"observed_at\":\"2026-07-28T23:16:37.316Z\"},\"macos-15\":{\"schema_version\":2,\"status\":\"passed\",\"runner\":\"macos-15\",\"node_version\":\"24.18.0\",\"install_smoke\":\"passed\",\"process_containment_smoke\":\"passed\",\"safe_smoke\":\"passed\",\"local_actions_capability_contract_smoke\":\"passed\",\"local_actions_preflight_verified\":true,\"local_actions_preflight_check_id\":\"three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract\",\"local_actions_preflight_loopback_services_stopped\":true,\"local_actions_preflight_consumer_contract_source_sha256\":\"89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0\",\"direct_cli_scaffold_smoke\":\"passed\",\"local_actions_scaffold_smoke\":\"passed\",\"scaffold_preservation_smoke\":\"passed\",\"shutdown_smoke\":\"passed\",\"cleanup_smoke\":\"passed\",\"elevated_refusal\":\"passed\",\"candidate_commit\":\"91bb1c923250ccdcd3a79f69c1604a7ab9e2b392\",\"integrity\":\"sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==\",\"package_inventory_sha256\":\"358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2\",\"package_file_count\":29,\"observed_at\":\"2026-07-28T23:15:41.263Z\"}}}}",
+  "evidence_payload": {
+    "schema_version": 1,
+    "record": {
+      "evidence_id": "CV-E-FINAL-PACKAGE-30407098462",
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_name": "dusk-developer-studio",
+      "package_version": "1.0.19",
+      "package_path": "output/npm/dusk-developer-studio-1.0.19.tgz",
+      "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+      "package_inventory_sha256": "358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2",
+      "package_file_count": 29,
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "observed_at": "2026-07-28T23:16:51.257Z",
+      "platforms_verified": [
+        "windows-x64",
+        "ubuntu-24.04-x64",
+        "macos-15-arm64"
+      ],
+      "checks_verified": [
+        "install",
+        "safe",
+        "local-actions",
+        "create-duskds",
+        "shutdown",
+        "cleanup"
+      ],
+      "platform_results": [
+        {
+          "platform": "windows-x64",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:platform:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c"
+          ]
+        },
+        {
+          "platform": "ubuntu-24.04-x64",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:platform:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3"
+          ]
+        },
+        {
+          "platform": "macos-15-arm64",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:platform:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+          ]
+        }
+      ],
+      "check_results": [
+        {
+          "check": "install",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:check:install:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+            "CV-E-FINAL-PACKAGE-30407098462:check:install:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+            "CV-E-FINAL-PACKAGE-30407098462:check:install:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+          ]
+        },
+        {
+          "check": "safe",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:check:safe:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+            "CV-E-FINAL-PACKAGE-30407098462:check:safe:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+            "CV-E-FINAL-PACKAGE-30407098462:check:safe:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+          ]
+        },
+        {
+          "check": "local-actions",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:check:local-actions:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+            "CV-E-FINAL-PACKAGE-30407098462:check:local-actions:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+            "CV-E-FINAL-PACKAGE-30407098462:check:local-actions:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+          ]
+        },
+        {
+          "check": "create-duskds",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+            "CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+            "CV-E-FINAL-PACKAGE-30407098462:check:create-duskds:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+          ]
+        },
+        {
+          "check": "shutdown",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:check:shutdown:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+            "CV-E-FINAL-PACKAGE-30407098462:check:shutdown:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+            "CV-E-FINAL-PACKAGE-30407098462:check:shutdown:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+          ]
+        },
+        {
+          "check": "cleanup",
+          "status": "passed",
+          "evidence_refs": [
+            "CV-E-FINAL-PACKAGE-30407098462:check:cleanup:ubuntu-24.04:6ac015cfeb3f8237ceafc3cf76fdb6c35f46a4767b661e6c7bf8fd6ca6d85bd3",
+            "CV-E-FINAL-PACKAGE-30407098462:check:cleanup:windows-2025:95edd74ec9bc04da622b74a0d217d9879d5b233ad4459bcacaff676b0d841c8c",
+            "CV-E-FINAL-PACKAGE-30407098462:check:cleanup:macos-15:f6ef432e99c35b3e267a5a799ddf8d38cbb765cfa45be1176474d9fb1d23f684"
+          ]
+        }
+      ]
+    },
+    "native_ci_evidence": {
+      "browser_boot_and_pairing_smoke": "passed",
+      "local_actions_preflight_verified": true,
+      "consumer_contract_source_sha256": "89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0",
+      "platform_smoke": {
+        "ubuntu-24.04": {
+          "schema_version": 2,
+          "status": "passed",
+          "runner": "ubuntu-24.04",
+          "node_version": "24.18.0",
+          "install_smoke": "passed",
+          "process_containment_smoke": "passed",
+          "safe_smoke": "passed",
+          "local_actions_capability_contract_smoke": "passed",
+          "local_actions_preflight_verified": true,
+          "local_actions_preflight_check_id": "three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract",
+          "local_actions_preflight_loopback_services_stopped": true,
+          "local_actions_preflight_consumer_contract_source_sha256": "89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0",
+          "direct_cli_scaffold_smoke": "passed",
+          "local_actions_scaffold_smoke": "passed",
+          "scaffold_preservation_smoke": "passed",
+          "shutdown_smoke": "passed",
+          "cleanup_smoke": "passed",
+          "elevated_refusal": "passed",
+          "candidate_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+          "integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+          "package_inventory_sha256": "358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2",
+          "package_file_count": 29,
+          "observed_at": "2026-07-28T23:15:42.411Z"
+        },
+        "windows-2025": {
+          "schema_version": 2,
+          "status": "passed",
+          "runner": "windows-2025",
+          "node_version": "24.18.0",
+          "install_smoke": "passed",
+          "process_containment_smoke": "passed",
+          "safe_smoke": "passed",
+          "local_actions_capability_contract_smoke": "passed",
+          "local_actions_preflight_verified": true,
+          "local_actions_preflight_check_id": "three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract",
+          "local_actions_preflight_loopback_services_stopped": true,
+          "local_actions_preflight_consumer_contract_source_sha256": "89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0",
+          "direct_cli_scaffold_smoke": "passed",
+          "local_actions_scaffold_smoke": "passed",
+          "scaffold_preservation_smoke": "passed",
+          "shutdown_smoke": "passed",
+          "cleanup_smoke": "passed",
+          "elevated_refusal": "passed",
+          "candidate_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+          "integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+          "package_inventory_sha256": "358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2",
+          "package_file_count": 29,
+          "observed_at": "2026-07-28T23:16:37.316Z"
+        },
+        "macos-15": {
+          "schema_version": 2,
+          "status": "passed",
+          "runner": "macos-15",
+          "node_version": "24.18.0",
+          "install_smoke": "passed",
+          "process_containment_smoke": "passed",
+          "safe_smoke": "passed",
+          "local_actions_capability_contract_smoke": "passed",
+          "local_actions_preflight_verified": true,
+          "local_actions_preflight_check_id": "three-platform-exact-tarball-local-actions-preflight-producer-consumer-contract",
+          "local_actions_preflight_loopback_services_stopped": true,
+          "local_actions_preflight_consumer_contract_source_sha256": "89f37421a9a072791bbec7dffe385e5f72131c8a8c46a20bf48dd7baf59a41c0",
+          "direct_cli_scaffold_smoke": "passed",
+          "local_actions_scaffold_smoke": "passed",
+          "scaffold_preservation_smoke": "passed",
+          "shutdown_smoke": "passed",
+          "cleanup_smoke": "passed",
+          "elevated_refusal": "passed",
+          "candidate_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+          "integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+          "package_inventory_sha256": "358df51b7b032f33d5bdbf188dfe377ba33624f13db0780fe2c6bb5e0e8a22b2",
+          "package_file_count": 29,
+          "observed_at": "2026-07-28T23:15:41.263Z"
+        }
+      }
+    }
+  },
+  "evidence_payload_sha256": "0c02264e007aeb763b25e0bab8927c2b4b37780308d1fc64412f2c97106985ac",
+  "github_actions_provenance": {
+    "schema_version": 1,
+    "mode": "github-actions-upload-artifact-v7",
+    "repository": "GeorgianDusk/dusk-developer-studio",
+    "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+    "run_id": "30407098462",
+    "run_attempt": 1,
+    "run_event": "push",
+    "run_ref": "refs/heads/main",
+    "run_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "run_url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098462",
+    "job_name": "aggregate-assurance",
+    "artifact_id": "8707087871",
+    "artifact_name": "studio-npm-assurance-evidence-30407098462.json",
+    "artifact_url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098462/artifacts/8707087871",
+    "artifact_digest_sha256": "0c02264e007aeb763b25e0bab8927c2b4b37780308d1fc64412f2c97106985ac"
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-CORE-08-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-CORE-08-V1019",
+    "scenario_id": "CV-CORE-08",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-28T23:57:14.751Z",
+    "ended_at": "2026-07-28T23:57:16.745Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "windows-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "not-applicable",
+        "observation": "Policy profile hosted-browser excludes this machine-local requirement."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "A new isolated Chromium context began with zero cookies and only the empty version-1 journey record."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "not-applicable",
+        "observation": "Policy profile hosted-browser excludes this machine-local requirement."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "not-applicable",
+        "observation": "Policy profile hosted-browser excludes this machine-local requirement."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "not-applicable",
+        "observation": "Policy profile hosted-browser excludes this machine-local requirement."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "not-applicable",
+        "observation": "Policy profile hosted-browser excludes this machine-local requirement."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "The hosted public site was the only product origin used; no local service or port was opened."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "sessionStorage was empty and there was no local pairing cookie or reused local-session value."
+      }
+    ],
+    "task_observations": [
+      "The overview explicitly said DuskEVM Testnet is not live and labeled https://rpc.testnet.evm.dusk.network planning-only and NOT STUDIO-ACTIVATED.",
+      "Expected chain metadata was 745 / 0x2e9.",
+      "Planned stages were Setup for RPC and chain, Access for account and DUSK gas reads, Build for Foundry or Hardhat, and Inspect for RPC and Blockscout.",
+      "The browser-only identifier helper was exercised with a 40-hex address, 64-hex transaction hash, decimal block normalization, and invalid input.",
+      "The helper explicitly disclaimed existence, ownership, DuskEVM provenance, and safety.",
+      "There was no connect-wallet, fund, sign, send, deploy, starter, network-check, or completion-score action. Deployment appeared only as an external planning link.",
+      "Hedger was labeled research context, not an active integration, investor promise, or current developer dependency.",
+      "Source-blind bundle v1019-public-browser-pilots.json SHA-256 dea6e82af562dae3b0396c4d1d5c849e5152bafeeda659e8df774a1c3c21da03; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "overview",
+      "setup",
+      "access",
+      "build",
+      "inspect",
+      "reference",
+      "troubleshooting",
+      "companion:/scaffold-template-refusal"
+    ],
+    "evidence_refs": [
+      "CV-X-CORE-08-V1019:E1 v1019-public-browser-pilots.json#CORE-08 sha256:dea6e82af562dae3b0396c4d1d5c849e5152bafeeda659e8df774a1c3c21da03",
+      "CV-X-CORE-08-V1019:T:companion:/scaffold-template-refusal:failure-recovery:The browser pilot confirmed the DuskEVM template remains truthfully deferred while the active DuskDS journey remains available."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "The isolated context was discarded without retained progress or browser artifacts."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-CORE-08-V1019:T:companion:/scaffold-template-refusal:failure-recovery:The browser pilot confirmed the DuskEVM template remains truthfully deferred while the active DuskDS journey remains available.",
+      "surface_id": "companion:/scaffold-template-refusal",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-CORE-08-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

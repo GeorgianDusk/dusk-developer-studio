@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "kind": "defect-retest",
+  "record_id": "CV-R-D-072",
+  "evidence_class": "operator-receipt",
+  "producer": "codex-defect-retest",
+  "capture_mode": "machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "retest_id": "CV-R-D-072",
+    "defect_id": "CV-D-072",
+    "evidence_class": "operator-receipt",
+    "status": "passed",
+    "started_at": "2026-07-28T23:10:08.559Z",
+    "ended_at": "2026-07-28T23:15:06.981Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "exact-candidate evidence map",
+      "node": "24.18.0",
+      "browser": "mapped browser, package and native runners"
+    },
+    "surfaces_verified": [
+      "security:ST-20"
+    ],
+    "evidence_refs": [
+      "CV-R-D-072:E1 defect-specific map sha256:582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa; mapping base-map-direct",
+      "CV-R-D-072:S1 scripts/test-phase5-evidence.mjs sha256:6a1f486a434ac41916bf6fcc0ac7dbaf821d1061d5769052674ea209d414638b; assertions [\"assert.equal(policy.npm_distribution.package_version, \\\"1.0.19\\\")\",\"Phase 5 evidence go/no-go fixtures passed.\"]",
+      "CV-R-D-072:A1 authenticated run 30407098429 attempt 1 POSIX product and security gates/Run complete source and product gate step 10 conclusion success; 2026-07-28T23:10:08.5599598Z–2026-07-28T23:15:06.9819010Z"
+    ],
+    "adjacent_flow_evidence_refs": [
+      "CV-R-D-072:N1 The listed assertion(s) exercise this defect's concrete failure mode; job references are limited to the exact gate or installed-package lane that ran them."
+    ]
+  },
+  "defect_mapping": {
+    "defect_id": "CV-D-072",
+    "severity": "P1",
+    "summary": "The retained formal Phase 5 gate still targeted 1.0.1 and synthetic obsolete receipt shapes that the current 1.0.2 assurance and publication workflows can never emit.",
+    "regression_test": "Workflow-shaped positive fixtures pass; adversarial fixtures reject schema 9, 1.0.1, the old flat assurance receipt, workflow-dispatch provenance, platform and payload divergence, wrong inner artifacts and every cross-run publication field.",
+    "status": "direct",
+    "test_sources": [
+      {
+        "path": "scripts/test-phase5-evidence.mjs",
+        "assertion_patterns": [
+          "assert.equal(policy.npm_distribution.package_version, \"1.0.19\")",
+          "Phase 5 evidence go/no-go fixtures passed."
+        ],
+        "sha256": "6a1f486a434ac41916bf6fcc0ac7dbaf821d1061d5769052674ea209d414638b"
+      }
+    ],
+    "automation_run_refs": [
+      {
+        "provider": "github-actions",
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "run_id": 30407098429,
+        "run_attempt": 1,
+        "event": "push",
+        "ref": "refs/heads/main",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "workflow_path": ".github/workflows/studio-linux-security.yml",
+        "job_id": 90434875950,
+        "job_name": "POSIX product and security gates",
+        "step_name": "Run complete source and product gate",
+        "scope": "pnpm test, build, release and product/security source gates on the exact v1.0.19 commit",
+        "status": "success",
+        "started_at": "2026-07-28T23:10:08.5599598Z",
+        "ended_at": "2026-07-28T23:15:06.9819010Z",
+        "url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098429/job/90434875950",
+        "original_step_name": "Complete source and product gate",
+        "step_number": 10,
+        "step_conclusion": "success"
+      }
+    ],
+    "machine_test_report_refs": [],
+    "pilot_refs": [],
+    "surfaces_verified": [
+      "security:ST-20"
+    ],
+    "started_at": "2026-07-28T23:10:08.5599598Z",
+    "ended_at": "2026-07-28T23:15:06.9819010Z",
+    "validation_summary": "The listed assertion(s) exercise this defect's concrete failure mode; job references are limited to the exact gate or installed-package lane that ran them.",
+    "mapping_kind": "base-map-direct"
+  },
+  "defect_map_path": "output/final-source/defect-retest-map-v1019.json",
+  "defect_map_sha256": "582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa",
+  "defect_map_remediation_path": "output/final-source/defect-retest-map-remediation-v1019.json",
+  "defect_map_remediation_sha256": "699d9a94fab8fdd21b0e09b68b51ecbce6729b5a8e122e6f7004c8d735974564",
+  "defect_run_reference_correction_path": "output/final-source/defect-run-reference-correction-v1019.json",
+  "defect_run_reference_correction_sha256": "90543b8e86833496c5e2d794ead23f3273ad93578cc67c380ff14eea313d6318",
+  "targeted_gap_surface_correction_path": "output/final-source/targeted-gap-surface-correction-v1019.json",
+  "targeted_gap_surface_correction_sha256": "68d8e96cc844742f5de83e39bad45e1bd04f8a5b79ad41465f1571c8efe9e8d5",
+  "vitest_report_path": "output/final-source/v1019-vitest-results.json",
+  "vitest_report_sha256": "4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062"
+}

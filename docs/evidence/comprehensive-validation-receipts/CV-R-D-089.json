@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "kind": "defect-retest",
+  "record_id": "CV-R-D-089",
+  "evidence_class": "operator-receipt",
+  "producer": "codex-defect-retest",
+  "capture_mode": "machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "retest_id": "CV-R-D-089",
+    "defect_id": "CV-D-089",
+    "evidence_class": "operator-receipt",
+    "status": "passed",
+    "started_at": "2026-07-28T23:10:08.559Z",
+    "ended_at": "2026-07-29T02:01:50.607Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "exact-candidate evidence map",
+      "node": "24.18.0",
+      "browser": "mapped browser, package and native runners"
+    },
+    "surfaces_verified": [
+      "ui:overview",
+      "ui:setup",
+      "companion:/preflight"
+    ],
+    "evidence_refs": [
+      "CV-R-D-089:E1 defect-specific map sha256:582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa; mapping base-map-direct",
+      "CV-R-D-089:S1 apps/studio/src/app/safeDiagnostics.test.ts sha256:2c5e8e7a5c7d30262ea58983f46a7dd5d250958e38f97a9a5c8da21a3ff4bc39; assertions [\"distinguishes browser-step readiness from DuskEVM network activation\"]",
+      "CV-R-D-089:S2 apps/studio/src/__tests__/App.test.tsx sha256:75da75d3102ad58f6ef7f52b4cbc6ffc47d159a44f56517987825f3f16c4017a; assertions [\"keeps DuskEVM as one pre-launch learning surface and shows release identity\"]",
+      "CV-R-D-089:A1 authenticated run 30407098429 attempt 1 POSIX product and security gates/Run complete source and product gate step 10 conclusion success; 2026-07-28T23:10:08.5599598Z–2026-07-28T23:15:06.9819010Z",
+      "CV-R-D-089:P1 output/source-blind/v1019-public-browser-pilots.json#CV-CORE-08; 2026-07-28T23:57:14.751Z–2026-07-28T23:57:16.745Z; Production labeled DuskEVM not live and NOT STUDIO-ACTIVATED.",
+      "CV-R-D-089:P2 output/source-blind/v1019-public-windows-local-pilots.json#CV-CORE-03; 2026-07-29T00:29:45Z–2026-07-29T00:42:18Z; Local preflight readiness was exercised separately.",
+      "CV-R-D-089:M1 output/final-source/v1019-vitest-results.json sha256:4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062; 2026-07-29T02:00:59.968Z–2026-07-29T02:01:50.607Z"
+    ],
+    "adjacent_flow_evidence_refs": [
+      "CV-R-D-089:N1 The listed assertion(s) exercise this defect's concrete failure mode; job references are limited to the exact gate or installed-package lane that ran them."
+    ]
+  },
+  "defect_mapping": {
+    "defect_id": "CV-D-089",
+    "severity": "P2",
+    "summary": "Safe diagnostics used ready language that could be mistaken for live network or DuskEVM service availability.",
+    "regression_test": "Diagnostic contract and DuskEVM pre-launch regressions in the full local and browser suites.",
+    "status": "direct",
+    "test_sources": [
+      {
+        "path": "apps/studio/src/app/safeDiagnostics.test.ts",
+        "test_titles": [
+          "distinguishes browser-step readiness from DuskEVM network activation"
+        ],
+        "sha256": "2c5e8e7a5c7d30262ea58983f46a7dd5d250958e38f97a9a5c8da21a3ff4bc39"
+      },
+      {
+        "path": "apps/studio/src/__tests__/App.test.tsx",
+        "test_titles": [
+          "keeps DuskEVM as one pre-launch learning surface and shows release identity"
+        ],
+        "sha256": "75da75d3102ad58f6ef7f52b4cbc6ffc47d159a44f56517987825f3f16c4017a"
+      }
+    ],
+    "automation_run_refs": [
+      {
+        "provider": "github-actions",
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "run_id": 30407098429,
+        "run_attempt": 1,
+        "event": "push",
+        "ref": "refs/heads/main",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "workflow_path": ".github/workflows/studio-linux-security.yml",
+        "job_id": 90434875950,
+        "job_name": "POSIX product and security gates",
+        "step_name": "Run complete source and product gate",
+        "scope": "pnpm test, build, release and product/security source gates on the exact v1.0.19 commit",
+        "status": "success",
+        "started_at": "2026-07-28T23:10:08.5599598Z",
+        "ended_at": "2026-07-28T23:15:06.9819010Z",
+        "url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098429/job/90434875950",
+        "original_step_name": "Complete source and product gate",
+        "step_number": 10,
+        "step_conclusion": "success"
+      }
+    ],
+    "machine_test_report_refs": [
+      {
+        "evidence_type": "machine-test-report",
+        "path": "output/final-source/v1019-vitest-results.json",
+        "sha256": "4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062",
+        "framework": "Vitest",
+        "suite_count": 76,
+        "test_count": 389,
+        "status": "passed",
+        "started_at": "2026-07-29T02:00:59.968Z",
+        "ended_at": "2026-07-29T02:01:50.607Z"
+      }
+    ],
+    "pilot_refs": [
+      {
+        "path": "output/source-blind/v1019-public-browser-pilots.json",
+        "scenario_id": "CV-CORE-08",
+        "status": "passed",
+        "started_at": "2026-07-28T23:57:14.751Z",
+        "ended_at": "2026-07-28T23:57:16.745Z",
+        "rationale": "Production labeled DuskEVM not live and NOT STUDIO-ACTIVATED."
+      },
+      {
+        "path": "output/source-blind/v1019-public-windows-local-pilots.json",
+        "scenario_id": "CV-CORE-03",
+        "status": "passed",
+        "started_at": "2026-07-29T00:29:45Z",
+        "ended_at": "2026-07-29T00:42:18Z",
+        "rationale": "Local preflight readiness was exercised separately."
+      }
+    ],
+    "surfaces_verified": [
+      "ui:overview",
+      "ui:setup",
+      "companion:/preflight"
+    ],
+    "started_at": "2026-07-28T23:10:08.5599598Z",
+    "ended_at": "2026-07-29T02:01:50.607Z",
+    "validation_summary": "The listed assertion(s) exercise this defect's concrete failure mode; job references are limited to the exact gate or installed-package lane that ran them.",
+    "mapping_kind": "base-map-direct"
+  },
+  "defect_map_path": "output/final-source/defect-retest-map-v1019.json",
+  "defect_map_sha256": "582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa",
+  "defect_map_remediation_path": "output/final-source/defect-retest-map-remediation-v1019.json",
+  "defect_map_remediation_sha256": "699d9a94fab8fdd21b0e09b68b51ecbce6729b5a8e122e6f7004c8d735974564",
+  "defect_run_reference_correction_path": "output/final-source/defect-run-reference-correction-v1019.json",
+  "defect_run_reference_correction_sha256": "90543b8e86833496c5e2d794ead23f3273ad93578cc67c380ff14eea313d6318",
+  "targeted_gap_surface_correction_path": "output/final-source/targeted-gap-surface-correction-v1019.json",
+  "targeted_gap_surface_correction_sha256": "68d8e96cc844742f5de83e39bad45e1bd04f8a5b79ad41465f1571c8efe9e8d5",
+  "vitest_report_path": "output/final-source/v1019-vitest-results.json",
+  "vitest_report_sha256": "4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062"
+}

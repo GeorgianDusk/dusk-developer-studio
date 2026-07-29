@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-NPM-01-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-NPM-01-V1019",
+    "scenario_id": "CV-NPM-01",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-29T00:08:11.000Z",
+    "ended_at": "2026-07-29T00:16:42.000Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "windows-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "First launch used an empty isolated npm cache and disposable location."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "A fresh companion tab was opened against the first-run process."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "Ran as MSI\\CodexSandboxOffline with no elevation."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "Fresh empty managed project root contained no user project."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "Retained PID and 5173/8788/8789 baselines were recorded."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "Only bounded runtime variables were captured; secrets were excluded."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "Browser tab closed, process exited, and all fixed ports were closed."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "This was an empty-cache first run with a newly issued, ultimately expired pairing window."
+      }
+    ],
+    "task_observations": [
+      "The first empty-cache npx launch emitted Dusk Developer Studio 1.0.19 (91bb1c92) and Safe mode.",
+      "After the five-minute window elapsed, pairing failed with explicit expired-or-already-paired recovery guidance; no false pairing was claimed.",
+      "Build & browser data showed v1.0.19, commit 91bb1c92, Local Studio runtime, npm package channel, and privacy/storage statements.",
+      "The retained process exited and loopback ports closed.",
+      "Source-blind bundle v1019-public-windows-local-pilots.json SHA-256 04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "npm-first-run",
+      "safe",
+      "settings",
+      "cleanup",
+      "ui:settings",
+      "cli:safe"
+    ],
+    "evidence_refs": [
+      "CV-X-NPM-01-V1019:E1 v1019-public-windows-local-pilots.json#NPM-01 sha256:04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b",
+      "CV-X-NPM-01-V1019:T:ui:settings:success:The first-run exact-package pilot directly inspected Settings.",
+      "CV-X-NPM-01-V1019:T:cli:safe:success:The exact package launched successfully in Safe mode from an empty cache."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "First-run cache, local app-data, project root, and browser tab were removed or closed."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-NPM-01-V1019:T:ui:settings:success:The first-run exact-package pilot directly inspected Settings.",
+      "surface_id": "ui:settings",
+      "outcome": "success",
+      "record_id": "CV-X-NPM-01-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-NPM-01-V1019:T:cli:safe:success:The exact package launched successfully in Safe mode from an empty cache.",
+      "surface_id": "cli:safe",
+      "outcome": "success",
+      "record_id": "CV-X-NPM-01-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

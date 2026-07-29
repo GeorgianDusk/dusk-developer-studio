@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-NPM-04-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-NPM-04-V1019",
+    "scenario_id": "CV-NPM-04",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-29T00:02:45.000Z",
+    "ended_at": "2026-07-29T00:04:05.000Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "windows-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "Lower-bound fixture and supported retry used isolated public-package state."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "No browser surface was used; an isolated empty browser-state marker was reserved."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "Both runtimes ran as MSI\\CodexSandboxOffline without elevation."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "The retry used a dedicated empty disposable project root."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "Both finite CLI processes were bounded; no Studio ports were opened."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "Runtime and cache variables were bounded; no secrets entered evidence."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "Both CLI processes exited and fixed ports stayed closed."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "No Local Studio pairing was used; retry was a fresh supported-runtime invocation."
+      }
+    ],
+    "task_observations": [
+      "The originally targeted 24.17.1 runtime was not published; public Node 24.17.0 was used as the honest lower-bound fixture.",
+      "The CLI exited 1 and required Node.js >=24.18.0 <25, linking the 24.18.0 archive and asking the user to confirm node --version before retry.",
+      "On host Node 24.18.0, the same exact 1.0.19 package created supported-retry with ten files and empty staging.",
+      "Source-blind bundle v1019-public-windows-local-pilots.json SHA-256 04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "node-lower-boundary",
+      "npm-first-run",
+      "recovery",
+      "cli:safe"
+    ],
+    "evidence_refs": [
+      "CV-X-NPM-04-V1019:E1 v1019-public-windows-local-pilots.json#NPM-04 sha256:04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b",
+      "CV-X-NPM-04-V1019:T:cli:safe:failure-recovery:The CLI refused the unsupported runtime and recovered on the supported exact Node line."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "Public Node fixture, created starter, caches, and disposable root were removed."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-NPM-04-V1019:T:cli:safe:failure-recovery:The CLI refused the unsupported runtime and recovered on the supported exact Node line.",
+      "surface_id": "cli:safe",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-NPM-04-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "kind": "challenge-review",
+  "record_id": "CV-E-CHALLENGE-PRODUCT-V1019",
+  "evidence_class": "challenge-review",
+  "producer": "codex-independent-challenge",
+  "capture_mode": "independent-adversarial",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "evidence_id": "CV-E-CHALLENGE-PRODUCT-V1019",
+    "evidence_class": "challenge-review",
+    "scope": "product-ui-developer-experience",
+    "observed_at": "2026-07-29T03:03:19.480Z",
+    "result": "clear",
+    "independent_execution": true,
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "independent-challenge",
+      "node": "24.18.0",
+      "browser": "challenge-selected browser and native evidence"
+    },
+    "summary": "Clear. A fresh post-pilot adversarial product, UI, and developer-experience challenge found no reproducible P0-P3 defect in the exact Dusk Developer Studio v1.0.19 release. When the final cross-platform chronology and targeted CV-D-026, CV-D-047, CV-D-069, and CV-D-038 receipts changed after the first challenge pass, the verdict was reopened for a real incremental review beginning after those gates; no finding reopened. The public npm bytes, repository identity, production manifest, assurance receipt, every deployed artifact, and recomputed production fingerprint agreed. The production UI preserved the Hosted-versus-local boundary, supported a truthful DuskDS Setup -> Access -> Build -> Inspect traversal without inventing build, wallet, deployment, or driver success, kept DuskEVM to one inert pre-launch surface, recovered honestly from a failed public-node request, and passed the independently exercised route, responsive, mobile WebKit, 200% zoom, keyboard, focus, forced-colors, reduced-motion, names, landmarks, headings, status, reset, disclosure, and Evidence-rail checks. The post-gate WebKit review independently reproduced the CV-D-038 invalidation: application navigation was CSP-clean and only Playwright screenshot instrumentation caused the blocked-style signal. The prior v1.0.18 challenge defects are closed in this candidate: the final browser bundle explicitly includes mobile-safari-webkit-emulation, and every DuskDS Evidence rail is a complementary landmark named by a visible Evidence heading.",
+    "evidence_refs": [
+      "CV-E-CHALLENGE-PRODUCT-V1019:E1 v1019-product-challenge.json sha256:b510578a4d504ca392801b59eec0915cceea6ca7fdb6a37a334540c914c6fee0"
+    ]
+  }
+}

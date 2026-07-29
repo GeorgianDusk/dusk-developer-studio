@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-RES-01-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-RES-01-V1019",
+    "scenario_id": "CV-RES-01",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-29T00:57:02.331Z",
+    "ended_at": "2026-07-29T00:57:40.261Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "windows-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "Conflict and recovery used fresh disposable package roots and caches."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "No browser interaction was needed; isolated browser-state markers were reserved."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "Listener and Studio ran as MSI\\CodexSandboxOffline without elevation."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "Both launches used empty disposable managed project roots."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "Listener PID, Studio PIDs, port ownership, and decision deadlines were retained."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "Cache, local app-data, project root, and path were bounded; secrets were excluded."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "All retained processes stopped and 5173/8788 were closed after recovery."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "Conflict and recovery used fresh exact-package invocations with no pairing reuse."
+      }
+    ],
+    "task_observations": [
+      "Retained listener PID 18980 proved ownership of 5173 at the launch decision.",
+      "Studio PID 3736 exited within 20 seconds and reported that 127.0.0.1:5173 was in use, how to recover, and that any partially started service was stopped.",
+      "8788 was not listening after the failed launch.",
+      "Fresh recovery PID 23796 bound both ports within 20 seconds, emitted the exact identity, then stopped with both ports closed.",
+      "Source-blind bundle v1019-public-windows-local-pilots.json SHA-256 04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "port-5173-conflict",
+      "startup-recovery",
+      "closed-ports",
+      "cli:lifecycle-self-test",
+      "security:ST-18"
+    ],
+    "evidence_refs": [
+      "CV-X-RES-01-V1019:E1 v1019-public-windows-local-pilots.json#RES-01 sha256:04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b",
+      "CV-X-RES-01-V1019:T:cli:lifecycle-self-test:failure-recovery:The lifecycle refused a UI-port collision, cleaned partial state, and recovered.",
+      "CV-X-RES-01-V1019:T:security:ST-18:failure-recovery:The lifecycle failed boundedly, cleaned partial state and recovered."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "Conflict listener, Studio processes, caches, logs, and both disposable roots were removed."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-RES-01-V1019:T:cli:lifecycle-self-test:failure-recovery:The lifecycle refused a UI-port collision, cleaned partial state, and recovered.",
+      "surface_id": "cli:lifecycle-self-test",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-RES-01-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-RES-01-V1019:T:security:ST-18:failure-recovery:The lifecycle failed boundedly, cleaned partial state and recovered.",
+      "surface_id": "security:ST-18",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-RES-01-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

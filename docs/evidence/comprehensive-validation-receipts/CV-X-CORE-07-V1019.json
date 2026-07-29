@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-CORE-07-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-CORE-07-V1019",
+    "scenario_id": "CV-CORE-07",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-28T23:52:48.000Z",
+    "ended_at": "2026-07-28T23:53:31.000Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "macos-15-arm64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "The exact tarball was installed into fresh job-temporary roots on a new macOS runner."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "The native lifecycle used a bounded self-test. For the independent public Build qualification, hosted browser progress was explicitly reset to 0/4 before Build was reopened, and the qualification tab was finalized afterward."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "The standard macOS runner user executed the successful journey; a separate elevated attempt was explicitly refused."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "Direct and Local Actions scaffolds used fresh job-temporary parents and verified isolation."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "Lifecycle evidence declared exactly the expected 5173 and 8788 loopback endpoints and no unexpected endpoint."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "The public receipt contains no secret values and GitHub masked its job token."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "Both lifecycle modes reported shutdown passed and studio_loopback_services_stopped true; cleanup_smoke passed."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "The fresh job created a one-use bootstrap/session and explicitly proved bootstrap replay denial."
+      }
+    ],
+    "task_observations": [
+      "Safe mode verified one-time bootstrap, replay denial, authenticated session, exact release parity, capability contract, only 127.0.0.1:5173 and 127.0.0.1:8788 as expected endpoints, shutdown, and closed loopback services.",
+      "Local Actions repeated those checks and additionally scaffolded and preserved exactly one regular project without reparse or symlink entries.",
+      "Setup/preflight returned 16 bounded tool rows, four with version strings, and stopped both Studio loopback services.",
+      "After clearing hosted browser progress to a fresh 0/4 context, the public Build journey was independently opened and switched to macOS shell. It presented native macOS check/build-all guidance while explicitly requiring self-managed Linux for VM tests and refusing to imply a native macOS VM-test pass.",
+      "CV-CORE-06 separately supplies a fresh native Ubuntu build and VM-test execution; CORE-07 verifies the truthful public macOS Build surface and the native macOS package lifecycle without conflating those claims.",
+      "Source-blind bundle v1019-public-cross-platform-pilots.json SHA-256 c6926735fa143cee4f8dcd037357c3ffadca0b04992ede931d3d2f3a5dee55ae; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "safe",
+      "local-actions",
+      "setup",
+      "build",
+      "cleanup",
+      "cli:lifecycle-self-test",
+      "security:ST-18",
+      "security:ST-19"
+    ],
+    "evidence_refs": [
+      "CV-X-CORE-07-V1019:E1 v1019-public-cross-platform-pilots.json#CORE-07 sha256:c6926735fa143cee4f8dcd037357c3ffadca0b04992ede931d3d2f3a5dee55ae",
+      "CV-X-CORE-07-V1019:T:cli:lifecycle-self-test:success:The macOS exact-package lane directly exercised both lifecycle journeys and cleanup.",
+      "CV-X-CORE-07-V1019:T:security:ST-18:success:Both modes completed on the exact public package.",
+      "CV-X-CORE-07-V1019:T:security:ST-19:failure-recovery:The macOS lane records elevated-execution refusal and standard-user lifecycle success; Windows and Linux recovery pilots provide the adjacent native cases."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "The job removed install, scaffold, preflight, and lifecycle roots; the ephemeral macOS runner was discarded."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-CORE-07-V1019:T:cli:lifecycle-self-test:success:The macOS exact-package lane directly exercised both lifecycle journeys and cleanup.",
+      "surface_id": "cli:lifecycle-self-test",
+      "outcome": "success",
+      "record_id": "CV-X-CORE-07-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-CORE-07-V1019:T:security:ST-18:success:Both modes completed on the exact public package.",
+      "surface_id": "security:ST-18",
+      "outcome": "success",
+      "record_id": "CV-X-CORE-07-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-CORE-07-V1019:T:security:ST-19:failure-recovery:The macOS lane records elevated-execution refusal and standard-user lifecycle success; Windows and Linux recovery pilots provide the adjacent native cases.",
+      "surface_id": "security:ST-19",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-CORE-07-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

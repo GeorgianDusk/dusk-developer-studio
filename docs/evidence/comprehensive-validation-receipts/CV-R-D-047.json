@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "kind": "defect-retest",
+  "record_id": "CV-R-D-047",
+  "evidence_class": "operator-receipt",
+  "producer": "codex-defect-retest",
+  "capture_mode": "machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "retest_id": "CV-R-D-047",
+    "defect_id": "CV-D-047",
+    "evidence_class": "operator-receipt",
+    "status": "passed",
+    "started_at": "2026-07-29T02:41:30.060Z",
+    "ended_at": "2026-07-29T02:41:56.707Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "exact-candidate evidence map",
+      "node": "24.18.0",
+      "browser": "mapped browser, package and native runners"
+    },
+    "surfaces_verified": [
+      "ui:overview"
+    ],
+    "evidence_refs": [
+      "CV-R-D-047:E1 defect-specific map sha256:582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa; mapping targeted-gap-remediation",
+      "CV-R-D-047:S1 README.md sha256:61e16d6f48b52c81973bfbee9f93774e2359b2ef1a3ab84f26af9aad599ca3e6; assertions []",
+      "CV-R-D-047:S2 PRODUCT.md sha256:13c269cdc63010a7e445fd3343421f6d44b0f71f2f39100576a9bab7c61ed11f; assertions []",
+      "CV-R-D-047:S3 DESIGN.md sha256:239999bcdb988144c2bb006834c5b8a61f722a7d533a820f5eb02ada94217074; assertions []",
+      "CV-R-D-047:S4 apps/studio/src/app/App.tsx sha256:17c50d74e1105a08f82cb443048100f8a992a8a6cd148ed4c74e7cf5f1c19c37; assertions []",
+      "CV-R-D-047:S5 apps/studio/src/app/StudioShell.tsx sha256:8c4d13f54824af6ace23d51cb73980897b4bc50837fdc471ebdbf7be87a62a85; assertions []",
+      "CV-R-D-047:S6 apps/studio/src/app/routes/GuideRoutes.tsx sha256:cb176602f588dacc23f46ef0aa744841392581c033166134a80251e5d9427e82; assertions []",
+      "CV-R-D-047:S7 apps/studio/src/__tests__/App.test.tsx sha256:75da75d3102ad58f6ef7f52b4cbc6ffc47d159a44f56517987825f3f16c4017a; assertions []",
+      "CV-R-D-047:S8 apps/studio/src/__tests__/Phase3App.test.tsx sha256:f635f8543b909b75db1cd99bf19d207b5bc6308c6df57328cc3bba96f46d6967; assertions []",
+      "CV-R-D-047:M1 output/final-source/targeted-gap-retests-v1019.json sha256:f91da7cafbb60afbdebb00a30506eb860eedb2c7890a23522563e5daf975874a; 2026-07-29T02:41:30.060Z–2026-07-29T02:41:56.707Z"
+    ],
+    "adjacent_flow_evidence_refs": [
+      "CV-R-D-047:N1 Exact document assertions plus focused exact-candidate UI regressions."
+    ]
+  },
+  "defect_mapping": {
+    "defect_id": "CV-D-047",
+    "severity": "P3",
+    "summary": "Public product and design documents promised a four-step selected-path guide for both paths while the truthful pre-launch DuskEVM UI intentionally provides one learning surface.",
+    "regression_test": "README, PRODUCT and DESIGN now state the same pre-launch exception; existing App and Phase3App tests enforce the one-surface, no-score UI.",
+    "status": "direct",
+    "test_sources": [
+      {
+        "path": "README.md",
+        "sha256": "61e16d6f48b52c81973bfbee9f93774e2359b2ef1a3ab84f26af9aad599ca3e6"
+      },
+      {
+        "path": "PRODUCT.md",
+        "sha256": "13c269cdc63010a7e445fd3343421f6d44b0f71f2f39100576a9bab7c61ed11f"
+      },
+      {
+        "path": "DESIGN.md",
+        "sha256": "239999bcdb988144c2bb006834c5b8a61f722a7d533a820f5eb02ada94217074"
+      },
+      {
+        "path": "apps/studio/src/app/App.tsx",
+        "sha256": "17c50d74e1105a08f82cb443048100f8a992a8a6cd148ed4c74e7cf5f1c19c37"
+      },
+      {
+        "path": "apps/studio/src/app/StudioShell.tsx",
+        "sha256": "8c4d13f54824af6ace23d51cb73980897b4bc50837fdc471ebdbf7be87a62a85"
+      },
+      {
+        "path": "apps/studio/src/app/routes/GuideRoutes.tsx",
+        "sha256": "cb176602f588dacc23f46ef0aa744841392581c033166134a80251e5d9427e82"
+      },
+      {
+        "path": "apps/studio/src/__tests__/App.test.tsx",
+        "sha256": "75da75d3102ad58f6ef7f52b4cbc6ffc47d159a44f56517987825f3f16c4017a"
+      },
+      {
+        "path": "apps/studio/src/__tests__/Phase3App.test.tsx",
+        "sha256": "f635f8543b909b75db1cd99bf19d207b5bc6308c6df57328cc3bba96f46d6967"
+      }
+    ],
+    "automation_run_refs": [],
+    "machine_test_report_refs": [
+      {
+        "evidence_type": "targeted-machine-retest",
+        "path": "output/final-source/targeted-gap-retests-v1019.json",
+        "sha256": "f91da7cafbb60afbdebb00a30506eb860eedb2c7890a23522563e5daf975874a",
+        "status": "passed",
+        "started_at": "2026-07-29T02:41:30.060Z",
+        "ended_at": "2026-07-29T02:41:56.707Z"
+      }
+    ],
+    "pilot_refs": [],
+    "surfaces_verified": [
+      "ui:overview"
+    ],
+    "started_at": "2026-07-29T02:41:30.060Z",
+    "ended_at": "2026-07-29T02:41:56.707Z",
+    "gap": {
+      "severity": "P3",
+      "reason": "UI tests prove the single DuskEVM pre-launch surface and the three documents currently state it, but no executable contract reads README, PRODUCT and DESIGN and compares them with the route model.",
+      "reproduction": "Change any one of README.md, PRODUCT.md or DESIGN.md back to an unconditional four-step DuskEVM guide while leaving the single-surface UI unchanged; the current defect-specific suite does not reject the contradiction.",
+      "expected_fix_claim": "README, PRODUCT and DESIGN each state the same DuskEVM pre-launch single-surface exception rendered by the route model; DuskDS retains Setup/Access/Build/Inspect.",
+      "required_smallest_retest": "Add one source-contract test that reads all three documents, asserts the explicit exception in each, inspects the DuskEVM route model, and fails if any document promises four live DuskEVM steps. Run it in the exact-commit product gate."
+    },
+    "validation_summary": "Exact document assertions plus focused exact-candidate UI regressions.",
+    "mapping_kind": "targeted-gap-remediation"
+  },
+  "defect_map_path": "output/final-source/defect-retest-map-v1019.json",
+  "defect_map_sha256": "582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa",
+  "defect_map_remediation_path": "output/final-source/defect-retest-map-remediation-v1019.json",
+  "defect_map_remediation_sha256": "699d9a94fab8fdd21b0e09b68b51ecbce6729b5a8e122e6f7004c8d735974564",
+  "defect_run_reference_correction_path": "output/final-source/defect-run-reference-correction-v1019.json",
+  "defect_run_reference_correction_sha256": "90543b8e86833496c5e2d794ead23f3273ad93578cc67c380ff14eea313d6318",
+  "targeted_gap_surface_correction_path": "output/final-source/targeted-gap-surface-correction-v1019.json",
+  "targeted_gap_surface_correction_sha256": "68d8e96cc844742f5de83e39bad45e1bd04f8a5b79ad41465f1571c8efe9e8d5",
+  "vitest_report_path": "output/final-source/v1019-vitest-results.json",
+  "vitest_report_sha256": "4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062"
+}

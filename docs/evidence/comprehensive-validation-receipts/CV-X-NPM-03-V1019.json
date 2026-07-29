@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-NPM-03-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-NPM-03-V1019",
+    "scenario_id": "CV-NPM-03",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-29T00:43:02.000Z",
+    "ended_at": "2026-07-29T00:51:16.000Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "windows-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "Runs A and B used distinct disposable caches and install roots."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "The first run explicitly reset progress and the second used a newly opened companion tab."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "Ran as MSI\\CodexSandboxOffline with no elevation."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "Each run had a distinct empty managed project root."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "A retained PID and fixed-port baseline were captured for each run."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "Cache, local app-data, project root, and path were bounded; secrets were excluded."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "Both processes stopped and every fixed port was observed closed."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "Each reinstall run used a new process and new pairing value."
+      }
+    ],
+    "task_observations": [
+      "First Safe-mode run paired as v1.0.19 / 91bb1c923250.",
+      "Reset browser progress confirmed the selected path and journey data were cleared.",
+      "After full shutdown and root removal, the second independent run paired to the same release and showed no journey progress carried over.",
+      "Both shutdowns closed 5173, 8788, and 8789.",
+      "Source-blind bundle v1019-public-windows-local-pilots.json SHA-256 04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "npm-reinstall",
+      "safe",
+      "shutdown",
+      "closed-ports",
+      "ui:settings"
+    ],
+    "evidence_refs": [
+      "CV-X-NPM-03-V1019:E1 v1019-public-windows-local-pilots.json#NPM-03 sha256:04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b",
+      "CV-X-NPM-03-V1019:T:ui:settings:failure-recovery:The pilot exercised Settings reset and clean independent restart."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "Both reinstall roots, caches, local browser progress, and tabs were removed or closed."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-NPM-03-V1019:T:ui:settings:failure-recovery:The pilot exercised Settings reset and clean independent restart.",
+      "surface_id": "ui:settings",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-NPM-03-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

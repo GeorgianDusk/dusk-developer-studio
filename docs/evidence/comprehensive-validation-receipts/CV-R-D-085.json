@@ -1,0 +1,220 @@
+{
+  "schema_version": 1,
+  "kind": "defect-retest",
+  "record_id": "CV-R-D-085",
+  "evidence_class": "operator-receipt",
+  "producer": "codex-defect-retest",
+  "capture_mode": "machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "retest_id": "CV-R-D-085",
+    "defect_id": "CV-D-085",
+    "evidence_class": "operator-receipt",
+    "status": "passed",
+    "started_at": "2026-07-28T23:10:08.559Z",
+    "ended_at": "2026-07-29T02:01:50.607Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "exact-candidate evidence map",
+      "node": "24.18.0",
+      "browser": "mapped browser, package and native runners"
+    },
+    "surfaces_verified": [
+      "companion:/pair",
+      "security:ST-03",
+      "security:ST-04"
+    ],
+    "evidence_refs": [
+      "CV-R-D-085:E1 defect-specific map sha256:582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa; mapping base-map-direct",
+      "CV-R-D-085:S1 packages/local-agent/src/__tests__/serverSecurity.test.ts sha256:3b12533c193e4844a819d19f4ddbfc739d1f1500ace6877215f83a6a6782a0d5; assertions [\"rejects missing origins and untrusted Host headers\",\"requires the correct pairing token and returns only an HttpOnly session cookie\"]",
+      "CV-R-D-085:A1 authenticated run 30407098429 attempt 1 POSIX product and security gates/Run complete source and product gate step 10 conclusion success; 2026-07-28T23:10:08.5599598Z–2026-07-28T23:15:06.9819010Z",
+      "CV-R-D-085:A2 authenticated run 30407098462 attempt 1 Build the exact npm candidate once/Build, test, and pack the exact npm candidate step 7 conclusion success; 2026-07-28T23:10:09.1587144Z–2026-07-28T23:10:52.7733177Z",
+      "CV-R-D-085:A3 authenticated run 30407098462 attempt 1 npm package assurance (windows-2025)/Install and exercise npm package on Windows step 9 conclusion success; 2026-07-28T23:15:12.4415154Z–2026-07-28T23:16:42.3205417Z",
+      "CV-R-D-085:A4 authenticated run 30407098462 attempt 1 npm package assurance (ubuntu-24.04)/Install and exercise npm package on POSIX step 8 conclusion success; 2026-07-28T23:15:18.4601170Z–2026-07-28T23:15:43.3783509Z",
+      "CV-R-D-085:A5 authenticated run 30407098462 attempt 1 npm package assurance (macos-15)/Install and exercise npm package on POSIX step 8 conclusion success; 2026-07-28T23:15:12.2231740Z–2026-07-28T23:15:42.2169470Z",
+      "CV-R-D-085:P1 output/source-blind/v1019-public-windows-local-pilots.json#CV-SEC-01; 2026-07-29T01:08:55.744Z–2026-07-29T01:09:46.609Z; Cross-spelling and hostile Host/Origin cases were rejected before pairing.",
+      "CV-R-D-085:M1 output/final-source/v1019-vitest-results.json sha256:4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062; 2026-07-29T02:00:59.968Z–2026-07-29T02:01:50.607Z"
+    ],
+    "adjacent_flow_evidence_refs": [
+      "CV-R-D-085:N1 The listed assertion(s) exercise this defect's concrete failure mode; job references are limited to the exact gate or installed-package lane that ran them."
+    ]
+  },
+  "defect_mapping": {
+    "defect_id": "CV-D-085",
+    "severity": "P3",
+    "summary": "The local companion accepted an allowed localhost Origin with a 127.0.0.1 Host, or the reverse, before pairing rejected the unauthenticated request.",
+    "regression_test": "The 40-test local companion security suite now rejects both cross-spelling combinations without CORS, preserves matching localhost through pairing_required and preserves matching 127.0.0.1 behavior. Exact-package black-box retest remains required.",
+    "status": "direct",
+    "test_sources": [
+      {
+        "path": "packages/local-agent/src/__tests__/serverSecurity.test.ts",
+        "test_titles": [
+          "rejects missing origins and untrusted Host headers",
+          "requires the correct pairing token and returns only an HttpOnly session cookie"
+        ],
+        "sha256": "3b12533c193e4844a819d19f4ddbfc739d1f1500ace6877215f83a6a6782a0d5"
+      }
+    ],
+    "automation_run_refs": [
+      {
+        "provider": "github-actions",
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "run_id": 30407098429,
+        "run_attempt": 1,
+        "event": "push",
+        "ref": "refs/heads/main",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "workflow_path": ".github/workflows/studio-linux-security.yml",
+        "job_id": 90434875950,
+        "job_name": "POSIX product and security gates",
+        "step_name": "Run complete source and product gate",
+        "scope": "pnpm test, build, release and product/security source gates on the exact v1.0.19 commit",
+        "status": "success",
+        "started_at": "2026-07-28T23:10:08.5599598Z",
+        "ended_at": "2026-07-28T23:15:06.9819010Z",
+        "url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098429/job/90434875950",
+        "original_step_name": "Complete source and product gate",
+        "step_number": 10,
+        "step_conclusion": "success"
+      },
+      {
+        "provider": "github-actions",
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "run_id": 30407098462,
+        "run_attempt": 1,
+        "event": "push",
+        "ref": "refs/heads/main",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+        "job_id": 90434876245,
+        "job_name": "Build the exact npm candidate once",
+        "step_name": "Build, test, and pack the exact npm candidate",
+        "scope": "Single candidate tarball build, bounded inspection, identity and inventory binding",
+        "status": "success",
+        "started_at": "2026-07-28T23:10:09.1587144Z",
+        "ended_at": "2026-07-28T23:10:52.7733177Z",
+        "url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098462/job/90434876245",
+        "original_step_name": "Run exact-package assurance lane",
+        "step_number": 7,
+        "step_conclusion": "success"
+      },
+      {
+        "provider": "github-actions",
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "run_id": 30407098462,
+        "run_attempt": 1,
+        "event": "push",
+        "ref": "refs/heads/main",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+        "job_id": 90435035662,
+        "job_name": "npm package assurance (windows-2025)",
+        "step_name": "Install and exercise npm package on Windows",
+        "scope": "Exact installed tarball on Windows: Safe, Local Actions, scaffold, process containment, shutdown and cleanup",
+        "status": "success",
+        "started_at": "2026-07-28T23:15:12.4415154Z",
+        "ended_at": "2026-07-28T23:16:42.3205417Z",
+        "url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098462/job/90435035662",
+        "original_step_name": "Run exact-package assurance lane",
+        "step_number": 9,
+        "step_conclusion": "success"
+      },
+      {
+        "provider": "github-actions",
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "run_id": 30407098462,
+        "run_attempt": 1,
+        "event": "push",
+        "ref": "refs/heads/main",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+        "job_id": 90435035674,
+        "job_name": "npm package assurance (ubuntu-24.04)",
+        "step_name": "Install and exercise npm package on POSIX",
+        "scope": "Exact installed tarball on Ubuntu: Safe, Local Actions, scaffold, process containment, shutdown and cleanup",
+        "status": "success",
+        "started_at": "2026-07-28T23:15:18.4601170Z",
+        "ended_at": "2026-07-28T23:15:43.3783509Z",
+        "url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098462/job/90435035674",
+        "original_step_name": "Run exact-package assurance lane",
+        "step_number": 8,
+        "step_conclusion": "success"
+      },
+      {
+        "provider": "github-actions",
+        "repository": "GeorgianDusk/dusk-developer-studio",
+        "run_id": 30407098462,
+        "run_attempt": 1,
+        "event": "push",
+        "ref": "refs/heads/main",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "workflow_path": ".github/workflows/studio-npm-package-assurance.yml",
+        "job_id": 90435035641,
+        "job_name": "npm package assurance (macos-15)",
+        "step_name": "Install and exercise npm package on POSIX",
+        "scope": "Exact installed tarball on macOS: Safe, Local Actions, scaffold, process containment, shutdown and cleanup",
+        "status": "success",
+        "started_at": "2026-07-28T23:15:12.2231740Z",
+        "ended_at": "2026-07-28T23:15:42.2169470Z",
+        "url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098462/job/90435035641",
+        "original_step_name": "Run exact-package assurance lane",
+        "step_number": 8,
+        "step_conclusion": "success"
+      }
+    ],
+    "machine_test_report_refs": [
+      {
+        "evidence_type": "machine-test-report",
+        "path": "output/final-source/v1019-vitest-results.json",
+        "sha256": "4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062",
+        "framework": "Vitest",
+        "suite_count": 76,
+        "test_count": 389,
+        "status": "passed",
+        "started_at": "2026-07-29T02:00:59.968Z",
+        "ended_at": "2026-07-29T02:01:50.607Z"
+      }
+    ],
+    "pilot_refs": [
+      {
+        "path": "output/source-blind/v1019-public-windows-local-pilots.json",
+        "scenario_id": "CV-SEC-01",
+        "status": "passed",
+        "started_at": "2026-07-29T01:08:55.744Z",
+        "ended_at": "2026-07-29T01:09:46.609Z",
+        "rationale": "Cross-spelling and hostile Host/Origin cases were rejected before pairing."
+      }
+    ],
+    "surfaces_verified": [
+      "companion:/pair",
+      "security:ST-03",
+      "security:ST-04"
+    ],
+    "started_at": "2026-07-28T23:10:08.5599598Z",
+    "ended_at": "2026-07-29T02:01:50.607Z",
+    "validation_summary": "The listed assertion(s) exercise this defect's concrete failure mode; job references are limited to the exact gate or installed-package lane that ran them.",
+    "mapping_kind": "base-map-direct"
+  },
+  "defect_map_path": "output/final-source/defect-retest-map-v1019.json",
+  "defect_map_sha256": "582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa",
+  "defect_map_remediation_path": "output/final-source/defect-retest-map-remediation-v1019.json",
+  "defect_map_remediation_sha256": "699d9a94fab8fdd21b0e09b68b51ecbce6729b5a8e122e6f7004c8d735974564",
+  "defect_run_reference_correction_path": "output/final-source/defect-run-reference-correction-v1019.json",
+  "defect_run_reference_correction_sha256": "90543b8e86833496c5e2d794ead23f3273ad93578cc67c380ff14eea313d6318",
+  "targeted_gap_surface_correction_path": "output/final-source/targeted-gap-surface-correction-v1019.json",
+  "targeted_gap_surface_correction_sha256": "68d8e96cc844742f5de83e39bad45e1bd04f8a5b79ad41465f1571c8efe9e8d5",
+  "vitest_report_path": "output/final-source/v1019-vitest-results.json",
+  "vitest_report_sha256": "4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062"
+}
