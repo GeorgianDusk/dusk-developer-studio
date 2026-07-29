@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "kind": "production-verification",
+  "record_id": "CV-E-FINAL-PRODUCTION-V1019",
+  "evidence_class": "operator-receipt",
+  "producer": "production-verifier",
+  "capture_mode": "external-observation",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "evidence_id": "CV-E-FINAL-PRODUCTION-V1019",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_version": "1.0.19",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "production_url": "https://studio.134-122-59-217.nip.io",
+    "release_id": "91bb1c9-production-20260728T233240Z",
+    "previous_release": "6aad2cdd-production-20260728T204500Z",
+    "release_manifest_sha256": "05219022f770d266b4fde46ccaaa87a78ee5ec8db5396aaae827e995870b2efc",
+    "public_artifact_fingerprint_sha256": "eb5b032d55370cf292b53380509eb00e64cf3c8d3aba91150e4b8cbbff7b9aab",
+    "tls_verified": true,
+    "health_verified": true,
+    "assets_verified": true,
+    "rollback_verified": true,
+    "rollback_restored_commit": "6aad2cdd83241f1e61945169519548cecf63761a",
+    "rollback_restored_manifest_sha256": "6c39b50ce627af27e786b09c65431d70b2fe18a9d91c5b79261c22ee2c4746fb",
+    "rollback_restored_artifact_fingerprint_sha256": "2fa7746bdffce46bec7052847441053714bf18a952653bbdadfee93721f26f16",
+    "duskds_public_node_verified": true,
+    "duskds_public_node_observed_at": "2026-07-28T23:35:26.247Z",
+    "observed_at": "2026-07-28T23:35:32.446Z"
+  },
+  "deployment_receipt_sha256": "f0ce19654890f90359bded9b9555a730bb23e12b83f6ceff567430bc94f26d7d",
+  "rollback_receipt_sha256": "25e6cbcce73019904261d77b4e193be50bdae1f8912f4ba9adcf6f8ae4f8a81c",
+  "rollback_field_correction_sha256": "6119de11df6c9d8c41edffeb3879a97674b5dce365ba631fb7592a1043ec18ab",
+  "hosted_recovery_receipt_sha256": "accfea5691ea2099b5ee2618718b398cf41834e31057300ce0a5dbb84730516a",
+  "deployment_receipt": {
+    "release_id": "91bb1c9-production-20260728T233240Z",
+    "status": "success",
+    "previous_release": "6aad2cdd-production-20260728T204500Z",
+    "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "environment": "production",
+    "manifest_sha256": "05219022f770d266b4fde46ccaaa87a78ee5ec8db5396aaae827e995870b2efc",
+    "completed_utc": "2026-07-28T23:32:50Z"
+  },
+  "rollback_receipt": {
+    "schema_version": 1,
+    "release_id": "91bb1c9-production-20260728T233212Z-drill",
+    "status": "restored",
+    "reason": "forced-post-switch-verifier-failure",
+    "owner": "platform",
+    "duration_seconds": 0,
+    "restored_release": "6aad2cdd-production-20260728T204500Z",
+    "restored_commit": "6aad2cdd83241f1e61945169519548cecf63761a",
+    "restored_environment": "production",
+    "restored_manifest_sha256": "6c39b50ce627af27e786b09c65431d70b2fe18a9d91c5b79261c22ee2c4746fb",
+    "restored_fingerprint_sha256": "6c39b50ce627af27e786b09c65431d70b2fe18a9d91c5b79261c22ee2c4746fb",
+    "health_proof": "healthz=200:ok;manifest=parsed-and-matched;fallback=200:studio-html:no-cache;tls=verified;ports-5173-and-8788=closed",
+    "data_cache_effects": "static-symlink-only;no-data-migration;html=no-cache;health-and-receipts=no-store",
+    "completed_utc": "2026-07-28T23:32:22Z"
+  },
+  "rollback_field_correction": {
+    "schema_version": 1,
+    "kind": "rollback-receipt-field-correction",
+    "status": "corrected",
+    "observed_at": "2026-07-29T02:11:20.969Z",
+    "source_receipt": {
+      "path": "C:/tmp/v1019-production-rollback.json",
+      "sha256": "25e6cbcce73019904261d77b4e193be50bdae1f8912f4ba9adcf6f8ae4f8a81c",
+      "release_id": "91bb1c9-production-20260728T233212Z-drill",
+      "restored_release": "6aad2cdd-production-20260728T204500Z",
+      "restored_commit": "6aad2cdd83241f1e61945169519548cecf63761a"
+    },
+    "field": "restored_fingerprint_sha256",
+    "recorded_value": "6c39b50ce627af27e786b09c65431d70b2fe18a9d91c5b79261c22ee2c4746fb",
+    "issue": "The deployer copied the restored release-manifest SHA-256 into the artifact-fingerprint field. The original receipt bytes remain preserved and are not relabeled.",
+    "corrected_value": "2fa7746bdffce46bec7052847441053714bf18a952653bbdadfee93721f26f16",
+    "correction_basis": {
+      "path": "output/final-source/production-v1018-smoke.json",
+      "sha256": "81fe1bfc3d615020dd7ad38940a45a6f8819460caa53ee99d8c6d095f905f2d3",
+      "checked_at": "2026-07-28T22:14:49.447Z",
+      "status": "passed",
+      "commit": "6aad2cdd83241f1e61945169519548cecf63761a",
+      "version": "1.0.18",
+      "artifact_fingerprint_sha256": "2fa7746bdffce46bec7052847441053714bf18a952653bbdadfee93721f26f16"
+    }
+  },
+  "hosted_recovery_receipt": {
+    "schema_version": 1,
+    "checked_at": "2026-07-28T23:35:32.446Z",
+    "target": "https://studio.134-122-59-217.nip.io",
+    "expected_environment": "production",
+    "status": "passed",
+    "studio_status": "passed",
+    "upstream_dependency_status": "passed",
+    "checks": {
+      "public_health": {
+        "status": "passed"
+      },
+      "key_routes": {
+        "status": "passed",
+        "spa_fallback_cache": "no-cache"
+      },
+      "release_parity": {
+        "status": "passed",
+        "commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+        "version": "1.0.19",
+        "artifact_fingerprint_sha256": "eb5b032d55370cf292b53380509eb00e64cf3c8d3aba91150e4b8cbbff7b9aab"
+      },
+      "source_links": {
+        "status": "passed",
+        "urls": {
+          "https://docs.dusk.network/developer/smart-contracts-duskds/": 200,
+          "https://docs.dusk.network/developer/integrations/w3sper/": 200,
+          "https://docs.dusk.network/developer/integrations/http-api/": 200,
+          "https://github.com/dusk-network/forge": 200
+        }
+      },
+      "duskds_node_read": {
+        "status": "passed",
+        "endpoint": "https://testnet.nodes.dusk.network/on/graphql/query",
+        "height": 3917445,
+        "hash": "11b57c0f8f47a862f5beefe29c202cd0fee937adedc22b4085ba51f76ff7a053",
+        "observed_at": "2026-07-28T23:35:26.247Z"
+      },
+      "rpc_chain_id": {
+        "status": "deferred",
+        "path": "evm",
+        "reason": "DuskEVM Testnet is not live; the EVM journey is an educational pre-launch preview and does not gate DuskDS production."
+      },
+      "rpc_degradation": {
+        "status": "passed",
+        "evidence": "hosted-browser-offline-recovery"
+      },
+      "tls_expiry": {
+        "status": "passed",
+        "days_remaining": 79.3,
+        "expires_at": "2026-10-16T06:53:51.000Z"
+      },
+      "development_port_closed": {
+        "status": "passed",
+        "observed": "filtered-or-closed"
+      },
+      "companion_port_closed": {
+        "status": "passed",
+        "observed": "filtered-or-closed"
+      }
+    },
+    "errors": []
+  }
+}

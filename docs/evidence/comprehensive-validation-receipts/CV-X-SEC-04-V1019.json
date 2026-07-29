@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-SEC-04-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-SEC-04-V1019",
+    "scenario_id": "CV-SEC-04",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-29T01:32:08.440Z",
+    "ended_at": "2026-07-29T02:44:15.063Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "ubuntu-24.04-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "The successful rate, body, and timestamped unpaired runs each installed exact v1.0.19 under unique roots with isolated node, cache, home, tmp, install, projects, and data directories."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "No browser profile was used; paired runs used new isolated curl jars deleted with their roots, while the unpaired run created no jar or pairing state."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "All WSL product processes ran as duskpilot uid 1000."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "Every project root was fresh and contained no user project."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "The rate, body, and unpaired runs recorded three free host-port checks and atomically acquired the shared lock; exact Linux PIDs 278, 285, and 496 were separately bounded on 127.0.0.1:5173 and 127.0.0.1:8788."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "Only isolated nonsecret environment names were recorded; no pairing token, cookie value, or user secret appears in evidence."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "Exact PIDs 278, 285, and 496 each received SIGINT and were absent; 5173, 8788, and 8789 closed after every run; all verified roots, paired jars, and exact owner-matched locks were deleted."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "Each run used a new process and unique root; paired runs used new jars without reading pairing values, and the unpaired run created no pairing state."
+      }
+    ],
+    "task_observations": [
+      "The fresh timestamped unpaired probe kept malformed JSON, OPTIONS, PATCH, DELETE, traversal, encoded NUL, emoji, long paths, and companion health behind HTTP 401 pairing_required; UI health stayed 200 before and after.",
+      "The separate paired 2,097,170-byte JSON request directly proved the body-size boundary with HTTP 413 and body_too_large.",
+      "The public same-origin bootstrap route paired each isolated curl session with HTTP 200 without reading or exposing a one-time token.",
+      "The paired burst produced deterministic throttling evidence: 119 HTTP 200 and 41 HTTP 429 responses, with rate_limited in all 41 throttled bodies.",
+      "After more than the required 61-second rate-limit recovery window, paired health returned HTTP 200.",
+      "The paired 2,097,170-byte JSON POST returned HTTP 413 with body_too_large, and paired health immediately remained HTTP 200.",
+      "Source-blind bundle v1019-public-cross-platform-pilots.json SHA-256 c6926735fa143cee4f8dcd037357c3ffadca0b04992ede931d3d2f3a5dee55ae; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "body-bounds",
+      "rate-limits",
+      "method-refusal",
+      "input-validation",
+      "health",
+      "static:/__dusk/bootstrap",
+      "companion:/health",
+      "companion:/healthz",
+      "security:ST-06",
+      "security:ST-07"
+    ],
+    "evidence_refs": [
+      "CV-X-SEC-04-V1019:E1 v1019-public-cross-platform-pilots.json#SEC-04 sha256:c6926735fa143cee4f8dcd037357c3ffadca0b04992ede931d3d2f3a5dee55ae",
+      "CV-X-SEC-04-V1019:T:static:/__dusk/bootstrap:success:The paired rate and body retests independently completed same-origin bootstrap without reading the token.",
+      "CV-X-SEC-04-V1019:T:companion:/health:success:The paired health capability returned bounded successful responses under load.",
+      "CV-X-SEC-04-V1019:T:companion:/health:failure-recovery:The exact-package rate limit produced HTTP 429 and recovered to paired HTTP 200.",
+      "CV-X-SEC-04-V1019:T:companion:/healthz:success:The companion health alias remained available after a refused method.",
+      "CV-X-SEC-04-V1019:T:companion:/healthz:failure-recovery:The companion returned to healthy operation after a bounded oversized-body refusal.",
+      "CV-X-SEC-04-V1019:T:security:ST-06:success:A bounded valid request remained accepted.",
+      "CV-X-SEC-04-V1019:T:security:ST-06:failure-recovery:The body bound failed closed before health recovery.",
+      "CV-X-SEC-04-V1019:T:security:ST-07:success:The allowed portion of a bounded concurrent request set succeeded.",
+      "CV-X-SEC-04-V1019:T:security:ST-07:failure-recovery:Rate-limited requests returned deterministic 429 and recovered to paired 200."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "All SEC-04 WSL roots were removed. Exact rate PID 278, body PID 285, and unpaired PID 496 stopped; 5173/8788/8789 closed after every run; paired jars were deleted with their verified roots; the unpaired run created no jar; and only each run's exact owner/timestamp-matched lock was released."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-SEC-04-V1019:T:static:/__dusk/bootstrap:success:The paired rate and body retests independently completed same-origin bootstrap without reading the token.",
+      "surface_id": "static:/__dusk/bootstrap",
+      "outcome": "success",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:companion:/health:success:The paired health capability returned bounded successful responses under load.",
+      "surface_id": "companion:/health",
+      "outcome": "success",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:companion:/health:failure-recovery:The exact-package rate limit produced HTTP 429 and recovered to paired HTTP 200.",
+      "surface_id": "companion:/health",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:companion:/healthz:success:The companion health alias remained available after a refused method.",
+      "surface_id": "companion:/healthz",
+      "outcome": "success",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:companion:/healthz:failure-recovery:The companion returned to healthy operation after a bounded oversized-body refusal.",
+      "surface_id": "companion:/healthz",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:security:ST-06:success:A bounded valid request remained accepted.",
+      "surface_id": "security:ST-06",
+      "outcome": "success",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:security:ST-06:failure-recovery:The body bound failed closed before health recovery.",
+      "surface_id": "security:ST-06",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:security:ST-07:success:The allowed portion of a bounded concurrent request set succeeded.",
+      "surface_id": "security:ST-07",
+      "outcome": "success",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-SEC-04-V1019:T:security:ST-07:failure-recovery:Rate-limited requests returned deterministic 429 and recovered to paired 200.",
+      "surface_id": "security:ST-07",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-SEC-04-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

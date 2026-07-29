@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-NPM-02-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-NPM-02-V1019",
+    "scenario_id": "CV-NPM-02",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-28T23:56:49.671Z",
+    "ended_at": "2026-07-28T23:56:56.009Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "windows-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "Metadata and pack verification used a dedicated disposable npm cache and root."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "No browser surface was used; an isolated empty browser-state marker was reserved."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "Ran as MSI\\CodexSandboxOffline with no elevation."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "Disposable root contained only the fetched public artifact evidence."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "No Studio server was launched and fixed ports remained closed."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "Only public registry and cache context was retained; credentials and tokens were excluded."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "npm commands exited, no process remained, and fixed ports stayed closed."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "No Local Studio session or pairing value was created."
+      }
+    ],
+    "task_observations": [
+      "npm metadata reported exact integrity sha512-SwCaa...YmheZAw==, shasum 23f893769f9a006a18ef567e909a609b7eecd89c, a signature, and SLSA provenance v1.",
+      "The public tarball SHA-256 was 9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2.",
+      "npm pack reported 30 files and 1,534,458 unpacked bytes.",
+      "Git tag v1.0.19 resolved to 91bb1c923250ccdcd3a79f69c1604a7ab9e2b392 with zero ahead/behind.",
+      "Source-blind bundle v1019-public-windows-local-pilots.json SHA-256 04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "npm-integrity",
+      "npm-provenance",
+      "release-parity",
+      "security:ST-17",
+      "security:ST-20"
+    ],
+    "evidence_refs": [
+      "CV-X-NPM-02-V1019:E1 v1019-public-windows-local-pilots.json#NPM-02 sha256:04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b",
+      "CV-X-NPM-02-V1019:T:security:ST-17:success:The public npm package passed exact identity, inventory, integrity and provenance checks.",
+      "CV-X-NPM-02-V1019:T:security:ST-20:success:The pilot independently recomputed the public bytes and release parity."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "Packed tarball, registry cache, and disposable verification root were removed."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-NPM-02-V1019:T:security:ST-17:success:The public npm package passed exact identity, inventory, integrity and provenance checks.",
+      "surface_id": "security:ST-17",
+      "outcome": "success",
+      "record_id": "CV-X-NPM-02-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-NPM-02-V1019:T:security:ST-20:success:The pilot independently recomputed the public bytes and release parity.",
+      "surface_id": "security:ST-20",
+      "outcome": "success",
+      "record_id": "CV-X-NPM-02-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

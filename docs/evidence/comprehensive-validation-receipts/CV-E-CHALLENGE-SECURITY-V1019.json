@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "kind": "challenge-review",
+  "record_id": "CV-E-CHALLENGE-SECURITY-V1019",
+  "evidence_class": "challenge-review",
+  "producer": "codex-independent-challenge",
+  "capture_mode": "independent-adversarial",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "evidence_id": "CV-E-CHALLENGE-SECURITY-V1019",
+    "evidence_class": "challenge-review",
+    "scope": "security-release-evidence-integrity",
+    "observed_at": "2026-07-29T03:23:47.109Z",
+    "result": "clear",
+    "independent_execution": true,
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "independent-challenge",
+      "node": "24.18.0",
+      "browser": "challenge-selected browser and native evidence"
+    },
+    "summary": "CLEAR. A fresh adversarial re-challenge independently reproduced the prior evidence-integrity failures, forced corrections, re-audited the changed bytes, exposed and resolved a generator rerun defect, and inspected the post-correction output after two consecutive successful generator executions. The latest output contains exactly 115 defects and 186 unique hash-bound receipts. No P0-P3 or other material security, release, chronology, identity, defect-evidence, policy-surface, rollback, package-hygiene, generated-receipt, generator-integrity, or idempotence finding remains in the current v1.0.19 evidence inputs. The preserved initial failed challenge remains separate and byte-identical.",
+    "evidence_refs": [
+      "CV-E-CHALLENGE-SECURITY-V1019:E1 v1019-security-challenge.json sha256:fd8c3b6f3dcb94c99cfb0ad007af97d90bf31305cd3073aada29cb1bdd16ba89"
+    ]
+  }
+}

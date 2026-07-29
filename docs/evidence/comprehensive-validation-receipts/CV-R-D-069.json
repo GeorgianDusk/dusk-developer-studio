@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "kind": "defect-retest",
+  "record_id": "CV-R-D-069",
+  "evidence_class": "operator-receipt",
+  "producer": "codex-defect-retest",
+  "capture_mode": "machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "retest_id": "CV-R-D-069",
+    "defect_id": "CV-D-069",
+    "evidence_class": "operator-receipt",
+    "status": "passed",
+    "started_at": "2026-07-29T02:41:56.711Z",
+    "ended_at": "2026-07-29T02:41:58.119Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "exact-candidate evidence map",
+      "node": "24.18.0",
+      "browser": "mapped browser, package and native runners"
+    },
+    "surfaces_verified": [
+      "security:ST-18"
+    ],
+    "evidence_refs": [
+      "CV-R-D-069:E1 defect-specific map sha256:582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa; mapping targeted-gap-remediation",
+      "CV-R-D-069:S1 scripts/check-comprehensive-validation.mjs sha256:3328192a7cda2fda604f2c9690d8415c15f78b4b8b51d0c37a2152b908a7fd9f; assertions []",
+      "CV-R-D-069:S2 scripts/test-public-repository.mjs sha256:b3bf30ab7e000f4ae6c9b06099342e8f5eb8bc6398316c029a2d47d2a92ae32f; assertions []",
+      "CV-R-D-069:S3 scripts/test-comprehensive-validation.mjs sha256:28eeeb4311a03b9a7c4b963c15d5b35281966ea955e0c1ffbefdc1188e39da61; assertions []",
+      "CV-R-D-069:M1 output/final-source/targeted-gap-retests-v1019.json sha256:f91da7cafbb60afbdebb00a30506eb860eedb2c7890a23522563e5daf975874a; 2026-07-29T02:41:56.711Z–2026-07-29T02:41:58.119Z"
+    ],
+    "adjacent_flow_evidence_refs": [
+      "CV-R-D-069:N1 Exact export-surface assertions plus the public-repository and production-validator fixture-rejection suites."
+    ]
+  },
+  "defect_mapping": {
+    "defect_id": "CV-D-069",
+    "severity": "P3",
+    "summary": "A test-fixture-accepting comprehensive-validation function remained exported from the production module.",
+    "regression_test": "The public repository contract forbids the exported fixture helper, and the focused suite proves validator-test-fixture provenance is still rejected by the production API.",
+    "status": "direct",
+    "test_sources": [
+      {
+        "path": "scripts/check-comprehensive-validation.mjs",
+        "sha256": "3328192a7cda2fda604f2c9690d8415c15f78b4b8b51d0c37a2152b908a7fd9f"
+      },
+      {
+        "path": "scripts/test-public-repository.mjs",
+        "sha256": "b3bf30ab7e000f4ae6c9b06099342e8f5eb8bc6398316c029a2d47d2a92ae32f"
+      },
+      {
+        "path": "scripts/test-comprehensive-validation.mjs",
+        "sha256": "28eeeb4311a03b9a7c4b963c15d5b35281966ea955e0c1ffbefdc1188e39da61"
+      }
+    ],
+    "automation_run_refs": [],
+    "machine_test_report_refs": [
+      {
+        "evidence_type": "targeted-machine-retest",
+        "path": "output/final-source/targeted-gap-retests-v1019.json",
+        "sha256": "f91da7cafbb60afbdebb00a30506eb860eedb2c7890a23522563e5daf975874a",
+        "status": "passed",
+        "started_at": "2026-07-29T02:41:56.711Z",
+        "ended_at": "2026-07-29T02:41:58.119Z"
+      }
+    ],
+    "pilot_refs": [],
+    "surfaces_verified": [
+      "security:ST-18"
+    ],
+    "started_at": "2026-07-29T02:41:56.711Z",
+    "ended_at": "2026-07-29T02:41:58.119Z",
+    "gap": {
+      "severity": "P3",
+      "reason": "The validator rejects `validator-test-fixture` provenance through the production API, but no source-contract assertion proves the former fixture-accepting helper is absent from the production module export surface.",
+      "reproduction": "Re-export a fixture-accepting helper from scripts/check-comprehensive-validation.mjs without routing the existing validation call through it; the provenance-rejection fixture can still pass.",
+      "expected_fix_claim": "The production comprehensive-validation module exposes no fixture-accepting helper or receipt-injection option; fixture construction stays in test code.",
+      "required_smallest_retest": "Add one module-export contract that dynamically imports scripts/check-comprehensive-validation.mjs, asserts the exact named-export allowlist, and rejects any export accepting fixture provenance or receipt-injection overrides."
+    },
+    "validation_summary": "Exact export-surface assertions plus the public-repository and production-validator fixture-rejection suites.",
+    "mapping_kind": "targeted-gap-remediation"
+  },
+  "defect_map_path": "output/final-source/defect-retest-map-v1019.json",
+  "defect_map_sha256": "582cd88c92fc85c3ffdec791225f4bdd46f4aef198668a7d0926cf2b07068faa",
+  "defect_map_remediation_path": "output/final-source/defect-retest-map-remediation-v1019.json",
+  "defect_map_remediation_sha256": "699d9a94fab8fdd21b0e09b68b51ecbce6729b5a8e122e6f7004c8d735974564",
+  "defect_run_reference_correction_path": "output/final-source/defect-run-reference-correction-v1019.json",
+  "defect_run_reference_correction_sha256": "90543b8e86833496c5e2d794ead23f3273ad93578cc67c380ff14eea313d6318",
+  "targeted_gap_surface_correction_path": "output/final-source/targeted-gap-surface-correction-v1019.json",
+  "targeted_gap_surface_correction_sha256": "68d8e96cc844742f5de83e39bad45e1bd04f8a5b79ad41465f1571c8efe9e8d5",
+  "vitest_report_path": "output/final-source/v1019-vitest-results.json",
+  "vitest_report_sha256": "4e0656dcb63aa8ffe1dcb6277a3a1b0b3da02ef26a069e60ad90255e72de8062"
+}

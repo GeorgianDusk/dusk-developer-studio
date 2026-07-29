@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "kind": "black-box-pilot",
+  "record_id": "CV-X-RES-03-V1019",
+  "evidence_class": "black-box-pilot",
+  "producer": "codex-source-blind-pilot",
+  "capture_mode": "source-blind-machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "execution_id": "CV-X-RES-03-V1019",
+    "scenario_id": "CV-RES-03",
+    "evidence_class": "black-box-pilot",
+    "counted": true,
+    "status": "passed",
+    "started_at": "2026-07-29T01:42:22.590Z",
+    "ended_at": "2026-07-29T01:42:45.969Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "windows-x64",
+      "node": "24.18.0",
+      "browser": "not-applicable"
+    },
+    "clean_state_checks": [
+      {
+        "requirement": "isolated npm cache and temporary install location",
+        "result": "passed",
+        "observation": "The exact 1.0.19 runtime used a fresh disposable install root and isolated npm cache."
+      },
+      {
+        "requirement": "fresh browser profile or cleared storage",
+        "result": "passed",
+        "observation": "The failure and retry ran in one newly created disposable Playwright profile."
+      },
+      {
+        "requirement": "normal non-elevated user identity",
+        "result": "passed",
+        "observation": "Playwright and the exact product ran as MSI\\CodexSandboxOffline without elevation."
+      },
+      {
+        "requirement": "isolated project root containing no user project",
+        "result": "passed",
+        "observation": "Dedicated empty project root was isolated from user projects."
+      },
+      {
+        "requirement": "recorded port and process baseline",
+        "result": "passed",
+        "observation": "Retained product PID 20504, the 120-second deadline, and both fixed ports were recorded."
+      },
+      {
+        "requirement": "bounded environment-variable baseline with secrets excluded from evidence",
+        "result": "passed",
+        "observation": "Evidence retained only the route scope, request count, visible bounded UI text, and block number; secrets and response bodies were excluded."
+      },
+      {
+        "requirement": "cleanup and closed-port observation",
+        "result": "passed",
+        "observation": "The browser context closed, product PID 20504 stopped requested, and 5173/8788 were closed."
+      },
+      {
+        "requirement": "no reused local session or pairing value",
+        "result": "passed",
+        "observation": "The retest used a fresh product process and fresh browser profile; no local pairing was used or reused."
+      }
+    ],
+    "task_observations": [
+      "A fresh terminal-driven Playwright profile routed exactly one https://testnet.nodes.dusk.network/** request to abort; system DNS, proxy, and firewall were unchanged.",
+      "The exact 1.0.19 product UI visibly reported UNAVAILABLE, stated that the public Testnet node could not be reached, exposed Retry, and showed no false block/hash success.",
+      "After the route was removed, the actual same-session Retry control succeeded with: Observed block 3918208 with a bounded 32-byte hash.",
+      "Source-blind bundle v1019-public-windows-local-pilots.json SHA-256 04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b; local product source and expected route were withheld from the pilot operator."
+    ],
+    "surfaces_verified": [
+      "access",
+      "network-failure",
+      "retry",
+      "evidence-integrity",
+      "ui:access",
+      "ui:troubleshooting"
+    ],
+    "evidence_refs": [
+      "CV-X-RES-03-V1019:E1 v1019-public-windows-local-pilots.json#RES-03 sha256:04fd70082c119c53e15f777559b4ef105e17e5b9b63ad1fa3063ac42098c783b",
+      "CV-X-RES-03-V1019:T:ui:access:failure-recovery:The pilot explicitly bound Access to a network failure, truthful failure state, and UI retry.",
+      "CV-X-RES-03-V1019:T:ui:troubleshooting:failure-recovery:The network failure, truthful guidance, and retry path are concrete troubleshooting recovery evidence."
+    ],
+    "cleanup": {
+      "ports_closed": true,
+      "processes_stopped": true,
+      "temporary_state_disposition": "Routed browser context, fresh profile, exact package state, isolated cache, project root, and retry artifacts were removed or closed."
+    }
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-X-RES-03-V1019:T:ui:access:failure-recovery:The pilot explicitly bound Access to a network failure, truthful failure state, and UI retry.",
+      "surface_id": "ui:access",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-RES-03-V1019",
+      "evidence_class": "black-box-pilot"
+    },
+    {
+      "ref": "CV-X-RES-03-V1019:T:ui:troubleshooting:failure-recovery:The network failure, truthful guidance, and retry path are concrete troubleshooting recovery evidence.",
+      "surface_id": "ui:troubleshooting",
+      "outcome": "failure-recovery",
+      "record_id": "CV-X-RES-03-V1019",
+      "evidence_class": "black-box-pilot"
+    }
+  ],
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}

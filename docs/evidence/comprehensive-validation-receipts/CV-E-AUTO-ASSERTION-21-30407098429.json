@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "kind": "automated-regression",
+  "record_id": "CV-E-AUTO-ASSERTION-21-30407098429",
+  "evidence_class": "automated-regression",
+  "producer": "ci-automation",
+  "capture_mode": "machine-observed",
+  "test_fixture": false,
+  "validation_context": {
+    "policy_sha256": "413a10e438fe24341cc1e54dd8dc9207c1a46c6cb52689937ebd91b70ce7e028",
+    "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+    "package_name": "dusk-developer-studio",
+    "package_version": "1.0.19",
+    "package_sha256": "9a9701a2c017ef5b0434466912bd64942cb3ca0a85db77e4478d7279c69a40c2",
+    "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+    "repository_tag": "v1.0.19"
+  },
+  "record": {
+    "evidence_id": "CV-E-AUTO-ASSERTION-21-30407098429",
+    "evidence_class": "automated-regression",
+    "scope": "security-contract",
+    "status": "passed",
+    "observed_at": "2026-07-28T23:18:50.000Z",
+    "identity": {
+      "source_commit": "91bb1c923250ccdcd3a79f69c1604a7ab9e2b392",
+      "package_version": "1.0.19",
+      "npm_integrity": "sha512-SwCaaHg8ta0J76w7nmvTPTgpk+Ddv1d6hVB/2AzulfhvK4PiUap0LW8rmuiCwysrkNL0kEjJtMv9nuxYmheZAw==",
+      "production_url": "https://studio.134-122-59-217.nip.io",
+      "os": "ubuntu-24.04-x64",
+      "node": "24.18.0",
+      "browser": "authenticated GitHub Actions exact-candidate runner"
+    },
+    "summary": "Authenticated first-attempt exact-candidate run 30407098429 passed the concrete packages/local-agent/src/__tests__/serverSecurity.test.ts assertion \"rate-limits and serializes authenticated capability requests\".",
+    "surfaces_verified": [
+      "security:ST-07"
+    ],
+    "evidence_refs": [
+      "CV-E-AUTO-ASSERTION-21-30407098429:E1 https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098429; packages/local-agent/src/__tests__/serverSecurity.test.ts sha256:3b12533c193e4844a819d19f4ddbfc739d1f1500ace6877215f83a6a6782a0d5; assertion \"rate-limits and serializes authenticated capability requests\"",
+      "CV-E-AUTO-ASSERTION-21-30407098429:T:security:ST-07:final-candidate:packages/local-agent/src/__tests__/serverSecurity.test.ts#rate-limits and serializes authenticated capability requests: The exact release commit passed ST-07 Rate and concurrency."
+    ]
+  },
+  "trace_claims": [
+    {
+      "ref": "CV-E-AUTO-ASSERTION-21-30407098429:T:security:ST-07:final-candidate:packages/local-agent/src/__tests__/serverSecurity.test.ts#rate-limits and serializes authenticated capability requests: The exact release commit passed ST-07 Rate and concurrency.",
+      "surface_id": "security:ST-07",
+      "outcome": "final-candidate",
+      "record_id": "CV-E-AUTO-ASSERTION-21-30407098429",
+      "evidence_class": "automated-regression"
+    }
+  ],
+  "authenticated_support": {
+    "observed_at": "2026-07-28T23:18:50.000Z",
+    "os": "ubuntu-24.04-x64",
+    "run_url": "https://github.com/GeorgianDusk/dusk-developer-studio/actions/runs/30407098429",
+    "run_id": 30407098429,
+    "source_path": "packages/local-agent/src/__tests__/serverSecurity.test.ts",
+    "source_sha256": "3b12533c193e4844a819d19f4ddbfc739d1f1500ace6877215f83a6a6782a0d5",
+    "assertion": "rate-limits and serializes authenticated capability requests"
+  },
+  "surface_support_matrix_path": "output/source-blind/v1019-security-challenge-initial-failed.json",
+  "surface_support_matrix_sha256": "ff885811d99769fae733c1cfffc9cbe9519ef8197f359c057501c98d19a2c90f",
+  "surface_support_matrix_correction_path": "output/final-source/surface-support-matrix-correction-v1019.json",
+  "surface_support_matrix_correction_sha256": "2a2c73cc563fbf8bbdbf29bd2a2c1a9919570c7996a9dc127787c763b54cef53"
+}
