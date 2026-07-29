@@ -19,7 +19,7 @@
     "evidence_id": "CV-E-CHALLENGE-SECURITY-V1019",
     "evidence_class": "challenge-review",
     "scope": "security-release-evidence-integrity",
-    "observed_at": "2026-07-29T03:23:47.109Z",
+    "observed_at": "2026-07-29T03:40:46.176Z",
     "result": "clear",
     "independent_execution": true,
     "identity": {
@@ -31,9 +31,9 @@
       "node": "24.18.0",
       "browser": "challenge-selected browser and native evidence"
     },
-    "summary": "CLEAR. A fresh adversarial re-challenge independently reproduced the prior evidence-integrity failures, forced corrections, re-audited the changed bytes, exposed and resolved a generator rerun defect, and inspected the post-correction output after two consecutive successful generator executions. The latest output contains exactly 115 defects and 186 unique hash-bound receipts. No P0-P3 or other material security, release, chronology, identity, defect-evidence, policy-surface, rollback, package-hygiene, generated-receipt, generator-integrity, or idempotence finding remains in the current v1.0.19 evidence inputs. The preserved initial failed challenge remains separate and byte-identical.",
+    "summary": "CLEAR. A fresh adversarial re-challenge independently reproduced the prior evidence-integrity failures, forced corrections, re-audited the changed bytes, exposed and resolved a generator rerun defect, and then reopened once more when the strict final checker found an over-broad production-verification receipt record. The corrected generator preserves the richer ledger record while binding the receipt to exactly the 13 checker-authoritative fields. The latest complete output contains exactly 115 defects and 186 unique hash-bound receipts. No P0-P3 or other material security, release, chronology, identity, defect-evidence, policy-surface, rollback, package-hygiene, generated-receipt, generator-integrity, idempotence, or receipt-binding finding remains in the current v1.0.19 evidence inputs. The preserved initial failed challenge remains separate and byte-identical.",
     "evidence_refs": [
-      "CV-E-CHALLENGE-SECURITY-V1019:E1 v1019-security-challenge.json sha256:fd8c3b6f3dcb94c99cfb0ad007af97d90bf31305cd3073aada29cb1bdd16ba89"
+      "CV-E-CHALLENGE-SECURITY-V1019:E1 v1019-security-challenge.json sha256:829a128ff2e6f9d069e4025e3b535ff492dcdb43b391dd0847e9d2d0626a8099"
     ]
   }
 }
