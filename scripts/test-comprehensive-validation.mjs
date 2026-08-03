@@ -622,7 +622,15 @@ assert.match(
   /is missing required pilot surfaces/u
 );
 
-const incompleteFinal = validateComprehensiveCampaign(policy, evidence, { final: true }).join("\n");
+const incompleteFinalEvidence = clone(evidence);
+incompleteFinalEvidence.pilot_executions.pop();
+delete incompleteFinalEvidence.final_candidate;
+incompleteFinalEvidence.challenge_reviews = [];
+const incompleteFinal = validateComprehensiveCampaign(
+  policy,
+  incompleteFinalEvidence,
+  { final: true }
+).join("\n");
 assert.match(incompleteFinal, /requires at least 32 counted passing pilots/u);
 assert.match(incompleteFinal, /evidence\.final_candidate must be an object/u);
 assert.match(incompleteFinal, /product-ui-developer-experience/u);
