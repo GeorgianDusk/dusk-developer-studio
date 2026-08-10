@@ -31,6 +31,10 @@ function warningIdentity({ advisory_id: advisoryId, kind, package: packageName, 
   return `${kind}|${packageName}|${version}|${advisoryId}`;
 }
 
+function vulnerabilityIdentity({ advisory_id: advisoryId, package: packageName, version }) {
+  return `${packageName}|${version}|${advisoryId}`;
+}
+
 function validateText(value, label) {
   if (typeof value !== "string" || value.trim().length < 12 || value.length > 1000) {
     throw new Error(`${label} must contain a bounded review explanation.`);
@@ -68,6 +72,35 @@ function validatePolicyWarning(record, nowMs) {
   return warningIdentity(record);
 }
 
+function validatePolicyVulnerability(record, nowMs) {
+  if (!isPlainObject(record)) throw new Error("Cargo vulnerability reviews must be objects.");
+  if (!WARNING_TOKEN.test(record.package ?? "")) {
+    throw new Error("Cargo vulnerability review package is invalid.");
+  }
+  if (!VERSION_TOKEN.test(record.version ?? "")) {
+    throw new Error("Cargo vulnerability review version is invalid.");
+  }
+  if (!RUSTSEC_ID.test(record.advisory_id ?? "")) {
+    throw new Error("Cargo vulnerability review advisory ID is invalid.");
+  }
+  validateText(record.owner, "Cargo vulnerability review owner");
+  validateText(record.reachability, "Cargo vulnerability reachability");
+  validateText(record.mitigation, "Cargo vulnerability mitigation");
+  validateText(record.upstream_tracking, "Cargo vulnerability upstream tracking");
+  const reviewedMs = parseIsoDate(record.reviewed_on, "Cargo vulnerability reviewed_on");
+  const expiresMs = parseIsoDate(record.expires_on, "Cargo vulnerability expires_on");
+  if (reviewedMs > nowMs + FUTURE_TOLERANCE_MS) {
+    throw new Error(`Cargo vulnerability review is future-dated: ${record.advisory_id}.`);
+  }
+  if (expiresMs <= nowMs) {
+    throw new Error(`Cargo vulnerability review expired: ${record.advisory_id}.`);
+  }
+  if (expiresMs <= reviewedMs || expiresMs - reviewedMs > MAX_REVIEW_WINDOW_MS) {
+    throw new Error(`Cargo vulnerability review window is invalid: ${record.advisory_id}.`);
+  }
+  return vulnerabilityIdentity(record);
+}
+
 function flattenReportWarnings(warnings) {
   if (!isPlainObject(warnings)) throw new Error("Cargo audit warnings are missing.");
   const records = [];
@@ -98,6 +131,61 @@ function flattenReportWarnings(warnings) {
   return records;
 }
 
+function flattenReportVulnerabilities(vulnerabilities) {
+  if (
+    !isPlainObject(vulnerabilities)
+    || typeof vulnerabilities.found !== "boolean"
+    || !Number.isInteger(vulnerabilities.count)
+    || vulnerabilities.count < 0
+    || !Array.isArray(vulnerabilities.list)
+    || vulnerabilities.count !== vulnerabilities.list.length
+    || vulnerabilities.found !== (vulnerabilities.count > 0)
+  ) {
+    throw new Error("Cargo audit vulnerability summary is malformed.");
+  }
+  return vulnerabilities.list.map((entry) => {
+    if (
+      !isPlainObject(entry)
+      || !isPlainObject(entry.package)
+      || !isPlainObject(entry.advisory)
+      || !WARNING_TOKEN.test(entry.package.name ?? "")
+      || !VERSION_TOKEN.test(entry.package.version ?? "")
+      || !RUSTSEC_ID.test(entry.advisory.id ?? "")
+    ) {
+      throw new Error("Cargo audit vulnerability entry is malformed.");
+    }
+    return vulnerabilityIdentity({
+      advisory_id: entry.advisory.id,
+      package: entry.package.name,
+      version: entry.package.version
+    });
+  });
+}
+
+export function parseCargoAuditExecution({ error, signal, status, stderr, stdout }) {
+  if (error || signal || (status !== 0 && status !== 1)) {
+    throw new Error("The Cargo advisory scanner did not complete successfully.");
+  }
+  if (/(?:could not|unable to) update|failed to|fatal:|error:/iu.test(stderr ?? "")) {
+    throw new Error("The Cargo advisory scanner reported an incomplete database or registry update.");
+  }
+  let report;
+  try {
+    report = JSON.parse(stdout);
+  } catch {
+    throw new Error("The Cargo advisory scanner returned malformed JSON.");
+  }
+  const vulnerabilityCount = report?.vulnerabilities?.count;
+  const vulnerabilityFound = report?.vulnerabilities?.found;
+  if (
+    (status === 0 && (vulnerabilityFound !== false || vulnerabilityCount !== 0))
+    || (status === 1 && (vulnerabilityFound !== true || !Number.isInteger(vulnerabilityCount) || vulnerabilityCount < 1))
+  ) {
+    throw new Error("The Cargo advisory scanner exit status does not match its vulnerability report.");
+  }
+  return report;
+}
+
 export function validateCargoAdvisoryReview({
   lockBytes,
   now = new Date(),
@@ -107,7 +195,7 @@ export function validateCargoAdvisoryReview({
 }) {
   const nowMs = now instanceof Date ? now.getTime() : Number.NaN;
   if (!Number.isFinite(nowMs)) throw new Error("Cargo advisory review time is invalid.");
-  if (!isPlainObject(policy) || policy.schema_version !== 1) {
+  if (!isPlainObject(policy) || policy.schema_version !== 2) {
     throw new Error("Cargo advisory review policy schema is invalid.");
   }
   if (
@@ -140,10 +228,18 @@ export function validateCargoAdvisoryReview({
   if (!Array.isArray(policy.accepted_informational_warnings)) {
     throw new Error("Cargo advisory warning reviews are missing.");
   }
+  if (!Array.isArray(policy.accepted_vulnerabilities)) {
+    throw new Error("Cargo advisory vulnerability reviews are missing.");
+  }
   const expectedWarnings = policy.accepted_informational_warnings
     .map((record) => validatePolicyWarning(record, nowMs));
   if (new Set(expectedWarnings).size !== expectedWarnings.length) {
     throw new Error("Cargo advisory warning reviews contain duplicate identities.");
+  }
+  const expectedVulnerabilities = policy.accepted_vulnerabilities
+    .map((record) => validatePolicyVulnerability(record, nowMs));
+  if (new Set(expectedVulnerabilities).size !== expectedVulnerabilities.length) {
+    throw new Error("Cargo advisory vulnerability reviews contain duplicate identities.");
   }
 
   if (!isPlainObject(report)) throw new Error("Cargo audit JSON report is malformed.");
@@ -186,14 +282,16 @@ export function validateCargoAdvisoryReview({
   ) {
     throw new Error("Cargo audit settings filter or ignore advisory coverage.");
   }
-  if (
-    !isPlainObject(report.vulnerabilities)
-    || report.vulnerabilities.found !== false
-    || report.vulnerabilities.count !== 0
-    || !Array.isArray(report.vulnerabilities.list)
-    || report.vulnerabilities.list.length !== 0
-  ) {
-    throw new Error("Cargo audit reported a dependency vulnerability.");
+  const observedVulnerabilities = flattenReportVulnerabilities(report.vulnerabilities);
+  if (new Set(observedVulnerabilities).size !== observedVulnerabilities.length) {
+    throw new Error("Cargo audit report contains duplicate vulnerability identities.");
+  }
+  const expectedVulnerabilitiesSorted = [...expectedVulnerabilities].sort();
+  const observedVulnerabilitiesSorted = [...observedVulnerabilities].sort();
+  if (JSON.stringify(observedVulnerabilitiesSorted) !== JSON.stringify(expectedVulnerabilitiesSorted)) {
+    throw new Error(
+      `Cargo audit vulnerability set changed. Expected ${expectedVulnerabilitiesSorted.join(", ")}; observed ${observedVulnerabilitiesSorted.join(", ")}.`
+    );
   }
 
   const observedWarnings = flattenReportWarnings(report.warnings);
@@ -212,6 +310,7 @@ export function validateCargoAdvisoryReview({
     advisory_database_commit: report.database["last-commit"],
     advisory_database_count: report.database["advisory-count"],
     dependency_count: report.lockfile["dependency-count"],
+    reviewed_vulnerability_count: observedVulnerabilitiesSorted.length,
     reviewed_warning_count: observedSorted.length,
     status: "passed"
   };
