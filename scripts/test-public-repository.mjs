@@ -309,10 +309,30 @@ assert.match(
 );
 const cargoAdvisoryGate = read("scripts/check-cargo-advisory-review.mjs");
 assert.match(cargoAdvisoryGate, /"audit"[\s\S]*"--json"[\s\S]*"--color"[\s\S]*"never"/u);
+assert.match(cargoAdvisoryGate, /parseCargoAuditExecution/u);
 assert.match(cargoAdvisoryGate, /validateCargoAdvisoryReview/u);
 assert.doesNotMatch(cargoAdvisoryGate, /"--ignore"|--deny warnings/u);
 const cargoAdvisoryPolicy = JSON.parse(read("config/cargo-advisory-review.json"));
+assert.equal(cargoAdvisoryPolicy.schema_version, 2);
 assert.equal(cargoAdvisoryPolicy.scanner.version, "0.22.2");
+assert.deepEqual(
+  cargoAdvisoryPolicy.accepted_vulnerabilities.map((record) => ({
+    advisory_id: record.advisory_id,
+    package: record.package,
+    version: record.version
+  })),
+  [{ advisory_id: "RUSTSEC-2026-0235", package: "rkyv", version: "0.7.46" }]
+);
+assert.ok(
+  cargoAdvisoryPolicy.accepted_vulnerabilities.every((record) => (
+    record.owner.length >= 12
+    && record.reachability.length >= 12
+    && record.mitigation.length >= 12
+    && record.upstream_tracking.length >= 12
+    && Date.parse(record.expires_on) > Date.parse(record.reviewed_on)
+  )),
+  "Accepted Cargo vulnerabilities require bounded ownership, reachability, mitigation, upstream, and expiry evidence."
+);
 assert.deepEqual(
   cargoAdvisoryPolicy.accepted_informational_warnings.map(({ advisory_id: advisoryId }) => advisoryId),
   [
@@ -323,6 +343,25 @@ assert.deepEqual(
     "RUSTSEC-2026-0186"
   ]
 );
+const pnpmWorkspace = read("pnpm-workspace.yaml");
+const pnpmLock = read("pnpm-lock.yaml");
+for (const [packageName, version] of [
+  ["brace-expansion", "5.0.9"],
+  ["nanoid", "3.3.17"],
+  ["postcss", "8.5.23"]
+]) {
+  assert.match(
+    pnpmWorkspace,
+    new RegExp(`${packageName}[^\\n]*${version.replaceAll(".", "\\.")}`, "u"),
+    `${packageName} must remain pinned to its reviewed patched version.`
+  );
+  assert.match(
+    pnpmLock,
+    new RegExp(`${packageName}@${version.replaceAll(".", "\\.")}:`, "u"),
+    `${packageName} patched resolution is missing from the frozen lockfile.`
+  );
+}
+assert.match(requiredWindowsWorkflow, /pnpm audit --audit-level=moderate/u);
 const elevatedArchiveStepStart = requiredWindowsWorkflow.indexOf(
   "- name: Build, pack, install, and smoke the Windows npm package"
 );

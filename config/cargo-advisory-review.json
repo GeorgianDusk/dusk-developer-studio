@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "lock_path": "packages/templates/duskds-counter-forge/Cargo.lock",
   "lock_sha256": "1408051342213d41a91342497b18856c87afc3bc0eeb1c750932e634525445da",
   "lock_dependency_count": 277,
@@ -7,6 +7,19 @@
     "name": "cargo-audit",
     "version": "0.22.2"
   },
+  "accepted_vulnerabilities": [
+    {
+      "package": "rkyv",
+      "version": "0.7.46",
+      "advisory_id": "RUSTSEC-2026-0235",
+      "owner": "GeorgianDusk repository maintainer",
+      "reviewed_on": "2026-08-10T08:30:00.000Z",
+      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reachability": "Locked rkyv is transitive through Dusk Core 1.6.0 in the generated contract graph and through Dusk VM and Piecrust in native dev tests. The advisory requires validation of an archived Rc or Arc with an unsized pointee and conflicting pointer metadata. Source review of the exact locked Dusk Core, Dusk VM, Piecrust, and crypto revisions found no archived unsized Rc or Arc field; the generated template does not call rkyv directly.",
+      "mitigation": "Keep this acceptance exact to rkyv 0.7.46 and RUSTSEC-2026-0235, reject every other vulnerability or version, rerun source reachability review on any lock change, and do not add direct rkyv deserialization or archived unsized Rc or Arc types to the template.",
+      "upstream_tracking": "RUSTSEC fixes the issue in rkyv 0.8.17 and later. Dusk Core 1.6.0 and the checked current upstream Dusk Core 1.7.0 line remain on rkyv 0.7, so removal requires a coordinated upstream Dusk dependency and archive-format migration. Recheck before expiry."
+    }
+  ],
   "accepted_informational_warnings": [
     {
       "kind": "unmaintained",

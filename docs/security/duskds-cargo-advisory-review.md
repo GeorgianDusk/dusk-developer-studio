@@ -6,9 +6,16 @@ database, rejects every reported vulnerability, and exact-matches all
 informational warnings against
 [`config/cargo-advisory-review.json`](../../config/cargo-advisory-review.json).
 
+When an upstream migration is not yet compatible, the same policy can carry a
+short-lived, exact vulnerability review. This is not a blanket ignore: package,
+version, advisory, owner, reachability, mitigation, upstream status, and expiry
+must all match, and `cargo-audit` still runs without `--ignore`.
+
 The tracked review is deliberately not a blanket ignore list. CI fails when:
 
-- RustSec reports any vulnerability;
+- RustSec reports a vulnerability that is not an exact, unexpired reviewed identity;
+- a reviewed vulnerability is added, removed, changes package or version, or
+  lacks owner, reachability, mitigation, upstream, or expiry evidence;
 - a warning is added, removed, reclassified, or changes package or version;
 - the lockfile or dependency count changes;
 - the scanner identity, database metadata, or scan output is incomplete;
@@ -16,10 +23,24 @@ The tracked review is deliberately not a blanket ignore list. CI fails when:
 - a warning review is missing an owner or rationale, is future-dated, or
   expires.
 
+## Current reviewed vulnerability
+
+The lock currently reports one vulnerability with a temporary review expiring
+on 2026-08-20:
+
+| Advisory | Package | Reviewed reachability and mitigation |
+| --- | --- | --- |
+| `RUSTSEC-2026-0235` | `rkyv 0.7.46` | The affected validation path requires an archived `Rc` or `Arc` with an unsized pointee and conflicting metadata. The exact locked Dusk Core, Dusk VM, Piecrust, and crypto sources contain no such archived field, and the generated template does not call `rkyv` directly. CI exact-matches this identity, expires the review, and rejects all other vulnerabilities. |
+
+The fixed line begins at `rkyv 0.8.17`. Dusk Core 1.6.0 and the checked current
+upstream 1.7.0 line still use `rkyv 0.7`, so removal requires a coordinated
+upstream dependency and archive-format migration. Any lock change requires a
+fresh reachability review.
+
 ## Current reviewed warnings
 
-The current lock has no RustSec vulnerability entries. Five informational
-warnings are accepted only through the expiry recorded in the policy:
+Five informational warnings are accepted only through the expiry recorded in
+the policy:
 
 | Advisory | Package | Kind | Reviewed reachability |
 | --- | --- | --- | --- |
@@ -34,6 +55,6 @@ older dependency lines, and several unmaintained crates have no patched release.
 The `memmap2` fix begins at 0.9.11 while Piecrust 0.30.0 requires 0.7. Removal
 therefore depends on upstream Dusk, Piecrust, arkworks, or Dusk Plonk changes.
 
-The repository checks weekly and on every production-assurance run. The review
-must be renewed with fresh reachability and upstream analysis, or the dependency
-tree must be updated, before its recorded expiry.
+The repository checks weekly and on every production-assurance run. Every
+review must be renewed with fresh reachability and upstream analysis, or the
+dependency tree must be updated, before its recorded expiry.

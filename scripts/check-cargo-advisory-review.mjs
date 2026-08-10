@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { validateCargoAdvisoryReview } from "./cargo-advisory-review-core.mjs";
+import {
+  parseCargoAuditExecution,
+  validateCargoAdvisoryReview
+} from "./cargo-advisory-review-core.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const policyPath = path.join(root, "config", "cargo-advisory-review.json");
@@ -60,18 +63,7 @@ const auditResult = spawnSync(scanner, [
   timeout: 120_000,
   windowsHide: true
 });
-if (auditResult.error || auditResult.signal || auditResult.status !== 0) {
-  throw new Error("The Cargo advisory scanner did not complete successfully.");
-}
-if (/(?:could not|unable to) update|failed to|fatal:|error:/iu.test(auditResult.stderr)) {
-  throw new Error("The Cargo advisory scanner reported an incomplete database or registry update.");
-}
-let report;
-try {
-  report = JSON.parse(auditResult.stdout);
-} catch {
-  throw new Error("The Cargo advisory scanner returned malformed JSON.");
-}
+const report = parseCargoAuditExecution(auditResult);
 const result = validateCargoAdvisoryReview({
   lockBytes: fs.readFileSync(realLockPath),
   policy,
