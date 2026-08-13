@@ -102,7 +102,13 @@ describe("explorer helpers", () => {
 describe("resource search", () => {
   it("finds funding, troubleshooting, and capability records", () => {
     expect(searchResources("bridge").some((item) => item.id === "duskevm-bridge")).toBe(true);
+    expect(searchResources("faucet").find((item) => item.id === "duskevm-bridge")?.summary)
+      .toMatch(/unshield it, then deposit/i);
+    expect(searchResources("faucet").find((item) => item.id === "duskevm-faucet-archived")?.maturity)
+      .toBe("archived");
     expect(searchTroubleshooting("forge").some((item) => item.id === "foundry-missing")).toBe(true);
+    expect(searchTroubleshooting("gas").find((item) => item.id === "insufficient-gas")?.fix)
+      .toMatch(/not a direct DuskEVM faucet/i);
     expect(searchCapabilities("citadel").some((item) => item.id === "citadel-private-identity")).toBe(true);
     expect(searchCapabilities("hedger").some((item) => item.id === "duskevm-confidential-hedger")).toBe(true);
     expect(searchResources("Smart Contracts on DuskDS").some((item) => item.id === "duskds-smart-contracts")).toBe(true);

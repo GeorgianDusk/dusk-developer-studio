@@ -7,7 +7,7 @@ This checklist is the gate for changing Dusk Developer Studio from DuskEVM pre-l
 ## 1. Authority and network identity
 
 - [x] An authoritative Dusk source explicitly states that the Testnet is available for developer use.
-- [x] The reviewed source identifies the canonical RPC origin, chain ID in decimal and hexadecimal, network name, native currency metadata, explorer, funding route, and support route; no faucet is claimed.
+- [x] The reviewed sources identify the canonical RPC origin, chain ID in decimal and hexadecimal, network name, native currency metadata, explorer, funding and support routes. The funding guide starts with the Dusk L1 Testnet faucet, then unshielding and the bridge; no direct DuskEVM faucet is claimed.
 - [x] Two independent clean clients (Windows PowerShell and Ubuntu 24.04 WSL Python/urllib) observe the same chain ID, exact genesis and current block progression from the canonical RPC.
 - [x] TLS, DNS, certificate chain, redirect policy, CORS behavior, response content type, client payload bounds and a bounded five-request availability sample are recorded.
 - [x] Any candidate values already shown by Studio are rechecked at activation time rather than promoted from pre-launch metadata.
@@ -24,11 +24,11 @@ This checklist is the gate for changing Dusk Developer Studio from DuskEVM pre-l
 
 ## 3. Wallet, permissions and funding
 
-- [ ] The supported wallet and minimum version are identified from current public sources.
+- [x] Current official sources require a custom-network EVM wallet and name MetaMask only as an example. They publish no minimum version, so Studio claims only generic EIP-1193 compatibility and no supported vendor/version matrix.
 - [x] Connection, account disclosure, network addition/switching, signing and transaction submission are separate user-mediated permissions.
 - [x] Studio never asks for, accepts, stores or logs a seed phrase, private key, wallet password, raw signing request or funded-account secret.
 - [x] Wrong-chain, rejected connection, locked wallet, missing wallet, stale session and unsupported-wallet recovery are tested with unfunded mocks.
-- [x] Funding guidance names the authoritative bridge route and failure recovery without promising availability; no faucet is claimed.
+- [x] Funding guidance names the authoritative L1 Testnet faucet → unshield → DuskEVM bridge route and failure recovery without promising availability or implying a direct DuskEVM faucet.
 - [x] No automated test uses a valuable or personally funded account; activation evidence uses unfunded fixtures until an approved disposable Testnet account is provided.
 
 ## 4. Build and deployment

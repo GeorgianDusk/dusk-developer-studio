@@ -35,9 +35,9 @@
     },
     {
         "id":  "duskevm-bridge",
-        "title":  "Bridge DUSK from DuskDS to DuskEVM Testnet",
+        "title":  "Bridge DUSK from Dusk L1 to DuskEVM Testnet",
         "category":  "Funding",
-        "summary":  "Official manual Testnet funding route from DuskDS through the Dusk Web Wallet to a Web3 wallet. Studio links out and never moves, monitors, or promises funds.",
+        "summary":  "Official manual Testnet funding route: request valueless Dusk L1 Testnet DUSK from the faucet, unshield it, then deposit through the Dusk Web Wallet to a custom-network EVM wallet. Studio links out and never requests, moves, monitors, or promises funds.",
         "url":  "https://docs.dusk.network/learn/guides/duskevm-bridge/",
         "maturity":  "official",
         "tags":  [
@@ -84,9 +84,9 @@
     },
     {
         "id":  "duskevm-faucet-archived",
-        "title":  "Archived DuskEVM Faucet Repository",
+        "title":  "Archived direct DuskEVM faucet repository",
         "category":  "Funding",
-        "summary":  "Archived/read-only public faucet implementation. Do not assume an active faucet exists until a live DuskEVM Testnet faucet is verified.",
+        "summary":  "Archived/read-only direct DuskEVM faucet implementation. It is not the current funding route: the official guide starts from the Dusk L1 Testnet faucet, then unshields and bridges DUSK into DuskEVM.",
         "url":  "https://github.com/dusk-network/duskevm-faucet",
         "maturity":  "archived",
         "tags":  [

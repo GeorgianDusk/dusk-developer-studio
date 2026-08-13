@@ -88,8 +88,8 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "The account balance read succeeded but it has no Testnet gas. The current official route bridges Testnet DUSK from DuskDS through the Dusk Web Wallet to a connected Web3 wallet; Studio never automates or promises that transfer.",
-        "safeNextStep":  "Open the official bridge guide from DuskEVM Access, verify both wallet addresses and the current bridge state, move only valueless Testnet tokens, then re-read the EVM balance."
+        "fix":  "The account balance read succeeded but it has no Testnet gas. The current official route starts with the Dusk L1 Testnet faucet, then requires unshielding and a Dusk L1-to-DuskEVM deposit through the Web Wallet. It is not a direct DuskEVM faucet, and Studio never requests tokens, automates the bridge, or promises completion.",
+        "safeNextStep":  "Open the official bridge guide from DuskEVM Access, use a dedicated custom-network EVM wallet, verify both wallet addresses and the current bridge state, move only valueless Testnet tokens, then re-read the EVM balance."
     },
     {
         "id":  "rpc-unavailable",

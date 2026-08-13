@@ -585,7 +585,8 @@ function EvmAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
       </div>
       <div className="focus-card secondary wide">
         <h2>Optional Testnet funding route</h2>
-        <p>The current official path bridges Testnet DUSK from DuskDS to DuskEVM using the Dusk Web Wallet plus your Web3 wallet. Studio does not automate, monitor, or promise bridge completion, and it never moves funds.</p>
+        <p>The official guide calls for an EVM wallet that supports custom networks and names MetaMask only as an example. It publishes no minimum wallet version, so Studio relies on the standard EIP-1193 actions above without endorsing or guaranteeing a wallet brand or release.</p>
+        <p>The current funding path starts with valueless Dusk L1 Testnet DUSK from the official faucet, then unshielding, then a Dusk L1-to-DuskEVM deposit through the Dusk Web Wallet. This is not a direct DuskEVM faucet. Studio does not request tokens, automate the bridge, monitor it, promise completion, or move funds.</p>
         <div className="button-row">
           <ExternalLink href="https://apps.testnet.dusk.network/wallet/">Open official Dusk Web Wallet</ExternalLink>
           <ExternalLink href="https://docs.dusk.network/learn/guides/duskevm-bridge/">Read the official bridge guide</ExternalLink>

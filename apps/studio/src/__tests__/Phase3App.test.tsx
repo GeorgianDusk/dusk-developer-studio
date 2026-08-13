@@ -197,7 +197,8 @@ describe("Phase 3 interaction semantics", () => {
 
     expect(screen.getByText(/bounded Testnet read did not complete/i)).toBeInTheDocument();
     expect(screen.getByText(/Enable an EIP-1193-compatible Web3 wallet/i)).toBeInTheDocument();
-    expect(screen.getByText(/current official route bridges Testnet DUSK/i)).toBeInTheDocument();
+    expect(screen.getByText(/current official route starts with the Dusk L1 Testnet faucet/i)).toBeInTheDocument();
+    expect(screen.getByText(/not a direct DuskEVM faucet/i)).toBeInTheDocument();
     expect(screen.getByText(/Install Foundry through its official installer/i)).toBeInTheDocument();
     expect(screen.getByText(/Studio does not submit verification/i)).toBeInTheDocument();
   });

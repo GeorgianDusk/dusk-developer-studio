@@ -7,7 +7,7 @@
   "covered_files": [
     {
       "path": "data/dusk/capabilities.json",
-      "sha256": "f8a09c226835a088c1218de98f3a8e0fdfdba6df937273f82b3a2d81beba22c2"
+      "sha256": "9171920d9bc1685b261ea57d334ee08fde3c62133cd3cbb40314b7f0a1a78b72"
     },
     {
       "path": "data/dusk/networks.evm.json",
@@ -15,11 +15,11 @@
     },
     {
       "path": "data/dusk/resources.json",
-      "sha256": "e43e11f1f49a96fe07d2973079c77371dcba5b7eaa50a86d81c68c73b935ee32"
+      "sha256": "d2b8596db1b8216e13e877659bf6604137025f8ee4bf2a54d04d24dc338a366a"
     },
     {
       "path": "data/dusk/troubleshooting.json",
-      "sha256": "91e0c700a41492ba357238a71c788859fe2594137d854f919c16265a313afe44"
+      "sha256": "15525d3453ef752cb13564dcb5b7559d00d7d5b92d20e7b765af89b52abdf9de"
     }
   ],
   "sources": [

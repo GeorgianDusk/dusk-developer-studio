@@ -193,6 +193,15 @@ describe("Phase 2 evidence journeys", () => {
     Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
     render(<App />);
 
+    expect(screen.getByText(/names MetaMask only as an example/i)).toBeInTheDocument();
+    expect(screen.getByText(/publishes no minimum wallet version/i)).toBeInTheDocument();
+    expect(screen.getByText(/starts with valueless Dusk L1 Testnet DUSK from the official faucet/i)).toBeInTheDocument();
+    expect(screen.getByText(/This is not a direct DuskEVM faucet/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Read the official bridge guide/i })).toHaveAttribute(
+      "href",
+      "https://docs.dusk.network/learn/guides/duskevm-bridge/"
+    );
+
     fireEvent.click(screen.getByRole("button", { name: "1. Check existing session" }));
     await waitFor(() => expect(screen.getByText(/Observed an existing wallet session/i)).toBeInTheDocument());
     expect(provider.request.mock.calls.map(([request]) => request.method).sort()).toEqual(["eth_accounts", "eth_chainId"]);

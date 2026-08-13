@@ -63,9 +63,9 @@
         "path":  "evm",
         "title":  "DuskEVM testnet funding bridge",
         "category":  "Funding",
-        "summary":  "Fund an EVM testnet wallet with practice DUSK through the official DuskDS to DuskEVM bridge route.",
+        "summary":  "Fund an EVM testnet wallet with valueless DUSK through the official Dusk L1 faucet, unshielding, and Dusk L1-to-DuskEVM bridge route; there is no direct DuskEVM faucet claim.",
         "beginnerUse":  "Choose this after your wallet is on the right chain and before you try to deploy a contract.",
-        "safeNextStep":  "Follow the official bridge guide and avoid duplicate bridge attempts while a transfer is pending.",
+        "safeNextStep":  "Follow the official bridge guide from the L1 Testnet faucet through unshielding and deposit, and avoid duplicate bridge attempts while a transfer is pending.",
         "maturity":  "manual-official",
         "sourceStatus":  "official-docs",
         "links":  [
