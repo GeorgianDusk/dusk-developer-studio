@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "assurance_node_version": "24.18.0",
+  "pnpm_version": "11.7.0",
+  "lockfile": "pnpm-lock.yaml",
+  "application_sbom": "provenance/studio-production-dependencies.cdx.json",
+  "container_bases": [
+    {
+      "stage": "build",
+      "image": "node:24-alpine",
+      "digest": "sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43"
+    },
+    {
+      "stage": "runtime",
+      "image": "nginx:stable-alpine",
+      "digest": "sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
+    }
+  ],
+  "npm_audit": {
+    "production_only": true,
+    "minimum_severity": "moderate",
+    "exceptions": []
+  },
+  "container_scan": {
+    "scanner": "trivy-action",
+    "action_commit": "ed142fd0673e97e23eac54620cfb913e5ce36c25",
+    "action_version": "v0.36.0",
+    "trivy_version": "v0.70.0",
+    "blocking_severities": [
+      "CRITICAL",
+      "HIGH"
+    ],
+    "ignore_unfixed": false,
+    "exceptions": []
+  }
+}

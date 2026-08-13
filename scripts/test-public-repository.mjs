@@ -340,7 +340,8 @@ assert.deepEqual(
     "RUSTSEC-2025-0141",
     "RUSTSEC-2024-0388",
     "RUSTSEC-2024-0436",
-    "RUSTSEC-2026-0186"
+    "RUSTSEC-2026-0186",
+    "RUSTSEC-2026-0253"
   ]
 );
 const pnpmWorkspace = read("pnpm-workspace.yaml");

@@ -29,6 +29,8 @@ The deployable static artifact is `apps/studio/dist`.
 
 Deploy from a clean reviewed commit and preserve `release-manifest.json` and `assurance-receipt.json` with the exact artifact.
 
+For the container route, build the repository `Dockerfile` without replacing its reviewed base-image digests. The CI production-assurance lane independently rebuilds it, generates application and container SBOMs, and blocks unresolved high or critical container vulnerabilities. See [reproducible runtime and container provenance](../security/supply-chain.md) for update and verification rules.
+
 ## Caddy example
 
 `deploy/caddy/studio.caddy` is the configuration used by the GeorgianDusk deployment at `studio.134-122-59-217.nip.io`.
