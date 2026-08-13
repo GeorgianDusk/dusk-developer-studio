@@ -75,6 +75,17 @@
       "expires_on": "2026-08-20T00:00:00.000Z",
       "reachability": "Dev and native-test dependency through dusk-vm and piecrust; absent from the exact contract and data-driver WASM normal and build trees. Piecrust 0.30.0 contains no calls to the advisory's affected range-advice or range-flush methods.",
       "upstream_tracking": "The fixed memmap2 line starts at 0.9.11, outside Piecrust's current 0.7 constraint; resolution requires an upstream Piecrust and Dusk VM dependency change."
+    },
+    {
+      "kind": "unsound",
+      "package": "lru",
+      "version": "0.16.4",
+      "advisory_id": "RUSTSEC-2026-0253",
+      "owner": "GeorgianDusk repository maintainer",
+      "reviewed_on": "2026-08-13T13:01:23.158Z",
+      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reachability": "Dev and native-test dependency through dusk-vm 1.6.0; absent from the exact generated contract and data-driver WASM normal and build trees. Exact dusk-vm source uses LruCache for host-query caching but contains no call to the affected LruCache::pop() path; triggering additionally requires a panicking key Drop during unwind followed by a later cache eviction.",
+      "upstream_tracking": "RustSec fixes RUSTSEC-2026-0253 in lru 0.18.2. Dusk VM 1.6.0 constrains lru to the 0.16 line, so removal requires a coordinated upstream Dusk VM dependency change. Recheck before expiry."
     }
   ]
 }

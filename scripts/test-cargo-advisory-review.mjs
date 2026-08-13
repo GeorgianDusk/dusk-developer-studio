@@ -12,7 +12,7 @@ const policy = JSON.parse(
   fs.readFileSync(path.join(root, "config", "cargo-advisory-review.json"), "utf8")
 );
 const lockBytes = fs.readFileSync(path.join(root, ...policy.lock_path.split("/")));
-const now = new Date("2026-08-10T09:00:00.000Z");
+const now = new Date("2026-08-13T13:05:00.000Z");
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function reportFixture() {
@@ -68,7 +68,7 @@ assert.deepEqual(validate(), {
   advisory_database_count: 1166,
   dependency_count: 277,
   reviewed_vulnerability_count: 1,
-  reviewed_warning_count: 5,
+  reviewed_warning_count: 6,
   status: "passed"
 });
 
