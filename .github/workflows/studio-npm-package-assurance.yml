@@ -44,7 +44,7 @@ jobs:
   build-package:
     name: Build the exact npm candidate once
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     outputs:
       integrity: ${{ steps.candidate.outputs.integrity }}
       package_inventory_sha256: ${{ steps.candidate.outputs.package_inventory_sha256 }}
@@ -74,12 +74,25 @@ jobs:
         with:
           node-version: 24.18.0
           package-manager-cache: "false"
+      - name: Install the exact Cargo advisory scanner
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal
+          cargo +1.94.0 install --locked \
+            --root "$RUNNER_TEMP/cargo-audit-0.22.2" \
+            --version 0.22.2 \
+            cargo-audit
+      - name: Enforce the reviewed Cargo advisory result for this candidate
+        env:
+          CARGO_AUDIT_BIN: ${{ runner.temp }}/cargo-audit-0.22.2/bin/cargo-audit
+        run: node scripts/check-cargo-advisory-review.mjs
       - name: Enable repository-pinned pnpm
         run: |
           corepack enable
           corepack install --global pnpm@$PNPM_VERSION
       - name: Restore frozen dependencies
         run: pnpm install --frozen-lockfile
+      - name: Enforce the live JavaScript dependency severity gate
+        run: pnpm audit --audit-level=moderate
       - name: Build, test, and pack the exact npm candidate
         run: |
           pnpm build:npm

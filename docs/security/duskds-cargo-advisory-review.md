@@ -1,10 +1,14 @@
 # DuskDS Cargo advisory review
 
 The packaged DuskDS starter is bound to an exact Cargo lockfile. Production
-assurance installs the pinned `cargo-audit` scanner, fetches the current RustSec
-database, rejects every reported vulnerability, and exact-matches all
-informational warnings against
+assurance and the reusable npm package assurance both install the pinned
+`cargo-audit` scanner, fetch the current RustSec database, reject every
+unreviewed vulnerability, and exact-match all informational warnings against
 [`config/cargo-advisory-review.json`](../../config/cargo-advisory-review.json).
+Because both npm publication workflows consume the reusable assurance as a
+required job, an expired or changed Cargo review fails the exact tag before any
+package can be published. The same reusable job also runs the live
+moderate-or-higher npm advisory gate before packing the candidate.
 
 When an upstream migration is not yet compatible, the same policy can carry a
 short-lived, exact vulnerability review. This is not a blanket ignore: package,
@@ -55,6 +59,7 @@ older dependency lines, and several unmaintained crates have no patched release.
 The `memmap2` fix begins at 0.9.11 while Piecrust 0.30.0 requires 0.7. Removal
 therefore depends on upstream Dusk, Piecrust, arkworks, or Dusk Plonk changes.
 
-The repository checks weekly and on every production-assurance run. Every
-review must be renewed with fresh reachability and upstream analysis, or the
-dependency tree must be updated, before its recorded expiry.
+The repository checks weekly, on every production-assurance run, and in every
+publication-bound reusable package-assurance run. Every review must be renewed
+with fresh reachability and upstream analysis, or the dependency tree must be
+updated, before its recorded expiry.

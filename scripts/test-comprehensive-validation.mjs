@@ -571,6 +571,11 @@ function buildReceiptBoundFinal() {
 }
 
 assert.deepEqual(validateComprehensiveCampaign(policy, evidence), []);
+assert.deepEqual(
+  policy.required_product_surfaces.security_matrix,
+  Array.from({ length: 27 }, (_, index) => `security:ST-${String(index + 1).padStart(2, "0")}`),
+  "The active v1.0.20 campaign must require every durable security-matrix case."
+);
 
 const duplicatePolicy = clone(policy);
 duplicatePolicy.pilots[1].id = duplicatePolicy.pilots[0].id;

@@ -423,6 +423,31 @@ assert.match(localRuntime, /exactRegularFileInventory[\s\S]*scaffold_preservatio
 assert.match(localRuntime, /shutdown_smoke: "passed"/);
 assert.match(npmAssuranceWorkflow, /runner: \[ubuntu-24\.04, windows-2025, macos-15\]/);
 assert.match(npmAssuranceWorkflow, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*node scripts\/npm-package-pack\.mjs/);
+assert.match(
+  npmAssuranceWorkflow,
+  /rustup toolchain install 1\.94\.0 --profile minimal[\s\S]*cargo \+1\.94\.0 install --locked[\s\S]*--root "\$RUNNER_TEMP\/cargo-audit-0\.22\.2"[\s\S]*--version 0\.22\.2[\s\S]*cargo-audit/u,
+  "Reusable npm assurance must install the exact Cargo advisory scanner before publication can consume its result."
+);
+assert.match(
+  npmAssuranceWorkflow,
+  /CARGO_AUDIT_BIN: \$\{\{ runner\.temp \}\}\/cargo-audit-0\.22\.2\/bin\/cargo-audit[\s\S]*node scripts\/check-cargo-advisory-review\.mjs/u,
+  "Reusable npm assurance must enforce the exact candidate's reviewed Cargo advisory result."
+);
+assert.match(
+  npmAssuranceWorkflow,
+  /pnpm audit --audit-level=moderate/u,
+  "Reusable npm assurance must enforce the live JavaScript advisory severity gate."
+);
+assert.ok(
+  npmAssuranceWorkflow.indexOf("Enforce the reviewed Cargo advisory result for this candidate")
+    < npmAssuranceWorkflow.indexOf("Build, test, and pack the exact npm candidate"),
+  "Cargo dependency assurance must fail before the publication tarball is packed."
+);
+assert.ok(
+  npmAssuranceWorkflow.indexOf("Enforce the live JavaScript dependency severity gate")
+    < npmAssuranceWorkflow.indexOf("Build, test, and pack the exact npm candidate"),
+  "JavaScript dependency assurance must fail before the publication tarball is packed."
+);
 assert.match(npmBrowserSmoke, /await context\.close\(\);[\s\S]*context = undefined;[\s\S]*validateBrowserTransportEvidence/);
 assert.match(
   npmBrowserSmoke,

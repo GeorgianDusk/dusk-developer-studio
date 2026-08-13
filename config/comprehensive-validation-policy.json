@@ -228,7 +228,13 @@
       "security:ST-18",
       "security:ST-19",
       "security:ST-20",
-      "security:ST-21"
+      "security:ST-21",
+      "security:ST-22",
+      "security:ST-23",
+      "security:ST-24",
+      "security:ST-25",
+      "security:ST-26",
+      "security:ST-27"
     ]
   },
   "severity_crosswalk": {
