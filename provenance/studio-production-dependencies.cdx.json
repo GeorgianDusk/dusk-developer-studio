@@ -1,0 +1,174 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "bom-ref": "urn:dusk:developer-studio",
+      "name": "dusk-developer-testnet-studio",
+      "version": "1.0.19"
+    },
+    "properties": [
+      {
+        "name": "dusk:pnpm-lock-sha256",
+        "value": "fcefa0537f230c0c7421ec077a1ca5a32cba02fc77acc241b7e6fb3c89bbcfaa"
+      },
+      {
+        "name": "dusk:dockerfile-sha256",
+        "value": "fc1639caf9d03db9defc62373e87e12e3dd3ab63a5ad01ec026e1839b5618edd"
+      },
+      {
+        "name": "dusk:assurance-node-version",
+        "value": "24.18.0"
+      },
+      {
+        "name": "dusk:pnpm-version",
+        "value": "11.7.0"
+      },
+      {
+        "name": "dusk:container-base:build",
+        "value": "node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43"
+      },
+      {
+        "name": "dusk:container-base:runtime",
+        "value": "nginx:stable-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40adraffy/ens-normalize@1.11.1",
+      "name": "@adraffy/ens-normalize",
+      "version": "1.11.1",
+      "purl": "pkg:npm/%40adraffy/ens-normalize@1.11.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40noble/ciphers@1.3.0",
+      "name": "@noble/ciphers",
+      "version": "1.3.0",
+      "purl": "pkg:npm/%40noble/ciphers@1.3.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40noble/curves@1.9.1",
+      "name": "@noble/curves",
+      "version": "1.9.1",
+      "purl": "pkg:npm/%40noble/curves@1.9.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40noble/hashes@1.8.0",
+      "name": "@noble/hashes",
+      "version": "1.8.0",
+      "purl": "pkg:npm/%40noble/hashes@1.8.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40scure/base@1.2.6",
+      "name": "@scure/base",
+      "version": "1.2.6",
+      "purl": "pkg:npm/%40scure/base@1.2.6"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40scure/bip32@1.7.0",
+      "name": "@scure/bip32",
+      "version": "1.7.0",
+      "purl": "pkg:npm/%40scure/bip32@1.7.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/%40scure/bip39@1.6.0",
+      "name": "@scure/bip39",
+      "version": "1.6.0",
+      "purl": "pkg:npm/%40scure/bip39@1.6.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/abitype@1.2.3",
+      "name": "abitype",
+      "version": "1.2.3",
+      "purl": "pkg:npm/abitype@1.2.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/eventemitter3@5.0.1",
+      "name": "eventemitter3",
+      "version": "5.0.1",
+      "purl": "pkg:npm/eventemitter3@5.0.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/isows@1.0.7",
+      "name": "isows",
+      "version": "1.0.7",
+      "purl": "pkg:npm/isows@1.0.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/lucide-react@1.24.0",
+      "name": "lucide-react",
+      "version": "1.24.0",
+      "purl": "pkg:npm/lucide-react@1.24.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/ox@0.14.30",
+      "name": "ox",
+      "version": "0.14.30",
+      "purl": "pkg:npm/ox@0.14.30"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react@19.2.7",
+      "name": "react",
+      "version": "19.2.7",
+      "purl": "pkg:npm/react@19.2.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/react-dom@19.2.7",
+      "name": "react-dom",
+      "version": "19.2.7",
+      "purl": "pkg:npm/react-dom@19.2.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/scheduler@0.27.0",
+      "name": "scheduler",
+      "version": "0.27.0",
+      "purl": "pkg:npm/scheduler@0.27.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/typescript@5.9.3",
+      "name": "typescript",
+      "version": "5.9.3",
+      "purl": "pkg:npm/typescript@5.9.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/viem@2.55.2",
+      "name": "viem",
+      "version": "2.55.2",
+      "purl": "pkg:npm/viem@2.55.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/ws@8.21.0",
+      "name": "ws",
+      "version": "8.21.0",
+      "purl": "pkg:npm/ws@8.21.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/zod@4.4.3",
+      "name": "zod",
+      "version": "4.4.3",
+      "purl": "pkg:npm/zod@4.4.3"
+    }
+  ]
+}

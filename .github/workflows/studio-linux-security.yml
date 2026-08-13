@@ -61,6 +61,22 @@ jobs:
           corepack install --global pnpm@11.7.0
       - name: Restore frozen dependencies
         run: pnpm install --frozen-lockfile
+      - name: Validate reproducible dependency and container inputs
+        run: pnpm supply-chain:check
+      - name: Record the production npm vulnerability result
+        run: |
+          mkdir -p output/supply-chain
+          pnpm supply-chain:audit -- --output output/supply-chain/studio-npm-audit.json
+      - name: Upload application dependency evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-application-supply-chain-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            provenance/studio-production-dependencies.cdx.json
+            output/supply-chain/studio-npm-audit.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Build, pack, install, and smoke the Linux npm package
         run: |
           pnpm build:npm
@@ -99,6 +115,42 @@ jobs:
           pnpm build
           SECOND="$(pnpm --silent fingerprint:artifacts)"
           test "$FIRST" = "$SECOND"
+      - name: Build the digest-pinned Hosted guide container
+        run: docker build --pull --no-cache --tag dusk-developer-studio:supply-chain .
+      - name: Generate the Hosted guide container SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: dusk-developer-studio:supply-chain
+          format: cyclonedx
+          output: output/supply-chain/studio-container.cdx.json
+          list-all-pkgs: "true"
+          version: v0.70.0
+          cache: "false"
+      - name: Reject unresolved high or critical container vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: dusk-developer-studio:supply-chain
+          scanners: vuln
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          ignore-unfixed: "false"
+          exit-code: "1"
+          format: json
+          output: output/supply-chain/studio-container-vulnerabilities.json
+          version: v0.70.0
+          cache: "false"
+      - name: Upload container supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-container-supply-chain-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            output/supply-chain/studio-container.cdx.json
+            output/supply-chain/studio-container-vulnerabilities.json
+          if-no-files-found: warn
+          retention-days: 30
 
   browser-assurance:
     name: Five-project browser, accessibility, and performance matrix
