@@ -72,8 +72,8 @@ jobs:
           const policy = JSON.parse(fs.readFileSync("config/phase5-policy.json", "utf8"));
           validateAssuranceTargetOrigin(process.env.TARGET_URL, policy);
           NODE
-      - name: Install Chromium for hosted desktop and mobile checks
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Install Chromium and WebKit for hosted desktop and mobile checks
+        run: pnpm exec playwright install --with-deps chromium webkit
       - name: Run public routes and controlled DuskEVM degradation checks
         id: browser
         continue-on-error: true
