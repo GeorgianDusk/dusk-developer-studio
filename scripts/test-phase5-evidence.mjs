@@ -18,11 +18,25 @@ import {
 
 const root = path.resolve(process.cwd());
 const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "phase5-policy.json"), "utf8"));
+const pilotExecutionSources = {
+  path: "scripts/agent-pilot-collector.mjs",
+  source_sha256: createHash("sha256")
+    .update(fs.readFileSync(path.join(root, "scripts", "agent-pilot-collector.mjs")))
+    .digest("hex"),
+  runner_path: "scripts/agent-pilot-plan.mjs",
+  runner_source_sha256: createHash("sha256")
+    .update(fs.readFileSync(path.join(root, "scripts", "agent-pilot-plan.mjs")))
+    .digest("hex"),
+  policy_path: "config/phase5-policy.json",
+  policy_source_sha256: createHash("sha256")
+    .update(fs.readFileSync(path.join(root, "config", "phase5-policy.json")))
+    .digest("hex")
+};
 const now = new Date("2026-07-15T12:00:00Z");
 policy.monitoring_evidence.accepted_risk.accepted_at = "2026-07-15T00:30:00Z";
 policy.npm_distribution.expected_npm_maintainer = "phase5-test-maintainer";
-assert.equal(policy.npm_distribution.package_version, "1.0.19");
-assert.equal(policy.npm_distribution.tag, "v1.0.19");
+assert.equal(policy.npm_distribution.package_version, "1.0.20");
+assert.equal(policy.npm_distribution.tag, "v1.0.20");
 assert.equal(policy.npm_distribution.publication_workflow, ".github/workflows/studio-npm-oidc-publish.yml");
 assert.equal(policy.npm_distribution.publication_environment, "npm-trusted-publication");
 assert.equal(policy.npm_distribution.initial_package_version, "1.0.0");
@@ -260,7 +274,7 @@ const sessions = policy.pilot.required_scenarios.map((scenario, index) => {
   const summary = {
     id,
     scenario_id: scenario.id,
-    path: "duskds",
+    path: "evm",
     experience: scenario.experience,
     context: scenario.context,
     capability: scenario.capability,
@@ -321,9 +335,8 @@ const sessions = policy.pilot.required_scenarios.map((scenario, index) => {
     plan,
     plan_sha256: canonicalSha256(plan),
     collector: {
-      path: "scripts/agent-pilot-collector.mjs",
       commit: candidateCommit,
-      source_sha256: "8".repeat(64)
+      ...pilotExecutionSources
     },
     candidate: receiptCandidate,
     environment,
@@ -379,12 +392,18 @@ checks.duskds_node_read = {
   observed_at: "2026-07-15T02:59:00Z"
 };
 checks.rpc_chain_id = {
-  status: "deferred",
-  path: "evm",
-  reason: policy.deferred_synthetic_checks.rpc_chain_id.reason,
-  authority_reference: "config/phase5-policy.json",
+  status: "passed",
+  owner: "platform-owner",
   candidate_commit: candidateCommit,
-  candidate_public_fingerprint_sha256: digest
+  candidate_public_fingerprint_sha256: digest,
+  endpoint: `${policy.duskevm_testnet_rpc_url}/`,
+  expected_chain_id: policy.duskevm_testnet_chain_id_hex,
+  actual_chain_id: policy.duskevm_testnet_chain_id_hex,
+  expected_genesis_hash: policy.duskevm_testnet_genesis_hash,
+  actual_genesis_hash: policy.duskevm_testnet_genesis_hash,
+  first_height: 1_000,
+  second_height: 1_001,
+  observed_at: "2026-07-15T02:59:00Z"
 };
 const passedSteps = (steps) => Object.fromEntries(steps.map((step) => [step, "passed"]));
 const nativeReceipt = {
@@ -396,7 +415,8 @@ const nativeReceipt = {
   observed_at: "2026-07-15T02:00:00Z",
   contract_sha256: "1".repeat(64),
   data_driver_sha256: "2".repeat(64),
-  native_steps: passedSteps(policy.required_native_smoke_steps)
+  native_steps: passedSteps(policy.required_native_smoke_steps),
+  evm_steps: passedSteps(policy.required_evm_smoke_steps)
 };
 const publicReceiptChecks = Object.fromEntries(policy.required_synthetic_checks
   .filter((check) => check !== "monitor_heartbeat")
@@ -420,9 +440,15 @@ publicReceiptChecks.duskds_node_read = {
   observed_at: "2026-07-15T02:59:00Z"
 };
 publicReceiptChecks.rpc_chain_id = {
-  status: "deferred",
-  path: "evm",
-  reason: policy.deferred_synthetic_checks.rpc_chain_id.reason
+  status: "passed",
+  endpoint: `${policy.duskevm_testnet_rpc_url}/`,
+  expected_chain_id: policy.duskevm_testnet_chain_id_hex,
+  actual_chain_id: policy.duskevm_testnet_chain_id_hex,
+  expected_genesis_hash: policy.duskevm_testnet_genesis_hash,
+  actual_genesis_hash: policy.duskevm_testnet_genesis_hash,
+  first_height: 1_000,
+  second_height: 1_001,
+  observed_at: "2026-07-15T02:59:00Z"
 };
 publicReceiptChecks.rpc_degradation = { status: "passed", evidence: "hosted-browser-offline-recovery" };
 publicReceiptChecks.tls_expiry = { status: "passed", days_remaining: 45, expires_at: "2026-08-29T00:00:00Z" };
@@ -830,7 +856,8 @@ const evidence = {
       receiptSha256: nativeBoundReceipt.receipt_sha256,
       downloadedAt: "2026-07-15T02:10:00Z"
     }),
-    native_steps: passedSteps(policy.required_native_smoke_steps)
+    native_steps: passedSteps(policy.required_native_smoke_steps),
+    evm_steps: passedSteps(policy.required_evm_smoke_steps)
   },
   synthetics: {
     public_assurance: {
@@ -1104,10 +1131,11 @@ assert.deepEqual(baselineFormalDecision.agent_operated_simulations, {
   operator_type: policy.pilot.operator_type,
   operator_identity: policy.pilot.operator_identity,
   receipt_assurance: policy.pilot.receipt_assurance,
-  sessions: 8,
-  duskds_sessions: 8,
-  github_actions_provenance_sessions: 2,
-  local_operator_attested_sessions: 6,
+  sessions: 20,
+  duskds_sessions: 0,
+  evm_sessions: 20,
+  github_actions_provenance_sessions: 11,
+  local_operator_attested_sessions: 9,
   average_agent_confidence_score: 5
 });
 assert.deepEqual(
@@ -1121,7 +1149,10 @@ assert.deepEqual(
     .filter((record) => record.label.startsWith("Agent pilot "))
     .map((record) => record.label)
     .sort(),
-  ["Agent pilot linux-port-conflict-recovery", "Agent pilot macos-privilege-recovery"]
+  policy.pilot.required_scenarios
+    .filter((scenario) => ["linux", "macos"].includes(scenario.context))
+    .map((scenario) => `Agent pilot ${scenario.id}`)
+    .sort()
 );
 assert.match(evaluatePhase5EvidenceRaw(policy, evidence, { now }).blockers.join("\n"), /exact reviewed policy bytes and evaluator commit/);
 const wrongPolicyBinding = JSON.parse(JSON.stringify(evidence));
@@ -1210,16 +1241,16 @@ assert.match(evaluatePhase5Evidence(policy, mismatchedRunMetadata, { now }).bloc
 const mismatchedArtifactDigest = JSON.parse(JSON.stringify(evidence));
 mismatchedArtifactDigest.synthetics.alert_delivery.provenance.artifact_sha256 = "d".repeat(64);
 assert.match(evaluatePhase5Evidence(policy, mismatchedArtifactDigest, { now }).blockers.join("\n"), /lacks complete downloaded GitHub run\/artifact provenance/);
-assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { ...evidence.pilot, sessions: sessions.slice(0, 7) } }, { now }).blockers.join("\n"), /Pilot has 7\/8/);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { ...evidence.pilot, sessions: sessions.slice(0, 19) } }, { now }).blockers.join("\n"), /Pilot has 19\/20/);
 assert.match(
   evaluatePhase5Evidence(policy, {
     ...evidence,
     pilot: { ...evidence.pilot, sessions: [...sessions, JSON.parse(JSON.stringify(sessions[0]))] }
   }, { now }).blockers.join("\n"),
-  /Pilot has 9\/8 exact required sessions/
+  /Pilot has 21\/20 exact required sessions/
 );
-const mixedPathSessions = sessions.map((session, index) => index === 0 ? { ...session, path: "evm" } : session);
-assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { ...evidence.pilot, sessions: mixedPathSessions } }, { now }).blockers.join("\n"), /required DuskDS sessions|non-production path/);
+const mixedPathSessions = sessions.map((session, index) => index === 0 ? { ...session, path: "unknown" } : session);
+assert.match(evaluatePhase5Evidence(policy, { ...evidence, pilot: { ...evidence.pilot, sessions: mixedPathSessions } }, { now }).blockers.join("\n"), /required EVM sessions|non-production path/);
 const duplicateScenarioSession = JSON.parse(JSON.stringify(evidence));
 duplicateScenarioSession.pilot.sessions[1].scenario_id = duplicateScenarioSession.pilot.sessions[0].scenario_id;
 rewriteMachineReceipt(duplicateScenarioSession.pilot.sessions[1], (receipt) => {
@@ -1232,7 +1263,7 @@ assert.match(
 );
 const macosWithoutActionsProvenance = JSON.parse(JSON.stringify(evidence));
 const macosWithoutActionsSession = macosWithoutActionsProvenance.pilot.sessions.find(
-  (session) => session.scenario_id === "macos-privilege-recovery"
+  (session) => session.context === "macos"
 );
 macosWithoutActionsSession.run_url = null;
 macosWithoutActionsSession.artifact_name = null;
@@ -1257,15 +1288,24 @@ assert.match(evaluatePhase5Evidence(policy, { ...evidence, live_smoke: { status:
 const incompleteNativeSmoke = JSON.parse(JSON.stringify(evidence));
 delete incompleteNativeSmoke.live_smoke.native_steps.node_read;
 assert.match(evaluatePhase5Evidence(policy, incompleteNativeSmoke, { now }).blockers.join("\n"), /DuskDS production smoke step node_read/);
-const missingRpcDeferral = JSON.parse(JSON.stringify(evidence));
-delete missingRpcDeferral.synthetics.checks.rpc_chain_id;
-assert.match(evaluatePhase5Evidence(policy, missingRpcDeferral, { now }).blockers.join("\n"), /exact reviewed pre-launch deferral/);
-const attemptedEvmActivation = JSON.parse(JSON.stringify(policy));
-attemptedEvmActivation.production_paths.push("evm");
-attemptedEvmActivation.preview_paths = [];
-const attemptedEvmBlockers = evaluatePhase5Evidence(attemptedEvmActivation, evidence, { now }).blockers.join("\n");
-assert.match(attemptedEvmBlockers, /real RPC verification and no active deferral/);
-assert.match(attemptedEvmBlockers, /explicit EVM smoke steps and pilot coverage/);
+const missingRpcEvidence = JSON.parse(JSON.stringify(evidence));
+delete missingRpcEvidence.synthetics.checks.rpc_chain_id;
+assert.match(evaluatePhase5Evidence(policy, missingRpcEvidence, { now }).blockers.join("\n"), /DuskEVM RPC evidence lacks exact chain\/genesis identity/);
+const attemptedEvmDeferral = JSON.parse(JSON.stringify(policy));
+attemptedEvmDeferral.deferred_synthetic_checks = {
+  rpc_chain_id: {
+    path: "evm",
+    reason: "invalid active-path deferral",
+    activation_requirements: ["one", "two"]
+  }
+};
+assert.match(
+  evaluatePhase5Evidence(attemptedEvmDeferral, evidence, { now }).blockers.join("\n"),
+  /real RPC verification and no active deferral/
+);
+const incompleteEvmSmoke = JSON.parse(JSON.stringify(evidence));
+delete incompleteEvmSmoke.live_smoke.evm_steps.hardhat_build;
+assert.match(evaluatePhase5Evidence(policy, incompleteEvmSmoke, { now }).blockers.join("\n"), /EVM production smoke step hardhat_build/);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, companion_security: { ...reviews.companion_security, separate_agent: false } } }, { now }).blockers.join("\n"), /separate-agent challenge review companion_security/iu);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, platform: { ...reviews.platform, reviewer_type: "human" } } }, { now }).blockers.join("\n"), /separate-agent challenge review platform/iu);
 assert.match(evaluatePhase5Evidence(policy, { ...evidence, reviews: { ...reviews, accessibility: { ...reviews.accessibility, external_independent: true } } }, { now }).blockers.join("\n"), /separate-agent challenge review accessibility/iu);
@@ -1361,12 +1401,12 @@ const oneUnrecoveredPilot = JSON.parse(JSON.stringify(evidence));
 oneUnrecoveredPilot.pilot.sessions[3].recovered = false;
 assert.match(
   evaluatePhase5Evidence(policy, oneUnrecoveredPilot, { now }).blockers.join("\n"),
-  /recovery rate 0\.88 is below 1/
+  /recovery rate 0\.95 is below 1/
 );
 const twoUnrecoveredPilots = JSON.parse(JSON.stringify(evidence));
 twoUnrecoveredPilots.pilot.sessions[3].recovered = false;
 twoUnrecoveredPilots.pilot.sessions[4].recovered = false;
-assert.match(evaluatePhase5Evidence(policy, twoUnrecoveredPilots, { now }).blockers.join("\n"), /recovery rate 0.75 is below 1/);
+assert.match(evaluatePhase5Evidence(policy, twoUnrecoveredPilots, { now }).blockers.join("\n"), /recovery rate 0.90 is below 1/);
 const unboundPilot = JSON.parse(JSON.stringify(evidence));
 unboundPilot.pilot.sessions[0].candidate_artifact_fingerprint_sha256 = "d".repeat(64);
 assert.match(evaluatePhase5Evidence(policy, unboundPilot, { now }).blockers.join("\n"), /Pilot session p1 is not bound/);
@@ -1690,7 +1730,7 @@ rewriteReceipt(forgedNativeReceipt.live_smoke, (receipt) => { receipt.candidate_
 assert.match(evaluatePhase5Evidence(policy, forgedNativeReceipt, { now }).blockers.join("\n"), /receipt does not prove the exact candidate/);
 const nativeWithoutArtifactHash = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(nativeWithoutArtifactHash.live_smoke, (receipt) => { receipt.contract_sha256 = "pending"; });
-assert.match(evaluatePhase5Evidence(policy, nativeWithoutArtifactHash, { now }).blockers.join("\n"), /receipt does not prove the exact candidate, workflow, timestamp, and native steps/);
+assert.match(evaluatePhase5Evidence(policy, nativeWithoutArtifactHash, { now }).blockers.join("\n"), /receipt does not prove the exact candidate, workflow, timestamp, and required path steps/);
 const nativeWithoutCandidateFingerprint = JSON.parse(JSON.stringify(evidence));
 rewriteReceipt(nativeWithoutCandidateFingerprint.live_smoke, (receipt) => { receipt.candidate_artifact_fingerprint_sha256 = "d".repeat(64); });
 assert.match(evaluatePhase5Evidence(policy, nativeWithoutCandidateFingerprint, { now }).blockers.join("\n"), /receipt does not prove the exact candidate/);

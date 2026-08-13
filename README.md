@@ -24,7 +24,7 @@ The package is self-contained, installs no additional runtime dependencies, and 
 ### Safe mode
 
 ```bash
-npx dusk-developer-studio@1.0.19
+npx dusk-developer-studio@1.0.20
 ```
 
 Safe mode starts the local Studio and opens its pairing page. After you review the selected mode, choose **Pair this browser** to authorize that profile for the current run. Safe mode provides the guided experience without running developer tools or creating projects.
@@ -32,7 +32,7 @@ Safe mode starts the local Studio and opens its pairing page. After you review t
 ### Local Actions
 
 ```bash
-npx dusk-developer-studio@1.0.19 local-actions
+npx dusk-developer-studio@1.0.20 local-actions
 ```
 
 Local Actions adds allowlisted prerequisite checks and constrained starter creation. It uses developer tools already installed on your machine; it does not install or update them.
@@ -42,7 +42,7 @@ The browser opens the Local Studio pairing page automatically, but the page does
 To create a DuskDS counter starter directly from the same reviewed package template:
 
 ```bash
-npx --yes dusk-developer-studio@1.0.19 create-duskds my-counter
+npx --yes dusk-developer-studio@1.0.20 create-duskds my-counter
 ```
 
 The command writes one new project child, refuses an existing target, and preserves the packaged Rust `1.94.0` toolchain, dependency lock, and template provenance. It also keeps a reserved `.dusk-studio-staging` sibling as a crash-recovery workspace. Successful operations and handled failures whose cleanup can be proven safe leave it empty. If the process is forcibly terminated mid-creation, a later starter operation removes only a stale stage whose ownership and bounded tree it can verify; a fresh lease may need to expire first, and ambiguous or unsafe residue is preserved for inspection. Dusk Forge remains a separate prerequisite for the subsequent check, build, test, and verification commands. Local Actions uses the separate managed DuskDS project root described below.
@@ -62,17 +62,19 @@ The Hosted guide never attempts to connect to localhost. Local actions are avail
 ## What the Studio provides
 
 - A clear first-screen choice between DuskEVM and DuskDS.
-- A complete Setup -> Access -> Build -> Inspect evidence journey for DuskDS, plus one clearly bounded DuskEVM pre-launch learning surface until Testnet activation.
+- Complete, separate Setup -> Access -> Build -> Inspect evidence journeys for DuskEVM Testnet and DuskDS.
 - Source-labelled capabilities, network details, resources, and troubleshooting.
 - Beginner-friendly explanations alongside exact commands and evidence.
 - A DuskDS workflow covering public-node access, W3sper, Dusk Forge, starter creation, build checks, manual Testnet deployment readiness, and post-deploy inspection.
-- A DuskEVM educational journey covering architecture, Foundry workflow, safety boundaries, and expected developer flow.
+- A DuskEVM Testnet journey covering chain and genesis verification, explicit EIP-1193 wallet actions, Foundry and Hardhat starters, bounded read-only inspection, and signer-owned deployment handoff.
 
 ### DuskEVM availability
 
-DuskEVM Testnet is not live yet. The DuskEVM path is therefore an educational pre-launch guide: it does not claim live RPC, wallet, balance, deployment, or inspection evidence. The guide will activate those checks only after the real Testnet endpoints and behavior can be verified.
+DuskEVM Testnet is active in this release candidate at chain ID `745` (`0x2e9`) with the allowlisted RPC `https://rpc.testnet.evm.dusk.network` and explorer `https://explorer.testnet.evm.dusk.network`. Setup checks chain ID, the reviewed genesis hash, and head progression before any wallet action. The Hosted guide then separates existing-session discovery, connection, add/switch network, and balance reads into explicit actions.
 
-The [DuskEVM Testnet activation checklist](docs/quality/duskevm-testnet-activation-checklist.md) defines the network, wallet, build, security, accessibility, monitoring, exact-candidate, and rollback evidence required before that boundary changes.
+Studio never signs or submits a transaction, moves bridge funds, stores an account or balance, or accepts a private key. Foundry and Hardhat builds run locally; signing and deployment remain in a keystore, hardware wallet, or wallet UI the developer controls. Testnet activation evidence expires on `2026-09-13`; stale source or network identity disables all live DuskEVM controls until the full review is rerun.
+
+The [DuskEVM Testnet activation checklist](docs/quality/duskevm-testnet-activation-checklist.md) is the release gate for network, wallet, build, security, accessibility, monitoring, exact-candidate, and rollback evidence.
 
 ### DuskDS deployment boundary
 

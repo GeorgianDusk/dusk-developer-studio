@@ -229,6 +229,7 @@ jobs:
               || receipt.local_actions_preflight_check_id !== process.env.PREFLIGHT_CHECK_ID
               || receipt.local_actions_preflight_consumer_contract_source_sha256 !== consumerContractSha256
               || receipt.local_actions_scaffold_verified !== true
+              || receipt.local_actions_evm_scaffolds_verified !== true
               || receipt.scaffold_preserved_after_shutdown !== true
               || receipt.studio_shutdown_verified !== true) {
             throw new Error("Exact-tarball Local Actions preflight, scaffold, preservation, or shutdown proof is incomplete.");

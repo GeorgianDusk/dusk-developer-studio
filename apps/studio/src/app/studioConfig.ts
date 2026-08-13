@@ -1,4 +1,4 @@
-import { getDefaultDuskEvmNetwork } from "@dusk/core/browser-catalog";
+import { getDefaultDuskEvmNetwork, isDuskEvmNetworkReviewCurrent } from "@dusk/core/browser-catalog";
 import sourceFreshness from "../../../../data/dusk/source-freshness.json";
 import { STUDIO_RELEASE } from "../release";
 import type { BlockerCode, BuilderPath, EvidenceCode } from "./journeyProgress";
@@ -18,17 +18,21 @@ export const initialManualPlatform = /Win/i.test(window.navigator.platform)
 export const sourceDate = new Date(sourceFreshness.reviewed_at + "T00:00:00.000Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 export const expiryDate = new Date(sourceFreshness.expires_at + "T00:00:00.000Z").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
 export const sourceIsStale = Date.now() > Date.parse(sourceFreshness.expires_at + "T23:59:59.999Z");
+export function isEvmActivationCurrent(now = Date.now()): boolean {
+  return now <= Date.parse(sourceFreshness.expires_at + "T23:59:59.999Z")
+    && isDuskEvmNetworkReviewCurrent(defaultNetwork, now);
+}
 
 export const pathText = {
   evm: {
     label: "DuskEVM",
-    eyebrow: "Solidity pre-launch",
-    availability: "Reference only",
-    availabilityTone: "warn",
-    availabilityCopy: "Explore one source-backed pre-launch reference. It does not provide a completion score, wallet flow, starter, funding action, or deployment task.",
-    summary: "Review the planned Solidity, Foundry or Hardhat, EVM wallet, DUSK gas, Blockscout, and optional Hedger direction before the live developer journey is activated.",
-    start: "Explore pre-launch reference",
-    result: "A clear map of the planned DuskEVM workflow and the conditions that must be met before live developer actions are enabled."
+    eyebrow: "Solidity Testnet",
+    availability: "Testnet active",
+    availabilityTone: "good",
+    availabilityCopy: "Run bounded read-only network checks in the hosted guide. Wallet prompts stay separate and optional; builds and signing stay on your machine.",
+    summary: "Use Solidity with Foundry or Hardhat, an EIP-1193 wallet you control, DUSK Testnet gas, and the Testnet explorer.",
+    start: "Start DuskEVM",
+    result: "Verified Testnet identity and progression before any wallet, funding, build, or deploy decision."
   },
   duskds: {
     label: "DuskDS",
@@ -53,10 +57,10 @@ export const pathText = {
 
 export const steps = {
   evm: [
-    { id: "setup", number: "1", label: "Setup", title: "Understand the planned RPC and wallet checks.", intent: "Use only the explicit pre-launch endpoint probe; wallet, account, and balance actions remain disabled.", done: ["Pre-launch status is understood.", "No wallet prompt is enabled.", "Live evidence remains deferred."] },
-    { id: "access", number: "2", label: "Access", title: "Review how Testnet access and gas will work.", intent: "Learn the future read-only balance and official bridge flow without connecting a wallet or moving funds.", done: ["The future access sequence is understood.", "No wallet or balance request is enabled.", "No funds are moved."] },
-    { id: "build", number: "3", label: "Build", title: "Review the planned local Foundry workflow.", intent: "Learn the starter, build, test, and signing boundaries without creating files or showing a deploy command.", done: ["The planned local workflow is understood.", "No companion scaffold is enabled.", "No deployment command is exposed."] },
-    { id: "inspect", number: "4", label: "Inspect", title: "Learn the supported Testnet identifier shapes.", intent: "Classify an example locally while network inspection remains disabled until reviewed activation.", done: ["Identifier formats are understood.", "Classification stays local.", "No RPC or signing request is made."] }
+    { id: "setup", number: "1", label: "Setup", title: "Verify DuskEVM Testnet before touching a wallet.", intent: "Check the allowlisted public RPC twice, confirm chain 745, and prove the head is progressing.", done: ["RPC chain ID is 745 / 0x2e9.", "A later block is observed.", "No wallet or signature is requested."] },
+    { id: "access", number: "2", label: "Access", title: "Connect and fund a wallet without giving Studio signing power.", intent: "Discover, connect, switch, and read balance as separate wallet requests; use the official bridge only when you choose to move Testnet DUSK.", done: ["The wallet reports chain 745.", "One selected account is observed in memory only.", "A positive DUSK Testnet balance is read without signing."] },
+    { id: "build", number: "3", label: "Build", title: "Compile and test a fresh Solidity starter locally.", intent: "Use the reviewed Foundry or Hardhat starter, capture artifact identity, and keep private keys out of commands and files.", done: ["Starter structure is verified.", "Compile and tests pass locally.", "Signing remains in a keystore, hardware wallet, or wallet UI you control."] },
+    { id: "inspect", number: "4", label: "Inspect", title: "Inspect Testnet state and preserve deployment evidence.", intent: "Read an address, transaction, or block through the bounded RPC adapter and open only the allowlisted Testnet explorer.", done: ["Identifier shape is validated locally.", "RPC result and failure state are explicit.", "Deployment and verification remain manual signer-owned handoffs."] }
   ],
   duskds: [
     { id: "setup", number: "1", label: "Setup", title: "Record the native toolchain checks you ran.", intent: "Classify required tool failures without exposing environment values or local paths.", done: ["Required tool checks are recorded.", "Rust 1.94, WASM target, and rust-src are present.", "Windows VM-test requirements are explicit."] },
@@ -69,30 +73,14 @@ export const steps = {
 export const resourceIds = { evm: ["build-on-dusk", "duskevm-deep-dive", "duskevm-bridge", "deploy-on-duskevm", "blockscout-verification"], duskds: ["build-on-dusk", "duskds-smart-contracts", "dusk-forge", "w3sper-integration", "dusk-connect-docs", "duskds-tx-lifecycle", "studio-local-security-boundary", "windows-wsl-ubuntu-setup"] } satisfies Record<BuilderPath, string[]>;
 export const capabilityIds = { evm: ["duskevm-solidity-contracts", "duskevm-wallets-network", "duskevm-testnet-bridge", "duskevm-confidential-hedger"], duskds: ["duskds-forge-contracts", "duskds-data-drivers", "duskds-w3sper-node-sdk", "dusk-connect-wallets"] } satisfies Record<BuilderPath, string[]>;
 export const troubleIds = { evm: ["wrong-chain", "no-wallet", "insufficient-gas", "rpc-unavailable", "foundry-missing", "verification-failed"], duskds: ["duskds-existing-repository-read-only", "duskds-node-npm-runtime", "duskds-public-node-unavailable", "duskds-browser-public-node-csp", "dusk-forge-windows-wasm-opt-shim", "dusk-forge-windows-long-path-linker", "rust-wasm-target-missing", "dusk-forge-rust-stable-drift", "data-driver-build-missing", "dusk-forge-test-linux-required", "duskds-driver-unavailable-after-deploy"] } satisfies Record<BuilderPath, string[]>;
-export const prelaunchTroubleIds = [
-  "wrong-chain",
-  "no-wallet",
-  "user-rejected",
-  "insufficient-gas",
-  "rpc-unavailable",
-  "blockscout-unavailable",
-  "foundry-missing",
-  "bridge-pending",
-  "verification-failed",
-  "evm-no-public-mempool-assumption",
-  "foundry-signature-cache-access-denied",
-  "hedger-source-gap",
-  "hyperlane-no-dusk-guide",
-  "trex-onchainid-overpositioned"
-] as const;
-
 export const evidenceLabels: Record<EvidenceCode, string> = {
-  "evm-rpc-chain": "Future gate: Testnet RPC chain verified", "evm-wallet-chain": "Future gate: wallet chain verified", "evm-wallet-account": "Future gate: selected account observed", "evm-balance-read": "Future gate: read-only balance succeeded", "evm-positive-balance": "Future gate: positive Testnet balance observed", "evm-starter-structure": "Future gate: Counter scaffold verified", "evm-build-test-attestation": "Future gate: build and tests passed", "evm-read-inspection": "Future gate: read-only RPC inspection passed",
+  "evm-rpc-chain": "Testnet RPC chain 745 verified", "evm-rpc-progression": "Testnet head progression verified", "evm-wallet-chain": "Wallet chain 745 verified", "evm-wallet-account": "Selected account observed in memory", "evm-balance-read": "Read-only DUSK balance succeeded", "evm-positive-balance": "Positive Testnet gas balance observed", "evm-starter-structure": "Reviewed Counter starter verified", "evm-build-test-attestation": "Local compile and tests recorded", "evm-read-inspection": "Read-only RPC inspection passed",
   "duskds-required-preflight": "Required native tool checks recorded", "duskds-node-read-attestation": "Dusk node read result recorded", "duskds-starter-structure": "Forge scaffold structure recorded", "duskds-build-artifact-attestation": "Both WASM outputs recorded as observed", "duskds-vm-test-attestation": "VM test result recorded", "duskds-inspect-latest-block": "Latest block header observed", "duskds-inspect-artifact-revision": "Contract and data-driver source identity matched", "duskds-inspect-driver-availability": "Contract metadata confirms a data driver", "duskds-inspect-driver-schema": "Data-driver schema response confirmed", "duskds-inspect-driver-encode": "Data-driver input encoding confirmed", "duskds-inspect-driver-decode": "Data-driver output decoding confirmed", "duskds-read-inspection-attestation": "Legacy native inspection confirmation"
 };
 
 export const blockerLabels: Record<BlockerCode, string> = {
   "rpc-unavailable": "The public node request could not be completed",
+  "wrong-network-identity": "The RPC genesis does not match the reviewed Testnet",
   "duskds-public-node-unavailable": "The DuskDS public node request could not be completed",
   "wrong-chain": "The selected wallet network does not match",
   "no-wallet": "No compatible wallet was found",

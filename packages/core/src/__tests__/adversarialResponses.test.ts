@@ -5,19 +5,23 @@ const network = getDefaultDuskEvmNetwork();
 const address = `0x${"a".repeat(40)}`;
 
 function jsonResponse(result: unknown, id = 1): Response {
-  return new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), { status: 200, headers: { "content-type": "application/json" } });
+  const value = new Response(JSON.stringify({ jsonrpc: "2.0", id, result }), { status: 200, headers: { "content-type": "application/json" } });
+  Object.defineProperty(value, "url", { value: new URL(network.rpcUrls[0]).href });
+  return value;
 }
 
 describe("adversarial external responses", () => {
   it("rejects malformed wallet chain IDs, account lists, and balances", async () => {
     await expect(getWalletChainId({ request: vi.fn(async () => "745") } as never)).rejects.toThrow("invalid chain ID");
+    await expect(getWalletChainId({ request: vi.fn(async () => "0x02e9") } as never)).rejects.toThrow("invalid chain ID");
     await expect(getWalletAccounts({ request: vi.fn(async () => ({ 0: address })) } as never)).rejects.toThrow("invalid account list");
     await expect(getWalletBalance({ request: vi.fn(async () => "1 DUSK") } as never, address)).rejects.toThrow("invalid balance");
+    await expect(getWalletBalance({ request: vi.fn(async () => "0x00") } as never, address)).rejects.toThrow("invalid balance");
   });
 
-  it("filters malicious account entries instead of persisting them", async () => {
-    const accounts = await getWalletAccounts({ request: vi.fn(async () => [address, "<script>secret</script>", 7]) } as never);
-    expect(accounts).toEqual([address]);
+  it("rejects a mixed or unbounded account list instead of partially trusting it", async () => {
+    await expect(getWalletAccounts({ request: vi.fn(async () => [address, "<script>secret</script>", 7]) } as never)).rejects.toThrow("invalid account list");
+    await expect(getWalletAccounts({ request: vi.fn(async () => Array.from({ length: 17 }, () => address)) } as never)).rejects.toThrow("invalid account list");
   });
 
   it("rejects JSON-RPC envelopes with the wrong request id", async () => {
@@ -27,14 +31,18 @@ describe("adversarial external responses", () => {
   });
 
   it("classifies oversized RPC health responses", async () => {
-    const fetchMock = vi.fn(async () => new Response("{}", { status: 200, headers: { "content-length": String(65 * 1024) } }));
+    const fetchMock = vi.fn(async () => {
+      const value = new Response("{}", { status: 200, headers: { "content-length": String(65 * 1024) } });
+      Object.defineProperty(value, "url", { value: new URL(network.rpcUrls[0]).href });
+      return value;
+    });
     const result = await checkRpcHealth(network, fetchMock as typeof fetch);
     expect(result).toMatchObject({ status: "oversized-response", failureKind: "oversized-response" });
   });
 
   it("rejects malformed receipt and block fields", async () => {
     const tx = { type: "transaction" as const, value: `0x${"b".repeat(64)}` };
-    const receipt = await inspectEvmIdentifier(network, tx, vi.fn(async () => jsonResponse({ status: "success", blockNumber: "later" })) as typeof fetch);
+    const receipt = await inspectEvmIdentifier(network, tx, vi.fn(async () => jsonResponse({ transactionHash: tx.value, status: "success", blockNumber: "later" })) as typeof fetch);
     expect(receipt).toMatchObject({ ok: false, failureKind: "invalid-response" });
     const block = await inspectEvmIdentifier(network, { type: "block", value: "0x1" }, vi.fn(async () => jsonResponse({ number: "0x1", hash: "not-a-hash", transactions: [] })) as typeof fetch);
     expect(block).toMatchObject({ ok: false, failureKind: "invalid-response" });

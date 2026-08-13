@@ -20,7 +20,7 @@ Licensed under Apache-2.0.
 forge build
 forge test
 cast wallet import dusk-testnet-deployer --interactive
-forge create src/Counter.sol:Counter --rpc-url dusk_evm_testnet --account dusk-testnet-deployer
+forge create src/Counter.sol:Counter --rpc-url dusk_evm_testnet --account dusk-testnet-deployer --broadcast
 ```
 
 ## DuskEVM RPC Aliases

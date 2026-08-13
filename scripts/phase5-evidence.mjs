@@ -1,6 +1,8 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { URL } from "node:url";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { URL, fileURLToPath } from "node:url";
 import {
   buildCanonicalAgentPilotPlan,
   canonicalJson,
@@ -26,6 +28,21 @@ const SESSION_VALUE_RE = /\b(?:session[_-]?token|refresh[_-]?token)\s*(?::|=)\s*
 const URL_TOKEN_RE = /[a-z][a-z0-9+.-]{0,31}:\/\/[^\s<>"']{1,2048}/gi;
 const PROTOCOL_RELATIVE_URL_RE = /(?:^|[\s([{])\/\/[^\s<>"'\])}]{1,2048}/gi;
 const EMPTY_SHA256 = createHash("sha256").update(Buffer.alloc(0)).digest("hex");
+const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PILOT_EXECUTION_SOURCES = Object.freeze({
+  path: "scripts/agent-pilot-collector.mjs",
+  source_sha256: createHash("sha256")
+    .update(readFileSync(path.join(productRoot, "scripts", "agent-pilot-collector.mjs")))
+    .digest("hex"),
+  runner_path: "scripts/agent-pilot-plan.mjs",
+  runner_source_sha256: createHash("sha256")
+    .update(readFileSync(path.join(productRoot, "scripts", "agent-pilot-plan.mjs")))
+    .digest("hex"),
+  policy_path: "config/phase5-policy.json",
+  policy_source_sha256: createHash("sha256")
+    .update(readFileSync(path.join(productRoot, "config", "phase5-policy.json")))
+    .digest("hex")
+});
 const PILOT_SAFE_COMMANDS = new Set(["node", "cargo", "rustc", "git", "make"]);
 const PILOT_SAFE_ROLES = new Set([
   "setup", "controlled-failure", "recovery", "verification", "final-verification"
@@ -382,7 +399,8 @@ function checkPilotPlan(
   ]) && valid;
   if (plan?.schema_version !== 1
       || plan?.scenario_id !== scenario?.id
-      || plan?.path !== "duskds"
+      || plan?.path !== session?.path
+      || plan?.path !== "evm"
       || plan?.agent_confidence_score !== session?.agent_confidence_score
       || plan?.blocking_confusion !== session?.blocking_confusion
       || planCandidate?.package_name !== distribution?.package_name
@@ -569,7 +587,7 @@ function checkActionsProvenance(blockers, label, record, candidate, repository, 
   }
 }
 
-function checkPublicReceiptShape(blockers, receipt, policy, previewPaths) {
+function checkPublicReceiptShape(blockers, receipt, policy, productionPaths, previewPaths) {
   exactKeys(blockers, "Public assurance receipt JSON", receipt, [
     "schema_version", "checked_at", "target", "expected_environment", "status",
     "studio_status", "upstream_dependency_status", "checks", "errors"
@@ -584,7 +602,13 @@ function checkPublicReceiptShape(blockers, receipt, policy, previewPaths) {
     key_routes: ["status", "spa_fallback_cache"],
     source_links: ["status", "urls"],
     duskds_node_read: ["status", "endpoint", "height", "hash", "observed_at"],
-    rpc_chain_id: ["status", "path", "reason"],
+    rpc_chain_id: productionPaths.includes("evm")
+      ? [
+          "status", "endpoint", "expected_chain_id", "actual_chain_id",
+          "expected_genesis_hash", "actual_genesis_hash", "first_height",
+          "second_height", "observed_at"
+        ]
+      : ["status", "path", "reason"],
     rpc_degradation: ["status", "evidence"],
     tls_expiry: ["status", "days_remaining", "expires_at"],
     companion_port_closed: ["status", "observed"],
@@ -698,6 +722,17 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     if (!Array.isArray(policy.required_evm_smoke_steps) || !policy.required_evm_smoke_steps.length
         || !Number.isInteger(policy.pilot?.minimum_evm) || policy.pilot.minimum_evm <= 0) {
       blockers.push("DuskEVM production activation requires explicit EVM smoke steps and pilot coverage in the reviewed policy.");
+    }
+    if (policy.duskevm_testnet_rpc_url !== "https://rpc.testnet.evm.dusk.network"
+        || policy.duskevm_testnet_chain_id_hex !== "0x2e9"
+        || !/^0x[a-f0-9]{64}$/u.test(policy.duskevm_testnet_genesis_hash ?? "")
+        || !Number.isSafeInteger(policy.duskevm_rpc_evidence?.progression_wait_ms)
+        || policy.duskevm_rpc_evidence.progression_wait_ms < 2_000
+        || !Number.isFinite(policy.duskevm_rpc_evidence?.max_age_hours)
+        || policy.duskevm_rpc_evidence.max_age_hours <= 0
+        || !Number.isFinite(policy.duskevm_rpc_evidence?.max_receipt_skew_minutes)
+        || policy.duskevm_rpc_evidence.max_receipt_skew_minutes <= 0) {
+      blockers.push("DuskEVM production activation lacks an exact bounded Testnet identity, progression, and freshness policy.");
     }
   }
   if (productionPaths.includes("duskds") && !policy.required_synthetic_checks?.includes("duskds_node_read")) {
@@ -1372,9 +1407,10 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const requiredScenarios = Array.isArray(pilotPolicy.required_scenarios)
     ? pilotPolicy.required_scenarios
     : [];
-  if (requiredScenarios.length !== 8
-      || pilotPolicy.minimum_total !== 8
-      || pilotPolicy.minimum_duskds !== 8
+  if (requiredScenarios.length !== 20
+      || pilotPolicy.minimum_total !== 20
+      || pilotPolicy.minimum_duskds !== 0
+      || pilotPolicy.minimum_evm !== 20
       || pilotPolicy.minimum_completion_rate !== 1
       || pilotPolicy.minimum_recovery_rate !== 1
       || pilotPolicy.maximum_blocking_confusion !== 0
@@ -1383,7 +1419,25 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || JSON.stringify(pilotPolicy.required_observation_kinds) !== JSON.stringify([
         "command", "file-probe", "hash-probe"
       ])) {
-    blockers.push("Pilot policy must require exactly eight successful DuskDS scenarios with full recovery and no blocking confusion.");
+    blockers.push("Pilot policy must require exactly twenty successful DuskEVM activation scenarios with full recovery and no blocking confusion.");
+  }
+  const requiredPilotGroups = pilotPolicy.required_pilot_groups ?? {};
+  exactKeys(blockers, "Required EVM pilot groups", requiredPilotGroups, [
+    "happy-path", "wallet-network-recovery", "dependency-degradation",
+    "fresh-builds", "accessibility-modes"
+  ]);
+  for (const [group, minimum] of Object.entries(requiredPilotGroups)) {
+    const count = requiredScenarios.filter((scenario) => scenario.capability?.startsWith(`${group}-`)).length;
+    if (minimum !== 4 || count < minimum) blockers.push(`Pilot policy lacks four ${group} DuskEVM scenarios.`);
+  }
+  for (const browserClaim of [
+    "chromium-desktop", "firefox-desktop", "webkit-desktop",
+    "mobile-chrome", "mobile-safari-webkit"
+  ]) {
+    if (!pilotPolicy.required_browser_claims?.includes(browserClaim)
+        || !requiredScenarios.some((scenario) => scenario.execution_surface?.includes(browserClaim))) {
+      blockers.push(`Pilot policy lacks required browser claim ${browserClaim}.`);
+    }
   }
   for (const scenario of requiredScenarios) {
     exactKeys(blockers, `Required pilot scenario ${scenario?.id ?? "unknown"}`, scenario, [
@@ -1515,7 +1569,8 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     const receiptEnvironment = sessionReceipt.environment ?? {};
     const receiptExecution = sessionReceipt.execution ?? {};
     exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} receipt collector`, receiptCollector, [
-      "path", "commit", "source_sha256"
+      "path", "commit", "source_sha256", "runner_path", "runner_source_sha256",
+      "policy_path", "policy_source_sha256"
     ]);
     exactKeys(blockers, `Pilot session ${session.id ?? "unknown"} receipt candidate`, receiptCandidate, [
       "tarball_sha256", "tarball_bytes", "npm_integrity", "package_inventory_sha256",
@@ -1793,9 +1848,13 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
         || canonicalJson(receiptScenario) !== canonicalJson(requiredScenario ?? {})
         || !/^[a-f0-9]{32}$/u.test(sessionReceipt.invocation_id ?? "")
         || !canonicalDigestMatches(receiptPlan, sessionReceipt.plan_sha256)
-        || receiptCollector.path !== "scripts/agent-pilot-collector.mjs"
+        || receiptCollector.path !== PILOT_EXECUTION_SOURCES.path
         || receiptCollector.commit !== candidate.commit
-        || !SHA256_RE.test(receiptCollector.source_sha256 ?? "")
+        || receiptCollector.source_sha256 !== PILOT_EXECUTION_SOURCES.source_sha256
+        || receiptCollector.runner_path !== PILOT_EXECUTION_SOURCES.runner_path
+        || receiptCollector.runner_source_sha256 !== PILOT_EXECUTION_SOURCES.runner_source_sha256
+        || receiptCollector.policy_path !== PILOT_EXECUTION_SOURCES.policy_path
+        || receiptCollector.policy_source_sha256 !== PILOT_EXECUTION_SOURCES.policy_source_sha256
         || !SHA256_RE.test(receiptCandidate.tarball_sha256 ?? "")
         || !Number.isSafeInteger(receiptCandidate.tarball_bytes)
         || receiptCandidate.tarball_bytes <= 0
@@ -1854,21 +1913,25 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   }
 
   const liveSmoke = evidence.live_smoke ?? {};
-  exactKeys(blockers, "DuskDS production smoke", liveSmoke, [
+  const liveSmokeKeys = [
     "status", "authority_reference", "redacted", "candidate_commit",
     "candidate_artifact_fingerprint_sha256", "receipt_sha256", "receipt_json",
     "workflow_path", "run_url", "artifact_name", "observed_at", "native_steps", "provenance"
-  ]);
+  ];
+  if (productionPaths.includes("evm")) liveSmokeKeys.push("evm_steps");
+  exactKeys(blockers, "Production smoke", liveSmoke, liveSmokeKeys);
   if (liveSmoke.status !== "passed" || !present(liveSmoke.authority_reference) || liveSmoke.redacted !== true) blockers.push("DuskDS production smoke lacks passed status, explicit authority reference, or redaction evidence.");
   checkCandidateBinding(blockers, "DuskDS production smoke", liveSmoke, candidate, "artifact");
   checkActionsReference(blockers, "DuskDS production smoke", liveSmoke, policy.monitoring_evidence?.canonical_repository, NATIVE_SMOKE_WORKFLOW);
   const nativeRunId = actionsRunId(liveSmoke.run_url, policy.monitoring_evidence?.canonical_repository);
   if (liveSmoke.artifact_name !== `duskds-native-smoke-receipt-${nativeRunId ?? "invalid"}.json`) blockers.push("DuskDS production smoke artifact name is not bound to its Actions run.");
   const nativeReceipt = parseBoundReceipt(blockers, "DuskDS production smoke", liveSmoke);
-  exactKeys(blockers, "DuskDS production smoke receipt", nativeReceipt, [
+  const nativeReceiptKeys = [
     "schema_version", "status", "candidate_commit", "candidate_artifact_fingerprint_sha256",
     "workflow_path", "observed_at", "contract_sha256", "data_driver_sha256", "native_steps"
-  ]);
+  ];
+  if (productionPaths.includes("evm")) nativeReceiptKeys.push("evm_steps");
+  exactKeys(blockers, "Production smoke receipt", nativeReceipt, nativeReceiptKeys);
   if (nativeReceipt.schema_version !== 1
       || nativeReceipt.status !== "passed"
       || nativeReceipt.candidate_commit !== candidate.commit
@@ -1878,8 +1941,10 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
       || !SHA256_RE.test(nativeReceipt.contract_sha256 ?? "")
       || !SHA256_RE.test(nativeReceipt.data_driver_sha256 ?? "")
       || nativeReceipt.contract_sha256 === nativeReceipt.data_driver_sha256
-      || JSON.stringify(nativeReceipt.native_steps) !== JSON.stringify(liveSmoke.native_steps)) {
-    blockers.push("DuskDS production smoke receipt does not prove the exact candidate, workflow, timestamp, and native steps.");
+      || JSON.stringify(nativeReceipt.native_steps) !== JSON.stringify(liveSmoke.native_steps)
+      || (productionPaths.includes("evm")
+        && JSON.stringify(nativeReceipt.evm_steps) !== JSON.stringify(liveSmoke.evm_steps))) {
+    blockers.push("Production smoke receipt does not prove the exact candidate, workflow, timestamp, and required path steps.");
   }
   if (timestampAfterBuild(blockers, "DuskDS production smoke", liveSmoke.observed_at, candidate.built_at, now)) {
     gatingTimestamps.push(Date.parse(liveSmoke.observed_at));
@@ -1911,7 +1976,7 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
   const publicRunId = actionsRunId(publicAssurance.run_url, monitoringPolicy.canonical_repository);
   if (publicAssurance.artifact_name !== `studio-public-synthetic-receipt-${publicRunId ?? "invalid"}.json`) blockers.push("Public assurance artifact name is not bound to its Actions run.");
   const publicReceipt = parseBoundReceipt(blockers, "Public assurance", publicAssurance);
-  checkPublicReceiptShape(blockers, publicReceipt, policy, previewPaths);
+  checkPublicReceiptShape(blockers, publicReceipt, policy, productionPaths, previewPaths);
   const publicReleaseParity = publicReceipt.checks?.release_parity ?? {};
   const expectedPublicOrigin = (() => {
     try {
@@ -1960,6 +2025,12 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     const commonKeys = ["status", "owner", "candidate_commit", "candidate_public_fingerprint_sha256"];
     const checkKeys = check === "duskds_node_read"
       ? [...commonKeys, "endpoint", "height", "hash", "observed_at"]
+      : check === "rpc_chain_id" && productionPaths.includes("evm")
+        ? [
+            ...commonKeys, "endpoint", "expected_chain_id", "actual_chain_id",
+            "expected_genesis_hash", "actual_genesis_hash", "first_height",
+            "second_height", "observed_at"
+          ]
       : check === "monitor_heartbeat"
         ? [...commonKeys, "receipt_sha256", "receipt_json", "workflow_path", "guard_run_url", "artifact_name", "observed_at", "observed_public_run_url", "provenance"]
         : check === "external_dead_man"
@@ -2015,6 +2086,38 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     }
     checkCandidateBinding(blockers, "Deferred DuskEVM RPC record", deferredRpc, candidate, "public");
     if (!present(deferredRpc?.authority_reference)) blockers.push("Deferred DuskEVM RPC record lacks its reviewed policy reference.");
+  }
+  if (productionPaths.includes("evm")) {
+    const rpc = checks.rpc_chain_id ?? {};
+    const receiptRpc = publicReceipt.checks?.rpc_chain_id ?? {};
+    const rpcEvidencePolicy = policy.duskevm_rpc_evidence ?? {};
+    const rpcMaxAge = rpcEvidencePolicy.max_age_hours * 60 * 60 * 1_000;
+    const rpcReceiptSkew = rpcEvidencePolicy.max_receipt_skew_minutes * 60 * 1_000;
+    const rpcObservedAt = Date.parse(rpc.observed_at);
+    const syntheticCheckedAt = Date.parse(synthetics.checked_at);
+    const rpcBoundToReceipt = Number.isFinite(rpcObservedAt)
+      && Number.isFinite(syntheticCheckedAt)
+      && rpcObservedAt <= syntheticCheckedAt
+      && syntheticCheckedAt - rpcObservedAt <= rpcReceiptSkew;
+    const receiptFields = [
+      "status", "endpoint", "expected_chain_id", "actual_chain_id",
+      "expected_genesis_hash", "actual_genesis_hash", "first_height",
+      "second_height", "observed_at"
+    ];
+    if (rpc.status !== "passed"
+        || rpc.endpoint !== `${policy.duskevm_testnet_rpc_url}/`
+        || rpc.expected_chain_id !== policy.duskevm_testnet_chain_id_hex
+        || rpc.actual_chain_id !== policy.duskevm_testnet_chain_id_hex
+        || rpc.expected_genesis_hash !== policy.duskevm_testnet_genesis_hash
+        || rpc.actual_genesis_hash !== policy.duskevm_testnet_genesis_hash
+        || !Number.isSafeInteger(rpc.first_height) || rpc.first_height < 0
+        || !Number.isSafeInteger(rpc.second_height) || rpc.second_height <= rpc.first_height
+        || receiptFields.some((field) => receiptRpc[field] !== rpc[field])
+        || !freshDate(rpc.observed_at, now, rpcMaxAge)
+        || !rpcBoundToReceipt) {
+      blockers.push("DuskEVM RPC evidence lacks exact chain/genesis identity, positive head progression, freshness, or binding to the public-assurance receipt.");
+    }
+    timestampAfterBuild(blockers, "DuskEVM RPC synthetic", rpc.observed_at, candidate.built_at, now);
   }
   const monitoringEvidence = synthetics.monitoring ?? {};
   exactKeys(blockers, "Monitoring-mode evidence", monitoringEvidence, ["mode", "owner", "authority_reference"]);
@@ -2324,6 +2427,7 @@ function evaluatePhase5EvidenceTrusted(policy, evidence, options = {}) {
     metrics: {
       pilot_sessions: sessions.length,
       duskds_pilot_sessions: duskds.length,
+      evm_pilot_sessions: sessions.filter((session) => session.path === "evm").length,
       github_actions_pilot_sessions: sessions.filter(
         (session) => pilotPolicy.github_actions_provenance_contexts.includes(session.context)
           && session.provenance
@@ -2370,6 +2474,7 @@ export async function evaluatePhase5EvidenceOnline(policy, evidence, options = {
         receipt_assurance: policy.pilot.receipt_assurance,
         sessions: result.metrics.pilot_sessions,
         duskds_sessions: result.metrics.duskds_pilot_sessions,
+        evm_sessions: result.metrics.evm_pilot_sessions,
         github_actions_provenance_sessions: result.metrics.github_actions_pilot_sessions,
         local_operator_attested_sessions: result.metrics.local_operator_attested_pilot_sessions,
         average_agent_confidence_score: result.metrics.average_agent_confidence_score

@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../app/App";
-import { restoredManualAccessToolIds } from "../app/routes/GuideRoutes";
-import { createInitialJourneyProgress, JOURNEY_PROGRESS_STORAGE_KEY, recordJourneyEvidence } from "../app/journeyProgress";
+import { isCurrentEvmScaffoldRequest, restoredManualAccessToolIds } from "../app/routes/GuideRoutes";
+import { createInitialJourneyProgress, JOURNEY_PROGRESS_STORAGE_KEY, recordJourneyEvidence, skipJourneyStep } from "../app/journeyProgress";
 import { DUSK_STUDIO_NPM_PACKAGE_VERSION } from "../app/manualJourneyConfig";
 
 function progressThroughDuskDsAccess() {
@@ -39,6 +39,48 @@ function progressThroughDuskDsBuild(revision: string) {
   );
 }
 
+function currentEvmSetupProgress() {
+  return recordJourneyEvidence(
+    createInitialJourneyProgress(),
+    "evm",
+    "setup",
+    ["evm-rpc-chain", "evm-rpc-progression"],
+    {
+      method: "automatic",
+      observedAt: new Date().toISOString(),
+      metadata: {
+        source: "browser-check",
+        tool: "rpc",
+        platform: "browser",
+        checkCount: 2,
+        blockHeight: 1,
+        blockHash: "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7",
+        endpoint: "https://rpc.testnet.evm.dusk.network"
+      }
+    }
+  );
+}
+
+function seedCurrentEvmSetup() {
+  window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(currentEvmSetupProgress()));
+}
+
+function seedEvmStepReady(route: "build" | "inspect") {
+  let progress = currentEvmSetupProgress();
+  progress = skipJourneyStep(progress, "evm", "access", "user-deferred");
+  if (route === "inspect") progress = skipJourneyStep(progress, "evm", "build", "user-deferred");
+  window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress));
+}
+
+function evmRpcResponse(result: unknown): Response {
+  const value = new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), {
+    status: 200,
+    headers: { "content-type": "application/json" }
+  });
+  Object.defineProperty(value, "url", { value: "https://rpc.testnet.evm.dusk.network/" });
+  return value;
+}
+
 describe("Phase 2 evidence journeys", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -49,11 +91,12 @@ describe("Phase 2 evidence journeys", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     Object.defineProperty(window, "ethereum", { value: undefined, configurable: true, writable: true });
   });
 
-  it("keeps the DuskEVM surface informational during pre-launch", () => {
+  it("keeps Setup read-only and does not touch an injected wallet", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     const provider = {
@@ -62,27 +105,291 @@ describe("Phase 2 evidence journeys", () => {
     Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
     render(<App />);
 
-    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
-    expect(screen.getByText("No live evidence is recorded")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." })).toBeInTheDocument();
+    expect(screen.getByText("Studio-activated Testnet")).toBeInTheDocument();
     expect(screen.getByText("https://rpc.testnet.evm.dusk.network")).toBeVisible();
-    expect(screen.getByRole("link", { name: /Official docs source/ })).toHaveAttribute("href", "https://github.com/dusk-network/docs");
-    expect(screen.getByRole("link", { name: /DuskEVM deep dive/ })).toHaveAttribute("href", "https://docs.dusk.network/learn/deep-dive/dusk-evm/");
-    expect(screen.getByText(/never pass a raw private key in a command/i)).toBeInTheDocument();
-    expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Setup never discovers, connects, switches, or signs with a wallet/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Not checked").length).toBeGreaterThan(0);
     expect(provider.request).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account");
   });
 
-  it("classifies an EVM identifier locally but defers network inspection", () => {
+  it("records Setup only after chain, genesis, and a later head all match", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#setup";
+    let blockRead = 0;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { method: string; params: unknown[] };
+      const result = request.method === "eth_chainId"
+        ? "0x2e9"
+        : request.method === "eth_getBlockByNumber"
+          ? { hash: "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7" }
+          : blockRead++ === 0 ? "0x10" : "0x11";
+      return evmRpcResponse(result);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Verify chain and progression" }));
+    await waitFor(
+      () => expect(screen.getByText(/progression from block 16 to 17/i)).toBeInTheDocument(),
+      { timeout: 5_000 }
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    const requests = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)) as { method: string; params: unknown[] });
+    expect(requests.filter((request) => request.method === "eth_getBlockByNumber"))
+      .toMatchObject([
+        { method: "eth_getBlockByNumber", params: ["0x0", false] },
+        { method: "eth_getBlockByNumber", params: ["0x0", false] }
+      ]);
+    await waitFor(() => {
+      const stored = window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "";
+      expect(stored).toContain("evm-rpc-progression");
+      expect(stored).toContain("b460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7");
+      expect(stored).not.toContain("evm-wallet");
+    });
+  });
+
+  it("withholds Setup evidence when chain 745 does not progress", async () => {
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#setup";
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      const request = JSON.parse(String(init?.body)) as { method: string };
+      const result = request.method === "eth_chainId"
+        ? "0x2e9"
+        : request.method === "eth_getBlockByNumber"
+          ? { hash: "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7" }
+          : "0x10";
+      return evmRpcResponse(result);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Verify chain and progression" }));
+    await waitFor(
+      () => expect(screen.getByText(/head did not progress beyond block 16/i)).toBeInTheDocument(),
+      { timeout: 5_000 }
+    );
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-rpc-progression");
+  });
+
+  it("separates discovery, connection, network change, and balance reads without requesting signing", async () => {
+    seedCurrentEvmSetup();
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#access";
+    const account = `0x${"a".repeat(40)}`;
+    const listeners = new Map<string, (...args: unknown[]) => void>();
+    const provider = {
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === "eth_chainId") return "0x2e9";
+        if (method === "eth_accounts" || method === "eth_requestAccounts") return [account];
+        if (method === "wallet_switchEthereumChain") return null;
+        if (method === "eth_getBalance") return "0xde0b6b3a7640000";
+        throw new Error(`Unexpected method ${method}`);
+      }),
+      on: vi.fn((event: string, listener: (...args: unknown[]) => void) => listeners.set(event, listener)),
+      removeListener: vi.fn((event: string) => listeners.delete(event))
+    };
+    Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "1. Check existing session" }));
+    await waitFor(() => expect(screen.getByText(/Observed an existing wallet session/i)).toBeInTheDocument());
+    expect(provider.request.mock.calls.map(([request]) => request.method).sort()).toEqual(["eth_accounts", "eth_chainId"]);
+
+    provider.request.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "2. Connect wallet" }));
+    await waitFor(() => expect(screen.getByText(/account access was granted/i)).toBeInTheDocument());
+    expect(provider.request.mock.calls.map(([request]) => request.method)).toEqual(["eth_requestAccounts"]);
+
+    provider.request.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "3. Add or switch Testnet" }));
+    await waitFor(() => expect(screen.getByText(/Wallet reports Testnet chain/i)).toBeInTheDocument());
+    expect(provider.request.mock.calls.map(([request]) => request.method)).toEqual(["wallet_switchEthereumChain", "eth_chainId"]);
+
+    provider.request.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "4. Read DUSK balance" }));
+    await waitFor(() => expect(screen.getByText(/positive DUSK Testnet gas balance/i)).toBeInTheDocument());
+    expect(provider.request.mock.calls.map(([request]) => request.method)).toEqual(["eth_chainId", "eth_getBalance"]);
+
+    const everyMethod = provider.request.mock.calls.map(([request]) => request.method).join(" ");
+    expect(everyMethod).not.toMatch(/sign|sendTransaction|personal|typedData/i);
+    await waitFor(() => {
+      const stored = window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "";
+      expect(stored).toContain("evm-positive-balance");
+      expect(stored).not.toContain(account);
+      expect(stored).not.toContain("1.000000");
+    });
+
+    await waitFor(() => expect(listeners.has("chainChanged")).toBe(true));
+    act(() => listeners.get("chainChanged")?.("0x1"));
+    await waitFor(() => expect(screen.getByText(/Prior Access evidence was cleared/i)).toBeInTheDocument());
+    await waitFor(() => expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account"));
+  });
+
+  it("invalidates mounted Setup evidence when its fifteen-minute live-read window expires", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T10:00:00.000Z"));
+    seedCurrentEvmSetup();
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#access";
+    render(<App />);
+    const discover = screen.getByRole("button", { name: "1. Check existing session" });
+    expect(discover).toBeEnabled();
+
+    act(() => vi.advanceTimersByTime(15 * 60 * 1_000 + 1_000));
+    expect(discover).toBeDisabled();
+    expect(screen.getByText(/Complete the non-skippable Setup identity and progression check/i)).toBeInTheDocument();
+  });
+
+  it("discards a wallet result that resolves after Setup evidence expires", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-13T10:00:00.000Z"));
+    seedCurrentEvmSetup();
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#access";
+    let resolveAccounts!: (accounts: string[]) => void;
+    const accountRequest = new Promise<string[]>((resolve) => { resolveAccounts = resolve; });
+    const provider = { request: vi.fn(() => accountRequest) };
+    Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "2. Connect wallet" }));
+    expect(screen.getByText(/Waiting for the wallet connection decision/i)).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(15 * 60 * 1_000 + 1_000));
+    await act(async () => { resolveAccounts([`0x${"a".repeat(40)}`]); });
+
+    expect(screen.getByText(/identity proof expired/i)).toBeInTheDocument();
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account");
+  });
+
+  it("binds build confirmations and accessible selection state to one toolchain", () => {
+    seedEvmStepReady("build");
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#build";
+    render(<App />);
+
+    const foundry = screen.getByRole("button", { name: "Foundry" });
+    const hardhat = screen.getByRole("button", { name: "Hardhat" });
+    const structure = screen.getByRole("checkbox", { name: /verified the reviewed starter structure/i });
+    const tests = screen.getByRole("checkbox", { name: /ran the shown compile and tests successfully/i });
+    const save = screen.getByRole("button", { name: "Save local build confirmation" });
+    expect(foundry).toHaveAttribute("aria-pressed", "true");
+    expect(hardhat).toHaveAttribute("aria-pressed", "false");
+    expect(structure.closest("label")).toHaveClass("inline-check");
+    fireEvent.click(structure);
+    fireEvent.click(tests);
+    expect(save).toBeEnabled();
+
+    fireEvent.click(hardhat);
+    expect(foundry).toHaveAttribute("aria-pressed", "false");
+    expect(hardhat).toHaveAttribute("aria-pressed", "true");
+    expect(structure).not.toBeChecked();
+    expect(tests).not.toBeChecked();
+    expect(save).toBeDisabled();
+  });
+
+  it("rejects a deferred scaffold response after its toolchain generation changes", () => {
+    expect(isCurrentEvmScaffoldRequest(1, 1, "foundry", "foundry")).toBe(true);
+    expect(isCurrentEvmScaffoldRequest(1, 2, "foundry", "hardhat")).toBe(false);
+    expect(isCurrentEvmScaffoldRequest(1, 1, "foundry", "hardhat")).toBe(false);
+  });
+
+  it("records a pending transaction observation without presenting it as green success", async () => {
+    seedEvmStepReady("inspect");
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#inspect";
+    const transactionHash = `0x${"b".repeat(64)}`;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(evmRpcResponse(null))
+      .mockResolvedValueOnce(evmRpcResponse({ hash: transactionHash, blockNumber: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Address, transaction hash, or block/i }), { target: { value: transactionHash } });
+    fireEvent.click(screen.getByRole("button", { name: "Inspect on Testnet" }));
+    const pending = await screen.findByText(/transaction is pending and has no receipt yet/i);
+    expect(pending.closest(".async-notice")).toHaveClass("partial");
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").toContain("evm-read-inspection");
+  });
+
+  it("records a reverted receipt observation while presenting a danger state", async () => {
+    seedEvmStepReady("inspect");
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#inspect";
+    const transactionHash = `0x${"b".repeat(64)}`;
+    vi.stubGlobal("fetch", vi.fn(async () => evmRpcResponse({
+      transactionHash,
+      status: "0x0",
+      blockNumber: "0x10",
+      contractAddress: null
+    })));
+    render(<App />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /Address, transaction hash, or block/i }), { target: { value: transactionHash } });
+    fireEvent.click(screen.getByRole("button", { name: "Inspect on Testnet" }));
+    const reverted = await screen.findByText(/transaction was included and reverted/i);
+    expect(reverted.closest(".async-notice")).toHaveClass("error");
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").toContain("evm-read-inspection");
+  });
+
+  it("adds Testnet only after an explicit unknown-chain switch failure", async () => {
+    seedCurrentEvmSetup();
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#access";
+    const provider = {
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === "wallet_switchEthereumChain") throw Object.assign(new Error("unknown chain"), { code: 4902 });
+        if (method === "wallet_addEthereumChain") return null;
+        if (method === "eth_chainId") return "0x2e9";
+        throw new Error(`Unexpected method ${method}`);
+      })
+    };
+    Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "3. Add or switch Testnet" }));
+    await waitFor(() => expect(screen.getByText(/Wallet reports Testnet chain/i)).toBeInTheDocument());
+    expect(provider.request.mock.calls.map(([request]) => request.method)).toEqual([
+      "wallet_switchEthereumChain",
+      "wallet_addEthereumChain",
+      "eth_chainId"
+    ]);
+    expect((provider.request.mock.calls[1][0] as unknown as { params: Array<Record<string, unknown>> }).params[0]).toMatchObject({
+      chainId: "0x2e9",
+      rpcUrls: ["https://rpc.testnet.evm.dusk.network"],
+      blockExplorerUrls: ["https://explorer.testnet.evm.dusk.network"]
+    });
+  });
+
+  it("surfaces a rejected wallet request without recording account evidence", async () => {
+    seedCurrentEvmSetup();
+    window.localStorage.setItem("dusk-studio-builder-path", "evm");
+    window.location.hash = "#access";
+    const provider = {
+      request: vi.fn(async ({ method }: { method: string }) => {
+        if (method === "eth_requestAccounts") throw Object.assign(new Error("rejected"), { code: 4001 });
+        throw new Error(`Unexpected method ${method}`);
+      })
+    };
+    Object.defineProperty(window, "ethereum", { value: provider, configurable: true });
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "2. Connect wallet" }));
+    await waitFor(() => expect(screen.getByText(/rejected. Nothing was signed or submitted/i)).toBeInTheDocument());
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account");
+  });
+
+  it("classifies an EVM identifier locally until Inspect is explicitly chosen", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#inspect";
     const address = `0x${"b".repeat(40)}`;
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     render(<App />);
-    fireEvent.change(screen.getByLabelText("Example identifier"), { target: { value: address } });
+    fireEvent.change(screen.getByLabelText("Address, transaction hash, or block"), { target: { value: address } });
     expect(screen.getByText("address")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Example identifier"), { target: { value: "12345" } });
+    fireEvent.change(screen.getByLabelText("Address, transaction hash, or block"), { target: { value: "12345" } });
     expect(screen.getByText("block")).toBeInTheDocument();
     expect(screen.getByText(/unsigned decimal block number such as 12345/i)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -94,7 +401,7 @@ describe("Phase 2 evidence journeys", () => {
     window.location.hash = "#inspect";
     render(<App />);
 
-    const input = screen.getByLabelText("Example identifier");
+    const input = screen.getByLabelText("Address, transaction hash, or block");
     fireEvent.change(input, { target: { value: "not-an-identifier" } });
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(input).toHaveAccessibleDescription(/Unrecognized shape/);

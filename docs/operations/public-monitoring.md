@@ -17,7 +17,7 @@ The `Studio public deployment assurance` workflow runs every six hours and can a
 - hashed assets use immutable caching;
 - DuskDS source links remain reachable;
 - the official DuskDS Testnet GraphQL endpoint returns a valid recent block height and hash;
-- DuskEVM RPC availability remains explicitly deferred while its Testnet is not live;
+- the DuskEVM RPC reports chain `0x2e9`, the reviewed genesis hash, and a progressing head;
 - the DuskEVM browser journey fails safely when RPC is unavailable;
 - the TLS certificate has sufficient remaining lifetime;
 - public ports 5173 and 8788 are closed; and
@@ -36,7 +36,7 @@ A failed scheduled run distinguishes:
 
 The workflow opens or updates one assigned GitHub issue for the active failure category. A later successful scheduled run closes the incident with the recovery-run link.
 
-Expected DuskEVM pre-launch unavailability does not open an incident or fail the DuskDS deployment check. Activating DuskEVM monitoring requires a verified DuskEVM Testnet RPC and current EVM browser and network checks.
+DuskEVM wrong-chain, wrong-genesis, frozen-head, unreachable, malformed, CORS, or expired-identity results fail the active DuskEVM gate. Degrade by disabling the DuskEVM activation flag and restoring the inert review-required boundary; DuskDS remains independently available when its own checks pass.
 
 ## Schedule guard
 
@@ -52,7 +52,7 @@ The GitHub-only model was reassessed on July 19, 2026 after the npm package beca
 2. Distinguish Studio release or configuration failure from DuskDS upstream unavailability.
 3. For release identity, cache, route, TLS, listener, or artifact failure, stop deployment and restore the last verified static artifact.
 4. For a required DuskDS upstream failure, keep the issue visible without presenting the upstream outage as a Studio defect.
-5. Independently confirm that expected DuskEVM RPC degradation still behaves safely.
+5. Recheck DuskEVM chain, genesis, progression, explorer, and browser recovery. If identity or availability is uncertain, disable DuskEVM live controls before restoring public service.
 6. Close an alert only after a passing recovery run or a documented false-positive fix.
 
 Monitoring covers the public Hosted guide. The local npm-launched Studio is validated through package and cross-platform checks rather than a public endpoint.

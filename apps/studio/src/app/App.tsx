@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { STUDIO_RELEASE, type StudioRelease } from "../release";
 import { STEP_ROUTES, type StepRoute } from "./journeyProgress";
 import type { StudioRuntime } from "./runtime";
@@ -15,14 +15,10 @@ function StudioRoutes() {
   const [companionStatus, refreshCompanion, pairCompanion] = useCompanionStatus();
   const isGuideRoute = STEP_ROUTES.includes(route as StepRoute);
   const pendingGuideRoute = isGuideRoute && builderPath === null ? route as StepRoute : null;
-  const evmCanonicalRoute = builderPath === "evm" && isGuideRoute && route !== "setup" ? "setup" : null;
-  const visibleRoute = pendingGuideRoute ? "overview" : evmCanonicalRoute ?? route;
+  const visibleRoute = pendingGuideRoute ? "overview" : route;
   const activeBuilderPath = builderPath ?? "evm";
   const shellBuilderPath = visibleRoute === "overview" ? null : isGuideRoute ? activeBuilderPath : builderPath;
   const previousView = useRef<string | null>(null);
-  useEffect(() => {
-    if (evmCanonicalRoute) setRoute(evmCanonicalRoute, { replace: true });
-  }, [evmCanonicalRoute, setRoute]);
   useLayoutEffect(() => {
     const heading = document.querySelector<HTMLElement>("[data-route-heading]");
     if (heading) {

@@ -10,7 +10,7 @@ import {
   type BuilderPath,
   type StepRoute
 } from "./journeyProgress";
-import { blockerLabels, evidenceLabels, pathText, steps } from "./studioConfig";
+import { blockerLabels, evidenceLabels, isEvmActivationCurrent, pathText, steps } from "./studioConfig";
 import { getDuskDsDeployReadiness } from "./deployReadiness";
 import { useJourney, useStudioRuntime } from "./studioState";
 import { ExternalLink, StatusPill, toneForStatus } from "./StudioUi";
@@ -19,7 +19,12 @@ import type { CompanionStatus, RouteId } from "./types";
 export function Shell({ route, setRoute, builderPath, companionStatus, children }: { route: RouteId; setRoute: (route: RouteId) => void; builderPath: BuilderPath | null; companionStatus: CompanionStatus; children: ReactNode }) {
   const { runtime: studioRuntime } = useStudioRuntime();
   const { progress } = useJourney();
-  const completion = builderPath ? getJourneyCompletionCounts(progress, builderPath) : null;
+  const evmActivationCurrent = isEvmActivationCurrent();
+  const completion = builderPath
+    ? builderPath === "evm" && !evmActivationCurrent
+      ? { completed: 0, automatic: 0, manual: 0, skipped: 0, total: 4 }
+      : getJourneyCompletionCounts(progress, builderPath)
+    : null;
   const supportRoute = route === "reference" || route === "troubleshooting" || route === "companion" || route === "settings";
   const showJourneyContext = Boolean(builderPath && supportRoute);
   const storedGuideRoute = window.sessionStorage.getItem("dusk-studio-last-guide-route");
@@ -33,7 +38,9 @@ export function Shell({ route, setRoute, builderPath, companionStatus, children 
       window.sessionStorage.setItem("dusk-studio-last-guide-route", route);
     }
   }, [route]);
-  const resumeRoute = builderPath
+  const resumeRoute = builderPath === "evm" && !evmActivationCurrent
+    ? "setup"
+    : builderPath
     ? STEP_ROUTES.find((step) => {
         const status = progress.paths[builderPath][step].status;
         return !isJourneyComplete(status) && status !== "skipped" && status !== "skipped-with-reason";
@@ -68,13 +75,11 @@ export function Shell({ route, setRoute, builderPath, companionStatus, children 
           <button className={route === "companion" ? "active local-tools-button" : "local-tools-button"} aria-label={"Local Studio: " + localRuntimeState} aria-current={route === "companion" ? "page" : undefined} type="button" onClick={() => setRoute("companion")}><span>Local Studio</span><small>{localRuntimeState}</small></button>
         </nav>
         {showJourneyContext && builderPath ? (
-          <button className="journey-context" type="button" aria-label={builderPath === "evm" ? "Return to DuskEVM pre-launch overview" : `${contextVerb} ${pathText[builderPath].label} at ${contextLabel}`} onClick={() => setRoute(builderPath === "evm" ? "setup" : contextRoute)}>
-            <span>{builderPath === "evm" ? "DuskEVM pre-launch" : `${contextVerb} ${pathText[builderPath].label} · ${contextLabel}`}</span>
+          <button className="journey-context" type="button" aria-label={`${contextVerb} ${pathText[builderPath].label} at ${contextLabel}`} onClick={() => setRoute(contextRoute)}>
+            <span>{`${contextVerb} ${pathText[builderPath].label} · ${contextLabel}`}</span>
             <strong>
               <span className="state-sprite" aria-hidden="true" />
-              {builderPath === "evm"
-                ? "Return to pre-launch overview"
-                : `${completion?.completed ?? 0}/4 complete · ${completion?.automatic ?? 0} automatic · ${completion?.manual ?? 0} manual`}
+              {`${completion?.completed ?? 0}/4 complete · ${completion?.automatic ?? 0} automatic · ${completion?.manual ?? 0} manual`}
             </strong>
           </button>
         ) : null}
@@ -98,6 +103,7 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
   const { progress } = useJourney();
   const { runtime: studioRuntime } = useStudioRuntime();
   const isLocalStudio = studioRuntime.companionAvailable;
+  const evmActivationCurrent = isEvmActivationCurrent();
   const pendingStep = pendingRoute ? steps.evm.find((step) => step.id === pendingRoute) : undefined;
   const duskDsHasActivity = Object.values(progress.paths.duskds)
     .some((step) => step.evidence.length > 0 || Boolean(step.blocker) || step.status === "skipped" || step.status === "skipped-with-reason");
@@ -114,13 +120,13 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
           <span className="section-kicker">Choose your path</span>
           <h1 data-route-heading tabIndex={-1}>{pendingStep ? `Choose a path to continue to ${pendingStep.label}.` : "Pick the execution model your app actually needs."}</h1>
           <p>{pendingStep
-            ? `Choose DuskDS to continue to ${pendingStep.label}. DuskEVM opens its pre-launch overview because live tasks are not active yet.`
+            ? `Choose DuskEVM or DuskDS to continue to ${pendingStep.label}. Each path keeps its own evidence and safety boundary.`
             : isLocalStudio
-              ? "Local Studio provides reviewed commands, records manual or automatic results, and can use its allowlisted companion for DuskDS tool checks and starter creation. DuskEVM remains a pre-launch overview."
-              : "The hosted guide provides reviewed commands and records manual confirmations without accessing your machine. Run Local Studio through npm when you want DuskDS tool checks or starter creation. DuskEVM remains a pre-launch overview."}</p>
+              ? "Local Studio provides reviewed commands, records manual or automatic results, and can use its allowlisted companion for DuskEVM and DuskDS tool checks and starter creation."
+              : "The hosted guide runs bounded public network reads and records browser-local evidence without accessing your machine. Run Local Studio through npm when you want tool checks or starter creation."}</p>
           <div className="mission-flags">
             <span className="active"><i aria-hidden="true" />{isLocalStudio ? "DUSKDS LOCAL TOOLS AVAILABLE" : "DUSKDS GUIDE AVAILABLE"}</span>
-            <span className="preview"><i aria-hidden="true" />DUSKEVM PRE-LAUNCH OVERVIEW</span>
+            <span className={evmActivationCurrent ? "active" : ""}><i aria-hidden="true" />{evmActivationCurrent ? "DUSKEVM TESTNET ACTIVE" : "DUSKEVM REVIEW REQUIRED"}</span>
             <span className="hosted-guide"><i aria-hidden="true" />{isLocalStudio ? "LOCAL · SAFE / ACTIONS MODES" : "HOSTED · NO MACHINE ACCESS"}</span>
           </div>
         </div>
@@ -128,9 +134,16 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
       </div>
       <div className="path-cards" role="group" aria-label="Choose a builder path">
         {(["evm", "duskds"] as BuilderPath[]).map((path) => {
-          const counts = getJourneyCompletionCounts(progress, path);
+          const activationHeld = path === "evm" && !evmActivationCurrent;
+          const counts = activationHeld
+            ? { completed: 0, automatic: 0, manual: 0, skipped: 0, total: 4 }
+            : getJourneyCompletionCounts(progress, path);
           const hasActivity = Object.values(progress.paths[path]).some((step) => step.evidence.length > 0 || Boolean(step.blocker) || step.status === "skipped" || step.status === "skipped-with-reason");
-          const pathStart = path === "duskds" ? "Start DuskDS" : "Open pre-launch overview";
+          const pathStart = path === "duskds" ? "Start DuskDS" : activationHeld ? "Review DuskEVM activation" : "Start DuskEVM";
+          const availability = activationHeld ? "Review required" : pathText[path].availability;
+          const availabilityCopy = activationHeld
+            ? "Live DuskEVM controls are fail-closed because the source or network-identity review expired."
+            : pathText[path].availabilityCopy;
           const availabilityId = `path-${path}-availability`;
           const summaryId = `path-${path}-summary`;
           const resultId = `path-${path}-result`;
@@ -144,19 +157,19 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
               aria-describedby={`${availabilityId} ${summaryId} ${resultId} ${progressId}`}
               onClick={() => {
                 setBuilderPath(path);
-                setRoute(path === "evm" ? "setup" : pendingRoute ?? "setup");
+                setRoute(pendingRoute ?? "setup");
               }}
             >
               <span className="path-card-code">{path === "evm" ? "CAMPAIGN EVM_01" : "CAMPAIGN DS_02"}</span>
               <span className="path-card-availability" id={availabilityId}>
-                <StatusPill tone={pathText[path].availabilityTone}>{pathText[path].availability}</StatusPill>
-                <small>{pathText[path].availabilityCopy}</small>
+                <StatusPill tone={activationHeld ? "warn" : pathText[path].availabilityTone}>{availability}</StatusPill>
+                <small>{availabilityCopy}</small>
               </span>
               <span className="path-card-eyebrow">{pathText[path].eyebrow}</span>
               <strong>{pathText[path].label}</strong>
               <p id={summaryId}>{pathText[path].summary}</p>
               <span className="path-card-result" id={resultId}><span>First useful result</span>{pathText[path].result}</span>
-              <span className="path-card-progress" id={progressId}><span className="state-sprite" aria-hidden="true" />{path === "evm" ? "One pre-launch overview · no completion score" : `${counts.completed}/4 complete · ${counts.automatic} automatic · ${counts.manual} manual · ${hasActivity ? "progress saved" : "not started"}`}</span>
+              <span className="path-card-progress" id={progressId}><span className="state-sprite" aria-hidden="true" />{`${counts.completed}/4 complete · ${counts.automatic} automatic · ${counts.manual} manual · ${hasActivity ? "progress saved" : "not started"}`}</span>
               <em>{pathStart}<ArrowRight size={16} /></em>
             </button>
           );
@@ -174,22 +187,22 @@ export function OverviewPage({ pendingRoute, setBuilderPath, setRoute }: { pendi
           <caption>Quick comparison of the two Dusk builder paths</caption>
           <thead><tr><th scope="col">Decision</th><th scope="col">DuskEVM</th><th scope="col">DuskDS</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Status</th><td>Single pre-launch overview; no completion score</td><td>Hosted guide and npm-powered local tools available</td></tr>
-            <tr><th scope="row">What can I do today?</th><td>Review the planned architecture, tooling, and launch requirements</td><td>Check prerequisites, run read-only queries, create a starter, build locally, and record results</td></tr>
-            <tr><th scope="row">Requires local software?</th><td>No for the pre-launch reference</td><td>Yes for commands and builds; use the hosted guide manually or run Local Studio with Node/npm</td></tr>
+            <tr><th scope="row">Status</th><td>{evmActivationCurrent ? "Testnet active; hosted reads and local build tools available" : "Activation review expired; live controls disabled"}</td><td>Hosted guide and npm-powered local tools available</td></tr>
+            <tr><th scope="row">What can I do today?</th><td>{evmActivationCurrent ? "Verify Testnet, connect a wallet explicitly, build locally, and inspect read-only state" : "Review official sources and wait for a fresh activation receipt"}</td><td>Check prerequisites, run read-only queries, create a starter, build locally, and record results</td></tr>
+            <tr><th scope="row">Requires local software?</th><td>No for RPC inspection; Foundry or Hardhat for builds</td><td>Yes for commands and builds; use the hosted guide manually or run Local Studio with Node/npm</td></tr>
             <tr><th scope="row">Language</th><td>Solidity</td><td>Rust + WASM</td></tr>
             <tr><th scope="row">Execution</th><td>EVM compatibility</td><td>Native DuskVM</td></tr>
             <tr><th scope="row">Tooling</th><td>Foundry / EVM wallets</td><td>Dusk Forge / W3sper</td></tr>
             <tr><th scope="row">Privacy fit</th><td>Hedger is reference-only</td><td>Native privacy-aware building blocks</td></tr>
-            <tr><th scope="row">Choose when</th><td>You are preparing for DuskEVM launch</td><td>You need native Dusk capabilities now</td></tr>
+            <tr><th scope="row">Choose when</th><td>You need Solidity and EVM-compatible tooling on Testnet</td><td>You need native Dusk capabilities</td></tr>
           </tbody>
         </table>
       </div>
       <section className="journey-preview" aria-labelledby="journey-preview-title">
         <div className="result-brief">
           <span className="section-kicker">After you choose</span>
-          <h2 id="journey-preview-title">DuskDS uses four practical stages.</h2>
-          <p>DuskEVM stays one pre-launch overview until its live developer workflow is reviewed and activated.</p>
+          <h2 id="journey-preview-title">Both paths use four practical stages.</h2>
+          <p>Each path records what was checked automatically or confirmed manually, and keeps signing outside the Studio.</p>
         </div>
         <ol>{previewSteps.map(([number, label, copy]) => <li key={number}><span>{number}</span><strong>{label}</strong><small>{copy}</small></li>)}</ol>
       </section>
@@ -202,7 +215,7 @@ export function FlowRail({ builderPath, activeRoute, setRoute }: { builderPath: 
   return <ol className="flow-rail" aria-label={pathText[builderPath].label + " guide sequence"}>{steps[builderPath].map((step) => { const status = progress.paths[builderPath][step.id].status; const statusLabel = getJourneyStatusLabel(status); return <li key={step.id} className={activeRoute === step.id ? "active" : ""}><button type="button" aria-label={`${step.number} ${step.label}: ${step.title} (${statusLabel})`} aria-current={activeRoute === step.id ? "step" : undefined} onClick={() => setRoute(step.id)}><span className="step-number">{step.number}</span><strong>{step.label}</strong><small>{step.title}</small><StatusPill tone={toneForStatus(status)}>{statusLabel}</StatusPill></button></li>; })}</ol>;
 }
 
-export function StepFrame({ builderPath, route, setRoute, children, helper }: { builderPath: BuilderPath; route: StepRoute; setRoute: (route: RouteId) => void; children: ReactNode; helper?: ReactNode }) {
+export function StepFrame({ builderPath, route, setRoute, children, helper, allowSkip = true }: { builderPath: BuilderPath; route: StepRoute; setRoute: (route: RouteId) => void; children: ReactNode; helper?: ReactNode; allowSkip?: boolean }) {
   const journey = useJourney();
   const current = steps[builderPath].find((step) => step.id === route) ?? steps[builderPath][0];
   const index = steps[builderPath].findIndex((step) => step.id === route);
@@ -277,9 +290,11 @@ export function StepFrame({ builderPath, route, setRoute, children, helper }: { 
         <h3 className="section-kicker">Done when</h3>
         <ul>{current.done.map((item) => <li key={item}>{item}</li>)}</ul>
         {helper ? <div className="helper-slot">{helper}</div> : null}
-        {progress.status === "skipped" || progress.status === "skipped-with-reason"
-          ? <button type="button" className="skip-button" onClick={() => journey.resume(builderPath, route)}>Resume this step</button>
-          : <button type="button" className="skip-button" onClick={() => journey.skip(builderPath, route, progress.blocker ?? "user-deferred")}>Skip for now</button>}
+        {allowSkip
+          ? progress.status === "skipped" || progress.status === "skipped-with-reason"
+            ? <button type="button" className="skip-button" onClick={() => journey.resume(builderPath, route)}>Resume this step</button>
+            : <button type="button" className="skip-button" onClick={() => journey.skip(builderPath, route, progress.blocker ?? "user-deferred")}>Skip for now</button>
+          : <p className="quiet-note">This safety prerequisite cannot be skipped.</p>}
         <div className="step-actions">
           {previous ? <button type="button" onClick={() => setRoute(previous.id)}>Back: {previous.label}</button> : null}
           {next
@@ -299,9 +314,9 @@ export function StepFrame({ builderPath, route, setRoute, children, helper }: { 
 
 export function CompanionActionButton({ companionStatus, setRoute, onAction, children, disabled = false }: { companionStatus: CompanionStatus; setRoute: (route: RouteId) => void; onAction: () => void | Promise<void>; children: ReactNode; disabled?: boolean }) {
   const { runtime: studioRuntime } = useStudioRuntime();
-  if (!studioRuntime.companionAvailable) return <button className="primary-button" type="button" onClick={() => setRoute("companion")}>See manual and automation options</button>;
-  if (companionStatus.state === "mismatch") return <button className="primary-button" type="button" onClick={() => setRoute("companion")}>Resolve local release mismatch</button>;
-  if (companionStatus.state !== "available") return <button className="primary-button" type="button" onClick={() => setRoute("companion")} disabled={companionStatus.state === "checking"}>{companionStatus.state === "checking" ? "Checking companion" : "Set up local companion"}</button>;
-  if (!companionStatus.capabilitiesEnabled) return <button className="primary-button" type="button" onClick={() => setRoute("companion")}>Enable local capabilities</button>;
+  if (!studioRuntime.companionAvailable) return <button className="primary-button" type="button" disabled={disabled} onClick={() => setRoute("companion")}>See manual and automation options</button>;
+  if (companionStatus.state === "mismatch") return <button className="primary-button" type="button" disabled={disabled} onClick={() => setRoute("companion")}>Resolve local release mismatch</button>;
+  if (companionStatus.state !== "available") return <button className="primary-button" type="button" onClick={() => setRoute("companion")} disabled={disabled || companionStatus.state === "checking"}>{companionStatus.state === "checking" ? "Checking companion" : "Set up local companion"}</button>;
+  if (!companionStatus.capabilitiesEnabled) return <button className="primary-button" type="button" disabled={disabled} onClick={() => setRoute("companion")}>Enable local capabilities</button>;
   return <button className="primary-button" type="button" disabled={disabled} onClick={onAction}>{children}</button>;
 }

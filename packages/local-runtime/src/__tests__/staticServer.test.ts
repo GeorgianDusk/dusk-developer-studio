@@ -109,6 +109,7 @@ describe("npm local static server", () => {
     expect(page.headers["content-security-policy"]).toContain(`http://127.0.0.1:${companionPort}`);
     expect(page.headers["content-security-policy"]).toContain(`http://localhost:${companionPort}`);
     expect(page.headers["content-security-policy"]).toContain("https://testnet.nodes.dusk.network");
+    expect(page.headers["content-security-policy"]).toContain("https://rpc.testnet.evm.dusk.network");
     expect(page.headers["cache-control"]).toBe("no-store");
     const head = await request(port, { method: "HEAD" });
     expect(head.status).toBe(200);

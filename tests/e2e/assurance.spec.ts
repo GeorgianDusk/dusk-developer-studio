@@ -3,12 +3,12 @@ import { expect, test } from "@playwright/test";
 
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
-  ["setup", "Explore the planned DuskEVM developer workflow."],
-  ["access", "Explore the planned DuskEVM developer workflow."],
-  ["build", "Explore the planned DuskEVM developer workflow."],
-  ["inspect", "Explore the planned DuskEVM developer workflow."],
+  ["setup", "Verify DuskEVM Testnet before touching a wallet."],
+  ["access", "Connect and fund a wallet without giving Studio signing power."],
+  ["build", "Compile and test a fresh Solidity starter locally."],
+  ["inspect", "Inspect Testnet state and preserve deployment evidence."],
   ["reference", "Source-backed context for the task in front of you."],
-  ["troubleshooting", "Review DuskEVM launch-planning issues."],
+  ["troubleshooting", "Fix the blocker in front of you."],
   ["companion", "Run the full Studio locally with npm."],
   ["settings", "See the build you are using and control its saved progress."]
 ] as const;
@@ -22,7 +22,7 @@ test.beforeEach(async ({ page }) => {
 
 test("every deep link renders a stable route", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
+  await page.getByRole("button", { name: /Start DuskEVM/i }).click();
   for (const [route, heading] of routes) {
     await page.goto(`/#${route}`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
@@ -34,7 +34,7 @@ test("a pathless guide deep link preserves the requested step until path choice"
   await page.goto("/#build");
   await expect(page).toHaveURL(/#build$/);
   await expect(page.getByRole("heading", { name: "Choose a path to continue to Build." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Open pre-launch overview/i })).toHaveAccessibleName("DuskEVM. Open pre-launch overview");
+  await expect(page.getByRole("button", { name: /Start DuskEVM/i })).toHaveAccessibleName("DuskEVM. Start DuskEVM");
   await page.getByRole("button", { name: /Start DuskDS/i }).click();
   await expect(page).toHaveURL(/#duskds\/build$/);
   await expect(page.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeVisible();

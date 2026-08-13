@@ -46,8 +46,8 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Studio does not connect to a wallet before launch. For future planning, chain ID 745 / 0x2e9 is the expected Testnet identity; wait for a reviewed activation notice before adding or switching a wallet network.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the expected chain metadata. Do not add or switch a wallet network until the live workflow is activated."
+        "fix":  "DuskEVM Testnet is chain ID 745 / 0x2e9. Re-run Setup to verify the public RPC, then use the separate Add or switch Testnet wallet action and review the exact chain request in your wallet.",
+        "safeNextStep":  "Return to DuskEVM Access, choose Add or switch Testnet, then re-read the wallet chain before any balance, funding, or signing decision."
     },
     {
         "id":  "no-wallet",
@@ -60,8 +60,8 @@
                          "duskevm"
                      ],
         "severity":  "low",
-        "fix":  "No wallet action is required in Studio before launch. When wallet support is activated, use a reviewed EIP-1193 wallet and verify the exact network request before connecting.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview. Wallet connection and EVM starter actions are not active in Studio yet."
+        "fix":  "Enable an EIP-1193-compatible Web3 wallet for this browser profile. Studio does not require a specific brand or claim a minimum version it has not verified.",
+        "safeNextStep":  "Return to DuskEVM Access and run Check existing session. Connection, network switching, and balance reads remain separate actions."
     },
     {
         "id":  "user-rejected",
@@ -75,7 +75,7 @@
                      ],
         "severity":  "low",
         "fix":  "The wallet declined the request. Retry only if you understand the requested network action.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned wallet boundary before approving any future network request."
+        "safeNextStep":  "Nothing was signed or submitted. Return to DuskEVM Access and retry only the specific connection or network action you intended."
     },
     {
         "id":  "insufficient-gas",
@@ -88,8 +88,8 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Funding is not active in Studio before launch. After activation, use only the reviewed official Testnet funding route and verify its current status before moving tokens.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Access stage. Funding is not active in Studio until an official route is reviewed and activated."
+        "fix":  "The account balance read succeeded but it has no Testnet gas. The current official route bridges Testnet DUSK from DuskDS through the Dusk Web Wallet to a connected Web3 wallet; Studio never automates or promises that transfer.",
+        "safeNextStep":  "Open the official bridge guide from DuskEVM Access, verify both wallet addresses and the current bridge state, move only valueless Testnet tokens, then re-read the EVM balance."
     },
     {
         "id":  "rpc-unavailable",
@@ -104,8 +104,8 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "There is no DuskEVM RPC health check to retry in Studio before launch. If you independently test a published endpoint later, Failed to fetch can indicate RPC availability, firewall/proxy, DNS, TLS, or CORS behavior.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview. Studio does not run an EVM network check yet; use current official sources before treating any endpoint as live."
+        "fix":  "The bounded Testnet read did not complete or the chain/head observation was inconclusive. Failed to fetch can indicate endpoint availability, browser CORS enforcement, firewall/proxy, DNS, or TLS behavior; do not disable browser security.",
+        "safeNextStep":  "Return to DuskEVM Setup and retry the two-observation chain/progression check. Keep downstream funded or signed actions paused until chain 745 progresses."
     },
     {
         "id":  "duskds-public-node-unavailable",
@@ -136,7 +136,7 @@
                      ],
         "severity":  "low",
         "fix":  "A contract may still be deployed even if the explorer is lagging or unavailable.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Inspect stage. Studio does not treat the explorer as an active inspection surface yet."
+        "safeNextStep":  "Repeat the read-only RPC inspection in DuskEVM Inspect. Treat explorer verification as separate evidence and use official support if the explorer remains unavailable."
     },
     {
         "id":  "foundry-missing",
@@ -149,8 +149,8 @@
                          "duskevm"
                      ],
         "severity":  "medium",
-        "fix":  "Foundry is not required for the current pre-launch reference. It becomes relevant only after the reviewed local Build workflow is activated.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Build stage. Studio does not run EVM builds or deploy commands yet."
+        "fix":  "Install Foundry through its official installer, open a new terminal, and verify both forge --version and cast --version. Hardhat is also a reviewed starter path when Node/npm is available.",
+        "safeNextStep":  "Run Local Studio in Actions mode for the bounded EVM preflight, or choose the Hardhat starter. Do not paste a private key into a shell command."
     },
     {
         "id":  "bridge-pending",
@@ -164,7 +164,7 @@
                      ],
         "severity":  "medium",
         "fix":  "Bridge timing can vary. Keep source and destination transaction details and avoid sending duplicate bridge attempts without checking status.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview. Funding is not an active Studio flow; use official Dusk support if this concerns an external transaction."
+        "safeNextStep":  "Check both source and destination explorer records before retrying. Do not send a duplicate bridge attempt solely because the UI is delayed; use the official Dusk support route."
     },
     {
         "id":  "verification-failed",
@@ -177,8 +177,8 @@
                          "duskevm"
                      ],
         "severity":  "low",
-        "fix":  "Studio does not submit DuskEVM verification before launch. For future recovery, the compiler version, optimizer settings, constructor arguments, and exact contract path must match deployed bytecode.",
-        "safeNextStep":  "Return to the DuskEVM pre-launch overview and review the planned Inspect stage. Studio does not submit contract verification."
+        "fix":  "Studio does not submit verification. The compiler version, optimizer settings, constructor arguments, source path, and exact deployed bytecode must match the explorer request.",
+        "safeNextStep":  "Return to DuskEVM Inspect, preserve the 0.8.28 / optimizer-200 artifact identity and deployment receipt, then use the Testnet explorer verification flow manually."
     },
     {
         "id":  "duskds-browser-public-node-csp",

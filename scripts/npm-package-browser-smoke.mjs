@@ -217,6 +217,7 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
   let context;
   let result;
   let createdProjectPath;
+  let evmScaffoldsVerified = false;
   let studioShutdownVerified = false;
   try {
     runtime = await startStudio(primaryEntry, capabilitiesEnabled, {
@@ -292,10 +293,16 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       timeout: BROWSER_TIMEOUT_MS
     });
     assert.equal(navigation?.status(), 200);
+    const localContentSecurityPolicy = navigation?.headers()["content-security-policy"] ?? "";
     assert.match(
-      navigation?.headers()["content-security-policy"] ?? "",
+      localContentSecurityPolicy,
       /connect-src[^;]*https:\/\/testnet\.nodes\.dusk\.network/u,
       "Local Studio CSP must allow its bounded public DuskDS Testnet check."
+    );
+    assert.match(
+      localContentSecurityPolicy,
+      /connect-src[^;]*https:\/\/rpc\.testnet\.evm\.dusk\.network/u,
+      "Local Studio CSP must allow its bounded public DuskEVM Testnet checks."
     );
     await page.locator(".app-shell").waitFor({ state: "visible", timeout: BROWSER_TIMEOUT_MS });
     const unpairedMode = page.getByRole("button", { name: "Local Studio: Not connected" });
@@ -452,6 +459,52 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
       assert.ok(scaffold.body.files.includes("src/lib.rs"));
       createdProjectPath = scaffold.body.projectPath;
       assert.equal(typeof createdProjectPath, "string");
+
+      for (const starter of [
+        {
+          route: "/scaffold-template",
+          projectName: "installed-foundry-counter",
+          requiredFiles: ["foundry.toml", "src/Counter.sol", "test/Counter.t.sol"]
+        },
+        {
+          route: "/scaffold-hardhat-template",
+          projectName: "installed-hardhat-counter",
+          requiredFiles: ["package.json", "package-lock.json", "hardhat.config.ts", "contracts/Counter.sol", "ignition/modules/Counter.ts", "test/Counter.t.sol"]
+        }
+      ]) {
+        const starterUrl = `http://127.0.0.1:8788${starter.route}`;
+        const starterResponsePromise = page.waitForResponse(
+          (response) => response.url() === starterUrl && response.request().method() === "POST",
+          { timeout: BROWSER_TIMEOUT_MS }
+        );
+        const [starterReceipt, starterResponse] = await Promise.all([
+          page.evaluate(async ({ url, projectName }) => {
+            const response = await globalThis.fetch(url, {
+              method: "POST",
+              credentials: "include",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ projectName })
+            });
+            return { status: response.status, body: await response.json() };
+          }, { url: starterUrl, projectName: starter.projectName }),
+          starterResponsePromise
+        ]);
+        await requestTerminalTracker.wait(starterResponse.request(), `${starter.projectName} scaffold request`);
+        assert.equal(starterReceipt.status, 200);
+        assert.deepEqual(
+          {
+            ok: starterReceipt.body.ok,
+            projectName: starterReceipt.body.projectName,
+            structureVerified: starterReceipt.body.structureVerified
+          },
+          { ok: true, projectName: starter.projectName, structureVerified: true }
+        );
+        for (const requiredFile of starter.requiredFiles) {
+          assert.ok(starterReceipt.body.files.includes(requiredFile));
+        }
+        assert.equal(Object.hasOwn(starterReceipt.body, "projectPath"), false);
+      }
+      evmScaffoldsVerified = true;
     }
     const sessionEvents = responseEvents
       .filter(({ url }) => url === expectedProbeUrl)
@@ -538,7 +591,8 @@ async function exerciseMode(browser, primaryEntry, capabilitiesEnabled, homeRoot
         preflight_consumer_contract_source_sha256:
           preflightContract.consumer_contract_source_sha256
       } : {}),
-      ...(createdProjectPath ? { scaffold_verified: true } : {})
+      ...(createdProjectPath ? { scaffold_verified: true } : {}),
+      ...(evmScaffoldsVerified ? { evm_scaffolds_verified: true } : {})
     };
   } finally {
     try {
@@ -664,6 +718,9 @@ try {
     direct_cli_scaffold_verified: true,
     local_actions_scaffold_verified: modes.some((mode) =>
       mode.mode === "local-actions" && mode.scaffold_verified === true
+    ),
+    local_actions_evm_scaffolds_verified: modes.some((mode) =>
+      mode.mode === "local-actions" && mode.evm_scaffolds_verified === true
     ),
     local_actions_preflight_verified: modes.some((mode) =>
       mode.mode === "local-actions" && mode.preflight_verified === true

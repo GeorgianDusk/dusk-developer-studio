@@ -1,11 +1,10 @@
 {
   "schema_version": 1,
   "production_paths": [
-    "duskds"
-  ],
-  "preview_paths": [
+    "duskds",
     "evm"
   ],
+  "preview_paths": [],
   "candidate_hosts": [
     "studio.134-122-59-217.nip.io"
   ],
@@ -17,17 +16,13 @@
     "max_age_hours": 15,
     "max_receipt_skew_minutes": 10
   },
-  "deferred_synthetic_checks": {
-    "rpc_chain_id": {
-      "path": "evm",
-      "expected_chain_id": "0x2e9",
-      "reason": "DuskEVM Testnet is not live; the EVM journey is an educational pre-launch preview and does not gate DuskDS production.",
-      "activation_requirements": [
-        "reviewed Phase 5 policy change moving evm into production_paths",
-        "successful real DuskEVM Testnet RPC chain-ID verification",
-        "updated EVM live-smoke and pilot evidence"
-      ]
-    }
+  "duskevm_testnet_rpc_url": "https://rpc.testnet.evm.dusk.network",
+  "duskevm_testnet_chain_id_hex": "0x2e9",
+  "duskevm_testnet_genesis_hash": "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7",
+  "duskevm_rpc_evidence": {
+    "progression_wait_ms": 2200,
+    "max_age_hours": 15,
+    "max_receipt_skew_minutes": 10
   },
   "minimum_tls_days_remaining": 14,
   "required_owners": [
@@ -62,72 +57,183 @@
     "confidence_score_semantics": "heuristic-agent-confidence-not-human-trust",
     "receipt_assurance": "operator-attested-hash-bound-not-independent-execution-proof",
     "fixed_limitation": "Agent-operated Codex simulations provide reproducible flow coverage but do not prove external-human comprehension, usability, confidence, or adoption; receipt hashes bind operator-attested evidence bytes but do not independently prove execution, Linux and macOS additionally require GitHub Actions run and artifact provenance, and Windows and WSL remain operator-attested machine-collected evidence rather than independent validation.",
-    "minimum_total": 8,
-    "minimum_duskds": 8,
+    "minimum_total": 20,
+    "minimum_duskds": 0,
+    "minimum_evm": 20,
+    "required_pilot_groups": {
+      "happy-path": 4,
+      "wallet-network-recovery": 4,
+      "dependency-degradation": 4,
+      "fresh-builds": 4,
+      "accessibility-modes": 4
+    },
+    "required_browser_claims": [
+      "chromium-desktop",
+      "firefox-desktop",
+      "webkit-desktop",
+      "mobile-chrome",
+      "mobile-safari-webkit"
+    ],
     "required_scenarios": [
       {
-        "id": "win-safe-boundary",
+        "id": "evm-happy-win-chromium",
         "context": "windows",
         "experience": "novice",
-        "capability": "mode-boundary",
-        "execution_surface": "local-safe-to-local-actions",
-        "failure_class": "safe-mode-machine-action-refusal"
+        "capability": "happy-path-chromium",
+        "execution_surface": "chromium-desktop-four-stage",
+        "failure_class": "fresh-browser-no-progress"
       },
       {
-        "id": "win-keyboard-recovery",
-        "context": "windows",
-        "experience": "novice",
-        "capability": "keyboard-accessibility",
-        "execution_surface": "local-browser",
-        "failure_class": "empty-search-result"
-      },
-      {
-        "id": "win-containment-recovery",
-        "context": "windows",
-        "experience": "experienced",
-        "capability": "path-containment",
-        "execution_surface": "local-actions",
-        "failure_class": "outside-root-parent-refusal"
-      },
-      {
-        "id": "win-overwrite-refusal",
-        "context": "windows",
-        "experience": "experienced",
-        "capability": "overwrite-protection",
-        "execution_surface": "direct-cli",
-        "failure_class": "existing-target-refusal"
-      },
-      {
-        "id": "wsl-managed-root-recovery",
-        "context": "wsl",
-        "experience": "novice",
-        "capability": "managed-root-safety",
-        "execution_surface": "local-actions-wsl",
-        "failure_class": "unsafe-managed-root-refusal"
-      },
-      {
-        "id": "wsl-native-toolchain-recovery",
-        "context": "wsl",
-        "experience": "experienced",
-        "capability": "native-toolchain",
-        "execution_surface": "native-duskds-wsl",
-        "failure_class": "toolchain-mismatch"
-      },
-      {
-        "id": "linux-port-conflict-recovery",
+        "id": "evm-happy-linux-firefox",
         "context": "linux",
         "experience": "experienced",
-        "capability": "loopback-port-safety",
-        "execution_surface": "local-runtime-linux",
-        "failure_class": "loopback-port-conflict"
+        "capability": "happy-path-firefox",
+        "execution_surface": "firefox-desktop-four-stage",
+        "failure_class": "fresh-profile-no-wallet"
       },
       {
-        "id": "macos-privilege-recovery",
+        "id": "evm-happy-macos-webkit",
+        "context": "macos",
+        "experience": "novice",
+        "capability": "happy-path-webkit",
+        "execution_surface": "webkit-desktop-four-stage",
+        "failure_class": "fresh-profile-no-evidence"
+      },
+      {
+        "id": "evm-happy-win-mobile",
+        "context": "windows",
+        "experience": "experienced",
+        "capability": "happy-path-mobile",
+        "execution_surface": "mobile-chrome-four-stage",
+        "failure_class": "mobile-navigation-reset"
+      },
+      {
+        "id": "evm-wallet-reject-win",
+        "context": "windows",
+        "experience": "novice",
+        "capability": "wallet-network-recovery-rejection",
+        "execution_surface": "chromium-desktop-wallet-mock",
+        "failure_class": "wallet-user-rejected"
+      },
+      {
+        "id": "evm-wallet-wrong-chain-linux",
+        "context": "linux",
+        "experience": "experienced",
+        "capability": "wallet-network-recovery-chain",
+        "execution_surface": "firefox-desktop-wallet-mock",
+        "failure_class": "wallet-wrong-network"
+      },
+      {
+        "id": "evm-wallet-add-reject-macos",
+        "context": "macos",
+        "experience": "novice",
+        "capability": "wallet-network-recovery-add",
+        "execution_surface": "webkit-desktop-wallet-mock",
+        "failure_class": "wallet-add-network-rejected"
+      },
+      {
+        "id": "evm-wallet-account-change-win",
+        "context": "windows",
+        "experience": "experienced",
+        "capability": "wallet-network-recovery-account-change",
+        "execution_surface": "mobile-chrome-wallet-mock",
+        "failure_class": "wallet-account-changed"
+      },
+      {
+        "id": "evm-rpc-offline-win",
+        "context": "windows",
+        "experience": "novice",
+        "capability": "dependency-degradation-rpc-offline",
+        "execution_surface": "chromium-desktop-rpc-mock",
+        "failure_class": "rpc-unreachable"
+      },
+      {
+        "id": "evm-rpc-wrong-genesis-linux",
+        "context": "linux",
+        "experience": "experienced",
+        "capability": "dependency-degradation-network-identity",
+        "execution_surface": "firefox-desktop-rpc-mock",
+        "failure_class": "rpc-wrong-genesis"
+      },
+      {
+        "id": "evm-explorer-degraded-macos",
+        "context": "macos",
+        "experience": "novice",
+        "capability": "dependency-degradation-explorer",
+        "execution_surface": "webkit-desktop-explorer-mock",
+        "failure_class": "explorer-unavailable"
+      },
+      {
+        "id": "evm-bridge-degraded-macos-mobile",
         "context": "macos",
         "experience": "experienced",
-        "capability": "privilege-boundary",
-        "execution_surface": "local-runtime-macos",
-        "failure_class": "elevated-execution-refusal"
+        "capability": "dependency-degradation-bridge",
+        "execution_surface": "mobile-safari-webkit-bridge-mock",
+        "failure_class": "bridge-unavailable"
+      },
+      {
+        "id": "evm-foundry-build-win",
+        "context": "windows",
+        "experience": "novice",
+        "capability": "fresh-builds-foundry-windows",
+        "execution_surface": "foundry-fresh-project-windows",
+        "failure_class": "missing-build-artifact-before-build"
+      },
+      {
+        "id": "evm-foundry-build-wsl",
+        "context": "wsl",
+        "experience": "experienced",
+        "capability": "fresh-builds-foundry-ubuntu",
+        "execution_surface": "foundry-fresh-project-ubuntu-wsl",
+        "failure_class": "uncompiled-project"
+      },
+      {
+        "id": "evm-hardhat-build-linux",
+        "context": "linux",
+        "experience": "novice",
+        "capability": "fresh-builds-hardhat-ubuntu",
+        "execution_surface": "hardhat-fresh-project-ubuntu",
+        "failure_class": "missing-node-modules"
+      },
+      {
+        "id": "evm-hardhat-build-macos",
+        "context": "macos",
+        "experience": "experienced",
+        "capability": "fresh-builds-hardhat-macos",
+        "execution_surface": "hardhat-fresh-project-macos",
+        "failure_class": "uncompiled-hardhat-project"
+      },
+      {
+        "id": "evm-keyboard-win-chromium",
+        "context": "windows",
+        "experience": "novice",
+        "capability": "accessibility-modes-keyboard",
+        "execution_surface": "chromium-desktop-keyboard",
+        "failure_class": "pointer-free-navigation"
+      },
+      {
+        "id": "evm-zoom-linux-firefox",
+        "context": "linux",
+        "experience": "experienced",
+        "capability": "accessibility-modes-zoom",
+        "execution_surface": "firefox-desktop-zoom-200",
+        "failure_class": "narrow-layout-at-zoom"
+      },
+      {
+        "id": "evm-forced-colors-win",
+        "context": "windows",
+        "experience": "experienced",
+        "capability": "accessibility-modes-forced-colors",
+        "execution_surface": "chromium-desktop-forced-colors",
+        "failure_class": "forced-colors-contrast-loss"
+      },
+      {
+        "id": "evm-reduced-motion-macos",
+        "context": "macos",
+        "experience": "novice",
+        "capability": "accessibility-modes-reduced-motion",
+        "execution_surface": "webkit-desktop-reduced-motion",
+        "failure_class": "motion-disabled-transition"
       }
     ],
     "required_experience": [
@@ -163,6 +269,7 @@
     "key_routes",
     "source_links",
     "duskds_node_read",
+    "rpc_chain_id",
     "rpc_degradation",
     "tls_expiry",
     "companion_port_closed",
@@ -195,6 +302,15 @@
     "vm_test",
     "inspect"
   ],
+  "required_evm_smoke_steps": [
+    "rpc_identity",
+    "rpc_progression",
+    "wallet_boundary",
+    "foundry_build",
+    "hardhat_build",
+    "read_inspection",
+    "degradation"
+  ],
   "rollback_targets_seconds": {
     "product": 300,
     "platform": 600
@@ -203,12 +319,17 @@
     "https://docs.dusk.network/developer/smart-contracts-duskds/",
     "https://docs.dusk.network/developer/integrations/w3sper/",
     "https://docs.dusk.network/developer/integrations/http-api/",
-    "https://github.com/dusk-network/forge"
+    "https://github.com/dusk-network/forge",
+    "https://docs.dusk.network/learn/dusk-evm/",
+    "https://docs.dusk.network/developer/duskevm/quickstart/",
+    "https://docs.dusk.network/developer/duskevm/reference/",
+    "https://docs.dusk.network/learn/guides/duskevm-bridge/",
+    "https://docs.dusk.network/learn/community/"
   ],
   "npm_distribution": {
     "package_name": "dusk-developer-studio",
-    "package_version": "1.0.19",
-    "tag": "v1.0.19",
+    "package_version": "1.0.20",
+    "tag": "v1.0.20",
     "registry_url": "https://registry.npmjs.org/dusk-developer-studio",
     "node_engine": ">=24.18.0 <25",
     "assurance_workflow": ".github/workflows/studio-npm-package-assurance.yml",

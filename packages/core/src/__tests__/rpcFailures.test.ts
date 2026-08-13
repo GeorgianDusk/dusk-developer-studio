@@ -1,9 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { checkRpcHealth, getDefaultDuskEvmNetwork } from "../index";
 
+function rpcResponse(body: string, init?: ResponseInit): Response {
+  const value = new Response(body, init);
+  Object.defineProperty(value, "url", { value: new URL(getDefaultDuskEvmNetwork().rpcUrls[0]).href });
+  return value;
+}
+
 describe("RPC failure classification", () => {
   it("reports HTTP failures separately", async () => {
-    const fetchImpl = vi.fn(async () => new Response("unavailable", { status: 503 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => rpcResponse("unavailable", { status: 503 })) as unknown as typeof fetch;
     const result = await checkRpcHealth(getDefaultDuskEvmNetwork(), fetchImpl);
     expect(result).toMatchObject({ status: "http-error", failureKind: "http-error", httpStatus: 503, retryable: true });
   });
@@ -15,7 +21,7 @@ describe("RPC failure classification", () => {
   });
 
   it("reports invalid JSON-RPC payloads", async () => {
-    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ hello: "world" }), { status: 200 })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => rpcResponse(JSON.stringify({ hello: "world" }), { status: 200 })) as unknown as typeof fetch;
     const result = await checkRpcHealth(getDefaultDuskEvmNetwork(), fetchImpl);
     expect(result).toMatchObject({ status: "invalid-response", failureKind: "invalid-response" });
   });

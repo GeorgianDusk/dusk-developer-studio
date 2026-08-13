@@ -54,6 +54,16 @@ const ReleaseIdentitySchema = z.object({
   channel: z.string().min(1).max(32).regex(/^[a-z0-9][a-z0-9._-]*$/)
 }).strict();
 
+const EvmScaffoldReceiptSchema = z.object({
+  structureVerified: z.literal(true),
+  files: z.array(
+    z.string()
+      .min(1)
+      .max(256)
+      .refine((value) => !path.isAbsolute(value) && !value.split(/[\\/]/).includes(".."), "Unsafe scaffold file path.")
+  ).max(256)
+}).passthrough();
+
 type PreflightResult = Awaited<ReturnType<typeof runPreflightAsync>>;
 type ScaffoldResult = Awaited<ReturnType<typeof scaffoldFoundryTemplate>>;
 type ForgeScaffoldResult = Awaited<ReturnType<typeof scaffoldDuskDsForge>>;
@@ -61,6 +71,7 @@ type ForgeScaffoldResult = Awaited<ReturnType<typeof scaffoldDuskDsForge>>;
 export interface LocalAgentDependencies {
   runPreflight: (path: PreflightPath) => PreflightResult | Promise<PreflightResult>;
   scaffoldFoundryTemplate: (options: { cwd: string; projectName: string; parentDir?: string }) => ScaffoldResult | Promise<ScaffoldResult>;
+  scaffoldHardhatTemplate: (options: { cwd: string; projectName: string; parentDir?: string }) => ScaffoldResult | Promise<ScaffoldResult>;
   scaffoldDuskDsForge: (options: { cwd: string; projectName: string; parentDir?: string }) => ForgeScaffoldResult | Promise<ForgeScaffoldResult>;
 }
 
@@ -77,6 +88,7 @@ export interface LocalAgentServerOptions {
   workspaceRoot?: string;
   processCwd?: string;
   foundryTemplateRoot?: string;
+  hardhatTemplateRoot?: string;
   duskDsTemplateRoot?: string;
   duskDsProjectRoot?: string;
   releaseIdentity?: LocalAgentReleaseIdentity;
@@ -325,6 +337,20 @@ function sanitizeRuntimeOs(value: ForgeScaffoldResult["runtimeOs"]): "windows" |
   return value;
 }
 
+function sanitizeEvmScaffoldReceipt(
+  result: ScaffoldResult,
+  requiredFiles: readonly string[]
+): { structureVerified: true; files: string[] } {
+  const validation = EvmScaffoldReceiptSchema.safeParse(result);
+  if (!validation.success) throw new Error("EVM scaffold receipt is invalid.");
+  const parsed = validation.data;
+  const files = [...new Set(parsed.files)].sort();
+  if (!requiredFiles.every((required) => files.includes(required))) {
+    throw new Error("EVM scaffold receipt omitted a required reviewed file.");
+  }
+  return { structureVerified: true, files };
+}
+
 function sanitizeCreatedProjectPath(
   result: ForgeScaffoldResult,
   projectName: string,
@@ -381,6 +407,7 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   const workspaceRoot = options.workspaceRoot ? path.resolve(options.workspaceRoot) : path.resolve(__dirname, "../../..");
   const processCwd = options.processCwd?.trim() ? path.resolve(options.processCwd) : workspaceRoot;
   const foundryTemplateRoot = options.foundryTemplateRoot?.trim() ? path.resolve(options.foundryTemplateRoot) : undefined;
+  const hardhatTemplateRoot = options.hardhatTemplateRoot?.trim() ? path.resolve(options.hardhatTemplateRoot) : undefined;
   const duskDsTemplateRoot = options.duskDsTemplateRoot?.trim() ? path.resolve(options.duskDsTemplateRoot) : undefined;
   const duskDsProjectRoot = options.duskDsProjectRoot?.trim()
     ? assertBoundedScaffoldPath(options.duskDsProjectRoot, "Configured DuskDS project root")
@@ -403,6 +430,10 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
   const dependencies: LocalAgentDependencies = {
     runPreflight: (preflightPath) => runPreflightAsync(preflightPath, { cwd: processCwd }),
     scaffoldFoundryTemplate: (input) => scaffoldFoundryTemplate(input, foundryTemplateRoot ? { templateRoot: foundryTemplateRoot } : {}),
+    scaffoldHardhatTemplate: (input) => scaffoldFoundryTemplate(input, {
+      ...(hardhatTemplateRoot ? { templateRoot: hardhatTemplateRoot } : {}),
+      requiredFiles: ["package.json", "package-lock.json", "hardhat.config.ts", "contracts/Counter.sol", "ignition/modules/Counter.ts", "test/Counter.t.sol"]
+    }),
     scaffoldDuskDsForge: (input) => scaffoldDuskDsForge(input, {
       ...(duskDsProjectRoot ? { projectRoot: duskDsProjectRoot } : {}),
       ...(duskDsTemplateRoot ? { templateRoot: duskDsTemplateRoot } : {}),
@@ -528,15 +559,39 @@ export function createLocalAgentServer(options: LocalAgentServerOptions): http.S
         if (!evmScaffoldEnabled) {
           throw new RequestError(
             403,
-            "DuskEVM starter creation is not available before Testnet activation.",
+            "DuskEVM starter creation is unavailable in Safe mode.",
             "evm_scaffold_unavailable"
           );
         }
         const release = acquireCapability(sessionId);
         try {
           const body = ScaffoldBodySchema.parse(await readJson(request, bodyLimitBytes, bodyTimeoutMs));
-          const result = await dependencies.scaffoldFoundryTemplate({ cwd: workspaceRoot, projectName: body.projectName, parentDir: body.parentDir });
-          sendJson(response, 200, { ok: true, projectName: body.projectName, structureVerified: result.structureVerified, files: result.files.slice(0, 256) }, origin);
+          const projectName = sanitizeProjectName(body.projectName);
+          if (projectName !== body.projectName) throw new ScaffoldProjectNameError();
+          const result = await dependencies.scaffoldFoundryTemplate({ cwd: workspaceRoot, projectName, parentDir: body.parentDir });
+          sendJson(response, 200, {
+            ok: true,
+            projectName,
+            ...sanitizeEvmScaffoldReceipt(result, ["foundry.toml", "src/Counter.sol", "test/Counter.t.sol"])
+          }, origin);
+        } finally { release(); }
+        return;
+      }
+      if (request.method === "POST" && requestUrl.pathname === "/scaffold-hardhat-template") {
+        if (!evmScaffoldEnabled) {
+          throw new RequestError(403, "DuskEVM starter creation is unavailable in Safe mode.", "evm_scaffold_unavailable");
+        }
+        const release = acquireCapability(sessionId);
+        try {
+          const body = ScaffoldBodySchema.parse(await readJson(request, bodyLimitBytes, bodyTimeoutMs));
+          const projectName = sanitizeProjectName(body.projectName);
+          if (projectName !== body.projectName) throw new ScaffoldProjectNameError();
+          const result = await dependencies.scaffoldHardhatTemplate({ cwd: workspaceRoot, projectName, parentDir: body.parentDir });
+          sendJson(response, 200, {
+            ok: true,
+            projectName,
+            ...sanitizeEvmScaffoldReceipt(result, ["package.json", "package-lock.json", "hardhat.config.ts", "contracts/Counter.sol", "ignition/modules/Counter.ts", "test/Counter.t.sol"])
+          }, origin);
         } finally { release(); }
         return;
       }

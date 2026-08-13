@@ -5,6 +5,7 @@ import {
   blockJourneyStep,
   createInitialJourneyProgress,
   invalidateJourneyFrom,
+  refreshJourneyProgress,
   parseJourneyProgress,
   recordJourneyEvidence,
   removeJourneyEvidence,
@@ -487,6 +488,7 @@ type JourneyAction =
   | { type: "skip"; path: BuilderPath; route: StepRoute; blocker: BlockerCode }
   | { type: "resume"; path: BuilderPath; route: StepRoute }
   | { type: "invalidate"; path: BuilderPath; route: StepRoute }
+  | { type: "refresh"; now: number }
   | { type: "reset" };
 
 function journeyReducer(state: JourneyProgressState, action: JourneyAction): JourneyProgressState {
@@ -497,6 +499,7 @@ function journeyReducer(state: JourneyProgressState, action: JourneyAction): Jou
     case "skip": return skipJourneyStep(state, action.path, action.route, action.blocker);
     case "resume": return resumeJourneyStep(state, action.path, action.route);
     case "invalidate": return invalidateJourneyFrom(state, action.path, action.route);
+    case "refresh": return refreshJourneyProgress(state, action.now);
     case "reset": return createInitialJourneyProgress();
   }
 }
@@ -517,6 +520,17 @@ const JourneyContext = createContext<JourneyController | undefined>(undefined);
 export function JourneyProvider({ children }: { children: ReactNode }) {
   const [progress, dispatch] = useReducer(journeyReducer, undefined, () => parseJourneyProgress(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY)));
   useEffect(() => window.localStorage.setItem(JOURNEY_PROGRESS_STORAGE_KEY, JSON.stringify(progress)), [progress]);
+  useEffect(() => {
+    const refresh = () => dispatch({ type: "refresh", now: Date.now() });
+    const interval = window.setInterval(refresh, 1_000);
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
   const value: JourneyController = {
     progress,
     record: (path, route, evidence, options) => dispatch({ type: "record", path, route, evidence, options }),

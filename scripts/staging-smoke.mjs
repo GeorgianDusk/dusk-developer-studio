@@ -10,6 +10,8 @@ import { artifactFingerprintFromRecords } from "./assurance-metadata.mjs";
 const SHA256_RE = /^[a-f0-9]{64}$/;
 const COMMIT_RE = /^[a-f0-9]{40}$/;
 const DUSKDS_BLOCK_HASH_RE = /^[a-f0-9]{64}$/i;
+const EVM_BLOCK_HASH_RE = /^0x[a-f0-9]{64}$/;
+const EVM_QUANTITY_RE = /^0x(?:0|[1-9a-f][0-9a-f]*)$/;
 const DUSKDS_GRAPHQL_QUERY = "query { block(height: -1) { header { height hash } } }";
 const REQUIRED_PREDEPLOY_ASSURANCE = ["dependency_audit", "secret_scan", "browser_matrix", "source_access"];
 const SYNTHETIC_USER_AGENT = "DuskStudioSynthetic/1.0 (+https://github.com/GeorgianDusk/dusk-developer-studio)";
@@ -19,6 +21,7 @@ export const ASSURANCE_CHECK_OWNERSHIP = Object.freeze({
   release_parity: "studio",
   source_links: "upstream",
   duskds_node_read: "upstream",
+  rpc_chain_id: "upstream",
   rpc_degradation: "studio",
   tls_expiry: "studio",
   development_port_closed: "studio",
@@ -210,8 +213,7 @@ export function classifyAssuranceChecks(checks) {
   const studioChecks = ownedChecks.filter(([, owner]) => owner === "studio").map(([name]) => name);
   const upstreamChecks = ownedChecks.filter(([, owner]) => owner === "upstream").map(([name]) => name);
   const unclassifiedChecks = Object.keys(observedChecks).filter((name) => {
-    if (Object.hasOwn(ASSURANCE_CHECK_OWNERSHIP, name)) return false;
-    return !(name === "rpc_chain_id" && observedChecks[name]?.status === "deferred");
+    return !Object.hasOwn(ASSURANCE_CHECK_OWNERSHIP, name);
   });
   const groupStatus = (names) => names.every((name) => observedChecks[name]?.status === "passed") ? "passed" : "failed";
   return {
@@ -277,12 +279,85 @@ export async function checkDuskDsNodeRead(graphqlUrl, boundedFetch = fetchBounde
   };
 }
 
-function deferredRpcChainId(policy) {
-  const deferral = policy?.deferred_synthetic_checks?.rpc_chain_id;
-  if (deferral?.path !== "evm" || typeof deferral.reason !== "string" || !deferral.reason.trim() || deferral.reason.length > 300) {
-    throw new Error("DuskEVM RPC deferral policy is missing or invalid.");
+function canonicalEvmQuantity(value, label) {
+  if (typeof value !== "string" || !EVM_QUANTITY_RE.test(value)) {
+    throw new Error(`DuskEVM Testnet RPC returned an invalid canonical ${label}.`);
   }
-  return { status: "deferred", path: "evm", reason: deferral.reason };
+  const parsed = Number.parseInt(value.slice(2), 16);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`DuskEVM Testnet RPC returned an unbounded ${label}.`);
+  }
+  return parsed;
+}
+
+async function evmRpcCall(target, method, params, boundedFetch) {
+  const { response, body } = await boundedFetch(target, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+    maxBytes: 64_000,
+    redirect: "error"
+  });
+  if (response.redirected === true || (response.status >= 300 && response.status < 400) || response.url !== target.href) {
+    throw new Error("DuskEVM Testnet RPC must not redirect or change its exact URL.");
+  }
+  if (!response.ok) throw new Error(`DuskEVM Testnet RPC returned ${response.status}.`);
+  const payload = JSON.parse(body.toString("utf8"));
+  if (payload?.jsonrpc !== "2.0" || payload?.id !== 1 || Object.hasOwn(payload ?? {}, "error") || !Object.hasOwn(payload ?? {}, "result")) {
+    throw new Error(`DuskEVM Testnet RPC returned an invalid ${method} envelope.`);
+  }
+  return payload.result;
+}
+
+export async function checkDuskEvmNetwork(
+  policy,
+  boundedFetch = fetchBounded,
+  now = () => new Date(),
+  wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
+) {
+  let target;
+  try {
+    target = new URL(policy?.duskevm_testnet_rpc_url);
+  } catch {
+    throw new Error("DuskEVM Testnet RPC policy URL is invalid.");
+  }
+  if (target.protocol !== "https:" || target.hostname !== "rpc.testnet.evm.dusk.network"
+      || target.username || target.password || target.port || target.pathname !== "/" || target.search || target.hash) {
+    throw new Error("DuskEVM Testnet RPC policy URL must be the exact official HTTPS endpoint.");
+  }
+  const expectedChainId = policy?.duskevm_testnet_chain_id_hex;
+  const expectedGenesisHash = policy?.duskevm_testnet_genesis_hash;
+  if (expectedChainId !== "0x2e9" || !EVM_BLOCK_HASH_RE.test(expectedGenesisHash ?? "")) {
+    throw new Error("DuskEVM Testnet chain identity policy is missing or invalid.");
+  }
+  const actualChainId = await evmRpcCall(target, "eth_chainId", [], boundedFetch);
+  if (actualChainId !== expectedChainId) throw new Error(`DuskEVM Testnet RPC reported ${String(actualChainId)} instead of ${expectedChainId}.`);
+  const genesis = await evmRpcCall(target, "eth_getBlockByNumber", ["0x0", false], boundedFetch);
+  const actualGenesisHash = genesis?.hash;
+  if (!EVM_BLOCK_HASH_RE.test(actualGenesisHash ?? "") || actualGenesisHash !== expectedGenesisHash) {
+    throw new Error("DuskEVM Testnet RPC genesis does not match the reviewed network identity.");
+  }
+  const firstHeightHex = await evmRpcCall(target, "eth_blockNumber", [], boundedFetch);
+  const firstHeight = canonicalEvmQuantity(firstHeightHex, "block height");
+  const waitMs = policy?.duskevm_rpc_evidence?.progression_wait_ms;
+  if (!Number.isSafeInteger(waitMs) || waitMs < 2_000 || waitMs > 15_000) {
+    throw new Error("DuskEVM Testnet progression wait policy is invalid.");
+  }
+  await wait(waitMs);
+  const secondHeightHex = await evmRpcCall(target, "eth_blockNumber", [], boundedFetch);
+  const secondHeight = canonicalEvmQuantity(secondHeightHex, "block height");
+  if (secondHeight <= firstHeight) throw new Error(`DuskEVM Testnet head did not progress beyond block ${firstHeight}.`);
+  return {
+    status: "passed",
+    endpoint: target.href,
+    expected_chain_id: expectedChainId,
+    actual_chain_id: actualChainId,
+    expected_genesis_hash: expectedGenesisHash,
+    actual_genesis_hash: actualGenesisHash,
+    first_height: firstHeight,
+    second_height: secondHeight,
+    observed_at: now().toISOString()
+  };
 }
 
 export async function runStagingSmoke(options) {
@@ -344,7 +419,7 @@ export async function runStagingSmoke(options) {
     return { status: "passed", urls: statuses };
   });
   await record("duskds_node_read", () => checkDuskDsNodeRead(options.policy.duskds_testnet_graphql_url));
-  checks.rpc_chain_id = deferredRpcChainId(options.policy);
+  await record("rpc_chain_id", () => checkDuskEvmNetwork(options.policy));
   await record("rpc_degradation", async () => {
     if (options.rpcDegradationStatus !== "success" && options.rpcDegradationStatus !== "passed") throw new Error("Hosted browser RPC degradation test did not pass in this run.");
     return { status: "passed", evidence: "hosted-browser-offline-recovery" };

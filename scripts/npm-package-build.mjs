@@ -81,6 +81,31 @@ for (const [source, destination] of [
   await fs.mkdir(path.dirname(output), { recursive: true });
   await fs.copyFile(path.join(templateSource, ...source.split("/")), output);
 }
+const hardhatTemplateSource = path.join(
+  productRoot,
+  "packages",
+  "templates",
+  "hardhat-counter-dusk-evm"
+);
+const hardhatTemplateDestination = path.join(
+  npmPackageRoot,
+  "templates",
+  "hardhat-counter-dusk-evm"
+);
+for (const file of [
+  ".gitignore.template",
+  "README.md",
+  "package.json",
+  "package-lock.json",
+  "hardhat.config.ts",
+  "contracts/Counter.sol",
+  "ignition/modules/Counter.ts",
+  "test/Counter.t.sol"
+]) {
+  const output = path.join(hardhatTemplateDestination, ...file.split("/"));
+  await fs.mkdir(path.dirname(output), { recursive: true });
+  await fs.copyFile(path.join(hardhatTemplateSource, ...file.split("/")), output);
+}
 await copyRegularTree(
   path.join(productRoot, "packages", "templates", "duskds-counter-forge"),
   path.join(npmPackageRoot, "templates", "duskds-counter-forge")

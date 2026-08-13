@@ -11,12 +11,12 @@
         "sourceStatus":  "official-docs",
         "links":  [
                       {
-                          "label":  "Deploy on DuskEVM",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/"
+                          "label":  "DuskEVM Quickstart",
+                          "url":  "https://docs.dusk.network/developer/duskevm/quickstart/"
                       },
                       {
-                          "label":  "DuskEVM deep dive",
-                          "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/"
+                          "label":  "DuskEVM overview",
+                          "url":  "https://docs.dusk.network/learn/dusk-evm/"
                       }
                   ],
         "tags":  [
@@ -41,8 +41,8 @@
         "sourceStatus":  "official-docs",
         "links":  [
                       {
-                          "label":  "DuskEVM deep dive",
-                          "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/"
+                          "label":  "DuskEVM reference",
+                          "url":  "https://docs.dusk.network/developer/duskevm/reference/"
                       },
                       {
                           "label":  "Blockscout verification",

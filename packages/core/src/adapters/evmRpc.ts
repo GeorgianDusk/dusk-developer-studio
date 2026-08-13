@@ -1,8 +1,8 @@
 import type { DuskEvmNetwork } from "../config/network.schema";
 import { BoundedJsonError, readBoundedJson } from "../security/boundedJson";
 
-export type RpcHealthStatus = "healthy" | "wrong-chain" | "timeout" | "http-error" | "cors-or-network" | "invalid-response" | "oversized-response";
-export type RpcFailureKind = Exclude<RpcHealthStatus, "healthy" | "wrong-chain">;
+export type RpcHealthStatus = "healthy" | "wrong-chain" | "wrong-genesis" | "timeout" | "http-error" | "cors-or-network" | "invalid-response" | "oversized-response";
+export type RpcFailureKind = Exclude<RpcHealthStatus, "healthy" | "wrong-chain" | "wrong-genesis">;
 
 export interface RpcHealthResult {
   status: RpcHealthStatus;
@@ -10,6 +10,8 @@ export interface RpcHealthResult {
   rpcUrl: string;
   expectedChainIdHex: string;
   actualChainIdHex?: string;
+  expectedGenesisHash?: string;
+  actualGenesisHash?: string;
   blockNumberHex?: string;
   latencyMs: number;
   checkedAt: string;
@@ -33,11 +35,15 @@ class RpcCheckError extends Error {
 }
 
 function isHexQuantity(value: unknown): value is string {
-  return typeof value === "string" && /^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(value);
+  return typeof value === "string" && /^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isBlockIdentity(value: unknown): value is { hash: string } {
+  return isRecord(value) && typeof value.hash === "string" && /^0x[0-9a-f]{64}$/i.test(value.hash);
 }
 
 async function rpcCall<T>(
@@ -45,14 +51,16 @@ async function rpcCall<T>(
   method: string,
   fetchImpl: typeof fetch,
   signal: AbortSignal,
-  validate: (value: unknown) => value is T
+  validate: (value: unknown) => value is T,
+  params: unknown[] = []
 ): Promise<T> {
   let response: Response;
   try {
     response = await fetchImpl(rpcUrl, {
       method: "POST",
+      redirect: "error",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params: [] }),
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
       signal
     });
   } catch (error) {
@@ -60,6 +68,10 @@ async function rpcCall<T>(
       throw new RpcCheckError("timeout", "RPC check timed out. Retry or use the official endpoint status channel.");
     }
     throw new RpcCheckError("cors-or-network", "The browser could not reach the RPC. Check connectivity, browser CORS policy, or the official endpoint.");
+  }
+
+  if (response.redirected || response.url !== new URL(rpcUrl).href) {
+    throw new RpcCheckError("invalid-response", `RPC ${method} changed the exact reviewed endpoint URL.`);
   }
 
   if (!response.ok) {
@@ -95,8 +107,6 @@ export async function checkRpcHealth(
   const timeoutId = setTimeout(() => controller.abort(), options.timeoutMs ?? 5_000);
   try {
     const chainId = await rpcCall<string>(rpcUrl, "eth_chainId", fetchImpl, controller.signal, isHexQuantity);
-    const blockNumber = await rpcCall<string>(rpcUrl, "eth_blockNumber", fetchImpl, controller.signal, isHexQuantity);
-    const latencyMs = Math.round(performance.now() - started);
     const normalizedChainId = chainId.toLowerCase();
     const expectedChainId = network.chainIdHex.toLowerCase();
 
@@ -107,20 +117,52 @@ export async function checkRpcHealth(
         rpcUrl,
         expectedChainIdHex: expectedChainId,
         actualChainIdHex: normalizedChainId,
-        blockNumberHex: blockNumber,
-        latencyMs,
+        expectedGenesisHash: network.genesisHash?.toLowerCase(),
+        latencyMs: Math.round(performance.now() - started),
         checkedAt: new Date().toISOString(),
         message: `RPC answered with chain ${normalizedChainId}; Testnet requires ${expectedChainId}. Do not fund or deploy until these match.`,
         retryable: true
       };
     }
 
+    let actualGenesisHash: string | undefined;
+    if (network.genesisHash) {
+      const genesis = await rpcCall<{ hash: string }>(
+        rpcUrl,
+        "eth_getBlockByNumber",
+        fetchImpl,
+        controller.signal,
+        isBlockIdentity,
+        ["0x0", false]
+      );
+      actualGenesisHash = genesis.hash.toLowerCase();
+      if (actualGenesisHash !== network.genesisHash.toLowerCase()) {
+        return {
+          status: "wrong-genesis",
+          networkId: network.id,
+          rpcUrl,
+          expectedChainIdHex: expectedChainId,
+          actualChainIdHex: normalizedChainId,
+          expectedGenesisHash: network.genesisHash.toLowerCase(),
+          actualGenesisHash,
+          latencyMs: Math.round(performance.now() - started),
+          checkedAt: new Date().toISOString(),
+          message: "RPC chain ID matched, but its genesis hash did not match the reviewed Testnet identity. Do not fund or deploy.",
+          retryable: true
+        };
+      }
+    }
+
+    const blockNumber = await rpcCall<string>(rpcUrl, "eth_blockNumber", fetchImpl, controller.signal, isHexQuantity);
+    const latencyMs = Math.round(performance.now() - started);
     return {
       status: "healthy",
       networkId: network.id,
       rpcUrl,
       expectedChainIdHex: expectedChainId,
       actualChainIdHex: normalizedChainId,
+      expectedGenesisHash: network.genesisHash?.toLowerCase(),
+      actualGenesisHash,
       blockNumberHex: blockNumber,
       latencyMs,
       checkedAt: new Date().toISOString(),
@@ -138,6 +180,7 @@ export async function checkRpcHealth(
       networkId: network.id,
       rpcUrl,
       expectedChainIdHex: network.chainIdHex.toLowerCase(),
+      expectedGenesisHash: network.genesisHash?.toLowerCase(),
       latencyMs: Math.round(performance.now() - started),
       checkedAt: new Date().toISOString(),
       message: classified.message,

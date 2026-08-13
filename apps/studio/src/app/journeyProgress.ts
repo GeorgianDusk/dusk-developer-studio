@@ -1,3 +1,6 @@
+import { getDefaultDuskEvmNetwork, isDuskEvmNetworkReviewCurrent } from "@dusk/core/browser-catalog";
+import { STUDIO_RELEASE } from "../release";
+
 export type BuilderPath = "evm" | "duskds";
 export type StepRoute = "setup" | "access" | "build" | "inspect";
 
@@ -16,6 +19,7 @@ export type JourneyStatus =
 
 export type EvidenceCode =
   | "evm-rpc-chain"
+  | "evm-rpc-progression"
   | "evm-wallet-chain"
   | "evm-wallet-account"
   | "evm-balance-read"
@@ -39,6 +43,7 @@ export type EvidenceCode =
 
 export type BlockerCode =
   | "rpc-unavailable"
+  | "wrong-network-identity"
   | "duskds-public-node-unavailable"
   | "wrong-chain"
   | "no-wallet"
@@ -154,8 +159,8 @@ export const STEP_ROUTES: StepRoute[] = ["setup", "access", "build", "inspect"];
 
 const requirements: Record<BuilderPath, Record<StepRoute, EvidenceCode[]>> = {
   evm: {
-    setup: ["evm-rpc-chain", "evm-wallet-chain", "evm-wallet-account", "evm-balance-read"],
-    access: ["evm-positive-balance"],
+    setup: ["evm-rpc-chain", "evm-rpc-progression"],
+    access: ["evm-wallet-chain", "evm-wallet-account", "evm-balance-read", "evm-positive-balance"],
     build: ["evm-starter-structure", "evm-build-test-attestation"],
     inspect: ["evm-read-inspection"]
   },
@@ -207,11 +212,12 @@ const evidenceTestEnvironments = new Set<EvidenceTestEnvironment>(["windows", "m
 const evidenceCodes = new Set<EvidenceCode>(Object.values(requirements).flatMap((path) => Object.values(path).flat()));
 evidenceCodes.add("duskds-read-inspection-attestation");
 const blockerCodes = new Set<BlockerCode>([
-  "rpc-unavailable", "duskds-public-node-unavailable", "wrong-chain", "no-wallet", "no-account", "insufficient-gas", "companion-unavailable",
+  "rpc-unavailable", "wrong-network-identity", "duskds-public-node-unavailable", "wrong-chain", "no-wallet", "no-account", "insufficient-gas", "companion-unavailable",
   "toolchain-incomplete", "unsupported-platform", "invalid-identifier", "result-not-found", "local-build-unverified", "user-deferred"
 ]);
 const automaticLegacyEvidence = new Set<EvidenceCode>([
   "evm-rpc-chain",
+  "evm-rpc-progression",
   "evm-wallet-chain",
   "evm-wallet-account",
   "evm-balance-read",
@@ -219,6 +225,25 @@ const automaticLegacyEvidence = new Set<EvidenceCode>([
   "duskds-required-preflight",
   "duskds-starter-structure"
 ]);
+const activeEvmNetwork = getDefaultDuskEvmNetwork();
+const EVM_LIVE_READ_TTL_MS = 15 * 60 * 1_000;
+
+function currentEvmEntry(
+  route: StepRoute,
+  entry: EvidenceEntry,
+  now: number
+): boolean {
+  if (!isDuskEvmNetworkReviewCurrent(activeEvmNetwork, now)) return false;
+  if (route === "access") return false;
+  if (route === "build") return entry.metadata?.version === STUDIO_RELEASE.commit;
+  const observedAt = Date.parse(entry.observedAt);
+  if (!Number.isFinite(observedAt) || observedAt > now || now - observedAt > EVM_LIVE_READ_TTL_MS) return false;
+  if (entry.metadata?.endpoint !== new URL(activeEvmNetwork.rpcUrls[0]).origin) return false;
+  if (route === "setup" && activeEvmNetwork.genesisHash) {
+    return entry.metadata.blockHash === activeEvmNetwork.genesisHash.toLowerCase();
+  }
+  return true;
+}
 
 function emptyStep(status: JourneyStatus): StepProgress {
   return { status, evidence: [], evidenceEntries: [] };
@@ -402,7 +427,7 @@ function legacyEntry(code: EvidenceCode, checkedAt: string): EvidenceEntry {
   };
 }
 
-function normalizePath(path: BuilderPath, candidate: unknown): PathProgress {
+function normalizePath(path: BuilderPath, candidate: unknown, now: number): PathProgress {
   const source = candidate && typeof candidate === "object" ? candidate as Partial<Record<StepRoute, unknown>> : {};
   const normalized = emptyPath();
   for (const route of STEP_ROUTES) {
@@ -429,7 +454,8 @@ function normalizePath(path: BuilderPath, candidate: unknown): PathProgress {
         if (!entryByCode.has(code)) entryByCode.set(code, legacyEntry(code, checkedAt));
       }
     }
-    const evidenceEntries = [...entryByCode.values()];
+    const evidenceEntries = [...entryByCode.values()]
+      .filter((entry) => path !== "evm" || currentEvmEntry(route, entry, now));
     const evidence = evidenceEntries.map((entry) => entry.code);
     const rawStatus = typeof value.status === "string" && statuses.has(value.status as JourneyStatus)
       ? value.status as JourneyStatus
@@ -453,15 +479,37 @@ function normalizePath(path: BuilderPath, candidate: unknown): PathProgress {
   return normalizeReadiness(path, normalized);
 }
 
-export function parseJourneyProgress(serialized: string | null): JourneyProgressState {
+export function parseJourneyProgress(serialized: string | null, now = Date.now()): JourneyProgressState {
   if (!serialized) return createInitialJourneyProgress();
   try {
     const raw = JSON.parse(serialized) as { version?: unknown; paths?: Partial<Record<BuilderPath, unknown>> };
     if (raw.version !== 1 || !raw.paths) return createInitialJourneyProgress();
-    return { version: 1, paths: { evm: normalizePath("evm", raw.paths.evm), duskds: normalizePath("duskds", raw.paths.duskds) } };
+    return { version: 1, paths: { evm: normalizePath("evm", raw.paths.evm, now), duskds: normalizePath("duskds", raw.paths.duskds, now) } };
   } catch {
     return createInitialJourneyProgress();
   }
+}
+
+export function refreshJourneyProgress(
+  state: JourneyProgressState,
+  now = Date.now()
+): JourneyProgressState {
+  const refreshed = parseJourneyProgress(JSON.stringify(state), now);
+  return JSON.stringify(refreshed) === JSON.stringify(state) ? state : refreshed;
+}
+
+export function isCurrentEvmSetupComplete(
+  state: JourneyProgressState,
+  now = Date.now()
+): boolean {
+  const step = state.paths.evm.setup;
+  if (!isJourneyComplete(step.status)) return false;
+  const currentCodes = new Set(
+    step.evidenceEntries
+      .filter((entry) => currentEvmEntry("setup", entry, now))
+      .map((entry) => entry.code)
+  );
+  return requirements.evm.setup.every((code) => currentCodes.has(code));
 }
 
 export function isJourneyComplete(status: JourneyStatus): status is EvidenceStatus | "verified" {

@@ -23,6 +23,14 @@ const runId = 987654321;
 const token = "fixture-actions-read-token";
 const now = new Date("2026-07-20T03:05:00.000Z");
 const policy = JSON.parse(await readFile(new URL("../config/phase5-policy.json", import.meta.url), "utf8"));
+const pilotExecutionSources = {
+  path: "scripts/agent-pilot-collector.mjs",
+  source_sha256: sha256(await readFile(new URL("./agent-pilot-collector.mjs", import.meta.url))),
+  runner_path: "scripts/agent-pilot-plan.mjs",
+  runner_source_sha256: sha256(await readFile(new URL("./agent-pilot-plan.mjs", import.meta.url))),
+  policy_path: "config/phase5-policy.json",
+  policy_source_sha256: sha256(await readFile(new URL("../config/phase5-policy.json", import.meta.url)))
+};
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
@@ -84,7 +92,7 @@ function makeProbeObservation(step, index, markerBytes) {
 
 function makeWrapper() {
   const scenario = policy.pilot.required_scenarios.find(
-    (entry) => entry.id === "linux-port-conflict-recovery"
+    (entry) => entry.id === "evm-hardhat-build-linux"
   );
   const candidateInput = {
     package_name: policy.npm_distribution.package_name,
@@ -173,9 +181,8 @@ function makeWrapper() {
     plan,
     plan_sha256: canonicalSha256(plan),
     collector: {
-      path: "scripts/agent-pilot-collector.mjs",
       commit: candidateInput.package_commit,
-      source_sha256: "1".repeat(64)
+      ...pilotExecutionSources
     },
     candidate: receiptCandidate,
     environment,
@@ -188,7 +195,7 @@ function makeWrapper() {
   const summary = {
     id: `${scenario.id}-${receipt.invocation_id.slice(0, 8)}`,
     scenario_id: scenario.id,
-    path: "duskds",
+    path: "evm",
     experience: scenario.experience,
     context: scenario.context,
     capability: scenario.capability,

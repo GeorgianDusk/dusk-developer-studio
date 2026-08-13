@@ -62,7 +62,7 @@ function tarFileEntry(name, bytes) {
 function buildTarballFixture({ corruptManifest = false, trailingNonzero = false } = {}) {
   const packageJsonBytes = Buffer.from(JSON.stringify({
     name: "dusk-developer-studio",
-    version: "1.0.19",
+    version: "1.0.20",
     repository: { url: "git+https://github.com/GeorgianDusk/dusk-developer-studio.git" },
     engines: { node: ">=24.18.0 <25" }
   }), "utf8");
@@ -75,7 +75,7 @@ function buildTarballFixture({ corruptManifest = false, trailingNonzero = false 
   const manifestBytes = Buffer.from(JSON.stringify({
     schema_version: 1,
     package: "dusk-developer-studio",
-    version: "1.0.19",
+    version: "1.0.20",
     commit: "1".repeat(40),
     channel: "npm",
     node: { required_range: ">=24.18.0 <25" },
@@ -622,7 +622,14 @@ assert.match(
   /is missing required pilot surfaces/u
 );
 
-const incompleteFinal = validateComprehensiveCampaign(policy, evidence, { final: true }).join("\n");
+const incompleteFinalEvidence = clone(evidence);
+incompleteFinalEvidence.pilot_executions.pop();
+delete incompleteFinalEvidence.final_candidate;
+incompleteFinalEvidence.challenge_reviews = [];
+const incompleteFinal = validateComprehensiveCampaign(policy, incompleteFinalEvidence, {
+  final: true,
+  now: "2026-07-29T04:00:00Z"
+}).join("\n");
 assert.match(incompleteFinal, /requires at least 32 counted passing pilots/u);
 assert.match(incompleteFinal, /evidence\.final_candidate must be an object/u);
 assert.match(incompleteFinal, /product-ui-developer-experience/u);
@@ -1399,7 +1406,7 @@ assert.match(
 
 const tarballInspection = inspectNpmTarballBytes(buildTarballFixture());
 assert.equal(tarballInspection.package_name, "dusk-developer-studio");
-assert.equal(tarballInspection.package_version, "1.0.19");
+assert.equal(tarballInspection.package_version, "1.0.20");
 assert.equal(tarballInspection.manifest_commit, "1".repeat(40));
 assert.equal(tarballInspection.inventory_file_count, 2);
 assert.equal(tarballInspection.inventory_verified, true);

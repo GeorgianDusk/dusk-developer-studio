@@ -163,7 +163,10 @@ try {
     fs.mkdir(path.join(fixture, "app"), { recursive: true }),
     fs.mkdir(path.join(fixture, "studio", "assets"), { recursive: true }),
     fs.mkdir(path.join(fixture, "templates", "foundry-counter-dusk-evm", "src"), { recursive: true }),
-    fs.mkdir(path.join(fixture, "templates", "foundry-counter-dusk-evm", "test"), { recursive: true })
+    fs.mkdir(path.join(fixture, "templates", "foundry-counter-dusk-evm", "test"), { recursive: true }),
+    fs.mkdir(path.join(fixture, "templates", "hardhat-counter-dusk-evm", "contracts"), { recursive: true }),
+    fs.mkdir(path.join(fixture, "templates", "hardhat-counter-dusk-evm", "ignition", "modules"), { recursive: true }),
+    fs.mkdir(path.join(fixture, "templates", "hardhat-counter-dusk-evm", "test"), { recursive: true })
   ]);
   await copyRegularTree(
     path.join(productRoot, "packages", "templates", "duskds-counter-forge"),
@@ -210,6 +213,46 @@ try {
     fs.writeFile(
       path.join(fixture, "templates", "foundry-counter-dusk-evm", "test", "Counter.t.sol"),
       "contract CounterTest {}\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", ".gitignore.template"),
+      "artifacts/\ncache/\nnode_modules/\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", "README.md"),
+      "# Counter\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", "package.json"),
+      "{\"name\":\"counter\",\"private\":true}\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", "package-lock.json"),
+      "{\"name\":\"counter\",\"lockfileVersion\":3,\"packages\":{}}\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", "hardhat.config.ts"),
+      "export default {};\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", "contracts", "Counter.sol"),
+      "contract Counter {}\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", "ignition", "modules", "Counter.ts"),
+      "export default {};\n",
+      "utf8"
+    ),
+    fs.writeFile(
+      path.join(fixture, "templates", "hardhat-counter-dusk-evm", "test", "Counter.t.sol"),
+      "export {};\n",
       "utf8"
     ),
     fs.writeFile(

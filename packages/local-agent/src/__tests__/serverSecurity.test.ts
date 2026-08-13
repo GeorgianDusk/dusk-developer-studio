@@ -235,6 +235,8 @@ describe("local companion containment boundary", () => {
     await pair(port);
     const pairedCapabilityPreflight = await request(port, { method: "OPTIONS", path: "/scaffold-template", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
     expect(pairedCapabilityPreflight.status).toBe(204);
+    const hardhatPreflight = await request(port, { method: "OPTIONS", path: "/scaffold-hardhat-template", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
+    expect(hardhatPreflight.status).toBe(204);
 
     const privateNetwork = await request(port, { method: "OPTIONS", path: "/pair", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type", "access-control-request-private-network": "true" } });
     expect(privateNetwork.status).toBe(403);
@@ -285,23 +287,103 @@ describe("local companion containment boundary", () => {
     expect(scaffoldFoundryTemplate).not.toHaveBeenCalled();
   });
 
-  it("keeps DuskEVM scaffold creation fail-closed before Testnet activation", async () => {
+  it("keeps both DuskEVM starters fail-closed unless local EVM actions are enabled", async () => {
     const scaffoldFoundryTemplate = vi.fn();
+    const scaffoldHardhatTemplate = vi.fn();
     const { port } = await startServer({
       capabilitiesEnabled: true,
-      dependencies: { scaffoldFoundryTemplate }
+      dependencies: { scaffoldFoundryTemplate, scaffoldHardhatTemplate }
     });
     const cookie = await pair(port);
-    const response = await request(port, {
+    for (const route of ["/scaffold-template", "/scaffold-hardhat-template"]) {
+      const response = await request(port, {
+        method: "POST",
+        path: route,
+        session: cookie,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ projectName: "counter-project" })
+      });
+      expect(response.status).toBe(403);
+      expect(response.body.code).toBe("evm_scaffold_unavailable");
+    }
+    expect(scaffoldFoundryTemplate).not.toHaveBeenCalled();
+    expect(scaffoldHardhatTemplate).not.toHaveBeenCalled();
+  });
+
+  it("returns bounded receipts for both reviewed EVM starters when explicitly enabled", async () => {
+    const scaffoldFoundryTemplate = vi.fn(async () => ({
+      ok: true,
+      path: "C:\\private\\foundry",
+      structureVerified: true,
+      files: ["test/Counter.t.sol", ".gitignore", "src/Counter.sol", "foundry.toml"]
+    }));
+    const scaffoldHardhatTemplate = vi.fn(async () => ({
+      ok: true,
+      path: "C:\\private\\hardhat",
+      structureVerified: true,
+      files: ["test/Counter.t.sol", "package-lock.json", "ignition/modules/Counter.ts", "contracts/Counter.sol", "package.json", "hardhat.config.ts", ".gitignore"]
+    }));
+    const { port } = await startServer({
+      capabilitiesEnabled: true,
+      evmScaffoldEnabled: true,
+      dependencies: { scaffoldFoundryTemplate, scaffoldHardhatTemplate }
+    });
+    const cookie = await pair(port);
+    const foundry = await request(port, {
       method: "POST",
       path: "/scaffold-template",
       session: cookie,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ projectName: "counter-project" })
+      body: JSON.stringify({ projectName: "foundry-counter" })
     });
-    expect(response.status).toBe(403);
-    expect(response.body.code).toBe("evm_scaffold_unavailable");
-    expect(scaffoldFoundryTemplate).not.toHaveBeenCalled();
+    const hardhat = await request(port, {
+      method: "POST",
+      path: "/scaffold-hardhat-template",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "hardhat-counter" })
+    });
+
+    expect(foundry.status).toBe(200);
+    expect(foundry.body).toEqual({
+      ok: true,
+      projectName: "foundry-counter",
+      structureVerified: true,
+      files: [".gitignore", "foundry.toml", "src/Counter.sol", "test/Counter.t.sol"]
+    });
+    expect(hardhat.status).toBe(200);
+    expect(hardhat.body).toEqual({
+      ok: true,
+      projectName: "hardhat-counter",
+      structureVerified: true,
+      files: [".gitignore", "contracts/Counter.sol", "hardhat.config.ts", "ignition/modules/Counter.ts", "package-lock.json", "package.json", "test/Counter.t.sol"]
+    });
+    expect(JSON.stringify([foundry.body, hardhat.body])).not.toContain("private");
+  });
+
+  it("fails closed when an EVM starter receipt omits required structure or leaks a path", async () => {
+    const scaffoldHardhatTemplate = vi.fn(async () => ({
+      ok: true,
+      path: "C:\\private\\hardhat",
+      structureVerified: true,
+      files: ["C:\\private\\secret", "package.json"]
+    }));
+    const { port } = await startServer({
+      capabilitiesEnabled: true,
+      evmScaffoldEnabled: true,
+      dependencies: { scaffoldHardhatTemplate }
+    });
+    const cookie = await pair(port);
+    const response = await request(port, {
+      method: "POST",
+      path: "/scaffold-hardhat-template",
+      session: cookie,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ projectName: "hardhat-counter" })
+    });
+    expect(response.status).toBe(500);
+    expect(response.body).toMatchObject({ ok: false, code: "internal_error" });
+    expect(JSON.stringify(response.body)).not.toContain("private");
   });
 
   it("returns only bounded reviewed-template identity in DuskDS scaffold receipts", async () => {

@@ -17,10 +17,10 @@
     },
     {
         "id":  "duskevm-deep-dive",
-        "title":  "DuskEVM Deep Dive",
+        "title":  "DuskEVM Overview",
         "category":  "Docs",
-        "summary":  "Planning reference only. The linked page may describe endpoints or runtime behavior that Studio has not revalidated as live; do not connect or transact until Studio's launch status changes.",
-        "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+        "summary":  "Official architectural context for DuskEVM, including its relationship to DuskDS settlement and the distinction between inclusion and settlement.",
+        "url":  "https://docs.dusk.network/learn/dusk-evm/",
         "maturity":  "official",
         "tags":  [
                      "network",
@@ -37,7 +37,7 @@
         "id":  "duskevm-bridge",
         "title":  "Bridge DUSK from DuskDS to DuskEVM Testnet",
         "category":  "Funding",
-        "summary":  "Planning reference only. The linked page describes a wallet and funding flow, but Studio treats the bridge and Testnet as unavailable until both are independently revalidated live.",
+        "summary":  "Official manual Testnet funding route from DuskDS through the Dusk Web Wallet to a Web3 wallet. Studio links out and never moves, monitors, or promises funds.",
         "url":  "https://docs.dusk.network/learn/guides/duskevm-bridge/",
         "maturity":  "official",
         "tags":  [
@@ -51,10 +51,10 @@
     },
     {
         "id":  "deploy-on-duskevm",
-        "title":  "Deploy on DuskEVM",
+        "title":  "DuskEVM Quickstart",
         "category":  "Deploy",
-        "summary":  "Planning reference only. Do not deploy until Studio revalidates Testnet as live, and never place a raw private key in a command; use a secure signer workflow.",
-        "url":  "https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/",
+        "summary":  "Official DuskEVM Testnet network and deployment guide. Studio adapts it to signer-owned keystore or hardware-wallet handoffs and never requests a raw private key.",
+        "url":  "https://docs.dusk.network/developer/duskevm/quickstart/",
         "maturity":  "official",
         "tags":  [
                      "foundry",

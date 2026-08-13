@@ -12,6 +12,7 @@ import { gunzipSync } from "node:zlib";
 const collectorFile = fileURLToPath(import.meta.url);
 const productRoot = path.resolve(path.dirname(collectorFile), "..");
 const defaultPolicyPath = path.join(productRoot, "config", "phase5-policy.json");
+const defaultRunnerPath = path.join(productRoot, "scripts", "agent-pilot-plan.mjs");
 
 const RECEIPT_SCHEMA_VERSION = 1;
 const WRAPPER_SCHEMA_VERSION = 1;
@@ -48,14 +49,26 @@ const SCENARIO_KEYS = [
   "failure_class"
 ];
 const EXPECTED_PILOT_SCENARIOS = new Set([
-  "win-safe-boundary",
-  "win-keyboard-recovery",
-  "win-containment-recovery",
-  "win-overwrite-refusal",
-  "wsl-managed-root-recovery",
-  "wsl-native-toolchain-recovery",
-  "linux-port-conflict-recovery",
-  "macos-privilege-recovery"
+  "evm-happy-win-chromium",
+  "evm-happy-linux-firefox",
+  "evm-happy-macos-webkit",
+  "evm-happy-win-mobile",
+  "evm-wallet-reject-win",
+  "evm-wallet-wrong-chain-linux",
+  "evm-wallet-add-reject-macos",
+  "evm-wallet-account-change-win",
+  "evm-rpc-offline-win",
+  "evm-rpc-wrong-genesis-linux",
+  "evm-explorer-degraded-macos",
+  "evm-bridge-degraded-macos-mobile",
+  "evm-foundry-build-win",
+  "evm-foundry-build-wsl",
+  "evm-hardhat-build-linux",
+  "evm-hardhat-build-macos",
+  "evm-keyboard-win-chromium",
+  "evm-zoom-linux-firefox",
+  "evm-forced-colors-win",
+  "evm-reduced-motion-macos"
 ]);
 const CANDIDATE_KEYS = [
   "package_name",
@@ -67,12 +80,10 @@ const CANDIDATE_KEYS = [
   "candidate_artifact_fingerprint_sha256"
 ];
 const SLOW_PILOT_SCENARIOS = new Set([
-  "win-safe-boundary",
-  "win-containment-recovery",
-  "wsl-managed-root-recovery",
-  "wsl-native-toolchain-recovery",
-  "linux-port-conflict-recovery",
-  "macos-privilege-recovery"
+  "evm-foundry-build-win",
+  "evm-foundry-build-wsl",
+  "evm-hardhat-build-linux",
+  "evm-hardhat-build-macos"
 ]);
 const SECRET_KEY_RE =
   /(?:^|[_-])(?:private[_-]?key|mnemonic|seed(?:er|[_-]?phrase)?|recovery[_-]?phrase|password|passphrase|profile[_-]?entropy|wallet[_-]?password|pairing[_-]?token|api[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|client[_-]?secret|authorization|cookie|credential)(?:$|[_-])/iu;
@@ -448,29 +459,46 @@ function gitOutput(repositoryRoot, args, options = {}) {
 export async function deriveCollectorIdentity(options = {}) {
   const repositoryRoot = path.resolve(options.repositoryRoot ?? productRoot);
   const sourceFile = path.resolve(options.collectorFile ?? collectorFile);
-  const relative = path.relative(repositoryRoot, sourceFile).split(path.sep).join("/");
-  assertSafeRelativePath(relative, "Collector path");
+  const runnerFile = path.resolve(options.runnerFile ?? defaultRunnerPath);
+  const policyFile = path.resolve(options.policyFile ?? defaultPolicyPath);
+  const sources = [
+    ["Collector", sourceFile],
+    ["Runner", runnerFile],
+    ["Policy", policyFile]
+  ].map(([label, file]) => {
+    const relative = path.relative(repositoryRoot, file).split(path.sep).join("/");
+    assertSafeRelativePath(relative, `${label} path`);
+    return { label, file, relative };
+  });
   const commit = gitOutput(repositoryRoot, ["rev-parse", "HEAD"]).toLowerCase();
   if (!COMMIT_RE.test(commit)) throw new Error("The collector Git commit is invalid.");
-  gitOutput(repositoryRoot, ["cat-file", "-e", `${commit}:${relative}`]);
-  try {
-    execFileSync(
-      "git",
-      ["-c", `safe.directory=${repositoryRoot}`, "-C", repositoryRoot, "diff", "--quiet", commit, "--", relative],
-      {
-        stdio: ["ignore", "ignore", "ignore"],
-        timeout: 5_000,
-        windowsHide: true
-      }
-    );
-  } catch {
-    throw new Error("The collector source differs from its bound Git commit.");
+  for (const source of sources) {
+    gitOutput(repositoryRoot, ["cat-file", "-e", `${commit}:${source.relative}`]);
+    try {
+      execFileSync(
+        "git",
+        ["-c", `safe.directory=${repositoryRoot}`, "-C", repositoryRoot, "diff", "--quiet", commit, "--", source.relative],
+        {
+          stdio: ["ignore", "ignore", "ignore"],
+          timeout: 5_000,
+          windowsHide: true
+        }
+      );
+    } catch {
+      throw new Error(`${source.label} source differs from its bound Git commit.`);
+    }
   }
-  const bytes = await fs.readFile(sourceFile);
+  const [collectorBytes, runnerBytes, policyBytes] = await Promise.all(
+    sources.map((source) => fs.readFile(source.file))
+  );
   return {
-    path: relative,
+    path: sources[0].relative,
     commit,
-    source_sha256: sha256Bytes(bytes)
+    source_sha256: sha256Bytes(collectorBytes),
+    runner_path: sources[1].relative,
+    runner_source_sha256: sha256Bytes(runnerBytes),
+    policy_path: sources[2].relative,
+    policy_source_sha256: sha256Bytes(policyBytes)
   };
 }
 
@@ -493,7 +521,7 @@ function exactScenario(policy, scenarioId) {
       || !SAFE_ID_RE.test(scenario.failure_class ?? "")
     )
   ) {
-    throw new Error("Phase 5 policy must define the exact eight reviewed pilot scenarios.");
+    throw new Error("Phase 5 policy must define the exact twenty reviewed DuskEVM pilot scenarios.");
   }
   const matches = scenarios.filter((scenario) => scenario?.id === scenarioId);
   if (matches.length !== 1) {
@@ -561,16 +589,14 @@ export function buildCanonicalAgentPilotPlan(policy, scenarioId, candidateInput)
   const candidate = validateCanonicalCandidate(policy, candidateInput);
   const marker = canonicalPilotRecoveryMarker(scenario);
   const markerPath = `output/pilots/work/${scenario.id}/recovered.txt`;
-  const commandTimeout = scenario.id === "wsl-native-toolchain-recovery"
-    ? 15 * 60 * 1_000
-    : SLOW_PILOT_SCENARIOS.has(scenario.id)
+  const commandTimeout = SLOW_PILOT_SCENARIOS.has(scenario.id)
       ? 8 * 60 * 1_000
       : 2 * 60 * 1_000;
   const finalStepId = `final-${scenario.id}`;
   return {
     schema_version: 1,
     scenario_id: scenario.id,
-    path: "duskds",
+    path: "evm",
     agent_confidence_score: 5,
     blocking_confusion: false,
     candidate,
@@ -712,7 +738,7 @@ export function validatePilotPlan(policy, plan) {
   }
   if (
     plan.schema_version !== 1
-    || plan.path !== "duskds"
+    || plan.path !== "evm"
     || !Number.isInteger(plan.agent_confidence_score)
     || plan.agent_confidence_score < 1
     || plan.agent_confidence_score > 5
@@ -1153,6 +1179,9 @@ export async function collectAgentPilot(options) {
   const planPath = path.resolve(options.planPath);
   const tarballPath = path.resolve(options.tarballPath);
   const workspaceRoot = await fs.realpath(path.resolve(options.workspaceRoot));
+  const collectorRepositoryRoot = await fs.realpath(
+    path.resolve(options.collectorRepositoryRoot ?? productRoot)
+  );
   const workspaceStat = await fs.lstat(workspaceRoot);
   if (!workspaceStat.isDirectory() || workspaceStat.isSymbolicLink()) {
     throw new Error("The pilot workspace must be a real directory.");
@@ -1163,9 +1192,14 @@ export async function collectAgentPilot(options) {
   const scenario = validatePilotPlan(policy, plan);
   const candidate = await inspectPilotTarball(tarballPath, plan.candidate);
   const collector = await deriveCollectorIdentity({
-    repositoryRoot: options.collectorRepositoryRoot,
-    collectorFile: options.collectorFile
+    repositoryRoot: collectorRepositoryRoot,
+    collectorFile: options.collectorFile,
+    runnerFile: options.runnerFile,
+    policyFile: policyPath
   });
+  if (collectorRepositoryRoot !== workspaceRoot) {
+    throw new Error("The pilot workspace must be the exact candidate repository whose execution sources were verified.");
+  }
   if (collector.commit !== candidate.package_commit) {
     throw new Error("The collector commit does not match the exact npm candidate commit.");
   }
@@ -1476,6 +1510,27 @@ export function verifyAgentPilotResult(result, providedPolicy) {
     || result.receipt.redacted !== true
   ) {
     throw new Error("The agent pilot receipt has an invalid shape or assurance label.");
+  }
+  const executionSources = result.receipt.collector;
+  if (
+    !hasExactKeys(executionSources, [
+      "path",
+      "commit",
+      "source_sha256",
+      "runner_path",
+      "runner_source_sha256",
+      "policy_path",
+      "policy_source_sha256"
+    ])
+    || executionSources.path !== "scripts/agent-pilot-collector.mjs"
+    || executionSources.runner_path !== "scripts/agent-pilot-plan.mjs"
+    || executionSources.policy_path !== "config/phase5-policy.json"
+    || executionSources.commit !== result.receipt.candidate.package_commit
+    || !SHA256_RE.test(executionSources.source_sha256 ?? "")
+    || !SHA256_RE.test(executionSources.runner_source_sha256 ?? "")
+    || !SHA256_RE.test(executionSources.policy_source_sha256 ?? "")
+  ) {
+    throw new Error("The pilot execution sources are not bound to the exact candidate commit.");
   }
   const plan = result.receipt.plan;
   if (

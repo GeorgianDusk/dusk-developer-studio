@@ -133,12 +133,12 @@ function git(repository, args) {
 }
 
 function scenarioForCurrentPlatform() {
-  if (process.platform === "win32") return "win-overwrite-refusal";
-  if (process.platform === "darwin") return "macos-privilege-recovery";
+  if (process.platform === "win32") return "evm-foundry-build-win";
+  if (process.platform === "darwin") return "evm-hardhat-build-macos";
   if (process.env.WSL_DISTRO_NAME || /microsoft/iu.test(os.release())) {
-    return "wsl-native-toolchain-recovery";
+    return "evm-foundry-build-wsl";
   }
-  return "linux-port-conflict-recovery";
+  return "evm-hardhat-build-linux";
 }
 
 function clone(value) {
@@ -170,41 +170,35 @@ async function expectReject(action, pattern) {
 
 try {
   const collectorRepository = path.join(temporaryRoot, "collector-repository");
+  const workspace = collectorRepository;
   const collectorScript = path.join(
     collectorRepository,
     "scripts",
     "agent-pilot-collector.mjs"
   );
-  await fs.mkdir(path.dirname(collectorScript), { recursive: true });
-  await fs.writeFile(collectorScript, "export const fixtureCollector = true;\n", "utf8");
-  git(collectorRepository, ["init"]);
-  git(collectorRepository, ["add", "scripts/agent-pilot-collector.mjs"]);
-  git(collectorRepository, [
-    "-c",
-    "user.name=Pilot Collector Test",
-    "-c",
-    "user.email=pilot-collector@example.invalid",
-    "commit",
-    "-m",
-    "Add fixture collector"
-  ]);
-  const commit = git(collectorRepository, ["rev-parse", "HEAD"]).toLowerCase();
-  assert.match(commit, /^[a-f0-9]{40}$/u);
-
-  const workspace = path.join(temporaryRoot, "workspace");
-  await fs.mkdir(path.join(workspace, "scripts"), { recursive: true });
-  await fs.mkdir(path.join(workspace, "output", "pilots", "package"), {
-    recursive: true
-  });
-
-  const tarball = path.join(temporaryRoot, "candidate.tgz");
-  const candidate = await createFixtureTarball(tarball, commit);
+  const runnerScript = path.join(
+    collectorRepository,
+    "scripts",
+    "agent-pilot-plan.mjs"
+  );
+  const fixturePolicyPath = path.join(
+    collectorRepository,
+    "config",
+    "phase5-policy.json"
+  );
   const scenarioId = scenarioForCurrentPlatform();
   const scenario = policy.pilot.required_scenarios.find((entry) => entry.id === scenarioId);
   assert.ok(scenario);
   const marker = canonicalPilotRecoveryMarker(scenario);
+  await fs.mkdir(path.dirname(collectorScript), { recursive: true });
+  await fs.mkdir(path.dirname(fixturePolicyPath), { recursive: true });
+  await fs.mkdir(path.join(workspace, "output", "pilots", "package"), {
+    recursive: true
+  });
+  await fs.writeFile(collectorScript, "export const fixtureCollector = true;\n", "utf8");
+  await writeJson(fixturePolicyPath, policy);
   await fs.writeFile(
-    path.join(workspace, "scripts", "agent-pilot-plan.mjs"),
+    runnerScript,
     [
       "import fs from 'node:fs/promises';",
       "import path from 'node:path';",
@@ -236,6 +230,27 @@ try {
     ].join("\n"),
     "utf8"
   );
+  git(collectorRepository, ["init"]);
+  git(collectorRepository, [
+    "add",
+    "scripts/agent-pilot-collector.mjs",
+    "scripts/agent-pilot-plan.mjs",
+    "config/phase5-policy.json"
+  ]);
+  git(collectorRepository, [
+    "-c",
+    "user.name=Pilot Collector Test",
+    "-c",
+    "user.email=pilot-collector@example.invalid",
+    "commit",
+    "-m",
+    "Add fixture execution sources"
+  ]);
+  const commit = git(collectorRepository, ["rev-parse", "HEAD"]).toLowerCase();
+  assert.match(commit, /^[a-f0-9]{40}$/u);
+
+  const tarball = path.join(temporaryRoot, "candidate.tgz");
+  const candidate = await createFixtureTarball(tarball, commit);
   const plan = buildCanonicalAgentPilotPlan(policy, scenarioId, candidate);
   const planPath = path.join(temporaryRoot, "plan.json");
   await writeJson(planPath, plan);
@@ -261,12 +276,13 @@ try {
     : {};
 
   const result = await collectAgentPilot({
-    policyPath,
+    policyPath: fixturePolicyPath,
     planPath,
     tarballPath: tarball,
     workspaceRoot: workspace,
     collectorRepositoryRoot: collectorRepository,
     collectorFile: collectorScript,
+    runnerFile: runnerScript,
     ...provenanceOptions
   });
   assert.equal(verifyAgentPilotResult(result), true);
@@ -299,6 +315,16 @@ try {
   assert.equal(result.receipt.candidate.package_file_count, 2);
   assert.equal(result.receipt.collector.commit, commit);
   assert.equal(result.receipt.collector.path, "scripts/agent-pilot-collector.mjs");
+  assert.equal(result.receipt.collector.runner_path, "scripts/agent-pilot-plan.mjs");
+  assert.equal(result.receipt.collector.policy_path, "config/phase5-policy.json");
+  assert.equal(
+    result.receipt.collector.runner_source_sha256,
+    sha256(await fs.readFile(runnerScript))
+  );
+  assert.equal(
+    result.receipt.collector.policy_source_sha256,
+    sha256(await fs.readFile(fixturePolicyPath))
+  );
   assert.deepEqual(result.receipt.plan, plan);
   assert.equal(result.receipt.plan_sha256, canonicalSha256(plan));
   assert.ok(result.phase5_embedding_summary.duration_seconds >= 1);
@@ -322,6 +348,40 @@ try {
   assert.ok(controlledObservation.stderr_bytes > 0);
   assert.match(controlledObservation.stderr_sha256, /^[a-f0-9]{64}$/u);
 
+  const runnerBytes = await fs.readFile(runnerScript);
+  await fs.appendFile(runnerScript, "// uncommitted runner tamper\n", "utf8");
+  await expectReject(
+    () => collectAgentPilot({
+      policyPath: fixturePolicyPath,
+      planPath,
+      tarballPath: tarball,
+      workspaceRoot: workspace,
+      collectorRepositoryRoot: collectorRepository,
+      collectorFile: collectorScript,
+      runnerFile: runnerScript,
+      ...provenanceOptions
+    }),
+    /Runner source differs from its bound Git commit/u
+  );
+  await fs.writeFile(runnerScript, runnerBytes);
+
+  const policyBytes = await fs.readFile(fixturePolicyPath);
+  await fs.appendFile(fixturePolicyPath, "\n", "utf8");
+  await expectReject(
+    () => collectAgentPilot({
+      policyPath: fixturePolicyPath,
+      planPath,
+      tarballPath: tarball,
+      workspaceRoot: workspace,
+      collectorRepositoryRoot: collectorRepository,
+      collectorFile: collectorScript,
+      runnerFile: runnerScript,
+      ...provenanceOptions
+    }),
+    /Policy source differs from its bound Git commit/u
+  );
+  await fs.writeFile(fixturePolicyPath, policyBytes);
+
   assert.equal(
     canonicalSha256({ z: 2, a: { y: true, x: [3, 1] } }),
     canonicalSha256({ a: { x: [3, 1], y: true }, z: 2 })
@@ -335,7 +395,7 @@ try {
   wrongScenario.scenario_id = "not-a-required-scenario";
   assert.throws(
     () => validatePilotPlan(policy, wrongScenario),
-    /exact eight reviewed pilot scenarios/u
+    /exact twenty reviewed DuskEVM pilot scenarios/u
   );
 
   const wrongTarball = path.join(temporaryRoot, "wrong-candidate.tgz");
@@ -344,12 +404,13 @@ try {
   await fs.writeFile(wrongTarball, wrongTarballBytes);
   await expectReject(
     () => collectAgentPilot({
-      policyPath,
+      policyPath: fixturePolicyPath,
       planPath,
       tarballPath: wrongTarball,
       workspaceRoot: workspace,
       collectorRepositoryRoot: collectorRepository,
       collectorFile: collectorScript,
+      runnerFile: runnerScript,
       ...provenanceOptions
     }),
     /tarball bytes do not match/u
@@ -368,12 +429,13 @@ try {
   await writeJson(wrongManifestPlanPath, wrongManifestPlan);
   await expectReject(
     () => collectAgentPilot({
-      policyPath,
+      policyPath: fixturePolicyPath,
       planPath: wrongManifestPlanPath,
       tarballPath: wrongManifestTarball,
       workspaceRoot: workspace,
       collectorRepositoryRoot: collectorRepository,
       collectorFile: collectorScript,
+      runnerFile: runnerScript,
       ...provenanceOptions
     }),
     /embedded npm package identity/u

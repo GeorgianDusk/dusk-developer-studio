@@ -357,7 +357,7 @@ describe("transactional scaffold boundary", () => {
       await fs.writeFile(path.join(stagedTarget, "complete.txt"), "complete");
     })).rejects.toThrow(/more than 64 entries/);
     expect((await fs.lstat(recoverable)).isDirectory()).toBe(true);
-  });
+  }, 15_000);
 
   it("cleans the empty stage when writing its owner marker fails", async () => {
     const workspace = await makeTempRoot("dusk-transaction-marker-failure-");

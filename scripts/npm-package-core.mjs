@@ -9,7 +9,7 @@ export const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.u
 export const npmOutputRoot = path.join(productRoot, "output", "npm");
 export const npmPackageRoot = path.join(npmOutputRoot, "package");
 export const npmPackageName = "dusk-developer-studio";
-export const npmPackageVersion = "1.0.19";
+export const npmPackageVersion = "1.0.20";
 export const requiredNodeRange = ">=24.18.0 <25";
 export const supportedTargets = Object.freeze(["windows-x64", "linux-x64", "darwin-arm64"]);
 
@@ -102,6 +102,14 @@ const REQUIRED_FILES = [
   "templates/foundry-counter-dusk-evm/foundry.toml",
   "templates/foundry-counter-dusk-evm/src/Counter.sol",
   "templates/foundry-counter-dusk-evm/test/Counter.t.sol",
+  "templates/hardhat-counter-dusk-evm/.gitignore.template",
+  "templates/hardhat-counter-dusk-evm/README.md",
+  "templates/hardhat-counter-dusk-evm/package.json",
+  "templates/hardhat-counter-dusk-evm/package-lock.json",
+  "templates/hardhat-counter-dusk-evm/hardhat.config.ts",
+  "templates/hardhat-counter-dusk-evm/contracts/Counter.sol",
+  "templates/hardhat-counter-dusk-evm/ignition/modules/Counter.ts",
+  "templates/hardhat-counter-dusk-evm/test/Counter.t.sol",
   "templates/duskds-counter-forge/.gitignore.template",
   "templates/duskds-counter-forge/Cargo.lock",
   "templates/duskds-counter-forge/Cargo.toml",

@@ -6,17 +6,15 @@ test("guided builder flow stays clear", async ({ page }) => {
 
   await expect(page.getByText("Choose your path")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Open pre-launch overview/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Start DuskEVM/i })).toBeVisible();
   await expect(page.getByRole("button", { name: /Start DuskDS/i })).toBeVisible();
   await expect(page.getByLabel("Builder path selector")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "DuskEVM", exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
-  await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
-  await page.getByLabel("Example identifier").fill(`0x${"b".repeat(40)}`);
-  await expect(page.getByText("address", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Resume DuskEVM/i })).toHaveCount(0);
-  await expect(page.getByText(/0\/4/)).toHaveCount(0);
+  await page.getByRole("button", { name: /Start DuskEVM/i }).click();
+  await expect(page.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." })).toBeVisible();
+  await expect(page.getByLabel("DuskEVM guide sequence")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Verify chain and progression" })).toBeVisible();
 
   await page.getByRole("button", { name: "Paths" }).click();
   await page.getByRole("button", { name: /Start DuskDS/i }).click();
@@ -71,8 +69,8 @@ test("browser history restores the document title and prior scroll position", as
   await expect(overviewHeading).toBeVisible();
   const overviewTitle = await page.title();
 
-  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
-  await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
+  await page.getByRole("button", { name: /Start DuskEVM/i }).click();
+  await expect(page.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." })).toBeVisible();
   await expect(page).not.toHaveTitle(overviewTitle);
   await page.goBack();
   await expect(overviewHeading).toBeVisible();
@@ -148,8 +146,8 @@ test("browser history restores the builder path associated with each entry", asy
   await page.addInitScript(() => localStorage.clear());
   await page.goto("/");
 
-  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
-  const evmHeading = page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." });
+  await page.getByRole("button", { name: /Start DuskEVM/i }).click();
+  const evmHeading = page.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." });
   await expect(evmHeading).toBeVisible();
   await page.getByRole("button", { name: "Paths" }).click();
   await expect(page.getByRole("heading", { name: "Pick the execution model your app actually needs." })).toBeVisible();
@@ -359,7 +357,7 @@ test("keyboard reset cancellation restores focus to its trigger", async ({ page 
 test("copy controls expose immediate and perceivable outcome feedback", async ({ page }) => {
   await page.goto("/#evm/setup");
 
-  const copyButton = page.getByRole("button", { name: "Copy pre-launch RPC URL" });
+  const copyButton = page.getByRole("button", { name: "Copy Testnet RPC URL" });
   await copyButton.click();
   await expect(copyButton).toContainText(/Copying…|Copied|Copy failed - retry/);
   await expect(copyButton).toContainText(/Copied|Copy failed - retry/, { timeout: 5_000 });
@@ -367,7 +365,7 @@ test("copy controls expose immediate and perceivable outcome feedback", async ({
   if (await copyButton.getByText("Copied", { exact: true }).count()) {
     await page.waitForTimeout(1_600);
     await expect(copyButton).toContainText("Copied");
-    await expect(copyButton.locator("..").getByRole("status")).toContainText("Copy pre-launch RPC URL copied to clipboard.");
+    await expect(copyButton.locator("..").getByRole("status")).toContainText("Copy Testnet RPC URL copied to clipboard.");
   } else {
     await expect(page.getByRole("alert")).toContainText("Select and copy the text manually, or retry this button.");
   }

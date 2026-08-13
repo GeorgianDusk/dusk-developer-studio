@@ -1,0 +1,19 @@
+{
+  "name": "hardhat-counter-dusk-evm",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "hardhat compile",
+    "test": "hardhat test"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox-viem": "5.0.7",
+    "hardhat": "3.13.0",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "adm-zip": "0.6.0"
+  }
+}

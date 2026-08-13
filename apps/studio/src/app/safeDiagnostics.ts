@@ -9,9 +9,9 @@ export const SAFE_DIAGNOSTIC_JOURNEY_CONTEXT = {
   },
   pathAvailability: {
     evm: {
-      availability: "pre-launch-reference-only",
-      testnetStatus: "not-studio-activated",
-      completionTracking: false
+      availability: "testnet-active",
+      testnetStatus: "studio-activated",
+      completionTracking: true
     },
     duskds: {
       availability: "active-developer-workflow",

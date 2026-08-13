@@ -4,8 +4,8 @@ import { createInitialJourneyProgress, invalidateJourneyFrom, recordJourneyEvide
 describe("journey invalidation", () => {
   it("clears the changed step and every downstream claim", () => {
     let state = createInitialJourneyProgress();
-    state = recordJourneyEvidence(state, "evm", "setup", ["evm-rpc-chain", "evm-wallet-chain", "evm-wallet-account", "evm-balance-read"]);
-    state = recordJourneyEvidence(state, "evm", "access", ["evm-positive-balance"]);
+    state = recordJourneyEvidence(state, "evm", "setup", ["evm-rpc-chain", "evm-rpc-progression"]);
+    state = recordJourneyEvidence(state, "evm", "access", ["evm-wallet-chain", "evm-wallet-account", "evm-balance-read", "evm-positive-balance"]);
     state = recordJourneyEvidence(state, "evm", "build", ["evm-starter-structure", "evm-build-test-attestation"]);
     const invalidated = invalidateJourneyFrom(state, "evm", "access");
     expect(invalidated.paths.evm.setup.status).toBe("confirmed-manually");

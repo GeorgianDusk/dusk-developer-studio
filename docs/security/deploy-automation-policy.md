@@ -11,7 +11,7 @@ The local Studio may perform allowlisted local checks, constrained scaffolding, 
 The Studio may:
 
 - show DuskDS Testnet deployment command shapes;
-- show clearly labelled educational DuskEVM command shapes without implying a live Testnet;
+- show Testnet-only DuskEVM build and signer-owned deployment handoff patterns;
 - run allowlisted prerequisite checks through Local Actions;
 - create constrained starter projects through Local Actions;
 - verify build artifacts, VM-test evidence, and source identity;
@@ -56,4 +56,6 @@ Any proposal to expand this boundary requires a separate security and product re
 
 ## DuskEVM
 
-DuskEVM Testnet is not live yet. Its deployment material remains educational and must not show live RPC, wallet, balance, submission, or inspection evidence until the real Testnet can be verified.
+DuskEVM Testnet Setup and Inspect may perform bounded read-only requests to the exact allowlisted RPC while the activation receipt is current. Access may ask an injected wallet to disclose its current chain/accounts, connect, add or switch Testnet, and read a balance as separate explicit actions.
+
+Studio does not request `eth_sendTransaction`, `eth_sign`, `personal_sign`, typed-data signing, raw signing, or wallet-secret access. Foundry deployment guidance uses an interactive signer-owned keystore account; Hardhat guidance requires its encrypted keystore or a hardware-wallet workflow. Funding, bridge approval, deployment, write calls, replacement, and finality decisions remain outside Studio.

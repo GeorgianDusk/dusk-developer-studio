@@ -5,8 +5,8 @@ The Hosted guide is a static web application. It provides path selection, educat
 Developers who need machine-specific checks or starter creation run the local Studio separately:
 
 ```bash
-npx dusk-developer-studio@1.0.19
-npx dusk-developer-studio@1.0.19 local-actions
+npx dusk-developer-studio@1.0.20
+npx dusk-developer-studio@1.0.20 local-actions
 ```
 
 ## Build
@@ -49,7 +49,7 @@ The fragment deliberately contains no `reverse_proxy`, loopback address, authent
 
 - Label the deployment with its actual maintainer and source repository.
 - Link to official Dusk documentation for canonical protocol instructions.
-- Keep DuskEVM labelled as pre-launch until its real Testnet is verified.
+- Keep DuskEVM live only while the exact source and network-identity receipt is current; stale or changed evidence must restore the review-required boundary.
 - Keep mainnet reference-only unless a separately reviewed product change says otherwise.
 - Do not copy `.env` files, local receipts, diagnostics, package caches, test artifacts, or credentials into the web root.
 - Verify TLS, redirects, security headers, cache behavior, key routes, source links, controlled RPC degradation, and closed public ports.
