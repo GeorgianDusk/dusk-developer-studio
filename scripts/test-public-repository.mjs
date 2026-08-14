@@ -1043,8 +1043,8 @@ assert.deepEqual(phase5Policy.npm_distribution, {
   required_package_checks: ["install", "safe", "local-actions", "create-duskds", "shutdown", "cleanup"]
 });
 assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/smart-contracts-duskds/"));
-assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/duskvm/quickstart")));
+assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/duskvm/quickstart/"));
+assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/smart-contracts-duskds")));
 for (const sourceBackedFile of [
   "data/dusk/capabilities.json",
   "data/dusk/resources.json",
@@ -1053,8 +1053,10 @@ for (const sourceBackedFile of [
   "apps/studio/src/app/DuskDsDeployReadiness.tsx",
   "apps/studio/src/app/routes/SystemRoutes.tsx"
 ]) {
-  assert.doesNotMatch(read(sourceBackedFile), /\/developer\/duskvm\/quickstart/, `${sourceBackedFile} must not restore the retired DuskDS guide.`);
+  assert.doesNotMatch(read(sourceBackedFile), /\/developer\/smart-contracts-duskds/, `${sourceBackedFile} must not retain the retired DuskDS route.`);
 }
+assert.match(read("data/dusk/capabilities.json"), /\/developer\/duskvm\/quickstart\//, "Capabilities must use the current DuskVM quickstart.");
+assert.match(read("apps/studio/src/app/DuskDsDeployReadiness.tsx"), /\/developer\/duskvm\/quickstart\//, "Deployment readiness must use the current DuskVM quickstart.");
 assert.match(read("data/dusk/resources.json"), /canonical starting point[\s\S]*Make-based build flow/);
 assert.match(read("data/dusk/troubleshooting.json"), /different project shape[\s\S]*not interchangeable/);
 assert.doesNotMatch(stagingSmoke, /eth_chainId|checkRpc\(/, "DuskEVM RPC must not be requested while its policy check is deferred.");

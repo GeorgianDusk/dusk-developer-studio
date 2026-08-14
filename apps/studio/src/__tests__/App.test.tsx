@@ -8,6 +8,7 @@ import {
   advanceCompanionSessionGeneration,
   currentCompanionSessionGeneration
 } from "../app/studioState";
+import { sourceDate } from "../app/studioConfig";
 
 const npmCommit = "a".repeat(40);
 const npmRelease: StudioRelease = { product: STUDIO_PRODUCT, version: "1.2.3", commit: npmCommit, channel: "npm" };
@@ -147,7 +148,7 @@ describe("App", () => {
   it("shows maturity, source status, and freshness in references", () => {
     window.location.hash = "#reference";
     render(<App />);
-    expect(screen.getAllByText(/reviewed July 21, 2026/).length).toBeGreaterThan(2);
+    expect(screen.getAllByText(new RegExp(`reviewed ${sourceDate}`)).length).toBeGreaterThan(2);
     expect(screen.getAllByText("Pre-launch Testnet reference").length).toBeGreaterThan(0);
     expect(screen.getByText("pre-launch metadata")).toBeInTheDocument();
     expect(screen.getAllByText("reference only")).toHaveLength(2);

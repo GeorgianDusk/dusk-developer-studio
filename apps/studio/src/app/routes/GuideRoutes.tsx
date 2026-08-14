@@ -262,9 +262,9 @@ function EvmPreviewPage() {
         <p>Review the planned execution model, Solidity toolchain, wallet and gas flow, explorer model, and activation boundary. Published network metadata is displayed for preparation only; the Studio does not treat it as live until DuskEVM Testnet is launched and revalidated.</p>
         <AsyncNotice state="partial" title="Linked guides are planning references" message="Some linked pages describe wallet, funding, signing, or deployment steps. Do not use those steps as proof that DuskEVM Testnet is live, and never pass a raw private key in a command. Wait for this Studio to show a revalidated live status and use a secure signer workflow." />
         <div className="button-row">
-          <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/">Deployment guide for planning</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/duskevm/quickstart/">Deployment guide for planning</ExternalLink>
           <ExternalLink href="https://github.com/dusk-network/docs">Official docs source</ExternalLink>
-          <ExternalLink href="https://docs.dusk.network/learn/deep-dive/dusk-evm/">DuskEVM deep dive</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/duskevm/reference/">DuskEVM reference</ExternalLink>
         </div>
         <div className="tool-command">
           <span>Pre-launch RPC reference</span>

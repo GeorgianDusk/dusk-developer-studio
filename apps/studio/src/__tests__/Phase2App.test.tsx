@@ -66,7 +66,7 @@ describe("Phase 2 evidence journeys", () => {
     expect(screen.getByText("No live evidence is recorded")).toBeInTheDocument();
     expect(screen.getByText("https://rpc.testnet.evm.dusk.network")).toBeVisible();
     expect(screen.getByRole("link", { name: /Official docs source/ })).toHaveAttribute("href", "https://github.com/dusk-network/docs");
-    expect(screen.getByRole("link", { name: /DuskEVM deep dive/ })).toHaveAttribute("href", "https://docs.dusk.network/learn/deep-dive/dusk-evm/");
+    expect(screen.getByRole("link", { name: /DuskEVM reference/ })).toHaveAttribute("href", "https://docs.dusk.network/developer/duskevm/reference/");
     expect(screen.getByText(/never pass a raw private key in a command/i)).toBeInTheDocument();
     expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
     expect(provider.request).not.toHaveBeenCalled();

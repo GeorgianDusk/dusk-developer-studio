@@ -11,8 +11,8 @@
     "blockTimeSeconds": 2,
     "enabledByDefault": true,
     "maturity": "testnet",
-    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
-    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "sourceLabel": "Official Dusk docs, reviewed 2026-08-14",
+    "sourceUrl": "https://docs.dusk.network/developer/duskevm/reference/",
     "warning": "Testnet-first developer onboarding network. Tokens have no monetary value."
   },
   {
@@ -27,8 +27,8 @@
     "blockTimeSeconds": 2,
     "enabledByDefault": false,
     "maturity": "mainnet-reference",
-    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
-    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "sourceLabel": "Official Dusk docs, reviewed 2026-08-14",
+    "sourceUrl": "https://docs.dusk.network/developer/duskevm/reference/",
     "warning": "Reference metadata only. Studio does not support mainnet deployment."
   },
   {
@@ -43,8 +43,8 @@
     "blockTimeSeconds": 2,
     "enabledByDefault": false,
     "maturity": "devnet-reference",
-    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
-    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "sourceLabel": "Official Dusk docs, reviewed 2026-08-14",
+    "sourceUrl": "https://docs.dusk.network/developer/duskevm/reference/",
     "warning": "Reference metadata only. Devnet should be enabled only for explicit local testing."
   }
 ]
