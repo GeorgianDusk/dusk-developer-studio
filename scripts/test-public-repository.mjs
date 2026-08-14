@@ -348,7 +348,7 @@ const pnpmWorkspace = read("pnpm-workspace.yaml");
 const pnpmLock = read("pnpm-lock.yaml");
 for (const [packageName, version] of [
   ["brace-expansion", "5.0.9"],
-  ["nanoid", "3.3.17"],
+  ["nanoid", "3.3.18"],
   ["postcss", "8.5.23"]
 ]) {
   assert.match(
@@ -1043,7 +1043,7 @@ assert.deepEqual(phase5Policy.npm_distribution, {
   required_package_checks: ["install", "safe", "local-actions", "create-duskds", "shutdown", "cleanup"]
 });
 assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/duskvm/quickstart/"));
+assert.ok(new Set(phase5Policy.key_source_urls).has("https://docs.dusk.network/developer/duskvm/quickstart/"));
 assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/smart-contracts-duskds")));
 for (const sourceBackedFile of [
   "data/dusk/capabilities.json",
