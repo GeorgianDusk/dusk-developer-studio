@@ -61,7 +61,7 @@ jobs:
       exact_tarball_shutdown_smoke: ${{ steps.browser.outputs.shutdown_smoke }}
     steps:
       - name: Check out reviewed source
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: "false"
@@ -283,7 +283,7 @@ jobs:
       TARBALL: output/npm/${{ needs.build-package.outputs.candidate_artifact_name }}
     steps:
       - name: Check out the exact candidate policy
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: "false"
@@ -833,7 +833,7 @@ jobs:
       CANDIDATE_ARTIFACT_FINGERPRINT_SHA256: ${{ inputs.candidate_artifact_fingerprint_sha256 }}
     steps:
       - name: Check out the exact pilot candidate
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: "false"
@@ -1095,7 +1095,7 @@ jobs:
       candidate_artifact_name: ${{ steps.aggregate.outputs.candidate_artifact_name }}
     steps:
       - name: Check out reviewed source
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: "false"
