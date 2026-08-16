@@ -12,7 +12,7 @@
     "properties": [
       {
         "name": "dusk:pnpm-lock-sha256",
-        "value": "fcefa0537f230c0c7421ec077a1ca5a32cba02fc77acc241b7e6fb3c89bbcfaa"
+        "value": "64c85e77f7c8f1cc316bd9c0272df54ad7dfdf4f20c9e47aa6d2c5a78bd17c75"
       },
       {
         "name": "dusk:dockerfile-sha256",

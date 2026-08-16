@@ -6,7 +6,33 @@ The GeorgianDusk deployment is monitored at:
 https://studio.134-122-59-217.nip.io
 ```
 
-The `Studio public deployment assurance` workflow runs every six hours and can also be dispatched manually. It fails closed unless the target is one exact approved HTTPS origin and the public artifact matches the checked source identity.
+The `Studio public deployment assurance` workflow can be dispatched manually. It fails closed unless the target is one exact approved HTTPS origin and the public artifact matches the checked source identity.
+
+## Pre-launch schedule pause
+
+Scheduled public monitoring is intentionally paused as of August 16, 2026 while the hosted Studio is not expected to track every commit on `main`. The assurance and schedule-guard workflows remain available for manual dispatch; their implementation has not been removed.
+
+Before the public launch:
+
+1. Deploy the intended release from current `main` to the approved public origin.
+2. Restore this block under `on` in `.github/workflows/studio-public-staging.yml`:
+
+   ```yaml
+   schedule:
+     - cron: "23 */6 * * *"
+   ```
+
+3. Observe a successful scheduled assurance run and confirm that its release identity matches the deployed commit.
+4. Restore this block under `on` in `.github/workflows/studio-monitor-schedule-guard.yml`:
+
+   ```yaml
+   schedule:
+     - cron: "47 4,16 * * *"
+   ```
+
+5. Confirm the schedule guard passes and that assigned GitHub issue alert delivery still works.
+
+Do not restore the schedule guard by itself: it intentionally reports a stale heartbeat when the public assurance schedule is inactive.
 
 ## What is checked
 
@@ -40,7 +66,7 @@ Expected DuskEVM pre-launch unavailability does not open an incident or fail the
 
 ## Schedule guard
 
-`Studio same-platform monitor schedule guard` runs separately and reports when the assurance workflow is missing, disabled, has never run on schedule, or has no recent scheduled run.
+When scheduled monitoring is active, `Studio same-platform monitor schedule guard` runs separately and reports when the assurance workflow is missing, disabled, has never run on schedule, or has no recent scheduled run. Its schedule is paused during the documented pre-launch period above.
 
 Both controls use GitHub Actions and GitHub Issues. A repository-wide GitHub outage can affect monitoring and alert delivery at the same time.
 
