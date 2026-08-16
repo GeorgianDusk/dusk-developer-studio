@@ -656,7 +656,9 @@ assert.match(npmProvenanceVerifier, /resolvedDependencies\.length !== 1[\s\S]*gi
 
 const publicStagingWorkflow = read(".github/workflows/studio-public-staging.yml");
 assert.match(publicStagingWorkflow, /^name: Studio public deployment assurance$/m);
-assert.match(publicStagingWorkflow, /^"on":\n {2}schedule:\n {4}- cron: "23 \*\/6 \* \* \*"\n {2}workflow_dispatch:/m);
+assert.match(publicStagingWorkflow, /^"on":\n(?: {2}#.*\n)+ {2}workflow_dispatch:/m);
+assert.doesNotMatch(publicStagingWorkflow, /^ {2}schedule:/m);
+assert.match(publicStagingWorkflow, /Reactivation is tracked in docs\/operations\/public-monitoring\.md/);
 assert.doesNotMatch(publicStagingWorkflow, /^ {2}(?:push|pull_request):/m);
 assert.match(publicStagingWorkflow, /--commit="\$GITHUB_SHA"/);
 assert.match(publicStagingWorkflow, /--rpc-degradation="\$\{\{ steps\.browser\.outcome \}\}"/);
@@ -820,7 +822,9 @@ assertStableScopedContext({
 });
 
 const watchdogWorkflow = read(".github/workflows/studio-monitor-schedule-guard.yml");
-assert.match(watchdogWorkflow, /^"on":\n {2}schedule:\n {4}- cron: "47 4,16 \* \* \*"\n {2}workflow_dispatch:/m);
+assert.match(watchdogWorkflow, /^"on":\n(?: {2}#.*\n)+ {2}workflow_dispatch:/m);
+assert.doesNotMatch(watchdogWorkflow, /^ {2}schedule:/m);
+assert.match(watchdogWorkflow, /Reactivation is tracked in docs\/operations\/public-monitoring\.md/);
 assert.match(watchdogWorkflow, /actions: read/);
 assert.match(watchdogWorkflow, /issues: write/);
 assert.match(watchdogWorkflow, /node scripts\/monitor-heartbeat\.mjs --max-age-hours=15/);
