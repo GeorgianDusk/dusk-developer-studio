@@ -348,7 +348,7 @@ const pnpmWorkspace = read("pnpm-workspace.yaml");
 const pnpmLock = read("pnpm-lock.yaml");
 for (const [packageName, version] of [
   ["brace-expansion", "5.0.9"],
-  ["nanoid", "3.3.17"],
+  ["nanoid", "3.3.18"],
   ["postcss", "8.5.23"]
 ]) {
   assert.match(
