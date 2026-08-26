@@ -15,8 +15,8 @@
     "expiresAt": "2026-09-13",
     "genesisHash": "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7",
     "maturity": "testnet",
-    "sourceLabel": "Official DuskEVM Quickstart, reference, and live RPC evidence, reviewed 2026-08-13",
-    "sourceUrl": "https://docs.dusk.network/developer/duskevm/quickstart/",
+    "sourceLabel": "Official DuskEVM Quickstart and reference, plus live RPC evidence reviewed 2026-08-13",
+    "sourceUrl": "https://docs.dusk.network/developer/duskevm/reference/",
     "warning": "Studio-activated Testnet. Tokens have no monetary value; re-check chain and progression before every funded or signed action."
   },
   {

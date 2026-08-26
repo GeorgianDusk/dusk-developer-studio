@@ -110,6 +110,9 @@ describe("Phase 2 evidence journeys", () => {
     expect(screen.getByText("https://rpc.testnet.evm.dusk.network")).toBeVisible();
     expect(screen.getByText(/Setup never discovers, connects, switches, or signs with a wallet/i)).toBeInTheDocument();
     expect(screen.getAllByText("Not checked").length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /Official docs source/ })).toHaveAttribute("href", "https://github.com/dusk-network/docs");
+    expect(screen.getByRole("link", { name: /DuskEVM reference/ })).toHaveAttribute("href", "https://docs.dusk.network/developer/duskevm/reference/");
+    expect(screen.getByText(/never pass a raw private key in a command/i)).toBeInTheDocument();
     expect(provider.request).not.toHaveBeenCalled();
     expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").not.toContain("evm-wallet-account");
   });

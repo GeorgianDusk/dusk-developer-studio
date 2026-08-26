@@ -11,12 +11,12 @@
         "sourceStatus":  "official-docs",
         "links":  [
                       {
-                          "label":  "DuskEVM Quickstart",
+                          "label":  "DuskEVM quickstart",
                           "url":  "https://docs.dusk.network/developer/duskevm/quickstart/"
                       },
                       {
-                          "label":  "DuskEVM overview",
-                          "url":  "https://docs.dusk.network/learn/dusk-evm/"
+                          "label":  "DuskEVM reference",
+                          "url":  "https://docs.dusk.network/developer/duskevm/reference/"
                       }
                   ],
         "tags":  [
@@ -118,8 +118,8 @@
         "sourceStatus":  "official-source",
         "links":  [
                       {
-                          "label":  "Smart Contracts on DuskDS",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
+                          "label":  "DuskVM smart contracts",
+                          "url":  "https://docs.dusk.network/developer/duskvm/overview/"
                       },
                       {
                           "label":  "Dusk Forge",
@@ -268,7 +268,7 @@
                       },
                       {
                           "label":  "Official DuskDS deployment guide",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/#deploying"
+                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/"
                       }
                   ],
         "tags":  [
@@ -531,8 +531,8 @@
                           "url":  "https://github.com/dusk-network/dusk-verifiable-builds"
                       },
                       {
-                          "label":  "Smart Contracts on DuskDS",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
+                          "label":  "DuskVM smart contracts",
+                          "url":  "https://docs.dusk.network/developer/duskvm/overview/"
                       }
                   ],
         "tags":  [

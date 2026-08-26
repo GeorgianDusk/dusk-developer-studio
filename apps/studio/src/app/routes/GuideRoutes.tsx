@@ -383,6 +383,12 @@ function EvmSetup({ setRoute }: { setRoute: (route: RouteId) => void }) {
       <div className="focus-card secondary wide">
         <h2>Wallet boundary</h2>
         <p>Setup never discovers, connects, switches, or signs with a wallet. Those user-mediated actions are separated in Access. Studio never asks for a private key, mnemonic, seed phrase, or raw signing payload.</p>
+        <p className="quiet-note">Never pass a raw private key in a command. Use a normal signer interface that keeps signing approval under your control.</p>
+        <div className="button-row">
+          <ExternalLink href="https://github.com/dusk-network/docs">Official docs source</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/duskevm/reference/">DuskEVM reference</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/duskevm/quickstart/">DuskEVM quickstart</ExternalLink>
+        </div>
       </div>
     </StepFrame>
   );

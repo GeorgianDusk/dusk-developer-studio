@@ -17,10 +17,10 @@
     },
     {
         "id":  "duskevm-deep-dive",
-        "title":  "DuskEVM Overview",
+        "title":  "DuskEVM Reference",
         "category":  "Docs",
-        "summary":  "Official architectural context for DuskEVM, including its relationship to DuskDS settlement and the distinction between inclusion and settlement.",
-        "url":  "https://docs.dusk.network/learn/dusk-evm/",
+        "summary":  "Official network and runtime reference for the Studio-activated DuskEVM Testnet. Re-check chain identity and progression before any wallet-mediated action.",
+        "url":  "https://docs.dusk.network/developer/duskevm/reference/",
         "maturity":  "official",
         "tags":  [
                      "network",
@@ -101,10 +101,10 @@
     },
     {
         "id":  "duskds-smart-contracts",
-        "title":  "Smart Contracts on DuskDS",
+        "title":  "DuskVM Smart Contracts",
         "category":  "Native",
         "summary":  "Official native Rust/WASM guide covering the canonical my-first-contract template, Forge's contract model and data drivers, local build and test commands, Rusk Wallet deployment, and verifiable builds.",
-        "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/",
+        "url":  "https://docs.dusk.network/developer/duskvm/overview/",
         "maturity":  "official",
         "tags":  [
                      "duskds",
