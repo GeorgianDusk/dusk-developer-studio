@@ -7,7 +7,7 @@
       "type": "application",
       "bom-ref": "urn:dusk:developer-studio",
       "name": "dusk-developer-testnet-studio",
-      "version": "1.0.19"
+      "version": "1.0.20"
     },
     "properties": [
       {
