@@ -12,7 +12,7 @@ const policy = JSON.parse(
   fs.readFileSync(path.join(root, "config", "cargo-advisory-review.json"), "utf8")
 );
 const lockBytes = fs.readFileSync(path.join(root, ...policy.lock_path.split("/")));
-const now = new Date("2026-08-13T13:05:00.000Z");
+const now = new Date("2026-08-26T16:15:00.000Z");
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function reportFixture() {
@@ -157,7 +157,7 @@ assert.throws(
   /not bound to the current lockfile/u
 );
 assert.throws(
-  () => validate({ now: new Date("2026-08-21T00:00:00.000Z") }),
+  () => validate({ now: new Date("2026-09-06T00:00:00.000Z") }),
   /review expired/u
 );
 {
