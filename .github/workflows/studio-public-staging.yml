@@ -1,8 +1,8 @@
 name: Studio public deployment assurance
 
 "on":
-  schedule:
-    - cron: "23 */6 * * *"
+  # Scheduled execution is intentionally paused before the public launch.
+  # Reactivation is tracked in docs/operations/public-monitoring.md.
   workflow_dispatch:
     inputs:
       target_url:

@@ -1,8 +1,8 @@
 name: Studio same-platform monitor schedule guard
 
 "on":
-  schedule:
-    - cron: "47 4,16 * * *"
+  # Scheduled execution is intentionally paused with the public monitor.
+  # Reactivation is tracked in docs/operations/public-monitoring.md.
   workflow_dispatch:
 
 permissions:
