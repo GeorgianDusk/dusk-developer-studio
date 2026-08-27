@@ -1038,12 +1038,13 @@ assert.deepEqual(phase5Policy.npm_distribution, {
   },
   required_package_checks: ["install", "safe", "local-actions", "create-duskds", "shutdown", "cleanup"]
 });
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/duskvm/quickstart/"));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/duskevm/quickstart/"));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/duskevm/reference/"));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/learn/dusk-evm/"));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/learn/guides/duskevm-bridge/"));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/learn/community/"));
+const phase5KeySourceUrls = new Set(phase5Policy.key_source_urls);
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/developer/duskvm/quickstart/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/developer/duskevm/quickstart/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/developer/duskevm/reference/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/learn/dusk-evm/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/learn/guides/duskevm-bridge/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/learn/community/"));
 assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/smart-contracts-duskds")));
 for (const sourceBackedFile of [
   "data/dusk/capabilities.json",
