@@ -245,6 +245,27 @@ describe("journey progress", () => {
     expect(current.paths.evm.access.evidenceEntries).toEqual([]);
     expect(current.paths.evm.build.evidence).toEqual(["evm-starter-structure", "evm-build-test-attestation"]);
 
+    const sessionWithWalletEvidence = recordJourneyEvidence(
+      current,
+      "evm",
+      "access",
+      ["evm-wallet-chain", "evm-wallet-account", "evm-balance-read", "evm-positive-balance"],
+      {
+        method: "automatic",
+        observedAt: "2026-07-29T10:10:00.000Z",
+        metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 2 }
+      }
+    );
+    const refreshedSession = refreshJourneyProgress(sessionWithWalletEvidence, Date.parse("2026-07-29T10:10:01.000Z"));
+    expect(refreshedSession.paths.evm.access.status).toBe("passed-automatically");
+    expect(refreshedSession.paths.evm.access.evidence).toEqual([
+      "evm-wallet-chain",
+      "evm-wallet-account",
+      "evm-balance-read",
+      "evm-positive-balance"
+    ]);
+    expect(parseJourneyProgress(JSON.stringify(refreshedSession), Date.parse("2026-07-29T10:10:01.000Z")).paths.evm.access.evidenceEntries).toEqual([]);
+
     const stale = parseJourneyProgress(serialized, Date.parse("2026-07-29T10:16:00.001Z"));
     expect(stale.paths.evm.setup.evidenceEntries).toEqual([]);
     expect(isCurrentEvmSetupComplete(current, Date.parse("2026-07-29T10:16:00.001Z"))).toBe(false);

@@ -245,6 +245,16 @@ function currentEvmEntry(
   return true;
 }
 
+function currentSessionEvmAccessEntry(entry: EvidenceEntry, now: number): boolean {
+  if (!isDuskEvmNetworkReviewCurrent(activeEvmNetwork, now)) return false;
+  const observedAt = Date.parse(entry.observedAt);
+  if (!Number.isFinite(observedAt) || observedAt > now || now - observedAt > EVM_LIVE_READ_TTL_MS) return false;
+  return entry.method === "automatic"
+    && entry.metadata?.source === "browser-check"
+    && entry.metadata.tool === "wallet"
+    && entry.metadata.platform === "browser";
+}
+
 function emptyStep(status: JourneyStatus): StepProgress {
   return { status, evidence: [], evidenceEntries: [] };
 }
@@ -495,6 +505,18 @@ export function refreshJourneyProgress(
   now = Date.now()
 ): JourneyProgressState {
   const refreshed = parseJourneyProgress(JSON.stringify(state), now);
+  if (isCurrentEvmSetupComplete(refreshed, now)) {
+    const accessEntries = state.paths.evm.access.evidenceEntries
+      .filter((entry) => currentSessionEvmAccessEntry(entry, now));
+    if (accessEntries.length > 0) {
+      const access = structuredClone(state.paths.evm.access);
+      access.evidenceEntries = accessEntries;
+      access.evidence = accessEntries.map((entry) => entry.code);
+      access.checkedAt = accessEntries.map((entry) => entry.observedAt).sort().at(-1);
+      refreshed.paths.evm.access = access;
+      refreshed.paths.evm = normalizeReadiness("evm", refreshed.paths.evm);
+    }
+  }
   return JSON.stringify(refreshed) === JSON.stringify(state) ? state : refreshed;
 }
 

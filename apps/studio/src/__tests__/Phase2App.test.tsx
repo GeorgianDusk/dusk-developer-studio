@@ -233,6 +233,11 @@ describe("Phase 2 evidence journeys", () => {
       expect(stored).not.toContain("1.000000");
     });
 
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 1_100));
+    });
+    expect(window.localStorage.getItem(JOURNEY_PROGRESS_STORAGE_KEY) ?? "").toContain("evm-positive-balance");
+
     await waitFor(() => expect(listeners.has("chainChanged")).toBe(true));
     act(() => listeners.get("chainChanged")?.("0x1"));
     await waitFor(() => expect(screen.getByText(/Prior Access evidence was cleared/i)).toBeInTheDocument());
