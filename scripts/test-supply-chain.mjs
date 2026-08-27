@@ -28,6 +28,11 @@ assert.throws(
   SupplyChainError,
   "digest drift must fail",
 );
+assert.throws(
+  () => validateDockerfile(dockerfile.replace("libcrypto3=3.5.8-r0", "libcrypto3=3.5.7-r0"), policy),
+  SupplyChainError,
+  "runtime security package drift must fail",
+);
 
 const fixture = [
   {

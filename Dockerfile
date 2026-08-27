@@ -12,6 +12,7 @@ RUN pnpm install --frozen-lockfile
 RUN pnpm build
 
 FROM nginx:stable-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46
+RUN apk add --no-cache --upgrade libcrypto3=3.5.8-r0 libssl3=3.5.8-r0
 COPY deploy/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/studio/dist /usr/share/nginx/html
 EXPOSE 8080
