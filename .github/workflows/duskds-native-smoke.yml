@@ -153,7 +153,7 @@ jobs:
           NODE
       - name: Install the reviewed Foundry release
         if: steps.scope.outputs.relevant == 'true'
-        uses: foundry-rs/foundry-toolchain@d451db242c13b5349e2778ab68468f7e8bbaf49b # v1
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
         with:
           version: v1.7.1
           cache: "false"

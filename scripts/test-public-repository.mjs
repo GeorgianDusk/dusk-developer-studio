@@ -777,7 +777,7 @@ assert.match(duskDsNativeSmokeWorkflow, /contract_sha256: process\.env\.CONTRACT
 assert.match(duskDsNativeSmokeWorkflow, /scripts\/staging-smoke\.mjs/);
 assert.match(duskDsNativeSmokeWorkflow, /checkDuskDsNodeRead\(policy\.duskds_testnet_graphql_url\)/);
 assert.match(duskDsNativeSmokeWorkflow, /checkDuskEvmNetwork\(policy\)/);
-assert.match(duskDsNativeSmokeWorkflow, /foundry-rs\/foundry-toolchain@d451db242c13b5349e2778ab68468f7e8bbaf49b[\s\S]*version: v1\.7\.1/);
+assert.match(duskDsNativeSmokeWorkflow, /foundry-rs\/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09[\s\S]*version: v1\.7\.1/);
 assert.match(duskDsNativeSmokeWorkflow, /forge build --sizes[\s\S]*forge test -vv/);
 assert.match(duskDsNativeSmokeWorkflow, /npm ci --ignore-scripts[\s\S]*npm run build[\s\S]*npm test[\s\S]*npm audit --audit-level=high/);
 assert.match(duskDsNativeSmokeWorkflow, /evm_steps:[\s\S]*rpc_identity: "passed"[\s\S]*hardhat_build: "passed"[\s\S]*degradation: "passed"/);
