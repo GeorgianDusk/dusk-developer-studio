@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   native-smoke:
-    name: Exact DuskDS and DuskEVM build and inspection
+    name: Exact DuskDS scaffold, build, VM test, and inspection
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:

@@ -836,7 +836,7 @@ function assertStableScopedContext({ workflow, contextName, classifierName, heav
 
 assertStableScopedContext({
   workflow: duskDsNativeSmokeWorkflow,
-  contextName: "Exact DuskDS and DuskEVM build and inspection",
+  contextName: "Exact DuskDS scaffold, build, VM test, and inspection",
   classifierName: "Classify DuskDS native-smoke scope",
   heavySteps: [
     "Use the verified Node.js line",
