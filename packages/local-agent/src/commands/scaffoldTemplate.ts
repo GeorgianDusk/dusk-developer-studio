@@ -8,7 +8,10 @@ import { runScaffoldTransaction, type ScaffoldTransactionHooks } from "./transac
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TEMPLATE_ROOT = path.resolve(__dirname, "../../../templates/foundry-counter-dusk-evm");
 
-export interface FoundryScaffoldRuntime extends ScaffoldTransactionHooks { templateRoot?: string; }
+export interface FoundryScaffoldRuntime extends ScaffoldTransactionHooks {
+  templateRoot?: string;
+  requiredFiles?: string[];
+}
 
 export async function scaffoldFoundryTemplate(
   options: { cwd: string; projectName: string; parentDir?: string },
@@ -25,7 +28,10 @@ export async function scaffoldFoundryTemplate(
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }, runtime);
-  const evidence = await collectProjectStructureEvidence(target, ["foundry.toml", "src/Counter.sol", "test/Counter.t.sol"])
+  const evidence = await collectProjectStructureEvidence(
+    target,
+    runtime.requiredFiles ?? ["foundry.toml", "src/Counter.sol", "test/Counter.t.sol"]
+  )
     .catch(() => ({ files: [] as string[], structureVerified: false }));
   return { ok: true, path: target, ...evidence };
 }

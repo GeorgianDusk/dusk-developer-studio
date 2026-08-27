@@ -15,6 +15,17 @@ export function getDefaultDuskEvmNetwork(): DuskEvmNetwork {
   return DuskEvmNetworkSchema.parse(network);
 }
 
+export function isDuskEvmNetworkReviewCurrent(
+  network: DuskEvmNetwork,
+  now = Date.now()
+): boolean {
+  const expiresAt = Date.parse(`${network.expiresAt}T23:59:59.999Z`);
+  return network.status === "active"
+    && network.enabledByDefault
+    && Number.isFinite(expiresAt)
+    && now <= expiresAt;
+}
+
 export function visibleNetworks(showDisabled = false): DuskEvmNetwork[] {
   return DUSK_EVM_NETWORKS.filter((network) => showDisabled || network.enabledByDefault);
 }

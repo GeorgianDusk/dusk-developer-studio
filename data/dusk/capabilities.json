@@ -11,12 +11,12 @@
         "sourceStatus":  "official-docs",
         "links":  [
                       {
-                          "label":  "Deploy on DuskEVM",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/"
+                          "label":  "DuskEVM quickstart",
+                          "url":  "https://docs.dusk.network/developer/duskevm/quickstart/"
                       },
                       {
-                          "label":  "DuskEVM deep dive",
-                          "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/"
+                          "label":  "DuskEVM reference",
+                          "url":  "https://docs.dusk.network/developer/duskevm/reference/"
                       }
                   ],
         "tags":  [
@@ -41,8 +41,8 @@
         "sourceStatus":  "official-docs",
         "links":  [
                       {
-                          "label":  "DuskEVM deep dive",
-                          "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/"
+                          "label":  "DuskEVM reference",
+                          "url":  "https://docs.dusk.network/developer/duskevm/reference/"
                       },
                       {
                           "label":  "Blockscout verification",
@@ -63,9 +63,9 @@
         "path":  "evm",
         "title":  "DuskEVM testnet funding bridge",
         "category":  "Funding",
-        "summary":  "Fund an EVM testnet wallet with practice DUSK through the official DuskDS to DuskEVM bridge route.",
+        "summary":  "Fund an EVM testnet wallet with valueless DUSK through the official Dusk L1 faucet, unshielding, and Dusk L1-to-DuskEVM bridge route; there is no direct DuskEVM faucet claim.",
         "beginnerUse":  "Choose this after your wallet is on the right chain and before you try to deploy a contract.",
-        "safeNextStep":  "Follow the official bridge guide and avoid duplicate bridge attempts while a transfer is pending.",
+        "safeNextStep":  "Follow the official bridge guide from the L1 Testnet faucet through unshielding and deposit, and avoid duplicate bridge attempts while a transfer is pending.",
         "maturity":  "manual-official",
         "sourceStatus":  "official-docs",
         "links":  [
@@ -118,8 +118,8 @@
         "sourceStatus":  "official-source",
         "links":  [
                       {
-                          "label":  "Smart Contracts on DuskDS",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
+                          "label":  "DuskVM smart contracts",
+                          "url":  "https://docs.dusk.network/developer/duskvm/overview/"
                       },
                       {
                           "label":  "Dusk Forge",
@@ -268,7 +268,7 @@
                       },
                       {
                           "label":  "Official DuskDS deployment guide",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/#deploying"
+                          "url":  "https://docs.dusk.network/developer/duskvm/quickstart/"
                       }
                   ],
         "tags":  [
@@ -531,8 +531,8 @@
                           "url":  "https://github.com/dusk-network/dusk-verifiable-builds"
                       },
                       {
-                          "label":  "Smart Contracts on DuskDS",
-                          "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/"
+                          "label":  "DuskVM smart contracts",
+                          "url":  "https://docs.dusk.network/developer/duskvm/overview/"
                       }
                   ],
         "tags":  [

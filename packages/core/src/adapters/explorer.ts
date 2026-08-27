@@ -16,14 +16,14 @@ export function explorerAddressUrl(network: DuskEvmNetwork, address: string): st
   if (!isAddress(address)) {
     throw new Error("Invalid EVM address.");
   }
-  return `${network.explorerUrl.replace(/\/$/, "")}/address/${address.trim()}`;
+  return `${network.explorerUrl.replace(/\/$/, "")}/address/${encodeURIComponent(address.trim())}`;
 }
 
 export function explorerTxUrl(network: DuskEvmNetwork, txHash: string): string {
   if (!isTxHash(txHash)) {
     throw new Error("Invalid transaction hash.");
   }
-  return `${network.explorerUrl.replace(/\/$/, "")}/tx/${txHash.trim()}`;
+  return `${network.explorerUrl.replace(/\/$/, "")}/tx/${encodeURIComponent(txHash.trim())}`;
 }
 
 export function explorerBlockUrl(network: DuskEvmNetwork, blockNumberHex: string): string {

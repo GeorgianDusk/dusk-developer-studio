@@ -13,11 +13,11 @@
       "version": "0.7.46",
       "advisory_id": "RUSTSEC-2026-0235",
       "owner": "GeorgianDusk repository maintainer",
-      "reviewed_on": "2026-08-10T08:30:00.000Z",
-      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reviewed_on": "2026-08-26T16:12:46.035Z",
+      "expires_on": "2026-09-05T00:00:00.000Z",
       "reachability": "Locked rkyv is transitive through Dusk Core 1.6.0 in the generated contract graph and through Dusk VM and Piecrust in native dev tests. The advisory requires validation of an archived Rc or Arc with an unsized pointee and conflicting pointer metadata. Source review of the exact locked Dusk Core, Dusk VM, Piecrust, and crypto revisions found no archived unsized Rc or Arc field; the generated template does not call rkyv directly.",
       "mitigation": "Keep this acceptance exact to rkyv 0.7.46 and RUSTSEC-2026-0235, reject every other vulnerability or version, rerun source reachability review on any lock change, and do not add direct rkyv deserialization or archived unsized Rc or Arc types to the template.",
-      "upstream_tracking": "RUSTSEC fixes the issue in rkyv 0.8.17 and later. Dusk Core 1.6.0 and the checked current upstream Dusk Core 1.7.0 line remain on rkyv 0.7, so removal requires a coordinated upstream Dusk dependency and archive-format migration. Recheck before expiry."
+      "upstream_tracking": "RUSTSEC fixes the issue in rkyv 0.8.17 and later. Current Dusk Core and Dusk VM 1.7.0 at rusk commit 311cc64df1018a9960babd19bc2b6d2e7bc3d4f3 still constrain rkyv to 0.7, and current Piecrust 0.32.0 at commit 3dee64f7c9813c0dbb5f3d5fc26d897d800d10a2 also remains on rkyv 0.7. Removal requires a coordinated upstream dependency and archive-format migration. Recheck before expiry."
     }
   ],
   "accepted_informational_warnings": [
@@ -27,10 +27,10 @@
       "version": "1.0.2",
       "advisory_id": "RUSTSEC-2025-0056",
       "owner": "GeorgianDusk repository maintainer",
-      "reviewed_on": "2026-07-20T08:30:00.000Z",
-      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reviewed_on": "2026-08-26T16:12:46.035Z",
+      "expires_on": "2026-09-05T00:00:00.000Z",
       "reachability": "Transitive through dusk-plonk and miniz_oxide in the native dependency lock; absent from the exact contract and data-driver WASM normal and build trees.",
-      "upstream_tracking": "No maintained adler release exists and miniz_oxide 0.8 is outside dusk-plonk's current constraint; resolution requires an upstream Dusk Plonk dependency change."
+      "upstream_tracking": "No maintained adler release exists. Current Dusk Core 1.7.0 at rusk commit 311cc64df1018a9960babd19bc2b6d2e7bc3d4f3 still uses dusk-plonk 0.22.1, while the exact locked Dusk Plonk tree retains adler through miniz_oxide 0.7. Resolution requires an upstream Dusk Plonk dependency change."
     },
     {
       "kind": "unmaintained",
@@ -38,10 +38,10 @@
       "version": "1.3.3",
       "advisory_id": "RUSTSEC-2025-0141",
       "owner": "GeorgianDusk repository maintainer",
-      "reviewed_on": "2026-07-20T08:30:00.000Z",
-      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reviewed_on": "2026-08-26T16:12:46.035Z",
+      "expires_on": "2026-09-05T00:00:00.000Z",
       "reachability": "Dev and native-test dependency through dusk-vm, piecrust, and dusk-wasmtime; absent from the exact contract and data-driver WASM normal and build trees.",
-      "upstream_tracking": "No maintained bincode 1.x patch exists; resolution requires an upstream Dusk VM or Piecrust implementation and dependency change."
+      "upstream_tracking": "No maintained bincode 1.x patch exists. Current Piecrust 0.32.0 at commit 3dee64f7c9813c0dbb5f3d5fc26d897d800d10a2 retains the dusk-wasmtime 21.0.0-alpha line that supplies this exact native-test dependency. Resolution requires an upstream Dusk VM, Piecrust, or dusk-wasmtime implementation and dependency change."
     },
     {
       "kind": "unmaintained",
@@ -49,10 +49,10 @@
       "version": "2.2.0",
       "advisory_id": "RUSTSEC-2024-0388",
       "owner": "GeorgianDusk repository maintainer",
-      "reviewed_on": "2026-07-20T08:30:00.000Z",
-      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reviewed_on": "2026-08-26T16:12:46.035Z",
+      "expires_on": "2026-09-05T00:00:00.000Z",
       "reachability": "Transitive through ark 0.4 and dusk-core in the native dependency lock; absent from the exact contract and data-driver WASM normal and build trees.",
-      "upstream_tracking": "No patched derivative release exists; resolution requires an upstream arkworks or Dusk dependency and implementation migration."
+      "upstream_tracking": "No patched derivative release exists. Current Dusk Core 1.7.0 at rusk commit 311cc64df1018a9960babd19bc2b6d2e7bc3d4f3 remains on arkworks 0.4. Resolution requires an upstream arkworks or Dusk dependency and implementation migration."
     },
     {
       "kind": "unmaintained",
@@ -60,10 +60,10 @@
       "version": "1.0.15",
       "advisory_id": "RUSTSEC-2024-0436",
       "owner": "GeorgianDusk repository maintainer",
-      "reviewed_on": "2026-07-20T08:30:00.000Z",
-      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reviewed_on": "2026-08-26T16:12:46.035Z",
+      "expires_on": "2026-09-05T00:00:00.000Z",
       "reachability": "Transitive through ark 0.4 and through the native dusk-vm test stack; absent from the exact contract and data-driver WASM normal and build trees.",
-      "upstream_tracking": "No maintained paste release exists; resolution requires upstream arkworks and Dusk dependency or implementation changes."
+      "upstream_tracking": "No maintained paste release exists. Current Dusk Core 1.7.0 remains on arkworks 0.4, and current Piecrust 0.32.0 retains dusk-wasmtime 21.0.0-alpha. Resolution requires upstream arkworks, Piecrust, dusk-wasmtime, or Dusk dependency and implementation changes."
     },
     {
       "kind": "unsound",
@@ -71,10 +71,10 @@
       "version": "0.7.1",
       "advisory_id": "RUSTSEC-2026-0186",
       "owner": "GeorgianDusk repository maintainer",
-      "reviewed_on": "2026-07-20T08:30:00.000Z",
-      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reviewed_on": "2026-08-26T16:12:46.035Z",
+      "expires_on": "2026-09-05T00:00:00.000Z",
       "reachability": "Dev and native-test dependency through dusk-vm and piecrust; absent from the exact contract and data-driver WASM normal and build trees. Piecrust 0.30.0 contains no calls to the advisory's affected range-advice or range-flush methods.",
-      "upstream_tracking": "The fixed memmap2 line starts at 0.9.11, outside Piecrust's current 0.7 constraint; resolution requires an upstream Piecrust and Dusk VM dependency change."
+      "upstream_tracking": "The fixed memmap2 line starts at 0.9.11. Current Piecrust 0.32.0 at commit 3dee64f7c9813c0dbb5f3d5fc26d897d800d10a2 still constrains memmap2 to 0.7, so resolution requires an upstream Piecrust and Dusk VM dependency change."
     },
     {
       "kind": "unsound",
@@ -82,10 +82,10 @@
       "version": "0.16.4",
       "advisory_id": "RUSTSEC-2026-0253",
       "owner": "GeorgianDusk repository maintainer",
-      "reviewed_on": "2026-08-13T13:01:23.158Z",
-      "expires_on": "2026-08-20T00:00:00.000Z",
+      "reviewed_on": "2026-08-26T16:12:46.035Z",
+      "expires_on": "2026-09-05T00:00:00.000Z",
       "reachability": "Dev and native-test dependency through dusk-vm 1.6.0; absent from the exact generated contract and data-driver WASM normal and build trees. Exact dusk-vm source uses LruCache for host-query caching but contains no call to the affected LruCache::pop() path; triggering additionally requires a panicking key Drop during unwind followed by a later cache eviction.",
-      "upstream_tracking": "RustSec fixes RUSTSEC-2026-0253 in lru 0.18.2. Dusk VM 1.6.0 constrains lru to the 0.16 line, so removal requires a coordinated upstream Dusk VM dependency change. Recheck before expiry."
+      "upstream_tracking": "RustSec fixes RUSTSEC-2026-0253 in lru 0.18.2. Current Dusk VM 1.7.0 at rusk commit 311cc64df1018a9960babd19bc2b6d2e7bc3d4f3 still constrains lru to the 0.16 line, so removal requires a coordinated upstream Dusk VM dependency change. Recheck before expiry."
     }
   ]
 }

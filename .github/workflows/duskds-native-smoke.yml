@@ -1,4 +1,4 @@
-name: DuskDS native production smoke
+name: DuskDS and DuskEVM native production smoke
 
 "on":
   pull_request:
@@ -134,6 +134,29 @@ jobs:
             ""
           ].join("\n"));
           NODE
+      - name: Verify exact DuskEVM Testnet identity and progression
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          import { checkDuskEvmNetwork } from "./scripts/staging-smoke.mjs";
+          const policy = JSON.parse(fs.readFileSync("config/phase5-policy.json", "utf8"));
+          const evidence = await checkDuskEvmNetwork(policy);
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+            "### DuskEVM official RPC read",
+            `- Observed at: \`${evidence.observed_at}\``,
+            `- Chain: \`${evidence.actual_chain_id}\``,
+            `- Genesis: \`${evidence.actual_genesis_hash}\``,
+            `- Progression: \`${evidence.first_height} -> ${evidence.second_height}\``,
+            ""
+          ].join("\n"));
+          NODE
+      - name: Install the reviewed Foundry release
+        if: steps.scope.outputs.relevant == 'true'
+        uses: foundry-rs/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09 # v1.9.1
+        with:
+          version: v1.7.1
+          cache: "false"
       - name: Enable repository-pinned pnpm
         if: steps.scope.outputs.relevant == 'true'
         run: |
@@ -155,6 +178,40 @@ jobs:
           test "$(sha256sum "$TEMPLATE/Cargo.lock" | awk '{print $1}')" = "$DUSKDS_TEMPLATE_LOCK_SHA256"
           grep -Fq "$DUSKDS_GENERATED_LOCK_SHA256" "$TEMPLATE/PROVENANCE.md"
           grep -Fq "$FORGE_COMMIT" "$TEMPLATE/PROVENANCE.md"
+          test -f output/npm/package/templates/foundry-counter-dusk-evm/foundry.toml
+          test -f output/npm/package/templates/hardhat-counter-dusk-evm/package-lock.json
+          test -f output/npm/package/templates/hardhat-counter-dusk-evm/ignition/modules/Counter.ts
+      - name: Verify DuskEVM wallet, read, and degradation boundaries
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          ./node_modules/.bin/vitest run \
+            packages/core/src/__tests__/core.test.ts \
+            packages/core/src/__tests__/evmRead.test.ts \
+            packages/core/src/__tests__/rpcFailures.test.ts \
+            apps/studio/src/__tests__/Phase2App.test.tsx
+          node scripts/test-staging-smoke.mjs
+      - name: Build and test fresh reviewed DuskEVM starters
+        if: steps.scope.outputs.relevant == 'true'
+        run: |
+          EVM_ROOT="$RUNNER_TEMP/duskevm-native-smoke"
+          FOUNDRY_PROJECT="$EVM_ROOT/foundry-counter"
+          HARDHAT_PROJECT="$EVM_ROOT/hardhat-counter"
+          mkdir -p "$EVM_ROOT"
+          cp -R output/npm/package/templates/foundry-counter-dusk-evm "$FOUNDRY_PROJECT"
+          cp -R output/npm/package/templates/hardhat-counter-dusk-evm "$HARDHAT_PROJECT"
+          (
+            cd "$FOUNDRY_PROJECT"
+            forge --version
+            forge build --sizes
+            forge test -vv
+          )
+          (
+            cd "$HARDHAT_PROJECT"
+            npm ci --ignore-scripts
+            npm run build
+            npm test
+            npm audit --audit-level=high
+          )
       - name: Install the pinned Rust and Dusk Forge toolchain
         if: steps.scope.outputs.relevant == 'true'
         run: |
@@ -258,6 +315,15 @@ jobs:
               build_artifacts: "passed",
               vm_test: "passed",
               inspect: "passed"
+            },
+            evm_steps: {
+              rpc_identity: "passed",
+              rpc_progression: "passed",
+              wallet_boundary: "passed",
+              foundry_build: "passed",
+              hardhat_build: "passed",
+              read_inspection: "passed",
+              degradation: "passed"
             }
           };
           fs.writeFileSync(`output/duskds-native-smoke-receipt-${process.env.GITHUB_RUN_ID}.json`, `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });

@@ -129,9 +129,9 @@ The path decision is the dominant task. Mobile omits the decorative workstation 
 
 ### Guides
 
-Use objective rail -> task surface -> evidence rail for the active DuskDS journey. Healthy states emphasize evidence recorded. Blocked network states show a readable reason, recovery action, and retry without changing layout.
+Use objective rail -> task surface -> evidence rail for both active journeys. Healthy states emphasize evidence recorded. Blocked network states show a readable reason, recovery action, and retry without changing layout.
 
-DuskEVM is deliberately exempt from the four-stage evidence layout while Testnet is unavailable. Its single pre-launch learning surface may preview Setup, Access, Build, and Inspect, but it must not show a completion score, live wallet/RPC actions, or anything resembling a Testnet success state.
+DuskEVM uses the same four-stage layout with a stricter action boundary. Setup is non-skippable and touches only the allowlisted public RPC. Access presents discovery, connection, network change, and balance reads as four separate wallet actions. Build uses reviewed local Foundry or Hardhat starters. Inspect classifies locally before one explicit bounded read. Expired activation evidence replaces every stage with one fail-closed review-required surface.
 
 DuskDS preflight rows behave like a tactical equipment checklist: required versus optional, detected version, and failure category remain explicit.
 

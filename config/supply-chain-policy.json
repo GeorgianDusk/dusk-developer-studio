@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "assurance_node_version": "24.18.0",
   "pnpm_version": "11.7.0",
   "lockfile": "pnpm-lock.yaml",
@@ -14,6 +14,16 @@
       "stage": "runtime",
       "image": "nginx:stable-alpine",
       "digest": "sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
+    }
+  ],
+  "runtime_package_upgrades": [
+    {
+      "name": "libcrypto3",
+      "version": "3.5.8-r0"
+    },
+    {
+      "name": "libssl3",
+      "version": "3.5.8-r0"
     }
   ],
   "npm_audit": {

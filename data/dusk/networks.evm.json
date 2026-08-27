@@ -10,10 +10,14 @@
     "explorerUrl": "https://explorer.testnet.evm.dusk.network",
     "blockTimeSeconds": 2,
     "enabledByDefault": true,
+    "status": "active",
+    "reviewedAt": "2026-08-13",
+    "expiresAt": "2026-09-13",
+    "genesisHash": "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7",
     "maturity": "testnet",
-    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
-    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
-    "warning": "Testnet-first developer onboarding network. Tokens have no monetary value."
+    "sourceLabel": "Official DuskEVM Quickstart and reference, plus live RPC evidence reviewed 2026-08-13",
+    "sourceUrl": "https://docs.dusk.network/developer/duskevm/reference/",
+    "warning": "Studio-activated Testnet. Tokens have no monetary value; re-check chain and progression before every funded or signed action."
   },
   {
     "id": "dusk-evm-mainnet",
@@ -26,9 +30,12 @@
     "explorerUrl": "https://explorer.evm.dusk.network",
     "blockTimeSeconds": 2,
     "enabledByDefault": false,
+    "status": "reference-only",
+    "reviewedAt": "2026-08-13",
+    "expiresAt": "2026-09-13",
     "maturity": "mainnet-reference",
-    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
-    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "sourceLabel": "Official DuskEVM reference, reviewed 2026-08-13",
+    "sourceUrl": "https://docs.dusk.network/developer/duskevm/reference/",
     "warning": "Reference metadata only. Studio does not support mainnet deployment."
   },
   {
@@ -42,9 +49,12 @@
     "explorerUrl": "https://explorer.devnet.evm.dusk.network",
     "blockTimeSeconds": 2,
     "enabledByDefault": false,
+    "status": "reference-only",
+    "reviewedAt": "2026-08-13",
+    "expiresAt": "2026-09-13",
     "maturity": "devnet-reference",
-    "sourceLabel": "Official Dusk docs, reviewed 2026-07-03",
-    "sourceUrl": "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+    "sourceLabel": "Official DuskEVM reference, reviewed 2026-08-13",
+    "sourceUrl": "https://docs.dusk.network/developer/duskevm/reference/",
     "warning": "Reference metadata only. Devnet should be enabled only for explicit local testing."
   }
 ]

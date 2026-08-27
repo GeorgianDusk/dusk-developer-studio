@@ -7,6 +7,7 @@ import { setImmediate } from "node:timers";
 import { URL } from "node:url";
 import {
   ASSURANCE_CHECK_OWNERSHIP,
+  checkDuskEvmNetwork,
   checkDuskDsNodeRead,
   checkPublicPortClosed,
   classifyAssuranceChecks,
@@ -179,9 +180,55 @@ await assert.rejects(checkDuskDsNodeRead("https://testnet.nodes.dusk.network/on/
   body: Buffer.alloc(0)
 })), /must not redirect/);
 
+const evmPolicy = {
+  duskevm_testnet_rpc_url: "https://rpc.testnet.evm.dusk.network",
+  duskevm_testnet_chain_id_hex: "0x2e9",
+  duskevm_testnet_genesis_hash: `0x${"b".repeat(64)}`,
+  duskevm_rpc_evidence: { progression_wait_ms: 2_200 }
+};
+const evmResults = ["0x2e9", { hash: `0x${"b".repeat(64)}` }, "0x10", "0x11"];
+const evmRequests = [];
+const evmNetwork = await checkDuskEvmNetwork(evmPolicy, async (target, options) => {
+  evmRequests.push({ target: target.href, options });
+  return {
+    response: { ok: true, status: 200, url: target.href, redirected: false },
+    body: Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, result: evmResults.shift() }))
+  };
+}, () => new Date("2026-07-29T12:00:00Z"), async (milliseconds) => {
+  assert.equal(milliseconds, 2_200);
+});
+assert.deepEqual(evmNetwork, {
+  status: "passed",
+  endpoint: "https://rpc.testnet.evm.dusk.network/",
+  expected_chain_id: "0x2e9",
+  actual_chain_id: "0x2e9",
+  expected_genesis_hash: `0x${"b".repeat(64)}`,
+  actual_genesis_hash: `0x${"b".repeat(64)}`,
+  first_height: 16,
+  second_height: 17,
+  observed_at: "2026-07-29T12:00:00.000Z"
+});
+assert.equal(evmRequests.length, 4);
+assert.deepEqual(evmRequests.map(({ options }) => JSON.parse(options.body).method), [
+  "eth_chainId", "eth_getBlockByNumber", "eth_blockNumber", "eth_blockNumber"
+]);
+assert.ok(evmRequests.every(({ options }) => options.maxBytes === 64_000 && options.redirect === "error"));
+await assert.rejects(checkDuskEvmNetwork({ ...evmPolicy, duskevm_testnet_rpc_url: "https://example.com" }, async () => {
+  throw new Error("must not fetch");
+}), /exact official HTTPS/);
+await assert.rejects(checkDuskEvmNetwork(evmPolicy, async (target) => ({
+  response: { ok: true, status: 200, url: target.href, redirected: false },
+  body: Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 2, result: "0x2e9" }))
+})), /invalid eth_chainId envelope/);
+const frozenResults = ["0x2e9", { hash: `0x${"b".repeat(64)}` }, "0x10", "0x10"];
+await assert.rejects(checkDuskEvmNetwork(evmPolicy, async (target) => ({
+  response: { ok: true, status: 200, url: target.href, redirected: false },
+  body: Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: 1, result: frozenResults.shift() }))
+}), undefined, async () => undefined), /did not progress/);
+
 const passingChecks = Object.fromEntries([
   "public_health", "key_routes", "release_parity", "source_links", "duskds_node_read",
-  "rpc_degradation", "tls_expiry", "development_port_closed", "companion_port_closed"
+  "rpc_chain_id", "rpc_degradation", "tls_expiry", "development_port_closed", "companion_port_closed"
 ].map((name) => [name, { status: "passed" }]));
 assert.deepEqual(Object.keys(ASSURANCE_CHECK_OWNERSHIP).sort(), Object.keys(passingChecks).sort());
 assert.ok(Object.values(ASSURANCE_CHECK_OWNERSHIP).every((owner) => owner === "studio" || owner === "upstream"));
@@ -193,8 +240,7 @@ assert.deepEqual(sourceFailure, { studio_status: "passed", upstream_dependency_s
 assert.deepEqual(duskDsFailure, { studio_status: "passed", upstream_dependency_status: "failed" });
 assert.deepEqual(mixedFailure, { studio_status: "failed", upstream_dependency_status: "failed" });
 assert.deepEqual(classifyAssuranceChecks({ ...passingChecks, public_health: { status: "failed" } }), { studio_status: "failed", upstream_dependency_status: "passed" });
-assert.deepEqual(classifyAssuranceChecks({ ...passingChecks, rpc_chain_id: { status: "deferred", path: "evm", reason: "pre-launch" } }), { studio_status: "passed", upstream_dependency_status: "passed" });
-assert.deepEqual(classifyAssuranceChecks({ ...passingChecks, rpc_chain_id: { status: "failed" } }), { studio_status: "failed", upstream_dependency_status: "passed" });
+assert.deepEqual(classifyAssuranceChecks({ ...passingChecks, rpc_chain_id: { status: "failed" } }), { studio_status: "passed", upstream_dependency_status: "failed" });
 assert.deepEqual(classifyAssuranceChecks({ ...passingChecks, future_check: { status: "failed" } }), { studio_status: "failed", upstream_dependency_status: "passed" });
 assert.deepEqual(classifyAssuranceChecks({ ...passingChecks, future_check: { status: "deferred" } }), { studio_status: "failed", upstream_dependency_status: "passed" });
 assert.deepEqual(classifyAssuranceChecks({ ...passingChecks, future_check: { status: "passed" } }), { studio_status: "passed", upstream_dependency_status: "passed" });

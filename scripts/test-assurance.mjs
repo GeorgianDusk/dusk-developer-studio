@@ -26,6 +26,7 @@ try {
   fs.cpSync(path.join(sourceRoot, "config"), path.join(root, "config"), { recursive: true });
   fs.cpSync(path.join(sourceRoot, "data"), path.join(root, "data"), { recursive: true });
   fs.cpSync(path.join(sourceRoot, "deploy"), path.join(root, "deploy"), { recursive: true });
+  const policy = JSON.parse(fs.readFileSync(path.join(root, "config", "assurance-policy.json"), "utf8"));
   fs.mkdirSync(path.join(root, "apps", "studio", "dist", "assets"), { recursive: true });
   fs.writeFileSync(path.join(root, "apps", "studio", "dist", "index.html"), "<main>fixture</main>");
   fs.writeFileSync(path.join(root, "apps", "studio", "dist", "assets", "app.js"), "console.log('fixture')");
@@ -62,7 +63,10 @@ try {
   assert.equal(artifactFingerprint(root), initialFingerprint);
   fs.writeFileSync(path.join(distRoot, "assets", "app.js"), "console.log('changed product asset')");
   assert.notEqual(artifactFingerprint(root), initialFingerprint);
-  fs.writeFileSync(path.join(root, "apps", "studio", "dist", "assets", "large.js"), "x".repeat(500_000));
+  fs.writeFileSync(
+    path.join(root, "apps", "studio", "dist", "assets", "large.js"),
+    "x".repeat(policy.asset_budgets.javascript_bytes + 1)
+  );
   assert.throws(() => createAssuranceReceipt(root), /budget exceeded/);
   fs.rmSync(path.join(root, "apps", "studio", "dist", "assets", "large.js"));
   const caddy = path.join(root, "deploy", "caddy", "studio.caddy");

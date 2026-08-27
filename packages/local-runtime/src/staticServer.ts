@@ -5,6 +5,7 @@ import path from "node:path";
 
 const HOST = "127.0.0.1";
 const DUSKDS_TESTNET_ORIGIN = "https://testnet.nodes.dusk.network";
+const DUSKEVM_TESTNET_RPC_ORIGIN = "https://rpc.testnet.evm.dusk.network";
 const MAX_BOOTSTRAP_RESPONSE_BYTES = 8 * 1024;
 const MAX_BOOTSTRAP_REQUEST_BYTES = 1024;
 const DEFAULT_BOOTSTRAP_BODY_TIMEOUT_MS = 5_000;
@@ -31,7 +32,7 @@ export interface LocalStaticServerOptions {
 function securityHeaders(companionPort: number): Record<string, string> {
   return {
     "cache-control": "no-store",
-    "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://${HOST}:${companionPort} http://localhost:${companionPort} ${DUSKDS_TESTNET_ORIGIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'none'`,
+    "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' http://${HOST}:${companionPort} http://localhost:${companionPort} ${DUSKDS_TESTNET_ORIGIN} ${DUSKEVM_TESTNET_RPC_ORIGIN}; frame-ancestors 'none'; base-uri 'self'; form-action 'none'`,
     "cross-origin-opener-policy": "same-origin",
     "cross-origin-resource-policy": "same-origin",
     "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), hid=(), bluetooth=()",

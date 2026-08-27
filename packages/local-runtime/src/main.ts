@@ -283,11 +283,12 @@ export async function startLocalRuntime(options: LocalRuntimeOptions): Promise<{
     workspaceRoot: projectRoot,
     processCwd: packageRoot,
     foundryTemplateRoot: path.join(packageRoot, "templates", "foundry-counter-dusk-evm"),
+    hardhatTemplateRoot: path.join(packageRoot, "templates", "hardhat-counter-dusk-evm"),
     duskDsTemplateRoot: path.join(packageRoot, "templates", "duskds-counter-forge"),
     ...(options.capabilitiesEnabled ? { duskDsProjectRoot } : {}),
     allowedOrigins: [`http://${HOST}:${studioPort}`, `http://localhost:${studioPort}`],
     capabilitiesEnabled: options.capabilitiesEnabled,
-    evmScaffoldEnabled: false,
+    evmScaffoldEnabled: options.capabilitiesEnabled,
     allowPrivateNetwork: false,
     releaseIdentity
   });

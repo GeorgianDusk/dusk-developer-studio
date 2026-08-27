@@ -9,13 +9,15 @@ const publicOrigin = new URL(configuredPublicUrl ?? "http://127.0.0.1:5173").ori
 const allowedRpcOrigin = new URL("https://rpc.testnet.evm.dusk.network").origin;
 const routes = [
   ["overview", "Pick the execution model your app actually needs."],
-  ["evm/setup", "Explore the planned DuskEVM developer workflow."],
+  ["evm/setup", "Verify DuskEVM Testnet before touching a wallet."],
+  ["evm/access", "Connect and fund a wallet without giving Studio signing power."],
+  ["evm/build", "Compile and test a fresh Solidity starter locally."],
+  ["evm/inspect", "Inspect Testnet state and preserve deployment evidence."],
   ["evm/reference", "Source-backed context for the task in front of you."],
-  ["evm/troubleshooting", "Review DuskEVM launch-planning issues."],
+  ["evm/troubleshooting", "Fix the blocker in front of you."],
   ["companion", "Run the full Studio locally with npm."],
   ["settings", "See the build you are using and control its saved progress."]
 ] as const;
-const evmCanonicalRoutes = ["access", "build", "inspect"] as const;
 
 async function getExact(request: APIRequestContext, pathname: string): Promise<APIResponse> {
   const expected = new URL(pathname, `${publicOrigin}/`);
@@ -65,20 +67,13 @@ test("public candidate exposes the exact release across key routes", async ({ pa
 
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
+  await page.getByRole("button", { name: /Start DuskEVM/i }).click();
   await expect(page).toHaveURL(`${publicOrigin}/#evm/setup`);
   for (const [route, heading] of routes) {
     await gotoExact(page, `/#${route}`);
     await expect(page).toHaveTitle(`${heading} | Dusk Developer Studio`);
     await expect(page.getByRole("heading", { name: heading })).toBeVisible();
   }
-  for (const route of evmCanonicalRoutes) {
-    await page.goto(`${publicOrigin}/#evm/${route}`);
-    await expect(page, `/#evm/${route} canonical route`).toHaveURL(`${publicOrigin}/#evm/setup`);
-    await expect(page).toHaveTitle("Explore the planned DuskEVM developer workflow. | Dusk Developer Studio");
-    await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
-  }
-
   const manifestResponse = await getExact(request, "/release-manifest.json");
   const assuranceResponse = await getExact(request, "/assurance-receipt.json");
   expect(manifestResponse.headers()["content-type"]).toMatch(/application\/json/i);
@@ -110,9 +105,9 @@ test("public candidate exposes the complete DuskDS guide without DuskEVM RPC tra
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
   const duskDsPath = page.getByRole("button", { name: /Start DuskDS/i });
-  const duskEvmPath = page.getByRole("button", { name: /Open pre-launch overview/i });
+  const duskEvmPath = page.getByRole("button", { name: /Start DuskEVM/i });
   await expect(duskDsPath.getByText("Guide and local tools available", { exact: true })).toBeVisible();
-  await expect(duskEvmPath.getByText("Reference only", { exact: true })).toBeVisible();
+  await expect(duskEvmPath.getByText("Testnet active", { exact: true })).toBeVisible();
   await duskDsPath.click();
 
   const guide = page.getByLabel("DuskDS guide sequence");
@@ -141,22 +136,23 @@ test("public candidate exposes the complete DuskDS guide without DuskEVM RPC tra
   expect(evmRpcRequests, "DuskDS browsing must not contact the DuskEVM RPC").toEqual([]);
 });
 
-test("public candidate keeps the DuskEVM pre-launch overview inert while offline", async ({ page, context }) => {
+test("public candidate contacts DuskEVM only after an explicit read and degrades safely offline", async ({ page, context }) => {
   const evmRpcRequests: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).origin === allowedRpcOrigin) evmRpcRequests.push(request.url());
   });
   await installPublicRequestBoundary(context);
   await gotoExact(page, "/");
-  await page.getByRole("button", { name: /Open pre-launch overview/i }).click();
+  await page.getByRole("button", { name: /Start DuskEVM/i }).click();
   await gotoExact(page, "/#evm/setup");
-  await expect(page.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." })).toBeVisible();
+  await expect(page.getByLabel("DuskEVM guide sequence")).toBeVisible();
+  expect(evmRpcRequests, "Opening Setup must not contact the EVM RPC").toEqual([]);
   await context.setOffline(true);
-  await page.getByLabel("Example identifier").fill(`0x${"b".repeat(40)}`);
-  await expect(page.getByText("address", { exact: true })).toBeVisible();
-  await expect(page.getByText("No live evidence is recorded")).toBeVisible();
-  await expect(page.getByLabel("DuskEVM guide sequence")).toHaveCount(0);
-  await expect(page.getByText(/forge create|cast wallet import/i)).toHaveCount(0);
-  expect(evmRpcRequests, "The pre-launch overview must not contact the EVM RPC").toEqual([]);
+  await page.getByRole("button", { name: "Verify chain and progression" }).click();
+  await expect(page.getByRole("alert")).toContainText(/could not reach|timed out|failed/i);
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  expect(evmRpcRequests.length, "The explicit verification must attempt the allowlisted RPC").toBeGreaterThan(0);
+  await expect(page.getByText(/wallet request/i)).toHaveCount(0);
   await context.setOffline(false);
 });

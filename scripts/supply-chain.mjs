@@ -39,12 +39,13 @@ export function validatePolicy(policy) {
       "lockfile",
       "application_sbom",
       "container_bases",
+      "runtime_package_upgrades",
       "npm_audit",
       "container_scan",
     ],
     "Supply-chain policy",
   );
-  if (policy.schema_version !== 1 || !/^\d+\.\d+\.\d+$/.test(policy.assurance_node_version)) {
+  if (policy.schema_version !== 2 || !/^\d+\.\d+\.\d+$/.test(policy.assurance_node_version)) {
     throw new SupplyChainError("Supply-chain policy version or assurance Node pin is invalid.");
   }
   if (!/^\d+\.\d+\.\d+$/.test(policy.pnpm_version)) {
@@ -72,6 +73,20 @@ export function validatePolicy(policy) {
   }
   if (JSON.stringify(stages) !== JSON.stringify(["build", "runtime"])) {
     throw new SupplyChainError("Container bases must define build then runtime stages.");
+  }
+  if (!Array.isArray(policy.runtime_package_upgrades) || policy.runtime_package_upgrades.length !== 2) {
+    throw new SupplyChainError("Supply-chain policy must define exactly two runtime package upgrades.");
+  }
+  const runtimePackageNames = [];
+  for (const packagePin of policy.runtime_package_upgrades) {
+    exactKeys(packagePin, ["name", "version"], "Runtime package upgrade");
+    if (!/^[a-z0-9][a-z0-9+.-]*$/.test(packagePin.name) || !/^[A-Za-z0-9.+:~_-]+$/.test(packagePin.version)) {
+      throw new SupplyChainError("Runtime package upgrade pin is invalid.");
+    }
+    runtimePackageNames.push(packagePin.name);
+  }
+  if (JSON.stringify(runtimePackageNames) !== JSON.stringify(["libcrypto3", "libssl3"])) {
+    throw new SupplyChainError("Runtime package upgrades must bind the reviewed OpenSSL package set.");
   }
   exactKeys(policy.npm_audit, ["production_only", "minimum_severity", "exceptions"], "npm audit policy");
   if (
@@ -109,6 +124,11 @@ export function expectedDockerFromLines(policy) {
   ];
 }
 
+export function expectedRuntimeUpgradeLine(policy) {
+  const pins = policy.runtime_package_upgrades.map(({ name, version }) => `${name}=${version}`).join(" ");
+  return `RUN apk add --no-cache --upgrade ${pins}`;
+}
+
 export function validateDockerfile(dockerfile, policy) {
   const observed = dockerfile
     .split(/\r?\n/u)
@@ -117,6 +137,13 @@ export function validateDockerfile(dockerfile, policy) {
   const expected = expectedDockerFromLines(policy);
   if (JSON.stringify(observed) !== JSON.stringify(expected)) {
     throw new SupplyChainError("Dockerfile base images do not match the reviewed digest pins.");
+  }
+  const runtimeUpgradeLines = dockerfile
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => /^RUN\s+apk\s+/iu.test(line));
+  if (JSON.stringify(runtimeUpgradeLines) !== JSON.stringify([expectedRuntimeUpgradeLine(policy)])) {
+    throw new SupplyChainError("Dockerfile runtime package upgrades do not match the reviewed version pins.");
   }
 }
 
@@ -176,6 +203,10 @@ export function buildSbom({ policy, lockBytes, dockerfileBytes, packageManifest,
         ...policy.container_bases.map((base) => ({
           name: `dusk:container-base:${base.stage}`,
           value: `${base.image}@${base.digest}`,
+        })),
+        ...policy.runtime_package_upgrades.map((packagePin) => ({
+          name: "dusk:runtime-package-upgrade",
+          value: `${packagePin.name}=${packagePin.version}`,
         })),
       ],
     },

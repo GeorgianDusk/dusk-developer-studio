@@ -47,10 +47,10 @@ const candidate = {
 };
 
 const scenarios = policy.pilot.required_scenarios;
-assert.equal(scenarios.length, 8);
-assert.equal(new Set(scenarios.map((scenario) => scenario.id)).size, 8);
-assert.equal(new Set(scenarios.map((scenario) => scenario.capability)).size, 8);
-assert.equal(new Set(scenarios.map((scenario) => scenario.failure_class)).size, 8);
+assert.equal(scenarios.length, 20);
+assert.equal(new Set(scenarios.map((scenario) => scenario.id)).size, 20);
+assert.equal(new Set(scenarios.map((scenario) => scenario.capability)).size, 20);
+assert.equal(new Set(scenarios.map((scenario) => scenario.failure_class)).size, 20);
 assert.equal(
   isSafeModeMachineActionRefusal({
     status: 403,
@@ -287,7 +287,7 @@ assert.throws(
 
 assert.throws(
   () => materializeAgentPilotPlan(policy, "unknown-pilot", candidate),
-  /eight reviewed scenarios/u
+  /twenty reviewed DuskEVM scenarios/u
 );
 
 const extraCandidateField = { ...candidate, unexpected: true };
@@ -330,7 +330,7 @@ assert.throws(
     scenarios[0].id,
     candidate
   ),
-  /exact eight reviewed pilot scenarios/u
+  /exact twenty reviewed DuskEVM pilot scenarios/u
 );
 
 const duplicateScenarioPolicy = clone(policy);
@@ -342,7 +342,7 @@ assert.throws(
     scenarios[0].id,
     candidate
   ),
-  /exact eight reviewed pilot scenarios/u
+  /exact twenty reviewed DuskEVM pilot scenarios/u
 );
 
 const extraScenarioFieldPolicy = clone(policy);
@@ -353,7 +353,7 @@ assert.throws(
     scenarios[0].id,
     candidate
   ),
-  /exact eight reviewed pilot scenarios/u
+  /exact twenty reviewed DuskEVM pilot scenarios/u
 );
 
 const duplicateCapabilityPolicy = clone(policy);
@@ -365,7 +365,7 @@ assert.throws(
     scenarios[0].id,
     candidate
   ),
-  /exact eight reviewed pilot scenarios/u
+  /exact twenty reviewed DuskEVM pilot scenarios/u
 );
 
 const unsafeFailurePolicy = clone(policy);
@@ -376,13 +376,13 @@ assert.throws(
     scenarios[0].id,
     candidate
   ),
-  /exact eight reviewed pilot scenarios/u
+  /exact twenty reviewed DuskEVM pilot scenarios/u
 );
 
 const cliRoot = await fs.mkdtemp(path.join(os.tmpdir(), "dusk-agent-pilot-plan-"));
 try {
   const cliScenario = scenarios.find(
-    (scenario) => scenario.id === "linux-port-conflict-recovery"
+    (scenario) => scenario.id === "evm-hardhat-build-linux"
   );
   assert.ok(cliScenario);
   const cliOutput = `output/pilots/plans/${cliScenario.id}.json`;

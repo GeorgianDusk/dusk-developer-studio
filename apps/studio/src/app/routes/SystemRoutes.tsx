@@ -250,7 +250,7 @@ export function SettingsPage({ builderPath, setBuilderPath }: { builderPath: Bui
           <li>Progress stays in this browser unless you download diagnostics.</li>
           <li>Studio stores step status, check labels, blockers, timestamps, and bounded result details you choose to record, such as a block height, hash, or artifact name.</li>
           <li>Studio does not store accounts, balances, wallet secrets, terminal output, file contents, or local paths.</li>
-          <li>DuskEVM remains a pre-launch reference and does not produce a completion score.</li>
+          <li>DuskEVM records bounded step evidence only while its activation receipt is current; expired evidence is historical and live controls fail closed.</li>
         </ul>
         <div className="button-row">
           <button className="secondary-button" type="button" onClick={exportDiagnostics}>Download safe diagnostics</button>

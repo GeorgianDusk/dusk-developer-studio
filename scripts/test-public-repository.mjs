@@ -77,7 +77,12 @@ assert.equal(
 assert.equal(preservedInitialPublicationReceipt.observed_at, initialPublicationEvidence.observed_at);
 
 const packageJson = JSON.parse(read("package.json"));
+const rootTypeScriptConfig = JSON.parse(read("tsconfig.base.json"));
 assert.equal(packageJson.private, true, "The workspace must remain protected from accidental npm publication.");
+assert.ok(
+  rootTypeScriptConfig.exclude.includes("packages/templates/hardhat-counter-dusk-evm/**"),
+  "The standalone Hardhat starter must be typechecked only after its own frozen dependencies are installed."
+);
 assert.equal(packageJson.license, "Apache-2.0");
 assert.equal(packageJson.repository.url, "git+https://github.com/GeorgianDusk/dusk-developer-studio.git");
 assert.match(
@@ -199,13 +204,13 @@ assert.equal(policy.schema_version, 2);
 assert.equal(policy.distribution, "npm");
 assert.deepEqual(policy.package, {
   name: "dusk-developer-studio",
-  version: "1.0.19",
-  tag: "v1.0.19",
+  version: "1.0.20",
+  tag: "v1.0.20",
   registry: "https://registry.npmjs.org",
   access: "public",
   node_engine: ">=24.18.0 <25",
   package_root: "packages/cli",
-  tarball_path: "output/npm/dusk-developer-studio-1.0.19.tgz",
+  tarball_path: "output/npm/dusk-developer-studio-1.0.20.tgz",
   primary_entrypoint: "bin/dusk-developer-studio.mjs",
   safe_smoke_arguments: ["--lifecycle-self-test", "--no-open"],
   local_actions_capability_contract_smoke_arguments: ["local-actions", "--lifecycle-self-test", "--no-open"]
@@ -424,6 +429,31 @@ assert.match(localRuntime, /exactRegularFileInventory[\s\S]*scaffold_preservatio
 assert.match(localRuntime, /shutdown_smoke: "passed"/);
 assert.match(npmAssuranceWorkflow, /runner: \[ubuntu-24\.04, windows-2025, macos-15\]/);
 assert.match(npmAssuranceWorkflow, /pnpm build:npm[\s\S]*pnpm test:npm[\s\S]*node scripts\/npm-package-pack\.mjs/);
+assert.match(
+  npmAssuranceWorkflow,
+  /rustup toolchain install 1\.94\.0 --profile minimal[\s\S]*cargo \+1\.94\.0 install --locked[\s\S]*--root "\$RUNNER_TEMP\/cargo-audit-0\.22\.2"[\s\S]*--version 0\.22\.2[\s\S]*cargo-audit/u,
+  "Reusable npm assurance must install the exact Cargo advisory scanner before publication can consume its result."
+);
+assert.match(
+  npmAssuranceWorkflow,
+  /CARGO_AUDIT_BIN: \$\{\{ runner\.temp \}\}\/cargo-audit-0\.22\.2\/bin\/cargo-audit[\s\S]*node scripts\/check-cargo-advisory-review\.mjs/u,
+  "Reusable npm assurance must enforce the exact candidate's reviewed Cargo advisory result."
+);
+assert.match(
+  npmAssuranceWorkflow,
+  /pnpm audit --audit-level=moderate/u,
+  "Reusable npm assurance must enforce the live JavaScript advisory severity gate."
+);
+assert.ok(
+  npmAssuranceWorkflow.indexOf("Enforce the reviewed Cargo advisory result for this candidate")
+    < npmAssuranceWorkflow.indexOf("Build, test, and pack the exact npm candidate"),
+  "Cargo dependency assurance must fail before the publication tarball is packed."
+);
+assert.ok(
+  npmAssuranceWorkflow.indexOf("Enforce the live JavaScript dependency severity gate")
+    < npmAssuranceWorkflow.indexOf("Build, test, and pack the exact npm candidate"),
+  "JavaScript dependency assurance must fail before the publication tarball is packed."
+);
 assert.match(npmBrowserSmoke, /await context\.close\(\);[\s\S]*context = undefined;[\s\S]*validateBrowserTransportEvidence/);
 assert.match(
   npmBrowserSmoke,
@@ -531,6 +561,7 @@ assert.match(npmAssuranceWorkflow, /const checkFields = \{[\s\S]*install_smoke[\
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_verified !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_preflight_check_id !== process\.env\.PREFLIGHT_CHECK_ID/);
 assert.match(npmAssuranceWorkflow, /receipt\.local_actions_scaffold_verified !== true/);
+assert.match(npmAssuranceWorkflow, /receipt\.local_actions_evm_scaffolds_verified !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.scaffold_preserved_after_shutdown !== true/);
 assert.match(npmAssuranceWorkflow, /receipt\.studio_shutdown_verified !== true/);
 for (const field of [
@@ -711,7 +742,7 @@ assert.deepEqual(duskDsToolchainPolicy.rusk, {
   tag: "dusk-core-1.6.0",
   revision: "ae1a38a2079c681126a96f94c17d282ea2639946"
 });
-assert.match(duskDsNativeSmokeWorkflow, /^name: DuskDS native production smoke$/m);
+assert.match(duskDsNativeSmokeWorkflow, /^name: DuskDS and DuskEVM native production smoke$/m);
 assert.match(duskDsNativeSmokeWorkflow, /runs-on: ubuntu-24\.04/);
 assert.match(duskDsNativeSmokeWorkflow, /persist-credentials: "false"/);
 assert.match(duskDsNativeSmokeWorkflow, /EXPECTED_COMMIT: \$\{\{ github\.event\.pull_request\.head\.sha \|\| github\.sha \}\}/);
@@ -750,6 +781,11 @@ assert.match(duskDsNativeSmokeWorkflow, /CONTRACT_SHA256=\$CONTRACT_HASH[\s\S]*D
 assert.match(duskDsNativeSmokeWorkflow, /contract_sha256: process\.env\.CONTRACT_SHA256[\s\S]*data_driver_sha256: process\.env\.DATA_DRIVER_SHA256/);
 assert.match(duskDsNativeSmokeWorkflow, /scripts\/staging-smoke\.mjs/);
 assert.match(duskDsNativeSmokeWorkflow, /checkDuskDsNodeRead\(policy\.duskds_testnet_graphql_url\)/);
+assert.match(duskDsNativeSmokeWorkflow, /checkDuskEvmNetwork\(policy\)/);
+assert.match(duskDsNativeSmokeWorkflow, /foundry-rs\/foundry-toolchain@908c540300062bd5a7e473851cdb4282204cee09[\s\S]*version: v1\.7\.1/);
+assert.match(duskDsNativeSmokeWorkflow, /forge build --sizes[\s\S]*forge test -vv/);
+assert.match(duskDsNativeSmokeWorkflow, /npm ci --ignore-scripts[\s\S]*npm run build[\s\S]*npm test[\s\S]*npm audit --audit-level=high/);
+assert.match(duskDsNativeSmokeWorkflow, /evm_steps:[\s\S]*rpc_identity: "passed"[\s\S]*hardhat_build: "passed"[\s\S]*degradation: "passed"/);
 assert.doesNotMatch(duskDsNativeSmokeWorkflow, /curl[\s\S]*DUSKDS_GRAPHQL_URL|\.data\.block\.header|DUSKDS_GRAPHQL_URL/);
 assert.ok(duskDsNativeSmokeWorkflow.indexOf("Read the official DuskDS Testnet node") < duskDsNativeSmokeWorkflow.indexOf("Install the pinned Rust and Dusk Forge toolchain"), "The bounded node read must fail fast before the expensive native toolchain install.");
 assert.match(duskDsNativeSmokeWorkflow, /git\+https:\/\/github\.com\/dusk-network\/rusk\?tag=\$RUSK_TAG#\$RUSK_COMMIT/);
@@ -765,7 +801,12 @@ assert.match(publicReleaseSpec, /requestUrl\.origin !== publicOrigin/);
 assert.match(publicReleaseSpec, /rpc\.testnet\.evm\.dusk\.network/);
 assert.match(publicReleaseSpec, /redirectedFrom\(\)/);
 assert.match(publicReleaseSpec, /await expect\(page, pathname\)\.toHaveURL\(expected\.href\)/);
-assert.match(publicReleaseSpec, /evmCanonicalRoutes = \["access", "build", "inspect"\][\s\S]*toHaveURL\(`\$\{publicOrigin\}\/#evm\/setup`\)/);
+for (const route of ["setup", "access", "build", "inspect"]) {
+  assert.match(publicReleaseSpec, new RegExp(`\\["evm/${route}",`), `Public release coverage must exercise active DuskEVM ${route}.`);
+}
+assert.doesNotMatch(publicReleaseSpec, /evmCanonicalRoutes|canonical route/);
+assert.match(publicReleaseSpec, /Opening Setup must not contact the EVM RPC/);
+assert.match(publicReleaseSpec, /explicit verification must attempt the allowlisted RPC/);
 const publicMonitoring = read("docs/operations/public-monitoring.md");
 assert.match(publicMonitoring, /Both controls use GitHub Actions and GitHub Issues/);
 assert.match(publicMonitoring, /GitHub outage can affect monitoring and alert delivery at the same time/);
@@ -801,9 +842,13 @@ assertStableScopedContext({
     "Use the verified Node.js line",
     "Load the reviewed DuskDS toolchain policy",
     "Read the official DuskDS Testnet node",
+    "Verify exact DuskEVM Testnet identity and progression",
+    "Install the reviewed Foundry release",
     "Enable repository-pinned pnpm",
     "Restore frozen dependencies",
     "Build and verify the Studio npm package",
+    "Verify DuskEVM wallet, read, and degradation boundaries",
+    "Build and test fresh reviewed DuskEVM starters",
     "Install the pinned Rust and Dusk Forge toolchain",
     "Verify required native tools",
     "Scaffold through the reviewed Studio package",
@@ -873,7 +918,7 @@ assert.doesNotMatch(
   read("scripts/check-comprehensive-validation.mjs"),
   /export function validateComprehensiveCampaignTestFixture/
 );
-assert.match(agentPilotPlan, /win-keyboard-recovery/);
+assert.match(agentPilotPlan, /evm-keyboard-win-chromium/);
 assert.match(agentPilotCollector, /operator-attested-machine-collected/);
 assert.match(agentPilotCollector, /independent_execution: false/);
 assert.match(agentPilotCollector, /raw_observation_bundle_sha256/);
@@ -884,8 +929,8 @@ assert.match(agentPilotAssembler, /verifyAgentPilotResult\(wrapper\)/);
 assert.match(agentPilotAssembler, /downloadGitHubActionsReceipt/);
 assert.match(agentPilotAssembler, /envelope\.ref !== "refs\/heads\/main"/);
 assert.match(agentPilotAssembler, /flag: "wx"/);
-assert.deepEqual(phase5Policy.production_paths, ["duskds"]);
-assert.deepEqual(phase5Policy.preview_paths, ["evm"]);
+assert.deepEqual(phase5Policy.production_paths, ["duskds", "evm"]);
+assert.deepEqual(phase5Policy.preview_paths, []);
 assert.deepEqual(phase5Policy.candidate_hosts, [
   "studio.134-122-59-217.nip.io"
 ]);
@@ -907,110 +952,57 @@ assert.deepEqual(phase5Policy.responsibility_model, {
   external_independent_review: false,
   fixed_limitation: "Owner fields identify accountability to George rather than distinct people; separate Codex subagent challenge reviews are not external independent human or security audits."
 });
-assert.deepEqual(phase5Policy.pilot, {
-  evidence_class: "agent-operated-simulations",
-  operator_type: "codex-agent",
-  operator_identity: "Codex",
-  confidence_score_semantics: "heuristic-agent-confidence-not-human-trust",
-  receipt_assurance: "operator-attested-hash-bound-not-independent-execution-proof",
-  fixed_limitation: "Agent-operated Codex simulations provide reproducible flow coverage but do not prove external-human comprehension, usability, confidence, or adoption; receipt hashes bind operator-attested evidence bytes but do not independently prove execution, Linux and macOS additionally require GitHub Actions run and artifact provenance, and Windows and WSL remain operator-attested machine-collected evidence rather than independent validation.",
-  minimum_total: 8,
-  minimum_duskds: 8,
-  required_scenarios: [
-    {
-      id: "win-safe-boundary",
-      context: "windows",
-      experience: "novice",
-      capability: "mode-boundary",
-      execution_surface: "local-safe-to-local-actions",
-      failure_class: "safe-mode-machine-action-refusal"
-    },
-    {
-      id: "win-keyboard-recovery",
-      context: "windows",
-      experience: "novice",
-      capability: "keyboard-accessibility",
-      execution_surface: "local-browser",
-      failure_class: "empty-search-result"
-    },
-    {
-      id: "win-containment-recovery",
-      context: "windows",
-      experience: "experienced",
-      capability: "path-containment",
-      execution_surface: "local-actions",
-      failure_class: "outside-root-parent-refusal"
-    },
-    {
-      id: "win-overwrite-refusal",
-      context: "windows",
-      experience: "experienced",
-      capability: "overwrite-protection",
-      execution_surface: "direct-cli",
-      failure_class: "existing-target-refusal"
-    },
-    {
-      id: "wsl-managed-root-recovery",
-      context: "wsl",
-      experience: "novice",
-      capability: "managed-root-safety",
-      execution_surface: "local-actions-wsl",
-      failure_class: "unsafe-managed-root-refusal"
-    },
-    {
-      id: "wsl-native-toolchain-recovery",
-      context: "wsl",
-      experience: "experienced",
-      capability: "native-toolchain",
-      execution_surface: "native-duskds-wsl",
-      failure_class: "toolchain-mismatch"
-    },
-    {
-      id: "linux-port-conflict-recovery",
-      context: "linux",
-      experience: "experienced",
-      capability: "loopback-port-safety",
-      execution_surface: "local-runtime-linux",
-      failure_class: "loopback-port-conflict"
-    },
-    {
-      id: "macos-privilege-recovery",
-      context: "macos",
-      experience: "experienced",
-      capability: "privilege-boundary",
-      execution_surface: "local-runtime-macos",
-      failure_class: "elevated-execution-refusal"
-    }
-  ],
-  required_experience: ["novice", "experienced"],
-  required_contexts: ["windows", "wsl", "linux", "macos"],
-  local_operator_attested_contexts: ["windows", "wsl"],
-  github_actions_provenance_contexts: ["linux", "macos"],
-  required_observation_kinds: ["command", "file-probe", "hash-probe"],
-  minimum_completion_rate: 1,
-  minimum_recovery_rate: 1,
-  maximum_blocking_confusion: 0
+assert.equal(phase5Policy.pilot.evidence_class, "agent-operated-simulations");
+assert.equal(phase5Policy.pilot.operator_type, "codex-agent");
+assert.equal(phase5Policy.pilot.operator_identity, "Codex");
+assert.equal(phase5Policy.pilot.minimum_total, 20);
+assert.equal(phase5Policy.pilot.minimum_duskds, 0);
+assert.equal(phase5Policy.pilot.minimum_evm, 20);
+assert.equal(phase5Policy.pilot.required_scenarios.length, 20);
+assert.equal(new Set(phase5Policy.pilot.required_scenarios.map((scenario) => scenario.id)).size, 20);
+assert.deepEqual(phase5Policy.pilot.required_pilot_groups, {
+  "happy-path": 4,
+  "wallet-network-recovery": 4,
+  "dependency-degradation": 4,
+  "fresh-builds": 4,
+  "accessibility-modes": 4
 });
+assert.deepEqual(phase5Policy.pilot.required_browser_claims, [
+  "chromium-desktop", "firefox-desktop", "webkit-desktop",
+  "mobile-chrome", "mobile-safari-webkit"
+]);
+assert.deepEqual(phase5Policy.pilot.required_experience, ["novice", "experienced"]);
+assert.deepEqual(phase5Policy.pilot.required_contexts, ["windows", "wsl", "linux", "macos"]);
+assert.deepEqual(phase5Policy.pilot.local_operator_attested_contexts, ["windows", "wsl"]);
+assert.deepEqual(phase5Policy.pilot.github_actions_provenance_contexts, ["linux", "macos"]);
+assert.deepEqual(phase5Policy.pilot.required_observation_kinds, ["command", "file-probe", "hash-probe"]);
+assert.equal(phase5Policy.pilot.minimum_completion_rate, 1);
+assert.equal(phase5Policy.pilot.minimum_recovery_rate, 1);
+assert.equal(phase5Policy.pilot.maximum_blocking_confusion, 0);
 assert.deepEqual(phase5Policy.required_synthetic_checks, [
   "public_health", "release_parity", "key_routes", "source_links", "duskds_node_read",
-  "rpc_degradation", "tls_expiry", "companion_port_closed", "development_port_closed", "monitor_heartbeat"
+  "rpc_chain_id", "rpc_degradation", "tls_expiry", "companion_port_closed", "development_port_closed", "monitor_heartbeat"
 ]);
 assert.deepEqual(phase5Policy.rollback_targets_seconds, { product: 300, platform: 600 });
 assert.equal(phase5Policy.duskds_testnet_graphql_url, "https://testnet.nodes.dusk.network/on/graphql/query");
 assert.ok(phase5Policy.duskds_node_read_evidence.max_age_hours > 0);
 assert.ok(phase5Policy.duskds_node_read_evidence.max_receipt_skew_minutes > 0);
-assert.equal(phase5Policy.deferred_synthetic_checks.rpc_chain_id.path, "evm");
-assert.match(phase5Policy.deferred_synthetic_checks.rpc_chain_id.reason, /Testnet is not live/i);
-assert.ok(phase5Policy.deferred_synthetic_checks.rpc_chain_id.activation_requirements.some((requirement) => /real DuskEVM Testnet RPC/i.test(requirement)));
-assert.ok(!phase5Policy.required_synthetic_checks.includes("rpc_chain_id"));
+assert.equal(phase5Policy.duskevm_testnet_rpc_url, "https://rpc.testnet.evm.dusk.network");
+assert.equal(phase5Policy.duskevm_testnet_chain_id_hex, "0x2e9");
+assert.match(phase5Policy.duskevm_testnet_genesis_hash, /^0x[a-f0-9]{64}$/);
+assert.ok(!Object.hasOwn(phase5Policy, "deferred_synthetic_checks"));
+assert.ok(phase5Policy.required_synthetic_checks.includes("rpc_chain_id"));
 assert.ok(phase5Policy.required_synthetic_checks.includes("duskds_node_read"));
 assert.deepEqual(phase5Policy.required_native_smoke_steps, ["preflight", "node_read", "scaffold", "build_artifacts", "vm_test", "inspect"]);
-assert.equal(phase5Policy.pilot.minimum_duskds, phase5Policy.pilot.minimum_total);
+assert.deepEqual(phase5Policy.required_evm_smoke_steps, [
+  "rpc_identity", "rpc_progression", "wallet_boundary", "foundry_build",
+  "hardhat_build", "read_inspection", "degradation"
+]);
 assert.equal(Object.hasOwn(phase5Policy, "companion_distribution"), false);
 assert.deepEqual(phase5Policy.npm_distribution, {
   package_name: "dusk-developer-studio",
-  package_version: "1.0.19",
-  tag: "v1.0.19",
+  package_version: "1.0.20",
+  tag: "v1.0.20",
   registry_url: "https://registry.npmjs.org/dusk-developer-studio",
   node_engine: ">=24.18.0 <25",
   assurance_workflow: ".github/workflows/studio-npm-package-assurance.yml",
@@ -1046,9 +1038,14 @@ assert.deepEqual(phase5Policy.npm_distribution, {
   },
   required_package_checks: ["install", "safe", "local-actions", "create-duskds", "shutdown", "cleanup"]
 });
-assert.ok(phase5Policy.key_source_urls.every((url) => !/dusk-evm|duskevm/i.test(url)));
-assert.ok(phase5Policy.key_source_urls.includes("https://docs.dusk.network/developer/smart-contracts-duskds/"));
-assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/duskvm/quickstart")));
+const phase5KeySourceUrls = new Set(phase5Policy.key_source_urls);
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/developer/duskvm/quickstart/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/developer/duskevm/quickstart/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/developer/duskevm/reference/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/learn/dusk-evm/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/learn/guides/duskevm-bridge/"));
+assert.ok(phase5KeySourceUrls.has("https://docs.dusk.network/learn/community/"));
+assert.ok(!phase5Policy.key_source_urls.some((url) => url.includes("/developer/smart-contracts-duskds")));
 for (const sourceBackedFile of [
   "data/dusk/capabilities.json",
   "data/dusk/resources.json",
@@ -1057,12 +1054,15 @@ for (const sourceBackedFile of [
   "apps/studio/src/app/DuskDsDeployReadiness.tsx",
   "apps/studio/src/app/routes/SystemRoutes.tsx"
 ]) {
-  assert.doesNotMatch(read(sourceBackedFile), /\/developer\/duskvm\/quickstart/, `${sourceBackedFile} must not restore the retired DuskDS guide.`);
+  assert.doesNotMatch(read(sourceBackedFile), /\/developer\/smart-contracts-duskds/, `${sourceBackedFile} must not retain the retired DuskDS route.`);
 }
+assert.match(read("data/dusk/capabilities.json"), /\/developer\/duskvm\/quickstart\//, "Capabilities must use the current DuskVM quickstart.");
+assert.match(read("apps/studio/src/app/DuskDsDeployReadiness.tsx"), /\/developer\/duskvm\/quickstart\//, "Deployment readiness must use the current DuskVM quickstart.");
 assert.match(read("data/dusk/resources.json"), /canonical starting point[\s\S]*Make-based build flow/);
 assert.match(read("data/dusk/troubleshooting.json"), /different project shape[\s\S]*not interchangeable/);
-assert.doesNotMatch(stagingSmoke, /eth_chainId|checkRpc\(/, "DuskEVM RPC must not be requested while its policy check is deferred.");
-assert.match(stagingSmoke, /checks\.rpc_chain_id = deferredRpcChainId\(options\.policy\)/);
+assert.match(stagingSmoke, /evmRpcCall\(target, "eth_chainId"/);
+assert.match(stagingSmoke, /evmRpcCall\(target, "eth_getBlockByNumber", \["0x0", false\]/);
+assert.match(stagingSmoke, /record\("rpc_chain_id", \(\) => checkDuskEvmNetwork\(options\.policy\)\)/);
 assert.match(stagingSmoke, /record\("duskds_node_read", \(\) => checkDuskDsNodeRead/);
 assert.ok(phase5Policy.required_synthetic_checks.includes("monitor_heartbeat"));
 assert.ok(!phase5Policy.required_synthetic_checks.includes("external_dead_man"));
@@ -1213,9 +1213,10 @@ assert.ok(Array.isArray(phase5Template.candidate.implementation_identities));
 assert.ok(Object.hasOwn(phase5Template.candidate, "release_id"));
 assert.ok(Object.hasOwn(phase5Template.candidate, "policy_sha256"));
 assert.ok(Object.hasOwn(phase5Template.candidate, "evaluator_commit"));
-assert.equal(phase5Template.synthetics.checks.rpc_chain_id.status, "deferred");
-assert.equal(phase5Template.synthetics.checks.rpc_chain_id.reason, phase5Policy.deferred_synthetic_checks.rpc_chain_id.reason);
-assert.ok(!Object.hasOwn(phase5Template.live_smoke, "evm_steps"));
+assert.equal(phase5Template.synthetics.checks.rpc_chain_id.status, "pending");
+assert.equal(phase5Template.synthetics.checks.rpc_chain_id.expected_chain_id, phase5Policy.duskevm_testnet_chain_id_hex);
+assert.equal(phase5Template.synthetics.checks.rpc_chain_id.expected_genesis_hash, phase5Policy.duskevm_testnet_genesis_hash);
+assert.deepEqual(Object.keys(phase5Template.live_smoke.evm_steps), phase5Policy.required_evm_smoke_steps);
 assert.deepEqual(Object.keys(phase5Template.live_smoke.native_steps), phase5Policy.required_native_smoke_steps);
 assert.equal(phase5Template.live_smoke.workflow_path, ".github/workflows/duskds-native-smoke.yml");
 assert.ok(Object.hasOwn(phase5Template.live_smoke, "candidate_commit"));

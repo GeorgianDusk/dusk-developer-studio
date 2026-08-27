@@ -108,6 +108,15 @@
       "build_artifacts": "pending",
       "vm_test": "pending",
       "inspect": "pending"
+    },
+    "evm_steps": {
+      "rpc_identity": "pending",
+      "rpc_progression": "pending",
+      "wallet_boundary": "pending",
+      "foundry_build": "pending",
+      "hardhat_build": "pending",
+      "read_inspection": "pending",
+      "degradation": "pending"
     }
   },
   "synthetics": {
@@ -177,12 +186,18 @@
         "observed_at": "pending"
       },
       "rpc_chain_id": {
-        "status": "deferred",
-        "path": "evm",
-        "reason": "DuskEVM Testnet is not live; the EVM journey is an educational pre-launch preview and does not gate DuskDS production.",
-        "authority_reference": "config/phase5-policy.json",
+        "status": "pending",
+        "owner": "pending",
         "candidate_commit": "pending",
-        "candidate_public_fingerprint_sha256": "pending"
+        "candidate_public_fingerprint_sha256": "pending",
+        "endpoint": "https://rpc.testnet.evm.dusk.network/",
+        "expected_chain_id": "0x2e9",
+        "actual_chain_id": "pending",
+        "expected_genesis_hash": "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7",
+        "actual_genesis_hash": "pending",
+        "first_height": 0,
+        "second_height": 0,
+        "observed_at": "pending"
       },
       "rpc_degradation": {
         "status": "pending",
@@ -336,7 +351,7 @@
   },
   "npm_distribution": {
     "package_name": "dusk-developer-studio",
-    "package_version": "1.0.19",
+    "package_version": "1.0.20",
     "node_engine": ">=24.18.0 <25",
     "registry_url": "https://registry.npmjs.org/dusk-developer-studio",
     "integrity": "pending",

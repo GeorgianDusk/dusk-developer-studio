@@ -12,7 +12,7 @@ import {
   type TroubleshootingItem
 } from "@dusk/core/browser-catalog";
 import { STEP_ROUTES, type BuilderPath } from "../journeyProgress";
-import { blockerLabels, pathText, pickById, prelaunchTroubleIds, resourceIds, sourceDate, sourceIsStale, steps, troubleIds } from "../studioConfig";
+import { blockerLabels, pathText, pickById, resourceIds, sourceDate, sourceIsStale, steps, troubleIds } from "../studioConfig";
 import { useJourney } from "../studioState";
 import { AsyncNotice, CopyButton, ExternalLink, PageIntro, SearchBox, StatusPill } from "../StudioUi";
 
@@ -51,7 +51,7 @@ const readerLabels: Record<string, string> = {
   source: "Public source",
   "docs-mentioned": "Mentioned in documentation",
   "public-forks-caveated": "Public forks with caveats",
-  testnet: "Pre-launch Testnet metadata",
+  testnet: "Active Testnet",
   "mainnet-reference": "Mainnet reference metadata",
   "devnet-reference": "Devnet reference metadata"
 };
@@ -60,12 +60,12 @@ function readerLabel(value: string): string {
   return readerLabels[value] ?? value.replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function prelaunchCapabilityNextStep(capability: Capability): string {
+function capabilityNextStep(capability: Capability): string {
   if (capability.path !== "evm") return capability.safeNextStep;
   if (capability.id === "duskevm-confidential-hedger") {
     return "Track the linked Hedger sources as product direction. A guided implementation path needs more source-backed detail before activation.";
   }
-  return "Use this as launch-planning context only. Live wallet, funding, starter, inspection, and deployment actions are not enabled in Studio.";
+  return capability.safeNextStep;
 }
 
 export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null }) {
@@ -207,7 +207,7 @@ export function ReferencePage({ builderPath }: { builderPath: BuilderPath | null
           {networks.length ? (
             <section className="network-reference">
               <h2>DuskEVM network metadata <small>({networks.length})</small></h2>
-              <p>This is pre-launch reference material, not a signal that Studio wallet, funding, RPC, or deployment actions are active.</p>
+              <p>The Testnet row is Studio-activated for bounded RPC reads and explicit wallet handoffs. Mainnet and Devnet remain reference-only.</p>
               <div className="network-reference-grid">{networks.map((network) => <NetworkReferenceRow key={network.id} network={network} />)}</div>
             </section>
           ) : null}
@@ -241,7 +241,7 @@ function CapabilityRow({ capability }: { capability: Capability }) {
     <div className="reference-row">
       <span>{capability.category}</span>
       <strong>{capability.title}</strong>
-      <small>{prelaunchCapabilityNextStep(capability)}</small>
+      <small>{capabilityNextStep(capability)}</small>
       <div className="provenance-line"><em>{readerLabel(capability.maturity)}</em><em>{readerLabel(capability.sourceStatus)}</em><em>reviewed {sourceDate}</em></div>
       <div className="small-links">{capability.links.map((link) => <ExternalLink key={link.url} href={link.url}>{link.label}</ExternalLink>)}</div>
     </div>
@@ -252,7 +252,7 @@ function NetworkReferenceRow({ network }: { network: (typeof DUSK_EVM_NETWORKS)[
   const isTestnet = network.id === "dusk-evm-testnet";
   return (
     <article className="reference-row network-row">
-      <div className="button-row"><StatusPill tone={isTestnet ? "warn" : "neutral"}>{isTestnet ? "pre-launch metadata" : "reference only"}</StatusPill><span>{readerLabel(network.maturity)}</span></div>
+      <div className="button-row"><StatusPill tone={isTestnet ? "good" : "neutral"}>{isTestnet ? "active Testnet" : "reference only"}</StatusPill><span>{readerLabel(network.maturity)}</span></div>
       <strong>{network.name}</strong>
       <small>Chain {network.chainId} / {network.chainIdHex}</small>
       <small>{network.warning}</small>
@@ -294,7 +294,7 @@ export function TroubleshootingPage({
       ? TROUBLESHOOTING.filter((item) => item.id === focusedTroubleId)
       : TROUBLESHOOTING;
   const items = scope === "all" ? candidates : candidates.filter((item) => activeTroubleIds.has(item.id));
-  const prelaunch = builderPath === "evm";
+  const isEvm = builderPath === "evm";
   const blockedStep = blockedRoute && builderPath
     ? steps[builderPath].find((step) => step.id === blockedRoute)
     : undefined;
@@ -328,14 +328,11 @@ export function TroubleshootingPage({
     <section className="reference-page">
       <PageIntro
         kicker="Troubleshoot"
-        title={scope === "all" ? "Search every reviewed recovery and planning issue." : prelaunch ? "Review DuskEVM launch-planning issues." : "Fix the blocker in front of you."}
+        title={scope === "all" ? "Search every reviewed recovery and planning issue." : "Fix the blocker in front of you."}
         copy={scope === "all"
           ? "Start with your selected path for the most relevant recovery. Use this complete index when the symptom crosses tools or you need a less common reviewed issue."
-          : prelaunch
-          ? "DuskEVM is still pre-launch. These entries explain issues to plan for later; they are not active wallet, funding, build, or deployment recovery steps."
           : "Find the symptom, understand the likely cause, apply the bounded fix, then repeat the check that produced the result."}
       />
-      {prelaunch && scope === "path" ? <AsyncNotice state="partial" title="Pre-launch planning only" message="No DuskEVM troubleshooting item on this page represents a live Studio action." /> : null}
       {currentBlocker && blockedRoute ? (
         <div className="current-blocker">
           <StatusPill tone="danger">Current blocker</StatusPill>
@@ -349,8 +346,8 @@ export function TroubleshootingPage({
         </div>
       ) : builderPath ? (
         <div className="current-blocker">
-          <StatusPill tone={prelaunch ? "warn" : "good"}>{prelaunch ? "Pre-launch" : "No recorded blocker"}</StatusPill>
-          <span>{prelaunch ? "Showing planning guidance for DuskEVM." : `Showing common recovery paths for ${pathText[builderPath].label}.`}</span>
+          <StatusPill tone="good">No recorded blocker</StatusPill>
+          <span>{`Showing common recovery paths for ${pathText[builderPath].label}.`}</span>
         </div>
       ) : (
         <div className="current-blocker">
@@ -375,16 +372,15 @@ export function TroubleshootingPage({
         }}
         placeholder={scope === "all"
           ? "Search any reviewed symptom, tool, network, or failure..."
-          : prelaunch
+          : isEvm
             ? "Search wallet, RPC, gas, Foundry..."
             : "Search Forge, Rust, WASM, data driver, VM tests..."}
       />
-      <p className="quiet-note" role="status">{items.length} {scope === "all" ? "reviewed" : prelaunch ? "planning" : "recovery"} {items.length === 1 ? "entry" : "entries"} found.</p>
+      <p className="quiet-note" role="status">{items.length} {scope === "all" ? "reviewed" : "recovery"} {items.length === 1 ? "entry" : "entries"} found.</p>
       {items.length ? <div className="trouble-list">{items.map((item) => (
         <TroubleRow
           key={item.id}
           item={item}
-          prelaunch={prelaunchTroubleIds.includes(item.id as typeof prelaunchTroubleIds[number])}
           onOpenAction={(route) => {
             if (builderPath !== "duskds") setBuilderPath("duskds");
             setRoute(route);
@@ -415,24 +411,22 @@ const duskDsTroubleActions: Partial<Record<string, { route: "setup" | "build"; l
 
 function TroubleRow({
   item,
-  prelaunch,
   onOpenAction
 }: {
   item: TroubleshootingItem;
-  prelaunch: boolean;
   onOpenAction: (route: "setup" | "build") => void;
 }) {
   const impact = item.severity === "high" ? "High impact" : item.severity === "medium" ? "Medium impact" : "Low impact";
-  const action = prelaunch ? undefined : duskDsTroubleActions[item.id];
+  const action = duskDsTroubleActions[item.id];
   return (
     <article className="trouble-row" id={`trouble-${item.id}`} tabIndex={-1}>
-      <StatusPill tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warn" : "neutral"}>{prelaunch ? "Planning" : impact}</StatusPill>
+      <StatusPill tone={item.severity === "high" ? "danger" : item.severity === "medium" ? "warn" : "neutral"}>{impact}</StatusPill>
       <div>
         <h2>{item.title}</h2>
         <strong>Cause and fix</strong>
         <p>{item.fix}</p>
         <div className="trouble-recheck">
-          <strong>{prelaunch ? "Review before launch:" : "Recheck:"}</strong>
+          <strong>Recheck:</strong>
           <small>{item.safeNextStep}</small>
         </div>
         {action ? (

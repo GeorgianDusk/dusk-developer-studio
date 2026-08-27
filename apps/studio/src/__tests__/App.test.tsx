@@ -8,6 +8,7 @@ import {
   advanceCompanionSessionGeneration,
   currentCompanionSessionGeneration
 } from "../app/studioState";
+import { sourceDate } from "../app/studioConfig";
 
 const npmCommit = "a".repeat(40);
 const npmRelease: StudioRelease = { product: STUDIO_PRODUCT, version: "1.2.3", commit: npmCommit, channel: "npm" };
@@ -75,49 +76,46 @@ describe("App", () => {
     expect(screen.getByText("Choose your path")).toBeInTheDocument();
     expect(screen.getByText("Pick the execution model your app actually needs.")).toBeInTheDocument();
     expect(screen.getByText("Guide and local tools available")).toBeInTheDocument();
-    expect(screen.getByText("Reference only")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Open pre-launch overview/i })).toBeInTheDocument();
+    expect(screen.getByText("Testnet active")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Start DuskEVM/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Start DuskDS/i })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Choose a builder path" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reference" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Troubleshoot" })).toBeInTheDocument();
   });
 
-  it("opens the DuskEVM pre-launch overview and identifier helper without a completion score", () => {
+  it("opens the active DuskEVM four-stage journey", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /Open pre-launch overview/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskEVM/i }));
 
     expect(window.location.hash).toBe("#evm/setup");
-    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
-    const identifier = screen.getByLabelText("Example identifier");
-    fireEvent.change(identifier, { target: { value: `0x${"b".repeat(40)}` } });
-    expect(screen.getByText("address")).toBeInTheDocument();
-    expect(screen.getByText(`0x${"b".repeat(40)}`)).toBeInTheDocument();
-    fireEvent.change(identifier, { target: { value: "12345" } });
-    expect(screen.getByText("0x3039")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Resume DuskEVM/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/0\/4/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." })).toBeInTheDocument();
+    expect(screen.getByLabelText("DuskEVM guide sequence")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /2 Access/ })).toBeInTheDocument();
+    expect(screen.getAllByText("Not checked").length).toBeGreaterThan(0);
   });
 
-  it("keeps DuskEVM as one pre-launch learning surface and shows release identity", () => {
+  it("shows active read-only Testnet setup and release identity", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
-    expect(screen.getByText("No live evidence is recorded")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." })).toBeInTheDocument();
+    expect(screen.getByText("Studio-activated Testnet")).toBeInTheDocument();
     expect(screen.getByText("https://rpc.testnet.evm.dusk.network")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Copy pre-launch RPC URL" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Official docs source/ })).toHaveAttribute("href", "https://github.com/dusk-network/docs");
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Testnet RPC URL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Verify chain and progression" })).toBeInTheDocument();
     expect(screen.getByText(/v0\.1\.0-test/)).toBeInTheDocument();
   });
 
-  it("does not expose EVM scaffold or deployment actions during pre-launch", () => {
+  it("exposes reviewed starters and only a signer-owned deployment handoff", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#build";
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
-    expect(screen.queryByText(/forge create|cast wallet import|Create and verify Counter starter/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Compile and test a fresh Solidity starter locally." })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Foundry" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hardhat" })).toBeInTheDocument();
+    expect(screen.getByText(/cast wallet import dusk-testnet-deployer --interactive/)).toBeInTheDocument();
+    expect(screen.queryByText(/--private-key|PRIVATE_KEY=/i)).not.toBeInTheDocument();
   });
 
   it("gates the current DuskDS data-driver HTTP surface behind matching metadata", () => {
@@ -147,9 +145,9 @@ describe("App", () => {
   it("shows maturity, source status, and freshness in references", () => {
     window.location.hash = "#reference";
     render(<App />);
-    expect(screen.getAllByText(/reviewed July 21, 2026/).length).toBeGreaterThan(2);
-    expect(screen.getAllByText("Pre-launch Testnet reference").length).toBeGreaterThan(0);
-    expect(screen.getByText("pre-launch metadata")).toBeInTheDocument();
+    expect(screen.getAllByText(new RegExp(`reviewed ${sourceDate}`)).length).toBeGreaterThan(2);
+    expect(screen.getAllByText("Active Testnet").length).toBeGreaterThan(0);
+    expect(screen.getByText("active Testnet")).toBeInTheDocument();
     expect(screen.getAllByText("reference only")).toHaveLength(2);
   });
 
@@ -164,7 +162,7 @@ describe("App", () => {
     expect(screen.getByText("Deterministic and verifiable builds")).toBeInTheDocument();
   });
 
-  it("keeps active DuskDS recovery separate from pre-launch EVM planning", () => {
+  it("keeps active DuskDS recovery scoped to its selected path", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#troubleshooting";
     render(<App />);
@@ -230,7 +228,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Build contract and data-driver WASM together." })).toBeInTheDocument();
   });
 
-  it("labels every EVM-only reviewed issue as pre-launch planning", () => {
+  it("labels an active DuskEVM explorer issue as recovery guidance", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "duskds");
     window.location.hash = "#troubleshooting";
     render(<App />);
@@ -238,9 +236,9 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "All reviewed issues" }));
     fireEvent.change(screen.getByLabelText("Search"), { target: { value: "Blockscout unavailable" } });
     const row = screen.getByRole("heading", { name: "Blockscout unavailable" }).closest("article");
-    expect(row).toHaveTextContent("Planning");
-    expect(row).toHaveTextContent("Review before launch:");
-    expect(row).not.toHaveTextContent("Recheck:");
+    expect(row).toHaveTextContent("Low impact");
+    expect(row).toHaveTextContent("Recheck:");
+    expect(row).not.toHaveTextContent("Planning");
   });
 
   it("keeps a live DuskDS node outage in active recovery in both scopes", () => {
@@ -345,10 +343,10 @@ describe("App", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Copy pre-launch RPC URL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Testnet RPC URL" }));
 
-    await waitFor(() => expect(screen.getByText("Copy pre-launch RPC URL copied to clipboard.")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Copy pre-launch RPC URL" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Copy Testnet RPC URL copied to clipboard.")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Copy Testnet RPC URL" })).toBeInTheDocument();
     expect(writeText).toHaveBeenCalledOnce();
   });
 
@@ -361,12 +359,12 @@ describe("App", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Copy pre-launch RPC URL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Testnet RPC URL" }));
 
-    expect(screen.getByRole("button", { name: "Copy pre-launch RPC URL. Copying." })).toHaveTextContent("Copying…");
-    expect(screen.getByText("Copy pre-launch RPC URL copy in progress.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Testnet RPC URL. Copying." })).toHaveTextContent("Copying…");
+    expect(screen.getByText("Copy Testnet RPC URL copy in progress.")).toBeInTheDocument();
     resolveCopy();
-    await waitFor(() => expect(screen.getByText("Copy pre-launch RPC URL copied to clipboard.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Copy Testnet RPC URL copied to clipboard.")).toBeInTheDocument());
   });
 
   it("shows a visible retry state when clipboard access fails", async () => {
@@ -377,14 +375,14 @@ describe("App", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Copy pre-launch RPC URL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy Testnet RPC URL" }));
 
     const retry = await screen.findByRole("button", { name: /Clipboard access failed; retry copy/i });
     expect(retry).toHaveTextContent("Copy failed - retry");
     expect(screen.getByRole("alert")).toHaveTextContent(/Select and copy the text manually, or retry/i);
     expect(writeText).toHaveBeenCalledOnce();
     fireEvent.click(retry);
-    await waitFor(() => expect(screen.getByText("Copy pre-launch RPC URL copied to clipboard.")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Copy Testnet RPC URL copied to clipboard.")).toBeInTheDocument());
     expect(writeText).toHaveBeenCalledTimes(2);
   });
 
@@ -402,7 +400,7 @@ describe("App", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#setup";
     render(<App />);
-    const copy = screen.getByRole("button", { name: "Copy pre-launch RPC URL" });
+    const copy = screen.getByRole("button", { name: "Copy Testnet RPC URL" });
     fireEvent.click(copy);
     fireEvent.click(copy);
     await waitFor(() => expect(screen.getByText("Copied")).toBeInTheDocument());

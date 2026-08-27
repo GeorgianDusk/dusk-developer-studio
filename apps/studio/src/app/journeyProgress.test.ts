@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { STUDIO_RELEASE } from "../release";
 import {
   blockJourneyStep,
   countVerifiedSteps,
   createInitialJourneyProgress,
   getEvidenceProvenanceCounts,
   getJourneyCompletionCounts,
+  isCurrentEvmSetupComplete,
   parseJourneyProgress,
+  refreshJourneyProgress,
   recordJourneyEvidence,
   resumeJourneyStep,
   skipJourneyStep
@@ -20,11 +23,11 @@ describe("journey progress", () => {
       state,
       "evm",
       "setup",
-      ["evm-rpc-chain", "evm-wallet-chain", "evm-wallet-account", "evm-balance-read"],
+      ["evm-rpc-chain", "evm-rpc-progression"],
       {
         method: "automatic",
         observedAt: "2026-07-14T10:00:00.000Z",
-        metadata: { source: "browser-check", platform: "browser", checkCount: 4 }
+        metadata: { source: "browser-check", platform: "browser", checkCount: 2 }
       }
     );
     expect(state.paths.evm.setup.status).toBe("passed-automatically");
@@ -37,9 +40,9 @@ describe("journey progress", () => {
       skipped: 0,
       total: 4
     });
-    expect(getEvidenceProvenanceCounts(state, "evm")).toEqual({ automatic: 4, manual: 0, total: 4 });
+    expect(getEvidenceProvenanceCounts(state, "evm")).toEqual({ automatic: 2, manual: 0, total: 2 });
 
-    state = recordJourneyEvidence(state, "evm", "access", ["evm-positive-balance"]);
+    state = recordJourneyEvidence(state, "evm", "access", ["evm-wallet-chain", "evm-wallet-account", "evm-balance-read", "evm-positive-balance"]);
     expect(state.paths.evm.access.status).toBe("confirmed-manually");
     expect(state.paths.evm.access.evidenceEntries[0]).toMatchObject({
       method: "manual",
@@ -185,6 +188,98 @@ describe("journey progress", () => {
     expect(parsed.paths.duskds.inspect.status).not.toBe("confirmed-manually");
     expect(parsed.paths.duskds.inspect.evidence).toEqual([]);
     expect(parsed.paths.duskds.inspect.evidenceEntries).toEqual([]);
+  });
+
+  it("expires live EVM reads, clears wallet evidence on reload, and binds Build to this release", () => {
+    const observedAt = "2026-07-29T10:00:00.000Z";
+    const entry = (code: string, metadata: Record<string, unknown>) => ({
+      code,
+      method: "automatic",
+      status: "passed-automatically",
+      observedAt,
+      metadata: { source: "browser-check", ...metadata }
+    });
+    const serialized = JSON.stringify({
+      version: 1,
+      paths: {
+        evm: {
+          setup: {
+            status: "passed-automatically",
+            evidenceEntries: [
+              entry("evm-rpc-chain", {
+                tool: "rpc",
+                endpoint: "https://rpc.testnet.evm.dusk.network",
+                blockHash: "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7"
+              }),
+              entry("evm-rpc-progression", {
+                tool: "rpc",
+                endpoint: "https://rpc.testnet.evm.dusk.network",
+                blockHash: "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7"
+              })
+            ]
+          },
+          access: {
+            status: "passed-automatically",
+            evidenceEntries: [
+              entry("evm-wallet-chain", { tool: "wallet" }),
+              entry("evm-wallet-account", { tool: "wallet" }),
+              entry("evm-balance-read", { tool: "wallet" }),
+              entry("evm-positive-balance", { tool: "wallet" })
+            ]
+          },
+          build: {
+            status: "passed-automatically",
+            evidenceEntries: [
+              entry("evm-starter-structure", { source: "companion", version: STUDIO_RELEASE.commit }),
+              entry("evm-build-test-attestation", { source: "manual-confirmation", version: STUDIO_RELEASE.commit })
+            ]
+          }
+        },
+        duskds: {}
+      }
+    });
+
+    const current = parseJourneyProgress(serialized, Date.parse("2026-07-29T10:10:00.000Z"));
+    expect(current.paths.evm.setup.status).toBe("passed-automatically");
+    expect(isCurrentEvmSetupComplete(current, Date.parse("2026-07-29T10:10:00.000Z"))).toBe(true);
+    expect(current.paths.evm.access.evidenceEntries).toEqual([]);
+    expect(current.paths.evm.build.evidence).toEqual(["evm-starter-structure", "evm-build-test-attestation"]);
+
+    const sessionWithWalletEvidence = recordJourneyEvidence(
+      current,
+      "evm",
+      "access",
+      ["evm-wallet-chain", "evm-wallet-account", "evm-balance-read", "evm-positive-balance"],
+      {
+        method: "automatic",
+        observedAt: "2026-07-29T10:10:00.000Z",
+        metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 2 }
+      }
+    );
+    const refreshedSession = refreshJourneyProgress(sessionWithWalletEvidence, Date.parse("2026-07-29T10:10:01.000Z"));
+    expect(refreshedSession.paths.evm.access.status).toBe("passed-automatically");
+    expect(refreshedSession.paths.evm.access.evidence).toEqual([
+      "evm-wallet-chain",
+      "evm-wallet-account",
+      "evm-balance-read",
+      "evm-positive-balance"
+    ]);
+    expect(parseJourneyProgress(JSON.stringify(refreshedSession), Date.parse("2026-07-29T10:10:01.000Z")).paths.evm.access.evidenceEntries).toEqual([]);
+
+    const stale = parseJourneyProgress(serialized, Date.parse("2026-07-29T10:16:00.001Z"));
+    expect(stale.paths.evm.setup.evidenceEntries).toEqual([]);
+    expect(isCurrentEvmSetupComplete(current, Date.parse("2026-07-29T10:16:00.001Z"))).toBe(false);
+    expect(refreshJourneyProgress(current, Date.parse("2026-07-29T10:16:00.001Z")).paths.evm.setup.evidenceEntries).toEqual([]);
+
+    const expiredActivation = parseJourneyProgress(serialized, Date.parse("2026-09-14T00:00:00.000Z"));
+    expect(expiredActivation.paths.evm.setup.evidenceEntries).toEqual([]);
+
+    const changedRelease = serialized.replaceAll(
+      `"version":"${STUDIO_RELEASE.commit}"`,
+      `"version":"${"f".repeat(40)}"`
+    );
+    const rebound = parseJourneyProgress(changedRelease, Date.parse("2026-07-29T10:10:00.000Z"));
+    expect(rebound.paths.evm.build.evidenceEntries).toEqual([]);
   });
 
   it("keeps only bounded driver observation context", () => {

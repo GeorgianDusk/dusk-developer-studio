@@ -21,11 +21,11 @@ describe("Phase 3 interaction semantics", () => {
     expect(within(globalNavigation).getByRole("button", { name: /Local Studio/i })).toBeInTheDocument();
     expect(within(globalNavigation).queryByRole("button", { name: /Setup|Access|Build|Inspect/i })).not.toBeInTheDocument();
 
-    const evmPath = screen.getByRole("button", { name: /Open pre-launch overview/i });
+    const evmPath = screen.getByRole("button", { name: /Start DuskEVM/i });
     const nativePath = screen.getByRole("button", { name: /Start DuskDS/i });
-    expect(evmPath).toHaveAccessibleName("DuskEVM. Open pre-launch overview");
-    expect(evmPath).toHaveAccessibleDescription(/Explore one source-backed pre-launch reference/);
-    expect(evmPath).toHaveAccessibleDescription(/does not provide a completion score/);
+    expect(evmPath).toHaveAccessibleName("DuskEVM. Start DuskEVM");
+    expect(evmPath).toHaveAccessibleDescription(/Run bounded read-only network checks/);
+    expect(evmPath).toHaveAccessibleDescription(/wallet prompts stay separate and optional/i);
     expect(nativePath).toHaveAccessibleName("DuskDS. Start DuskDS");
     expect(nativePath).toHaveAccessibleDescription(/Follow every step manually, or run the Local Studio with npm/);
     expect(evmPath).not.toHaveAttribute("aria-pressed");
@@ -163,19 +163,19 @@ describe("Phase 3 interaction semantics", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Create the reviewed starter" })).toHaveFocus());
   });
 
-  it("returns from DuskEVM support routes to the pre-launch overview", () => {
+  it("returns from DuskEVM support routes to the active journey", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: /Open pre-launch overview/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Start DuskEVM/i }));
     expect(window.location.hash).toBe("#evm/setup");
 
     fireEvent.click(screen.getByRole("button", { name: "Reference" }));
-    const returnToOverview = screen.getByRole("button", { name: "Return to DuskEVM pre-launch overview" });
-    expect(returnToOverview).toHaveTextContent("Return to pre-launch overview");
+    const returnToOverview = screen.getByRole("button", { name: "Return to DuskEVM at Setup" });
+    expect(returnToOverview).toHaveTextContent("Return to DuskEVM");
     fireEvent.click(returnToOverview);
 
     expect(window.location.hash).toBe("#evm/setup");
-    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
-    expect(screen.getByLabelText("Example identifier")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Verify DuskEVM Testnet before touching a wallet." })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Verify chain and progression" })).toBeInTheDocument();
   });
 
   it("provides direct focusable navigation across the long Inspect page", () => {
@@ -190,21 +190,20 @@ describe("Phase 3 interaction semantics", () => {
     expect(screen.getByRole("heading", { name: "1. Observe a latest block" }).closest(".focus-card")).toHaveFocus();
   });
 
-  it("keeps DuskEVM troubleshooting actions truthful during pre-launch", () => {
+  it("shows active bounded DuskEVM recovery guidance", () => {
     window.localStorage.setItem("dusk-studio-builder-path", "evm");
     window.location.hash = "#troubleshooting";
     render(<App />);
 
-    expect(screen.getByText(/There is no DuskEVM RPC health check to retry in Studio before launch/)).toBeInTheDocument();
-    expect(screen.getByText(/No wallet action is required in Studio before launch/)).toBeInTheDocument();
-    expect(screen.getByText(/Funding is not active in Studio before launch/)).toBeInTheDocument();
-    expect(screen.getByText(/Foundry is not required for the current pre-launch reference/)).toBeInTheDocument();
-    expect(screen.getByText(/Studio does not submit DuskEVM verification before launch/)).toBeInTheDocument();
-    expect(screen.queryByText(/Retry the RPC health check/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Install or unlock an EIP-1193 compatible wallet/)).not.toBeInTheDocument();
+    expect(screen.getByText(/bounded Testnet read did not complete/i)).toBeInTheDocument();
+    expect(screen.getByText(/Enable an EIP-1193-compatible Web3 wallet/i)).toBeInTheDocument();
+    expect(screen.getByText(/current official route starts with the Dusk L1 Testnet faucet/i)).toBeInTheDocument();
+    expect(screen.getByText(/not a direct DuskEVM faucet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Install Foundry through its official installer/i)).toBeInTheDocument();
+    expect(screen.getByText(/Studio does not submit verification/i)).toBeInTheDocument();
   });
 
-  it("canonicalizes unsupported and DuskEVM-only guide hashes to the rendered surface", async () => {
+  it("canonicalizes unsupported hashes while preserving DuskEVM guide deep links", async () => {
     window.location.hash = "#not-a-route";
     const firstRender = render(<App />);
     await waitFor(() => expect(window.location.hash).toBe("#overview"));
@@ -216,8 +215,8 @@ describe("Phase 3 interaction semantics", () => {
     window.history.pushState({}, "", "#build");
     render(<App />);
 
-    await waitFor(() => expect(window.location.hash).toBe("#evm/setup"));
-    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.hash).toBe("#build"));
+    expect(screen.getByRole("heading", { name: "Compile and test a fresh Solidity starter locally." })).toBeInTheDocument();
 
     await act(async () => {
       window.history.back();
@@ -230,8 +229,8 @@ describe("Phase 3 interaction semantics", () => {
       window.history.forward();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
-    await waitFor(() => expect(window.location.hash).toBe("#evm/setup"));
-    expect(screen.getByRole("heading", { name: "Explore the planned DuskEVM developer workflow." })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.hash).toBe("#build"));
+    expect(screen.getByRole("heading", { name: "Compile and test a fresh Solidity starter locally." })).toBeInTheDocument();
   });
 
   it("finds the bounded recovery path when browser security blocks the public node check", () => {

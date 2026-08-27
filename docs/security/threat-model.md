@@ -11,7 +11,7 @@ The Hosted guide provides path selection, education, public read-only checks, re
 
 The local Studio runs on the developer's machine with Node.js `>=24.18.0 <25`, opens a paired browser session, and can perform allowlisted checks or starter creation only when Local Actions was explicitly selected.
 
-DuskDS is the active development journey. DuskEVM remains an educational pre-launch journey until its Testnet endpoints and behavior can be verified.
+DuskDS and DuskEVM Testnet are active development journeys. DuskEVM live controls exist only while the source and network-identity review is current.
 
 ## Assets to protect
 
@@ -63,7 +63,10 @@ Wallet secrets and funded actions remain outside the Studio. Public network data
 13. Remote or stale content causes cross-site scripting or incorrect Dusk guidance.
 14. Example contracts are mistaken for audited production code.
 15. Diagnostics expose secrets, personal paths, or funded-account data.
-16. DuskEVM pre-launch material is mistaken for live Testnet capability.
+16. A redeployed, stale, or hostile DuskEVM endpoint reuses chain ID `745` while presenting a different genesis or frozen head.
+17. Wallet discovery, connection, network change, balance read, signing, and submission are conflated into one ambiguous action.
+18. A response begun while activation evidence is current completes after expiry and writes stale evidence.
+19. A delayed scaffold response is attributed to a newly selected toolchain or a mutable pilot runner forges candidate-bound evidence.
 
 ## Controls
 
@@ -74,7 +77,9 @@ Wallet secrets and funded actions remain outside the Studio. Public network data
 - Use CSP, frame denial, MIME-sniffing protection, restrictive permissions, `/healthz`, and deliberate cache boundaries.
 - Curate resources as local validated data; do not render remote Markdown or MDX.
 - Label network, source, maturity, and freshness.
-- Keep DuskEVM live checks unavailable until real Testnet verification.
+- Allow only the exact DuskEVM RPC origin; verify canonical chain ID, reviewed genesis, and head progression before wallet actions.
+- Bound every RPC response and timeout, reject redirects, wrong request IDs, mismatched response subjects, non-canonical quantities, malformed byte data, and distinguish pending, included, reverted, RPC-finalized, and unknown transaction states without implying DuskDS settlement.
+- Disable all live DuskEVM controls after source or network evidence expiry, recheck immediately before every evidence write, discard results that complete after expiry, and rerun the full review after endpoint identity or configuration changes.
 
 ### Package controls
 
@@ -127,12 +132,14 @@ Wallet secrets and funded actions remain outside the Studio. Public network data
 ### Wallet and network controls
 
 - Define no private-key or seed fields.
-- Do not read, unlock, or sign through a wallet.
+- Separate no-prompt discovery, prompted connection, add/switch network, and balance reads; do not request signing or submission.
+- Keep account and balance values in page memory only; clear wallet evidence on reload and on observed account or chain changes.
 - Keep funded deployment and calls in the developer's trusted terminal.
 - Keep mainnet reference-only.
 - Validate and source-label network metadata.
 - Separate readiness, submission, inclusion, finality, metadata, and data-driver availability.
 - Label example templates as unaudited and not production-ready.
+- Bind asynchronous starter completion to its initiating toolchain and request generation so a late response cannot confirm a different selection.
 
 ## Same-user developer-tool limitation
 

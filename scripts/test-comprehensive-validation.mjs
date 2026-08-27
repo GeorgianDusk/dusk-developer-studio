@@ -62,7 +62,7 @@ function tarFileEntry(name, bytes) {
 function buildTarballFixture({ corruptManifest = false, trailingNonzero = false } = {}) {
   const packageJsonBytes = Buffer.from(JSON.stringify({
     name: "dusk-developer-studio",
-    version: "1.0.19",
+    version: "1.0.20",
     repository: { url: "git+https://github.com/GeorgianDusk/dusk-developer-studio.git" },
     engines: { node: ">=24.18.0 <25" }
   }), "utf8");
@@ -75,7 +75,7 @@ function buildTarballFixture({ corruptManifest = false, trailingNonzero = false 
   const manifestBytes = Buffer.from(JSON.stringify({
     schema_version: 1,
     package: "dusk-developer-studio",
-    version: "1.0.19",
+    version: "1.0.20",
     commit: "1".repeat(40),
     channel: "npm",
     node: { required_range: ">=24.18.0 <25" },
@@ -571,6 +571,11 @@ function buildReceiptBoundFinal() {
 }
 
 assert.deepEqual(validateComprehensiveCampaign(policy, evidence), []);
+assert.deepEqual(
+  policy.required_product_surfaces.security_matrix,
+  Array.from({ length: 27 }, (_, index) => `security:ST-${String(index + 1).padStart(2, "0")}`),
+  "The active v1.0.20 campaign must require every durable security-matrix case."
+);
 
 const duplicatePolicy = clone(policy);
 duplicatePolicy.pilots[1].id = duplicatePolicy.pilots[0].id;
@@ -626,11 +631,10 @@ const incompleteFinalEvidence = clone(evidence);
 incompleteFinalEvidence.pilot_executions.pop();
 delete incompleteFinalEvidence.final_candidate;
 incompleteFinalEvidence.challenge_reviews = [];
-const incompleteFinal = validateComprehensiveCampaign(
-  policy,
-  incompleteFinalEvidence,
-  { final: true }
-).join("\n");
+const incompleteFinal = validateComprehensiveCampaign(policy, incompleteFinalEvidence, {
+  final: true,
+  now: "2026-07-29T04:00:00Z"
+}).join("\n");
 assert.match(incompleteFinal, /requires at least 32 counted passing pilots/u);
 assert.match(incompleteFinal, /evidence\.final_candidate must be an object/u);
 assert.match(incompleteFinal, /product-ui-developer-experience/u);
@@ -1407,7 +1411,7 @@ assert.match(
 
 const tarballInspection = inspectNpmTarballBytes(buildTarballFixture());
 assert.equal(tarballInspection.package_name, "dusk-developer-studio");
-assert.equal(tarballInspection.package_version, "1.0.19");
+assert.equal(tarballInspection.package_version, "1.0.20");
 assert.equal(tarballInspection.manifest_commit, "1".repeat(40));
 assert.equal(tarballInspection.inventory_file_count, 2);
 assert.equal(tarballInspection.inventory_verified, true);

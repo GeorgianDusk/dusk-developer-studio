@@ -17,10 +17,10 @@
     },
     {
         "id":  "duskevm-deep-dive",
-        "title":  "DuskEVM Deep Dive",
+        "title":  "DuskEVM Reference",
         "category":  "Docs",
-        "summary":  "Planning reference only. The linked page may describe endpoints or runtime behavior that Studio has not revalidated as live; do not connect or transact until Studio's launch status changes.",
-        "url":  "https://docs.dusk.network/learn/deep-dive/dusk-evm/",
+        "summary":  "Official network and runtime reference for the Studio-activated DuskEVM Testnet. Re-check chain identity and progression before any wallet-mediated action.",
+        "url":  "https://docs.dusk.network/developer/duskevm/reference/",
         "maturity":  "official",
         "tags":  [
                      "network",
@@ -35,9 +35,9 @@
     },
     {
         "id":  "duskevm-bridge",
-        "title":  "Bridge DUSK from DuskDS to DuskEVM Testnet",
+        "title":  "Bridge DUSK from Dusk L1 to DuskEVM Testnet",
         "category":  "Funding",
-        "summary":  "Planning reference only. The linked page describes a wallet and funding flow, but Studio treats the bridge and Testnet as unavailable until both are independently revalidated live.",
+        "summary":  "Official manual Testnet funding route: request valueless Dusk L1 Testnet DUSK from the faucet, unshield it, then deposit through the Dusk Web Wallet to a custom-network EVM wallet. Studio links out and never requests, moves, monitors, or promises funds.",
         "url":  "https://docs.dusk.network/learn/guides/duskevm-bridge/",
         "maturity":  "official",
         "tags":  [
@@ -51,10 +51,10 @@
     },
     {
         "id":  "deploy-on-duskevm",
-        "title":  "Deploy on DuskEVM",
+        "title":  "DuskEVM Quickstart",
         "category":  "Deploy",
-        "summary":  "Planning reference only. Do not deploy until Studio revalidates Testnet as live, and never place a raw private key in a command; use a secure signer workflow.",
-        "url":  "https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/",
+        "summary":  "Official DuskEVM Testnet network and deployment guide. Studio adapts it to signer-owned keystore or hardware-wallet handoffs and never requests a raw private key.",
+        "url":  "https://docs.dusk.network/developer/duskevm/quickstart/",
         "maturity":  "official",
         "tags":  [
                      "foundry",
@@ -84,9 +84,9 @@
     },
     {
         "id":  "duskevm-faucet-archived",
-        "title":  "Archived DuskEVM Faucet Repository",
+        "title":  "Archived direct DuskEVM faucet repository",
         "category":  "Funding",
-        "summary":  "Archived/read-only public faucet implementation. Do not assume an active faucet exists until a live DuskEVM Testnet faucet is verified.",
+        "summary":  "Archived/read-only direct DuskEVM faucet implementation. It is not the current funding route: the official guide starts from the Dusk L1 Testnet faucet, then unshields and bridges DUSK into DuskEVM.",
         "url":  "https://github.com/dusk-network/duskevm-faucet",
         "maturity":  "archived",
         "tags":  [
@@ -101,10 +101,10 @@
     },
     {
         "id":  "duskds-smart-contracts",
-        "title":  "Smart Contracts on DuskDS",
+        "title":  "DuskVM Smart Contracts",
         "category":  "Native",
         "summary":  "Official native Rust/WASM guide covering the canonical my-first-contract template, Forge's contract model and data drivers, local build and test commands, Rusk Wallet deployment, and verifiable builds.",
-        "url":  "https://docs.dusk.network/developer/smart-contracts-duskds/",
+        "url":  "https://docs.dusk.network/developer/duskvm/overview/",
         "maturity":  "official",
         "tags":  [
                      "duskds",

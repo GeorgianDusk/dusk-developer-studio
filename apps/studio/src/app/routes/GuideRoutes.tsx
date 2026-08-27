@@ -10,6 +10,18 @@ import {
   windowsPathToWsl,
   type CommandPlatform
 } from "@dusk/core/commands";
+import {
+  addOrSwitchNetwork,
+  checkRpcHealth,
+  getInjectedProvider,
+  getWalletAccounts,
+  getWalletBalance,
+  getWalletChainId,
+  inspectEvmIdentifier,
+  parseHexBlockNumber,
+  type Eip1193Provider,
+  type EvmReadResult
+} from "@dusk/core";
 import { classifyEvmIdentifier } from "@dusk/core/evm-read";
 import {
   CompletionMethodPicker,
@@ -65,18 +77,18 @@ import {
   CopyButton,
   ExternalLink,
   MiniSteps,
-  PageIntro,
   StatusPill,
   type AsyncState
 } from "../StudioUi";
-import { defaultNetwork, initialManualPlatform } from "../studioConfig";
+import { defaultNetwork, expiryDate, initialManualPlatform, isEvmActivationCurrent } from "../studioConfig";
+import { STUDIO_RELEASE } from "../../release";
 import {
   currentCompanionSessionGeneration,
   useJourney,
   useStudioRuntime
 } from "../studioState";
 import type { CompanionStatus, RouteId } from "../types";
-import { isJourneyComplete, type BuilderPath, type EvidenceEntry } from "../journeyProgress";
+import { isCurrentEvmSetupComplete, isJourneyComplete, type BuilderPath, type EvidenceEntry } from "../journeyProgress";
 
 function stateForError(error: unknown): AsyncState {
   if (error instanceof SafeRequestError) {
@@ -198,7 +210,9 @@ export function SetupPage({
   setRoute: (route: RouteId) => void;
 }) {
   return builderPath === "evm"
-    ? <EvmPreviewPage />
+    ? isEvmActivationCurrent()
+      ? <EvmSetup setRoute={setRoute} />
+      : <EvmActivationHold setRoute={setRoute} />
     : <DuskDsSetup companionStatus={companionStatus} setRoute={setRoute} />;
 }
 
@@ -209,7 +223,11 @@ export function AccessPage({
   builderPath: BuilderPath;
   setRoute: (route: RouteId) => void;
 }) {
-  return builderPath === "evm" ? <EvmPreviewPage /> : <DuskDsAccess setRoute={setRoute} />;
+  return builderPath === "evm"
+    ? isEvmActivationCurrent()
+      ? <EvmAccess setRoute={setRoute} />
+      : <EvmActivationHold setRoute={setRoute} />
+    : <DuskDsAccess setRoute={setRoute} />;
 }
 
 export function BuildPage({
@@ -222,7 +240,9 @@ export function BuildPage({
   setRoute: (route: RouteId) => void;
 }) {
   return builderPath === "evm"
-    ? <EvmPreviewPage />
+    ? isEvmActivationCurrent()
+      ? <EvmBuild companionStatus={companionStatus} setRoute={setRoute} />
+      : <EvmActivationHold setRoute={setRoute} />
     : <DuskDsBuild companionStatus={companionStatus} setRoute={setRoute} />;
 }
 
@@ -233,70 +253,565 @@ export function InspectPage({
   builderPath: BuilderPath;
   setRoute: (route: RouteId) => void;
 }) {
-  return builderPath === "evm" ? <EvmPreviewPage /> : <DuskDsInspect setRoute={setRoute} />;
+  return builderPath === "evm"
+    ? isEvmActivationCurrent()
+      ? <EvmInspect setRoute={setRoute} />
+      : <EvmActivationHold setRoute={setRoute} />
+    : <DuskDsInspect setRoute={setRoute} />;
 }
 
-function EvmPreviewPage() {
+function EvmActivationHold({ setRoute }: { setRoute: (route: RouteId) => void }) {
+  return (
+    <section className="guide-page narrow">
+      <span className="section-kicker">DuskEVM Testnet</span>
+      <h1 data-route-heading tabIndex={-1}>DuskEVM activation review required.</h1>
+      <AsyncNotice
+        state="stale"
+        title="Live controls are disabled"
+        message={`The reviewed network identity or source receipt expired after ${expiryDate}. Reverify official configuration, genesis, progression, browser access, tooling, and recovery before reactivating Testnet.`}
+      />
+      <div className="focus-card wide">
+        <h2>Fail-closed boundary</h2>
+        <p>Studio will not contact the RPC, discover a wallet, create an EVM starter, or inspect Testnet while activation evidence is stale. Previously saved browser evidence is historical and must not be used for a new funded or signed action.</p>
+        <div className="button-row">
+          <ExternalLink href={defaultNetwork.sourceUrl}>Open the official DuskEVM source</ExternalLink>
+          <button className="secondary-button" type="button" onClick={() => setRoute("settings")}>Review or reset browser data</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function rpcFailureBlocker(status: string): "wrong-chain" | "wrong-network-identity" | "rpc-unavailable" {
+  if (status === "wrong-chain") return "wrong-chain";
+  return status === "wrong-genesis" ? "wrong-network-identity" : "rpc-unavailable";
+}
+
+function EvmSetup({ setRoute }: { setRoute: (route: RouteId) => void }) {
+  const journey = useJourney();
+  const saved = journey.progress.paths.evm.setup.evidenceEntries.find((entry) => entry.code === "evm-rpc-progression");
+  const [state, setState] = useState<AsyncState>(saved ? "success" : "idle");
+  const [message, setMessage] = useState(saved
+    ? `Saved Testnet observation: block ${saved.metadata?.blockHeight ?? "recorded"} at ${new Date(saved.observedAt).toLocaleString()}.`
+    : "No Testnet check has run in this page visit.");
+  const [blocks, setBlocks] = useState<{ first: number; second: number; checkedAt: string } | null>(null);
+
+  function ensureCurrentActivation(): boolean {
+    if (isEvmActivationCurrent()) return true;
+    journey.invalidate("evm", "setup");
+    setBlocks(null);
+    setState("stale");
+    setMessage("The reviewed Testnet activation expired while this check was running. Refresh the official sources before retrying.");
+    return false;
+  }
+
+  async function verifyTestnet() {
+    if (!ensureCurrentActivation()) return;
+    setState("loading");
+    setMessage("Checking chain identity, then waiting for a later Testnet head...");
+    const first = await checkRpcHealth(defaultNetwork);
+    if (!ensureCurrentActivation()) return;
+    if (first.status !== "healthy") {
+      journey.block("evm", "setup", rpcFailureBlocker(first.status));
+      setState(stateForError(first.status === "timeout" ? new SafeRequestError("timeout", first.message, true) : new Error(first.message)));
+      setMessage(first.message);
+      return;
+    }
+    const firstHeight = parseHexBlockNumber(first.blockNumberHex);
+    if (firstHeight === undefined) {
+      journey.block("evm", "setup", "rpc-unavailable");
+      setState("error");
+      setMessage("The RPC returned a chain ID but no safe block height.");
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, Math.max(2_200, defaultNetwork.blockTimeSeconds * 1_100)));
+    if (!ensureCurrentActivation()) return;
+    const second = await checkRpcHealth(defaultNetwork);
+    if (!ensureCurrentActivation()) return;
+    const secondHeight = parseHexBlockNumber(second.blockNumberHex);
+    if (second.status !== "healthy" || secondHeight === undefined) {
+      journey.block("evm", "setup", rpcFailureBlocker(second.status));
+      setState(second.status === "timeout" ? "timeout" : "error");
+      setMessage(second.message);
+      return;
+    }
+    if (secondHeight <= firstHeight) {
+      journey.block("evm", "setup", "rpc-unavailable");
+      setState("partial");
+      setMessage(`Chain 745 answered, but the head did not progress beyond block ${firstHeight}. Wait and retry before treating Testnet as ready.`);
+      return;
+    }
+    setBlocks({ first: firstHeight, second: secondHeight, checkedAt: second.checkedAt });
+    journey.record("evm", "setup", ["evm-rpc-chain", "evm-rpc-progression"], {
+      method: "automatic",
+      observedAt: second.checkedAt,
+      metadata: {
+        source: "browser-check",
+        tool: "rpc",
+        platform: "browser",
+        checkCount: 2,
+        blockHeight: secondHeight,
+        blockHash: second.actualGenesisHash,
+        endpoint: defaultNetwork.rpcUrls[0]
+      }
+    });
+    setState("success");
+    setMessage(`Verified chain ${second.actualChainIdHex} and progression from block ${firstHeight} to ${secondHeight}. No wallet request was made.`);
+  }
+
+  return (
+    <StepFrame builderPath="evm" route="setup" setRoute={setRoute} allowSkip={false}>
+      <div className="command-context">
+        <StatusPill tone="good">Studio-activated Testnet</StatusPill>
+        <span>{defaultNetwork.name}</span>
+        <span>Chain {defaultNetwork.chainId} / {defaultNetwork.chainIdHex}</span>
+      </div>
+      <div className="focus-card wide">
+        <h2>1. Prove the public endpoint is the expected progressing chain</h2>
+        <p>This browser check sends only <code>eth_chainId</code>, <code>eth_getBlockByNumber</code> for genesis, and <code>eth_blockNumber</code> to the exact allowlisted RPC. Each JSON response is bounded to 64 KiB and each attempt has a five-second timeout.</p>
+        <div className="tool-command">
+          <span>Allowlisted read-only RPC</span>
+          <pre>{defaultNetwork.rpcUrls[0]}</pre>
+          <CopyButton value={defaultNetwork.rpcUrls[0]} label="Copy Testnet RPC URL" />
+        </div>
+        <button className="primary-button" type="button" disabled={state === "loading"} onClick={verifyTestnet}>
+          {state === "loading" ? "Verifying Testnet..." : "Verify chain and progression"}
+        </button>
+        <AsyncNotice state={state} message={message} onRetry={state === "error" || state === "timeout" || state === "partial" || state === "unavailable" ? verifyTestnet : undefined} />
+        {blocks ? <p className="quiet-note">Observed {blocks.first} → {blocks.second} at {new Date(blocks.checkedAt).toLocaleString()}. This proves a live head at that moment, not an uptime guarantee.</p> : null}
+      </div>
+      <div className="focus-card secondary wide">
+        <h2>Wallet boundary</h2>
+        <p>Setup never discovers, connects, switches, or signs with a wallet. Those user-mediated actions are separated in Access. Studio never asks for a private key, mnemonic, seed phrase, or raw signing payload.</p>
+        <p className="quiet-note">Never pass a raw private key in a command. Use a normal signer interface that keeps signing approval under your control.</p>
+        <div className="button-row">
+          <ExternalLink href="https://github.com/dusk-network/docs">Official docs source</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/duskevm/reference/">DuskEVM reference</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/duskevm/quickstart/">DuskEVM quickstart</ExternalLink>
+        </div>
+      </div>
+    </StepFrame>
+  );
+}
+
+function walletErrorMessage(error: unknown): string {
+  const code = typeof error === "object" && error && "code" in error ? Number((error as { code?: unknown }).code) : undefined;
+  if (code === 4001) return "The wallet request was rejected. Nothing was signed or submitted.";
+  if (code === -32002) return "The wallet already has a request open. Finish or reject it in the wallet, then retry.";
+  return "The wallet did not complete the requested read or network action.";
+}
+
+function EvmAccess({ setRoute }: { setRoute: (route: RouteId) => void }) {
+  const journey = useJourney();
+  const setupComplete = isCurrentEvmSetupComplete(journey.progress);
+  const [provider, setProvider] = useState<Eip1193Provider | null>(null);
+  const [account, setAccount] = useState("");
+  const [chainId, setChainId] = useState("");
+  const [balance, setBalance] = useState("");
+  const [state, setState] = useState<AsyncState>("idle");
+  const [message, setMessage] = useState("No wallet request has been made.");
+
+  function ensureCurrentSetup(): boolean {
+    if (isEvmActivationCurrent() && isCurrentEvmSetupComplete(journey.progress)) return true;
+    journey.invalidate("evm", "setup");
+    setState("stale");
+    setMessage("The Testnet identity proof expired. Repeat Setup before any wallet action.");
+    return false;
+  }
+
+  function activeProvider(): Eip1193Provider | undefined {
+    const found = getInjectedProvider();
+    setProvider(found ?? null);
+    if (!found) {
+      journey.block("evm", "access", "no-wallet");
+      setState("unavailable");
+      setMessage("No injected EIP-1193 wallet was found. Install or enable a compatible Web3 wallet, then retry.");
+    }
+    return found;
+  }
+
+  useEffect(() => {
+    if (!provider?.on || !provider.removeListener) return;
+    const reset = () => {
+      setAccount("");
+      setChainId("");
+      setBalance("");
+      setState("partial");
+      setMessage("The wallet account or chain changed. Prior Access evidence was cleared; repeat the reads.");
+      journey.invalidate("evm", "access");
+    };
+    provider.on("accountsChanged", reset);
+    provider.on("chainChanged", reset);
+    return () => {
+      provider.removeListener?.("accountsChanged", reset);
+      provider.removeListener?.("chainChanged", reset);
+    };
+  }, [journey, provider]);
+
+  async function discover() {
+    if (!ensureCurrentSetup()) return;
+    const found = activeProvider();
+    if (!found) return;
+    setState("loading");
+    try {
+      const [nextChain, accounts] = await Promise.all([getWalletChainId(found), getWalletAccounts(found, false)]);
+      if (!ensureCurrentSetup()) return;
+      setChainId(nextChain);
+      setAccount(accounts[0] ?? "");
+      setBalance("");
+      if (nextChain === defaultNetwork.chainIdHex.toLowerCase()) {
+        journey.record("evm", "access", ["evm-wallet-chain"], { method: "automatic", metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 1 } });
+      } else {
+        journey.block("evm", "access", "wrong-chain");
+      }
+      if (accounts[0]) {
+        journey.record("evm", "access", ["evm-wallet-account"], { method: "automatic", metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 1 } });
+      }
+      setState(accounts[0] ? (nextChain === defaultNetwork.chainIdHex.toLowerCase() ? "success" : "partial") : "partial");
+      setMessage(accounts[0]
+        ? `Observed an existing wallet session on ${nextChain}. No connection prompt or signature was requested.`
+        : `Wallet detected on ${nextChain}, but it has not exposed an account to this site.`);
+    } catch (error) {
+      if (!ensureCurrentSetup()) return;
+      setState("error");
+      setMessage(walletErrorMessage(error));
+    }
+  }
+
+  async function connect() {
+    if (!ensureCurrentSetup()) return;
+    const found = activeProvider();
+    if (!found) return;
+    setState("loading");
+    setMessage("Waiting for the wallet connection decision...");
+    try {
+      const accounts = await getWalletAccounts(found, true);
+      if (!ensureCurrentSetup()) return;
+      if (!accounts[0]) {
+        journey.block("evm", "access", "no-account");
+        setState("partial");
+        setMessage("The wallet returned no selected account.");
+        return;
+      }
+      setAccount(accounts[0]);
+      setBalance("");
+      journey.record("evm", "access", ["evm-wallet-account"], { method: "automatic", metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 1 } });
+      setState("success");
+      setMessage("Wallet account access was granted. The address remains in page memory and is not stored in journey evidence.");
+    } catch (error) {
+      if (!ensureCurrentSetup()) return;
+      setState("error");
+      setMessage(walletErrorMessage(error));
+    }
+  }
+
+  async function switchNetwork() {
+    if (!ensureCurrentSetup()) return;
+    const found = activeProvider();
+    if (!found) return;
+    setState("loading");
+    setMessage("Waiting for the wallet network decision...");
+    try {
+      await addOrSwitchNetwork(found, defaultNetwork);
+      if (!ensureCurrentSetup()) return;
+      const nextChain = await getWalletChainId(found);
+      if (!ensureCurrentSetup()) return;
+      setChainId(nextChain);
+      setBalance("");
+      if (nextChain !== defaultNetwork.chainIdHex.toLowerCase()) throw new Error("wrong chain");
+      journey.record("evm", "access", ["evm-wallet-chain"], { method: "automatic", metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 1 } });
+      setState("success");
+      setMessage(`Wallet reports Testnet chain ${nextChain}. No transaction or signature was requested.`);
+    } catch (error) {
+      if (!ensureCurrentSetup()) return;
+      journey.block("evm", "access", "wrong-chain");
+      setState("error");
+      setMessage(walletErrorMessage(error));
+    }
+  }
+
+  async function readBalance() {
+    if (!ensureCurrentSetup()) return;
+    const found = provider ?? activeProvider();
+    if (!found) return;
+    if (!account) {
+      journey.block("evm", "access", "no-account");
+      setState("partial");
+      setMessage("Connect or expose one wallet account before reading its balance.");
+      return;
+    }
+    setState("loading");
+    try {
+      const nextChain = await getWalletChainId(found);
+      if (!ensureCurrentSetup()) return;
+      if (nextChain !== defaultNetwork.chainIdHex.toLowerCase()) {
+        journey.block("evm", "access", "wrong-chain");
+        setState("partial");
+        setMessage(`Wallet is on ${nextChain}; switch to ${defaultNetwork.chainIdHex} before reading Testnet gas.`);
+        return;
+      }
+      const nextBalance = await getWalletBalance(found, account);
+      if (!ensureCurrentSetup()) return;
+      setChainId(nextChain);
+      setBalance(nextBalance.formatted);
+      journey.record("evm", "access", ["evm-wallet-chain", "evm-wallet-account", "evm-balance-read"], { method: "automatic", metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 2 } });
+      if (nextBalance.wei > 0n) {
+        journey.record("evm", "access", ["evm-positive-balance"], { method: "automatic", metadata: { source: "browser-check", tool: "wallet", platform: "browser", checkCount: 1 } });
+        setState("success");
+        setMessage("A positive DUSK Testnet gas balance was observed. No signature was requested.");
+      } else {
+        journey.block("evm", "access", "insufficient-gas");
+        setState("partial");
+        setMessage("The read succeeded, but this account has zero DUSK on Testnet. Funding remains your explicit wallet/bridge action.");
+      }
+    } catch (error) {
+      setState("error");
+      setMessage(walletErrorMessage(error));
+    }
+  }
+
+  return (
+    <StepFrame builderPath="evm" route="access" setRoute={setRoute}>
+      <div className="focus-card wide">
+        <h2>Four separate wallet actions</h2>
+        <p>Use only the action you intend. Discovery and balance reads do not prompt; connection and network changes require a wallet decision. Studio never requests a signature or transaction.</p>
+        {!setupComplete ? <AsyncNotice state="partial" message="Complete the non-skippable Setup identity and progression check before any wallet action is enabled." /> : null}
+        <div className="button-row">
+          <button className="secondary-button" type="button" onClick={discover} disabled={!setupComplete || state === "loading"}>1. Check existing session</button>
+          <button className="secondary-button" type="button" onClick={connect} disabled={!setupComplete || state === "loading"}>2. Connect wallet</button>
+          <button className="secondary-button" type="button" onClick={switchNetwork} disabled={!setupComplete || state === "loading"}>3. Add or switch Testnet</button>
+          <button className="primary-button" type="button" onClick={readBalance} disabled={!setupComplete || state === "loading"}>4. Read DUSK balance</button>
+        </div>
+        <AsyncNotice state={state} message={message} />
+        <div className="command-context">
+          <span>Chain: {chainId || "not read"}</span>
+          <span>Account: {account ? `${account.slice(0, 6)}…${account.slice(-4)}` : "not exposed"}</span>
+          <span>Balance: {balance ? `${balance} DUSK` : "not read"}</span>
+        </div>
+      </div>
+      <div className="focus-card secondary wide">
+        <h2>Optional Testnet funding route</h2>
+        <p>The official guide calls for an EVM wallet that supports custom networks and names MetaMask only as an example. It publishes no minimum wallet version, so Studio relies on the standard EIP-1193 actions above without endorsing or guaranteeing a wallet brand or release.</p>
+        <p>The current funding path starts with valueless Dusk L1 Testnet DUSK from the official faucet, then unshielding, then a Dusk L1-to-DuskEVM deposit through the Dusk Web Wallet. This is not a direct DuskEVM faucet. Studio does not request tokens, automate the bridge, monitor it, promise completion, or move funds.</p>
+        <div className="button-row">
+          <ExternalLink href="https://apps.testnet.dusk.network/wallet/">Open official Dusk Web Wallet</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/learn/guides/duskevm-bridge/">Read the official bridge guide</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/learn/community/">Get official support</ExternalLink>
+        </div>
+      </div>
+    </StepFrame>
+  );
+}
+
+function isEvmScaffoldResult(value: unknown): value is { ok: true; projectName: string; structureVerified: boolean; files: string[] } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return item.ok === true
+    && typeof item.projectName === "string"
+    && item.projectName.length <= 96
+    && item.structureVerified === true
+    && Array.isArray(item.files)
+    && item.files.length <= 256
+    && item.files.every((file) => typeof file === "string" && file.length <= 256);
+}
+
+export function isCurrentEvmScaffoldRequest(
+  requestGeneration: number,
+  currentGeneration: number,
+  requestToolchain: "foundry" | "hardhat",
+  currentToolchain: "foundry" | "hardhat"
+): boolean {
+  return requestGeneration === currentGeneration && requestToolchain === currentToolchain;
+}
+
+function EvmBuild({ companionStatus, setRoute }: { companionStatus: CompanionStatus; setRoute: (route: RouteId) => void }) {
+  const journey = useJourney();
+  const accessDisposition = hasTruthfulDisposition(journey.progress.paths.evm.access.status);
+  const { runtime, companionBaseUrl } = useStudioRuntime();
+  const [projectName, setProjectName] = useState("dusk-evm-counter");
+  const [state, setState] = useState<AsyncState>("idle");
+  const [message, setMessage] = useState("No local starter action has run.");
+  const [toolchain, setToolchain] = useState<"foundry" | "hardhat">("foundry");
+  const [structureConfirmed, setStructureConfirmed] = useState(false);
+  const [testsConfirmed, setTestsConfirmed] = useState(false);
+  const toolchainRef = useRef<"foundry" | "hardhat">("foundry");
+  const scaffoldGenerationRef = useRef(0);
+
+  function ensureCurrentBuildPrerequisite(): boolean {
+    if (isEvmActivationCurrent() && isCurrentEvmSetupComplete(journey.progress) && accessDisposition) return true;
+    journey.invalidate("evm", "setup");
+    setStructureConfirmed(false);
+    setTestsConfirmed(false);
+    setState("stale");
+    setMessage("The Testnet identity proof expired. Repeat Setup before creating or recording a starter.");
+    return false;
+  }
+
+  function chooseToolchain(next: "foundry" | "hardhat") {
+    if (state === "loading" || next === toolchainRef.current) return;
+    scaffoldGenerationRef.current += 1;
+    toolchainRef.current = next;
+    setToolchain(next);
+    setStructureConfirmed(false);
+    setTestsConfirmed(false);
+    setState("idle");
+    setMessage(`No ${next === "foundry" ? "Foundry" : "Hardhat"} starter action has run.`);
+    journey.invalidate("evm", "build");
+  }
+
+  async function scaffold() {
+    if (!ensureCurrentBuildPrerequisite()) return;
+    if (!runtime.companionAvailable || !companionBaseUrl) {
+      setRoute("companion");
+      return;
+    }
+    const requestToolchain = toolchainRef.current;
+    const requestGeneration = scaffoldGenerationRef.current + 1;
+    scaffoldGenerationRef.current = requestGeneration;
+    setState("loading");
+    try {
+      const route = requestToolchain === "foundry" ? "/scaffold-template" : "/scaffold-hardhat-template";
+      const result = await requestJson(companionBaseUrl + route, {
+        init: {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ projectName })
+        },
+        validate: isEvmScaffoldResult,
+        timeoutMs: LOCAL_ACTION_TIMEOUT_MS.scaffold,
+        maxBytes: 64 * 1024
+      });
+      if (!isEvmScaffoldResult(result)) throw new SafeRequestError("invalid-response", "The companion returned an invalid starter receipt.", false);
+      if (!isCurrentEvmScaffoldRequest(requestGeneration, scaffoldGenerationRef.current, requestToolchain, toolchainRef.current)) return;
+      if (!ensureCurrentBuildPrerequisite()) return;
+      journey.record("evm", "build", ["evm-starter-structure"], { method: "automatic", metadata: { source: "companion", tool: requestToolchain === "foundry" ? "forge-starter" : "studio-reviewed-template", version: STUDIO_RELEASE.commit, checkCount: 1 } });
+      setStructureConfirmed(true);
+      setState("success");
+      setMessage(`Created and verified ${result.projectName} with ${result.files.length} bounded file entries. Dependencies were not installed and no build or signing command ran.`);
+    } catch (error) {
+      if (!isCurrentEvmScaffoldRequest(requestGeneration, scaffoldGenerationRef.current, requestToolchain, toolchainRef.current)) return;
+      if (!ensureCurrentBuildPrerequisite()) return;
+      setState(stateForError(error));
+      setMessage(safeRequestMessage(error));
+    }
+  }
+
+  function recordManualBuild() {
+    if (!structureConfirmed || !testsConfirmed || !ensureCurrentBuildPrerequisite()) return;
+    journey.record("evm", "build", ["evm-starter-structure", "evm-build-test-attestation"], {
+      method: "manual",
+      metadata: { source: "manual-confirmation", tool: toolchain === "foundry" ? "forge-starter" : "studio-reviewed-template", version: STUDIO_RELEASE.commit, checkCount: 2, testsPassed: true }
+    });
+    setState("success");
+    setMessage(`Recorded your ${toolchain === "foundry" ? "Foundry" : "Hardhat"} structure, compile, and test confirmation. Studio did not inspect terminal output.`);
+  }
+
+  const hardhatCommands = "npm ci\nnpx hardhat compile\nnpx hardhat test";
+  return (
+    <StepFrame builderPath="evm" route="build" setRoute={setRoute}>
+      <div className="focus-card wide">
+        <h2>Choose a reviewed local starter</h2>
+        {!accessDisposition ? <AsyncNotice state="partial" message="Finish or explicitly skip Access before recording this independent local build." /> : null}
+        <div className="button-row" role="group" aria-label="Solidity toolchain">
+          <button className={toolchain === "foundry" ? "active secondary-button" : "secondary-button"} type="button" aria-pressed={toolchain === "foundry"} disabled={state === "loading"} onClick={() => chooseToolchain("foundry")}>Foundry</button>
+          <button className={toolchain === "hardhat" ? "active secondary-button" : "secondary-button"} type="button" aria-pressed={toolchain === "hardhat"} disabled={state === "loading"} onClick={() => chooseToolchain("hardhat")}>Hardhat</button>
+        </div>
+        <p>Both starters pin Solidity 0.8.28 with optimizer runs 200, include the same Apache-2.0 Counter example, and contain no key, funding, bridge, or production business logic.</p>
+        {toolchain === "foundry" ? (
+          <CommandPair firstTitle="Compile and size" first="forge build --sizes" secondTitle="Run unit tests" second="forge test -vv" />
+        ) : (
+          <div className="tool-command"><span>Install exactly, compile, and test</span><pre>{hardhatCommands}</pre><CopyButton value={hardhatCommands} label="Copy Hardhat build commands" /></div>
+        )}
+      </div>
+      <div className="focus-card wide">
+        <h2>Optional Local Actions: create the {toolchain === "foundry" ? "Foundry" : "Hardhat"} starter</h2>
+        <p>The paired companion copies only the packaged reviewed template into its managed project root. It does not install dependencies, build, connect a wallet, or sign.</p>
+        <label>Project name<input value={projectName} onChange={(event) => setProjectName(event.target.value)} pattern="[a-z][a-z0-9-]{0,79}" /></label>
+        <CompanionActionButton companionStatus={companionStatus} setRoute={setRoute} onAction={scaffold} disabled={!accessDisposition || state === "loading"}>
+          Create and verify {toolchain === "foundry" ? "Foundry" : "Hardhat"} starter
+        </CompanionActionButton>
+        <AsyncNotice state={state} message={message} onRetry={state === "error" || state === "timeout" || state === "unavailable" ? scaffold : undefined} />
+      </div>
+      <div className="focus-card wide">
+        <h2>Record the local result</h2>
+        <ManualRecordNotice>This stores only toolchain, test-pass, and timestamp evidence. It does not store a path, artifact bytes, command output, account, or secret.</ManualRecordNotice>
+        <label className="inline-check"><input type="checkbox" checked={structureConfirmed} disabled={!accessDisposition} onChange={(event) => setStructureConfirmed(event.target.checked)} /> <span>I verified the reviewed starter structure.</span></label>
+        <label className="inline-check"><input type="checkbox" checked={testsConfirmed} disabled={!accessDisposition} onChange={(event) => setTestsConfirmed(event.target.checked)} /> <span>I ran the shown compile and tests successfully.</span></label>
+        <button className="primary-button" type="button" disabled={!accessDisposition || !structureConfirmed || !testsConfirmed} onClick={recordManualBuild}>Save local build confirmation</button>
+      </div>
+      <div className="focus-card secondary wide">
+        <h2>Signer-owned deployment handoff</h2>
+        <p>Do not paste a private key into a command, <code>.env</code>, or Studio. Foundry users can import a keystore interactively. Hardhat users can store the RPC and deployment key in its encrypted keystore. Review the exact chain, account, bytecode, constructor arguments, value, and fee before running the final deploy command.</p>
+        {toolchain === "foundry" ? (
+          <div className="tool-command"><span>Foundry encrypted-keystore handoff</span><pre>{"cast wallet import dusk-testnet-deployer --interactive\nforge create src/Counter.sol:Counter --rpc-url dusk_evm_testnet --account dusk-testnet-deployer --broadcast"}</pre><CopyButton value={"cast wallet import dusk-testnet-deployer --interactive\nforge create src/Counter.sol:Counter --rpc-url dusk_evm_testnet --account dusk-testnet-deployer --broadcast"} label="Copy secure Foundry handoff" /></div>
+        ) : (
+          <div className="tool-command"><span>Hardhat encrypted-keystore handoff</span><pre>{"npx hardhat keystore set DUSKEVM_TESTNET_RPC_URL\nnpx hardhat keystore set DUSKEVM_TESTNET_PRIVATE_KEY\nnpx hardhat ignition deploy ignition/modules/Counter.ts --network duskEvmTestnet"}</pre><CopyButton value={"npx hardhat keystore set DUSKEVM_TESTNET_RPC_URL\nnpx hardhat keystore set DUSKEVM_TESTNET_PRIVATE_KEY\nnpx hardhat ignition deploy ignition/modules/Counter.ts --network duskEvmTestnet"} label="Copy secure Hardhat handoff" /></div>
+        )}
+      </div>
+    </StepFrame>
+  );
+}
+
+function EvmInspect({ setRoute }: { setRoute: (route: RouteId) => void }) {
   const [identifier, setIdentifier] = useState("");
   const classification = useMemo(() => classifyEvmIdentifier(identifier), [identifier]);
   const invalidIdentifier = identifier.trim().length > 0 && !classification;
-  const plannedStages = [
-    ["Setup", "Add the reviewed Testnet RPC and confirm the wallet is on the expected chain."],
-    ["Access", "Read the selected account and DUSK gas balance without initiating a signature."],
-    ["Build", "Compile and test a Solidity starter locally with Foundry or Hardhat."],
-    ["Inspect", "Read blocks, transactions, contracts, and verified source through RPC and Blockscout."]
-  ];
+  const journey = useJourney();
+  const setupComplete = isCurrentEvmSetupComplete(journey.progress);
+  const buildDisposition = hasTruthfulDisposition(journey.progress.paths.evm.build.status);
+  const inspectReady = setupComplete && buildDisposition;
+  const [state, setState] = useState<AsyncState>("idle");
+  const [result, setResult] = useState<EvmReadResult | null>(null);
+  const [message, setMessage] = useState("Enter an address, transaction hash, or block number. Classification stays local until you choose Inspect.");
+
+  async function inspect() {
+    const ensureCurrentInspectPrerequisite = (): boolean => {
+      if (isEvmActivationCurrent() && isCurrentEvmSetupComplete(journey.progress)) return true;
+      journey.invalidate("evm", "setup");
+      setResult(null);
+      setState("stale");
+      setMessage("The Testnet identity proof expired. Repeat Setup before inspecting the network.");
+      return false;
+    };
+    if (!ensureCurrentInspectPrerequisite()) return;
+    if (!buildDisposition) return;
+    if (!classification) {
+      journey.block("evm", "inspect", "invalid-identifier");
+      setState("error");
+      setMessage("Enter a valid 20-byte address, 32-byte transaction hash, or canonical block quantity.");
+      return;
+    }
+    setState("loading");
+    setMessage("Running one bounded read-only Testnet inspection...");
+    const next = await inspectEvmIdentifier(defaultNetwork, classification);
+    if (!ensureCurrentInspectPrerequisite()) return;
+    setResult(next);
+    setMessage(next.summary);
+    if (next.ok) {
+      journey.record("evm", "inspect", ["evm-read-inspection"], {
+        method: "automatic",
+        observedAt: next.checkedAt,
+        metadata: { source: "browser-check", tool: "rpc", platform: "browser", checkCount: 1, endpoint: defaultNetwork.rpcUrls[0] }
+      });
+      setState(next.transactionStatus === "pending" ? "partial" : next.transactionStatus === "reverted" ? "error" : "success");
+    } else {
+      journey.block("evm", "inspect", next.failureKind === "not-found" ? "result-not-found" : "rpc-unavailable");
+      setState(next.failureKind === "timeout" ? "timeout" : next.failureKind === "not-found" ? "partial" : "error");
+    }
+  }
+
   return (
-    <section className="reference-page evm-preview-page">
-      <PageIntro
-        kicker="DuskEVM pre-launch"
-        title="Explore the planned DuskEVM developer workflow."
-        copy="DuskEVM Testnet is not live yet. This is one learning and readiness surface—not a four-step task, completion score, network check, wallet flow, or deployment tool."
-      />
+    <StepFrame builderPath="evm" route="inspect" setRoute={setRoute}>
       <div className="focus-card wide">
-        <div className="button-row">
-          <StatusPill tone="warn">Reference only</StatusPill>
-          <span>No live evidence is recorded</span>
-        </div>
-        <h2>What you can use today</h2>
-        <p>Review the planned execution model, Solidity toolchain, wallet and gas flow, explorer model, and activation boundary. Published network metadata is displayed for preparation only; the Studio does not treat it as live until DuskEVM Testnet is launched and revalidated.</p>
-        <AsyncNotice state="partial" title="Linked guides are planning references" message="Some linked pages describe wallet, funding, signing, or deployment steps. Do not use those steps as proof that DuskEVM Testnet is live, and never pass a raw private key in a command. Wait for this Studio to show a revalidated live status and use a secure signer workflow." />
-        <div className="button-row">
-          <ExternalLink href="https://docs.dusk.network/developer/smart-contracts-dusk-evm/deploy-on-evm/">Deployment guide for planning</ExternalLink>
-          <ExternalLink href="https://github.com/dusk-network/docs">Official docs source</ExternalLink>
-          <ExternalLink href="https://docs.dusk.network/learn/deep-dive/dusk-evm/">DuskEVM deep dive</ExternalLink>
-        </div>
-        <div className="tool-command">
-          <span>Pre-launch RPC reference</span>
-          <pre>{defaultNetwork.rpcUrls[0]}</pre>
-          <CopyButton value={defaultNetwork.rpcUrls[0]} label="Copy pre-launch RPC URL" />
-        </div>
-        <p className="quiet-note">Shown for inspection and configuration planning only. The Studio does not connect to this endpoint or treat it as live before activation checks pass.</p>
-      </div>
-      <div className="command-context">
-        <StatusPill tone="warn">Not Studio-activated</StatusPill>
-        <span>{defaultNetwork.name}</span>
-        <span>Expected chain {defaultNetwork.chainId} / {defaultNetwork.chainIdHex}</span>
-      </div>
-      <div className="journey-preview evm-stage-preview">
-        <div className="result-brief">
-          <h2>Planned Setup → Access → Build → Inspect flow</h2>
-          <p>These stages become actionable only after the Testnet endpoint, wallet behavior, starter, and inspection surfaces pass the reviewed activation gates.</p>
-        </div>
-        <ol>
-          {plannedStages.map(([label, copy], index) => (
-            <li key={label}><span>{index + 1}</span><strong>{label}</strong><small>{copy}</small></li>
-          ))}
-        </ol>
-      </div>
-      <div className="focus-card wide">
-        <h2>Check an identifier’s shape locally</h2>
-        <p>This browser-only helper recognizes the format of an EVM address, transaction hash, or block reference. It does not prove that the value exists, belongs to DuskEVM, or is safe.</p>
+        <h2>Classify locally, then inspect read-only state</h2>
+        <p>The identifier is validated before any request. The adapter sends one bounded JSON-RPC read to the allowlisted Testnet endpoint; it never sends a transaction or wallet request.</p>
+        {!inspectReady ? <AsyncNotice state="partial" message="Complete the current Setup check and finish or explicitly skip Build before contacting Testnet here." /> : null}
         <label>
-          Example identifier
+          Address, transaction hash, or block
           <input
             value={identifier}
-            onChange={(event) => setIdentifier(event.target.value)}
+            onChange={(event) => { setIdentifier(event.target.value); setResult(null); setState("idle"); }}
             placeholder="0x address, transaction hash, or block number"
             aria-invalid={invalidIdentifier || undefined}
             aria-describedby="evm-format-help evm-format-result"
@@ -309,12 +824,26 @@ function EvmPreviewPage() {
           </StatusPill>
           {classification ? <span><strong>Normalized value:</strong> <code>{classification.value}</code></span> : null}
         </div>
+        <button className="primary-button" type="button" disabled={!inspectReady || !classification || state === "loading"} onClick={inspect}>Inspect on Testnet</button>
+        <AsyncNotice state={state} message={message} onRetry={state === "error" || state === "timeout" || state === "partial" ? inspect : undefined} />
+        {result ? (
+          <div className="result-brief">
+            <h3>{result.ok ? "Observed result" : "No conclusive result"}</h3>
+            {result.details.map((detail) => <p key={detail}>{detail}</p>)}
+            <ExternalLink href={result.explorerUrl}>Open exact identifier in Testnet explorer</ExternalLink>
+          </div>
+        ) : null}
       </div>
       <div className="focus-card secondary wide">
-        <h2>Hedger is research context, not an active product claim</h2>
-        <p>Hedger is relevant to the confidential-computing direction around DuskEVM, but this Studio does not present it as a live integration, investor promise, or current developer dependency.</p>
+        <h2>Deployment evidence to preserve outside Studio</h2>
+        <p>Keep the source revision, compiler 0.8.28, optimizer runs 200, exact artifact hash, constructor arguments, signer account, transaction hash, receipt status, deployed address, and explorer verification result. A missing receipt can mean pending or unknown; a receipt status of <code>0x0</code> means reverted. An RPC <code>finalized</code> tag is only an EVM RPC signal and does not establish DuskDS settlement or bridge completion.</p>
+        <div className="button-row">
+          <ExternalLink href="https://explorer.testnet.evm.dusk.network">Open Testnet explorer</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/developer/duskevm/quickstart/">Official DuskEVM Quickstart</ExternalLink>
+          <ExternalLink href="https://docs.dusk.network/learn/community/">Official support route</ExternalLink>
+        </div>
       </div>
-    </section>
+    </StepFrame>
   );
 }
 

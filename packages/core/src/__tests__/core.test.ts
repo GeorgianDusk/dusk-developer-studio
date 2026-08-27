@@ -5,6 +5,7 @@ import {
   explorerAddressUrl,
   explorerTxUrl,
   getDefaultDuskEvmNetwork,
+  isDuskEvmNetworkReviewCurrent,
   parseHexBlockNumber,
   redactSensitive,
   safeJsonExport,
@@ -12,6 +13,15 @@ import {
   searchResources,
   searchTroubleshooting
 } from "../index";
+
+function rpcResponse(result: unknown): Response {
+  const value = new Response(
+    JSON.stringify({ jsonrpc: "2.0", id: 1, result }),
+    { status: 200, headers: { "content-type": "application/json" } }
+  );
+  Object.defineProperty(value, "url", { value: new URL(getDefaultDuskEvmNetwork().rpcUrls[0]).href });
+  return value;
+}
 
 describe("DuskEVM network config", () => {
   it("loads source-labeled network metadata", () => {
@@ -21,6 +31,9 @@ describe("DuskEVM network config", () => {
     expect(testnet.chainIdHex).toBe("0x2e9");
     expect(testnet.enabledByDefault).toBe(true);
     expect(testnet.sourceUrl).toContain("docs.dusk.network");
+    expect(isDuskEvmNetworkReviewCurrent(testnet, Date.parse("2026-09-13T23:59:59.999Z"))).toBe(true);
+    expect(isDuskEvmNetworkReviewCurrent(testnet, Date.parse("2026-09-14T00:00:00.000Z"))).toBe(false);
+    expect(isDuskEvmNetworkReviewCurrent(DUSK_EVM_NETWORKS[1], Date.parse("2026-07-29T00:00:00.000Z"))).toBe(false);
   });
 });
 
@@ -28,28 +41,45 @@ describe("RPC health", () => {
   it("returns healthy when the chain id matches", async () => {
     const fetchImpl = vi.fn(async (_url: string, request: RequestInit) => {
       const body = JSON.parse(String(request.body)) as { method: string };
-      return new Response(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: body.method === "eth_chainId" ? "0x2e9" : "0x10" }),
-        { status: 200, headers: { "content-type": "application/json" } }
-      );
+      const result = body.method === "eth_chainId"
+        ? "0x2e9"
+        : body.method === "eth_getBlockByNumber"
+          ? { hash: "0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7" }
+          : "0x10";
+      return rpcResponse(result);
     }) as unknown as typeof fetch;
 
     const result = await checkRpcHealth(getDefaultDuskEvmNetwork(), fetchImpl);
     expect(result.status).toBe("healthy");
     expect(parseHexBlockNumber(result.blockNumberHex)).toBe(16);
+    expect(result.actualGenesisHash).toBe("0xb460e5846cdb8a442e0a3e227d4b43db4209170282ce36efc7c7d9dec8e383f7");
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it("detects wrong-chain responses", async () => {
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x1" }), {
-        status: 200,
-        headers: { "content-type": "application/json" }
-      })
-    ) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(async () => rpcResponse("0x1")) as unknown as typeof fetch;
 
     const result = await checkRpcHealth(getDefaultDuskEvmNetwork(), fetchImpl);
     expect(result.status).toBe("wrong-chain");
     expect(result.actualChainIdHex).toBe("0x1");
+    expect(fetchImpl).toHaveBeenCalledOnce();
+  });
+
+  it("fails closed when chain 745 has a different genesis", async () => {
+    const fetchImpl = vi.fn(async (_url: string, request: RequestInit) => {
+      const body = JSON.parse(String(request.body)) as { method: string };
+      const result = body.method === "eth_chainId"
+        ? "0x2e9"
+        : { hash: `0x${"f".repeat(64)}` };
+      return rpcResponse(result);
+    }) as unknown as typeof fetch;
+
+    const result = await checkRpcHealth(getDefaultDuskEvmNetwork(), fetchImpl);
+    expect(result).toMatchObject({
+      status: "wrong-genesis",
+      actualGenesisHash: `0x${"f".repeat(64)}`
+    });
+    expect(result.message).toMatch(/do not fund or deploy/i);
   });
 });
 
@@ -72,10 +102,16 @@ describe("explorer helpers", () => {
 describe("resource search", () => {
   it("finds funding, troubleshooting, and capability records", () => {
     expect(searchResources("bridge").some((item) => item.id === "duskevm-bridge")).toBe(true);
+    expect(searchResources("faucet").find((item) => item.id === "duskevm-bridge")?.summary)
+      .toMatch(/unshield it, then deposit/i);
+    expect(searchResources("faucet").find((item) => item.id === "duskevm-faucet-archived")?.maturity)
+      .toBe("archived");
     expect(searchTroubleshooting("forge").some((item) => item.id === "foundry-missing")).toBe(true);
+    expect(searchTroubleshooting("gas").find((item) => item.id === "insufficient-gas")?.fix)
+      .toMatch(/not a direct DuskEVM faucet/i);
     expect(searchCapabilities("citadel").some((item) => item.id === "citadel-private-identity")).toBe(true);
     expect(searchCapabilities("hedger").some((item) => item.id === "duskevm-confidential-hedger")).toBe(true);
-    expect(searchResources("Smart Contracts on DuskDS").some((item) => item.id === "duskds-smart-contracts")).toBe(true);
+    expect(searchResources("DuskVM Smart Contracts").some((item) => item.id === "duskds-smart-contracts")).toBe(true);
     expect(searchCapabilities("driver_available").some((item) => item.id === "duskds-data-drivers")).toBe(true);
     expect(searchTroubleshooting("driver_available").some((item) => item.id === "duskds-driver-unavailable-after-deploy")).toBe(true);
   });

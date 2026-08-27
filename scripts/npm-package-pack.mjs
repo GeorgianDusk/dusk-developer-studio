@@ -71,6 +71,9 @@ if (JSON.stringify(packedFiles) !== JSON.stringify(expectedFiles)) {
 }
 if (
   !packedFiles.includes("templates/foundry-counter-dusk-evm/.env.example")
+  || !packedFiles.includes("templates/hardhat-counter-dusk-evm/package-lock.json")
+  || !packedFiles.includes("templates/hardhat-counter-dusk-evm/.gitignore.template")
+  || !packedFiles.includes("templates/hardhat-counter-dusk-evm/ignition/modules/Counter.ts")
   || !packedFiles.includes("templates/duskds-counter-forge/Cargo.lock")
   || !packedFiles.includes("templates/duskds-counter-forge/LICENSE-MPL-2.0.txt")
   || !packedFiles.includes("templates/duskds-counter-forge/PROVENANCE.md")

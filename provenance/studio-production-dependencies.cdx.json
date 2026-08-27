@@ -7,7 +7,7 @@
       "type": "application",
       "bom-ref": "urn:dusk:developer-studio",
       "name": "dusk-developer-testnet-studio",
-      "version": "1.0.19"
+      "version": "1.0.20"
     },
     "properties": [
       {
@@ -16,7 +16,7 @@
       },
       {
         "name": "dusk:dockerfile-sha256",
-        "value": "fc1639caf9d03db9defc62373e87e12e3dd3ab63a5ad01ec026e1839b5618edd"
+        "value": "ba1dcf61b97f00642eca3a9ea0e546815e07ae1bc3ea9d8c4cdaf7ccbee1c603"
       },
       {
         "name": "dusk:assurance-node-version",
@@ -33,6 +33,14 @@
       {
         "name": "dusk:container-base:runtime",
         "value": "nginx:stable-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
+      },
+      {
+        "name": "dusk:runtime-package-upgrade",
+        "value": "libcrypto3=3.5.8-r0"
+      },
+      {
+        "name": "dusk:runtime-package-upgrade",
+        "value": "libssl3=3.5.8-r0"
       }
     ]
   },
