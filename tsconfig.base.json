@@ -31,5 +31,8 @@
                     "packages/**/*.ts",
                     "tests/**/*.ts",
                     "scripts/**/*.ts"
+                ],
+    "exclude":  [
+                    "packages/templates/hardhat-counter-dusk-evm/**"
                 ]
 }

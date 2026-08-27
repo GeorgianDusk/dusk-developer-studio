@@ -77,7 +77,12 @@ assert.equal(
 assert.equal(preservedInitialPublicationReceipt.observed_at, initialPublicationEvidence.observed_at);
 
 const packageJson = JSON.parse(read("package.json"));
+const rootTypeScriptConfig = JSON.parse(read("tsconfig.base.json"));
 assert.equal(packageJson.private, true, "The workspace must remain protected from accidental npm publication.");
+assert.ok(
+  rootTypeScriptConfig.exclude.includes("packages/templates/hardhat-counter-dusk-evm/**"),
+  "The standalone Hardhat starter must be typechecked only after its own frozen dependencies are installed."
+);
 assert.equal(packageJson.license, "Apache-2.0");
 assert.equal(packageJson.repository.url, "git+https://github.com/GeorgianDusk/dusk-developer-studio.git");
 assert.match(
